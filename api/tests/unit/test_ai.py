@@ -1,0 +1,155 @@
+"""Integration tests for Phase 4 AI endpoints — health check, coach tip, insights, report."""
+from __future__ import annotations
+
+import pytest
+import pytest_asyncio
+from unittest.mock import AsyncMock, patch
+
+from tests.conftest import TenantFactory
+
+pytestmark = pytest.mark.asyncio
+
+
+@pytest_asyncio.fixture
+async def tenant(db_session):
+    factory = TenantFactory(db_session)
+    return await factory.create()
+
+
+@pytest_asyncio.fixture
+async def grow_with_data(client, tenant):
+    """Create a tent, grow, and bucket for AI tests."""
+    tent = await client.post(
+        "/v1/tents",
+        json={"name": "AI Tent", "environment_type": "indoor"},
+        headers=tenant["headers"],
+    )
+    tent_id = tent.json()["id"]
+
+    grow = await client.post(
+        "/v1/grows",
+        json={"name": "AI Grow", "tent_id": tent_id, "grow_type": "dwc"},
+        headers=tenant["headers"],
+    )
+    grow_id = grow.json()["id"]
+
+    bucket = await client.post(
+        f"/v1/grows/{grow_id}/buckets",
+        json={"position": 1, "label": "B1"},
+        headers=tenant["headers"],
+    )
+    bucket_id = bucket.json()["id"]
+
+    # Add sensor reading
+    await client.post(
+        f"/v1/buckets/{bucket_id}/sensors",
+        json={"ph": 6.2, "ec": 1.4, "water_temp": 20.5},
+        headers=tenant["headers"],
+    )
+
+    return {"tenant": tenant, "tent_id": tent_id, "grow_id": grow_id, "bucket_id": bucket_id}
+
+
+class TestHealthCheck:
+    @patch("app.ai.routes.chat_completion", new_callable=AsyncMock)
+    async def test_health_check_success(self, mock_ai, client, grow_with_data):
+        mock_ai.return_value = '{"score": 85, "issues": ["Slight pH drift"], "actions": ["Adjust pH down"]}'
+
+        resp = await client.post(
+            "/v1/ai/health-check",
+            json={
+                "grow_id": grow_with_data["grow_id"],
+                "observations": {"root_health": "white and healthy"},
+            },
+            headers=grow_with_data["tenant"]["headers"],
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["score"] == 85
+        assert len(data["issues"]) >= 1
+        assert len(data["actions"]) >= 1
+
+    async def test_health_check_invalid_grow(self, client, tenant):
+        resp = await client.post(
+            "/v1/ai/health-check",
+            json={
+                "grow_id": "00000000-0000-0000-0000-000000000000",
+                "observations": {},
+            },
+            headers=tenant["headers"],
+        )
+        assert resp.status_code == 404
+
+    async def test_health_check_no_auth(self, client):
+        resp = await client.post(
+            "/v1/ai/health-check",
+            json={"grow_id": "00000000-0000-0000-0000-000000000000", "observations": {}},
+        )
+        assert resp.status_code in (401, 403)
+
+
+class TestCoachTip:
+    @patch("app.ai.routes.chat_completion", new_callable=AsyncMock)
+    async def test_coach_tip_success(self, mock_ai, client, grow_with_data):
+        mock_ai.return_value = "Check your reservoir water level daily."
+
+        resp = await client.post(
+            "/v1/ai/coach-tip",
+            json={"grow_id": grow_with_data["grow_id"]},
+            headers=grow_with_data["tenant"]["headers"],
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "tip" in data
+        assert len(data["tip"]) > 0
+
+
+class TestInsights:
+    @patch("app.ai.routes.chat_completion", new_callable=AsyncMock)
+    async def test_harvest_predict(self, mock_ai, client, grow_with_data):
+        mock_ai.return_value = '{"estimated_days": 45, "confidence": "medium"}'
+
+        resp = await client.post(
+            "/v1/ai/insights",
+            json={
+                "grow_id": grow_with_data["grow_id"],
+                "insight_type": "harvest_predict",
+            },
+            headers=grow_with_data["tenant"]["headers"],
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["insight_type"] == "harvest_predict"
+
+    async def test_invalid_insight_type(self, client, grow_with_data):
+        resp = await client.post(
+            "/v1/ai/insights",
+            json={
+                "grow_id": grow_with_data["grow_id"],
+                "insight_type": "invalid_type",
+            },
+            headers=grow_with_data["tenant"]["headers"],
+        )
+        assert resp.status_code in (400, 422)
+
+
+class TestGrowReport:
+    async def test_report_not_found(self, client, tenant):
+        resp = await client.get(
+            "/v1/ai/report/00000000-0000-0000-0000-000000000000",
+            headers=tenant["headers"],
+        )
+        assert resp.status_code == 404
+
+    async def test_report_success(self, client, grow_with_data):
+        resp = await client.get(
+            f"/v1/ai/report/{grow_with_data['grow_id']}",
+            headers=grow_with_data["tenant"]["headers"],
+        )
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "application/pdf"
+        assert resp.content.startswith(b"%PDF")
+
+    async def test_report_no_auth(self, client, grow_with_data):
+        resp = await client.get(f"/v1/ai/report/{grow_with_data['grow_id']}")
+        assert resp.status_code in (401, 403)

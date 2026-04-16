@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tendril-scheduler
+  namespace: tendril
+  labels:
+    app: tendril-scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tendril-scheduler
+  template:
+    metadata:
+      labels:
+        app: tendril-scheduler
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: NotIn
+                values:
+                - node05
+      containers:
+      - name: scheduler
+        image: 192.168.4.10:30500/tendril-api:latest
+        command: ["python", "-m", "app.scheduler.main"]
+        envFrom:
+        - secretRef:
+            name: tendril-secrets
+        env:
+        - name: LOG_LEVEL
+          value: "INFO"
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+      volumes:
+      - name: tmp
+        emptyDir: {}

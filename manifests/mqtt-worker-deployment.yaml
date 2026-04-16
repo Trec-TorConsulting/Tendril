@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tendril-mqtt-worker
+  namespace: tendril
+  labels:
+    app: tendril-mqtt-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tendril-mqtt-worker
+  template:
+    metadata:
+      labels:
+        app: tendril-mqtt-worker
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: NotIn
+                values:
+                - node05
+      containers:
+      - name: mqtt-worker
+        image: 192.168.4.10:30500/tendril-api:latest
+        command: ["python", "-m", "app.mqtt.worker"]
+        ports:
+        - containerPort: 8081
+          name: webhook
+        envFrom:
+        - secretRef:
+            name: tendril-secrets
+        env:
+        - name: LOG_LEVEL
+          value: "INFO"
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 250m
+            memory: 256Mi
+        readinessProbe:
+          httpGet:
+            path: /docs
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 10
+      volumes:
+      - name: tmp
+        emptyDir: {}

@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tendril-web
+  namespace: tendril
+  labels:
+    app: tendril-web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: tendril-web
+  template:
+    metadata:
+      labels:
+        app: tendril-web
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: NotIn
+                values:
+                - node05
+      containers:
+      - name: web
+        image: 192.168.4.10:30500/tendril-web:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: NEXT_PUBLIC_API_URL
+          value: "https://api.tendril.maddscientist.com/v1"
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 250m
+            memory: 256Mi
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 5
+          periodSeconds: 10

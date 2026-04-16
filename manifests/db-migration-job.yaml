@@ -1,0 +1,36 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: tendril-db-migrate
+  namespace: tendril
+spec:
+  template:
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: NotIn
+                values:
+                - node05
+      containers:
+      - name: migrate
+        image: 192.168.4.10:30500/tendril-api:latest
+        command: ["alembic", "upgrade", "head"]
+        env:
+        - name: PYTHONPATH
+          value: /app
+        envFrom:
+        - secretRef:
+            name: tendril-secrets
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 250m
+            memory: 256Mi
+      restartPolicy: OnFailure
+  backoffLimit: 3
