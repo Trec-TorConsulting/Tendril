@@ -5,11 +5,11 @@ import logging
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.commercial.models import Task
-from app.grows.models import Bucket, GrowCycle, Strain
+from app.grows.models import Bucket, FeedingSchedule, GrowCycle, Strain
 from app.tenants.models import User
 
 logger = logging.getLogger("tendril.tasks.autogen")
@@ -29,7 +29,7 @@ TASK_TEMPLATES: list[tuple[str, str, str, int, str, set[str] | None, set[str] | 
     # Hydro-specific
     ("ph_check", "Check pH levels", "Test reservoir pH and adjust to target range.", 1, "high", HYDRO_TYPES, None),
     ("ec_check", "Check EC/PPM levels", "Measure EC/PPM and adjust nutrient concentration.", 1, "high", HYDRO_TYPES, None),
-    ("water_change", "Change reservoir water", "Full reservoir drain and refill with fresh nutrient solution.", 7, "high", HYDRO_TYPES, None),
+    ("flush_and_fill", "Flush & Fill reservoir", None, 7, "high", HYDRO_TYPES, None),  # description built dynamically
     ("water_temp", "Check water temperature", "Verify reservoir temp is 65-72°F. Add ice or chiller if needed.", 1, "medium", {"dwc", "rdwc", "nft"}, None),
     ("top_off", "Top off reservoir", "Add pH'd water to maintain reservoir level.", 2, "medium", {"dwc", "rdwc"}, None),
 
@@ -81,6 +81,71 @@ async def _task_exists(
     return result.scalar_one_or_none() is not None
 
 
+async def _build_flush_fill_description(
+    session: AsyncSession,
+    grow: GrowCycle,
+) -> str:
+    """Build a nutrient recipe description for a flush & fill task.
+
+    Pulls the feeding schedule for the current stage and active bucket volumes
+    to produce a concrete mixing guide.
+    """
+    lines = ["Drain reservoir completely, rinse, and refill with fresh nutrient solution."]
+
+    # Get total volume from active buckets
+    vol_row = await session.execute(
+        select(func.sum(Bucket.volume_gallons))
+        .where(Bucket.grow_cycle_id == grow.id, Bucket.status == "active")
+    )
+    total_gallons = vol_row.scalar_one_or_none()
+
+    # Get feeding schedule for current stage
+    feed = (await session.execute(
+        select(FeedingSchedule)
+        .where(
+            FeedingSchedule.grow_cycle_id == grow.id,
+            FeedingSchedule.stage == grow.stage,
+        )
+        .order_by(FeedingSchedule.created_at.desc())
+        .limit(1)
+    )).scalar_one_or_none()
+
+    if total_gallons:
+        lines.append(f"\nTotal volume: {total_gallons:.1f} gal")
+
+    if feed:
+        lines.append(f"\n--- Nutrients ({feed.name} — {grow.stage}) ---")
+        if feed.target_ppm:
+            lines.append(f"Target PPM: {feed.target_ppm:.0f}")
+        if feed.target_ec:
+            lines.append(f"Target EC: {feed.target_ec:.2f}")
+
+        nutrients = feed.nutrients if isinstance(feed.nutrients, list) else []
+        for n in nutrients:
+            name = n.get("name", "Unknown")
+            ml_per_gal = n.get("ml_per_gallon", 0)
+            brand = n.get("brand", "")
+            strength = n.get("strength_pct")
+            if total_gallons and ml_per_gal:
+                total_ml = ml_per_gal * total_gallons
+                line = f"  • {name}: {ml_per_gal} ml/gal × {total_gallons:.1f} gal = {total_ml:.1f} ml"
+            else:
+                line = f"  • {name}: {ml_per_gal} ml/gal"
+            if brand:
+                line += f" ({brand})"
+            if strength and strength != 100:
+                line += f" @ {strength}%"
+            lines.append(line)
+
+        if feed.notes:
+            lines.append(f"\nNote: {feed.notes}")
+    else:
+        lines.append("\nNo feeding schedule found for this stage — mix nutrients per your usual recipe.")
+
+    lines.append("\npH to 5.8-6.2 after mixing. Let solution aerate before adding to reservoir.")
+    return "\n".join(lines)
+
+
 async def generate_tasks_for_grow(
     session: AsyncSession,
     grow: GrowCycle,
@@ -114,10 +179,15 @@ async def generate_tasks_for_grow(
             if await _task_exists(session, grow.tenant_id, category, grow.id, due):
                 continue
 
+            # Build dynamic description for flush & fill tasks
+            task_description = description
+            if category == "flush_and_fill":
+                task_description = await _build_flush_fill_description(session, grow)
+
             task = Task(
                 tenant_id=grow.tenant_id,
                 title=title,
-                description=description,
+                description=task_description,
                 status="pending",
                 priority=priority,
                 category=category,

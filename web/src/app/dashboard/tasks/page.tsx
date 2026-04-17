@@ -65,6 +65,7 @@ const PRIORITY_VARIANT: Record<string, "default" | "secondary" | "destructive" |
 const CATEGORY_LABELS: Record<string, string> = {
   ph_check: "pH Check",
   ec_check: "EC Check",
+  flush_and_fill: "Flush & Fill",
   water_change: "Water Change",
   water_temp: "Water Temp",
   top_off: "Top Off",
@@ -454,6 +455,7 @@ export default function TasksPage() {
                       <SelectItem value="none">None</SelectItem>
                       <SelectItem value="ph_check">pH Check</SelectItem>
                       <SelectItem value="ec_check">EC Check</SelectItem>
+                      <SelectItem value="flush_and_fill">Flush & Fill</SelectItem>
                       <SelectItem value="water_change">Water Change</SelectItem>
                       <SelectItem value="watering">Watering</SelectItem>
                       <SelectItem value="feeding">Feeding</SelectItem>
@@ -561,7 +563,10 @@ function TaskCard({
             )}
           </div>
           {task.description && (
-            <p className="text-sm text-muted-foreground line-clamp-1">{task.description}</p>
+            <p className={cn(
+              "text-sm text-muted-foreground whitespace-pre-line",
+              task.category === "flush_and_fill" ? "line-clamp-6" : "line-clamp-1",
+            )}>{task.description}</p>
           )}
           <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
             {task.due_date && (
