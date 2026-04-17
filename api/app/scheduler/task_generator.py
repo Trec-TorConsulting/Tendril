@@ -17,36 +17,149 @@ logger = logging.getLogger("tendril.tasks.autogen")
 # ── Task templates by category ──────────────────────────────────────
 
 HYDRO_TYPES = {"dwc", "rdwc", "nft", "ebb_flow", "drip", "aeroponics", "kratky"}
-SOIL_TYPES = {"soil", "outdoor", "container"}
+SOIL_TYPES = {"soil", "outdoor_soil", "outdoor_container"}
 COCO_TYPES = {"coco", "rockwool"}
+OUTDOOR_TYPES = {"outdoor_soil", "outdoor_container"}
 
 # (category, title, description, interval_days, priority, grow_types_or_None, stages_or_None)
 TASK_TEMPLATES: list[tuple[str, str, str, int, str, set[str] | None, set[str] | None]] = [
-    # Universal
-    ("health_check", "Inspect plants for health issues", "Check leaves, stems, roots for discoloration, pests, or wilting.", 1, "medium", None, None),
-    ("pest_check", "Check for pests & mold", "Inspect undersides of leaves, base of stems, and soil/medium surface for pests or mold.", 3, "medium", None, None),
+    # ── Universal ────────────────────────────────────────────────
+    ("health_check", "Inspect plants for health issues",
+     "Check leaves, stems, and overall canopy for discoloration, pests, or wilting. Quality grows start with early detection.", 1, "medium", None, None),
+    ("pest_check", "Check for pests & mold",
+     "Inspect undersides of leaves, base of stems, and medium surface. Prevention is key — one undetected pest can ruin quality.", 3, "medium", None, None),
 
-    # Hydro-specific
-    ("ph_check", "Check pH levels", "Test reservoir pH and adjust to target range.", 1, "high", HYDRO_TYPES, None),
-    ("ec_check", "Check EC/PPM levels", "Measure EC/PPM and adjust nutrient concentration.", 1, "high", HYDRO_TYPES, None),
-    ("flush_and_fill", "Flush & Fill reservoir", None, 7, "high", HYDRO_TYPES, None),  # description built dynamically
-    ("water_temp", "Check water temperature", "Verify reservoir temp is 65-72°F. Add ice or chiller if needed.", 1, "medium", {"dwc", "rdwc", "nft"}, None),
-    ("top_off", "Top off reservoir", "Add pH'd water to maintain reservoir level.", 2, "medium", {"dwc", "rdwc"}, None),
+    # ── DWC-specific ─────────────────────────────────────────────
+    ("ph_check", "Check reservoir pH",
+     "Test reservoir pH — target 5.5-6.2 for DWC. pH swings are the #1 issue in deep water culture.", 1, "high", {"dwc"}, None),
+    ("ec_check", "Check reservoir EC/PPM",
+     "Measure EC/PPM in reservoir. Adjust nutrient concentration. DWC roots absorb 24/7 so drift is fast.", 1, "high", {"dwc"}, None),
+    ("flush_and_fill", "Flush & Fill reservoir", None, 7, "high", {"dwc"}, None),
+    ("water_temp", "Check water temperature",
+     "Verify reservoir temp is 65-72°F. DWC roots are submerged — warm water causes root rot and low dissolved oxygen.", 1, "medium", {"dwc"}, None),
+    ("top_off", "Top off reservoir with pH'd water",
+     "Add plain pH'd water to maintain reservoir level. EC rises as water evaporates — top off between changes.", 2, "medium", {"dwc"}, None),
+    ("root_check", "Inspect root health",
+     "Check roots for white, healthy growth. Brown/slimy roots = root rot. Ensure air stones are bubbling vigorously.", 3, "high", {"dwc"}, None),
 
-    # Soil-specific
-    ("ph_check", "Check soil/runoff pH", "Test runoff pH after watering.", 3, "medium", SOIL_TYPES, None),
-    ("watering", "Check soil moisture & water", "Check soil moisture at 2-3 inch depth. Water if dry.", 1, "high", SOIL_TYPES, None),
-    ("top_dress", "Top dress nutrients", "Apply dry amendments to soil surface.", 14, "low", {"soil"}, {"vegetative", "flowering"}),
+    # ── RDWC-specific ────────────────────────────────────────────
+    ("ph_check", "Check central reservoir pH",
+     "Test pH at the control bucket — target 5.5-6.2. RDWC shares one solution so consistency is critical.", 1, "high", {"rdwc"}, None),
+    ("ec_check", "Check central reservoir EC/PPM",
+     "Measure EC/PPM at control bucket. Compare with individual site readings to check for uneven uptake.", 1, "high", {"rdwc"}, None),
+    ("flush_and_fill", "Flush & Fill reservoir", None, 7, "high", {"rdwc"}, None),
+    ("water_temp", "Check water temperature",
+     "Verify reservoir temp 65-72°F. All connected sites share temperature — one reading at the control bucket.", 1, "medium", {"rdwc"}, None),
+    ("circulation_check", "Check circulation pump & flow",
+     "Verify circulation pump is running and all sites have equal flow. Clogs or uneven flow cause nutrient imbalances.", 2, "high", {"rdwc"}, None),
+    ("root_check", "Inspect roots at each site",
+     "Check root health at all connected sites. Look for white, healthy roots. Blockages in return lines trap debris.", 3, "high", {"rdwc"}, None),
 
-    # Coco/Rockwool
-    ("ph_check", "Check runoff pH", "Measure runoff pH after fertigation.", 1, "high", COCO_TYPES, None),
-    ("ec_check", "Check runoff EC", "Measure runoff EC to detect salt buildup.", 1, "high", COCO_TYPES, None),
-    ("calmag", "CalMag supplement check", "Coco strips calcium — verify CalMag levels are adequate.", 3, "medium", {"coco"}, None),
+    # ── NFT-specific ─────────────────────────────────────────────
+    ("ph_check", "Check reservoir pH",
+     "Test reservoir pH — target 5.5-6.5 for NFT. Fresh solution flows over bare roots continuously.", 1, "high", {"nft"}, None),
+    ("ec_check", "Check reservoir EC/PPM",
+     "Measure EC/PPM. NFT delivers a thin film so nutrient concentration matters more than volume.", 1, "high", {"nft"}, None),
+    ("flush_and_fill", "Flush & Fill reservoir", None, 7, "high", {"nft"}, None),
+    ("circulation_check", "Verify pump operation & channel flow",
+     "CRITICAL: NFT pump failure kills roots in minutes — bare roots dry almost instantly. Check all channels are flowing evenly. Clear any root blockages.", 1, "urgent", {"nft"}, None),
 
-    # Stage-specific (all types)
-    ("defoliation", "Defoliation / training", "Remove large fan leaves blocking bud sites. LST/HST as needed.", 7, "low", None, {"vegetative"}),
-    ("trichome_check", "Check trichomes", "Use loupe/microscope to check trichome color (clear → cloudy → amber).", 2, "high", None, {"late_flower", "ripening"}),
-    ("flush", "Begin flush (plain water)", "Switch to plain pH'd water for final flush before harvest.", 1, "urgent", None, {"flush"}),
+    # ── Ebb & Flow ───────────────────────────────────────────────
+    ("ph_check", "Check reservoir pH",
+     "Test reservoir pH — target 5.5-6.5 for Ebb & Flow.", 1, "high", {"ebb_flow"}, None),
+    ("ec_check", "Check reservoir EC/PPM",
+     "Measure EC/PPM. Check for salt buildup on the tray surface between floods.", 1, "high", {"ebb_flow"}, None),
+    ("flush_and_fill", "Flush & Fill reservoir", None, 7, "high", {"ebb_flow"}, None),
+    ("water_temp", "Check flood tray drainage",
+     "Verify tray drains completely after each flood cycle. Standing water causes root rot. Check timer operation.", 2, "medium", {"ebb_flow"}, None),
+
+    # ── Drip / Top Feed ──────────────────────────────────────────
+    ("ph_check", "Check input pH & runoff pH",
+     "Measure input pH (target 5.5-6.5) AND runoff pH. Delta shows salt buildup in the media.", 1, "high", {"drip"}, None),
+    ("ec_check", "Check input EC & runoff EC",
+     "Measure input EC vs runoff EC. If runoff is significantly higher, flush to clear salt buildup.", 1, "high", {"drip"}, None),
+    ("flush_and_fill", "Flush & Fill reservoir", None, 7, "high", {"drip"}, None),
+    ("runoff_check", "Check runoff percentage",
+     "Target 10-20% runoff. Too little = salt buildup. Too much = waste. Adjust emitter flow rate or duration.", 3, "medium", {"drip"}, None),
+
+    # ── Aeroponics ───────────────────────────────────────────────
+    ("ph_check", "Check reservoir pH",
+     "Test reservoir pH — target 5.5-6.2 for aeroponics. Low EC means pH swings faster.", 1, "high", {"aeroponics"}, None),
+    ("ec_check", "Check reservoir EC/PPM",
+     "Measure EC/PPM — aeroponics uses lower concentration (40-60% strength). Roots absorb efficiently with fine mist.", 1, "high", {"aeroponics"}, None),
+    ("flush_and_fill", "Flush & Fill reservoir", None, 5, "high", {"aeroponics"}, None),
+    ("nozzle_check", "Check mist nozzles & pressure",
+     "CRITICAL: Nozzle failure kills aero roots in seconds. Verify all nozzles are misting, check system pressure, clear any clogs.", 1, "urgent", {"aeroponics"}, None),
+    ("root_check", "Inspect bare roots for drying",
+     "Check root tips for dryness or browning. Ensure full mist coverage in the chamber. Biofilm on nozzles reduces spray.", 2, "high", {"aeroponics"}, None),
+
+    # ── Kratky (Passive Hydro) ───────────────────────────────────
+    ("ph_check", "Check solution pH",
+     "Test pH — target 5.5-6.5. Kratky pH drifts as nutrients are consumed. Only adjust if far out of range — minimal intervention is the design.", 3, "medium", {"kratky"}, None),
+    ("water_level", "Check water level & air gap",
+     "Measure water level. NEVER refill to top — the air gap above the water line provides oxygen to roots. Only top off if roots are drying.", 3, "high", {"kratky"}, None),
+    ("algae_check", "Check for algae growth",
+     "Inspect container for algae (green/brown discoloration). Light leaks cause algae — cover any transparent container surfaces.", 7, "medium", {"kratky"}, None),
+
+    # ── Coco Coir ────────────────────────────────────────────────
+    ("ph_check", "Check runoff pH",
+     "Measure runoff pH after fertigation — target 5.8-6.2 for coco. Input-to-runoff delta reveals salt buildup.", 1, "high", {"coco"}, None),
+    ("ec_check", "Check runoff EC",
+     "Measure runoff EC vs input EC. If runoff EC is >0.5 higher than input, do a heavy flush to clear salts.", 1, "high", {"coco"}, None),
+    ("calmag", "CalMag supplement check",
+     "Coco coir strips calcium and magnesium from nutrient solution. Verify CalMag is in every feed. Watch for leaf yellowing between veins.", 3, "medium", {"coco"}, None),
+    ("watering", "Check coco moisture & fertigate",
+     "Coco should never dry out completely. Feed every watering (no plain water). Multiple times daily in flower. Target 10-20% runoff.", 1, "high", {"coco"}, {"flowering", "late_flower"}),
+    ("dryback_check", "Monitor dry-back percentage",
+     "Track pot weight morning vs evening. Coco wants controlled dry-back — enough to drive roots deeper, not enough to stress. Increase frequency as plants grow.", 2, "medium", {"coco"}, {"flowering", "late_flower"}),
+
+    # ── Rockwool ─────────────────────────────────────────────────
+    ("ph_check", "Check slab pH",
+     "Measure slab pH — target 5.5-6.0 for rockwool. Pre-soak new rockwool to stabilize pH before use.", 1, "high", {"rockwool"}, None),
+    ("ec_check", "Check slab EC",
+     "Measure slab EC and runoff EC. Precision irrigation is the key to rockwool — EC steering controls growth.", 1, "high", {"rockwool"}, None),
+    ("dryback_check", "Monitor overnight dry-back",
+     "Track slab weight or moisture. Crop steering: generative steering (higher dry-back) for flower development, vegetative steering (low dry-back) for growth.", 1, "high", {"rockwool"}, None),
+    ("algae_check", "Check for algae on exposed rockwool",
+     "Inspect rockwool surfaces. Cover all exposed areas with plastic or Panda film — light + moisture = algae.", 7, "medium", {"rockwool"}, None),
+
+    # ── Soil ─────────────────────────────────────────────────────
+    ("ph_check", "Check soil/runoff pH",
+     "Test runoff pH after watering — target 6.0-7.0 for soil. Soil buffers pH naturally but can drift with heavy feeding.", 3, "medium", {"soil"}, None),
+    ("watering", "Check soil moisture & water",
+     "Check soil moisture at 2-3 inch depth. Water when dry — soil grows need a proper wet/dry cycle. Do NOT keep constantly wet.", 1, "high", {"soil"}, None),
+    ("top_dress", "Top dress nutrients / amendments",
+     "Apply dry amendments to soil surface. Organic soil relies on slow-release nutrients and microbial activity.", 14, "low", {"soil"}, {"vegetative", "flowering"}),
+    ("soil_amendment", "Check beneficial microbe activity",
+     "Assess soil health — are mycorrhizae/beneficial bacteria active? Look for white mycelium on soil surface (good sign). Consider compost tea.", 14, "low", {"soil"}, None),
+
+    # ── Outdoor Soil (In-Ground) ─────────────────────────────────
+    ("weather_check", "Check weather forecast",
+     "Review 7-day forecast for storms, frost, heatwaves, or heavy rain. Outdoor grows are weather-dependent — prepare protection.", 1, "high", {"outdoor_soil"}, None),
+    ("pest_check", "Check for pests & animal damage",
+     "Inspect for caterpillars, aphids, spider mites, and animal browsing. Outdoor plots attract more pests than indoor.", 2, "high", {"outdoor_soil"}, None),
+    ("watering", "Check soil moisture",
+     "Check soil moisture. Rain usually provides most water, but supplement during dry spells. Deep water less often > frequent shallow watering.", 2, "medium", {"outdoor_soil"}, None),
+    ("soil_amendment", "Apply amendments / top dress",
+     "Outdoor in-ground benefits from regular organic amendments. Top dress compost, worm castings, or dry amendments monthly.", 30, "low", {"outdoor_soil"}, {"vegetative", "flowering"}),
+
+    # ── Outdoor Container ────────────────────────────────────────
+    ("weather_check", "Check weather forecast & container temps",
+     "Review forecast. Containers overheat in direct sun (dark pots especially). Move to shade during heatwaves if possible.", 1, "high", {"outdoor_container"}, None),
+    ("watering", "Check container moisture & water",
+     "Containers dry out faster than in-ground. Check daily — weight the pot (light = dry). Water deeply until runoff.", 1, "high", {"outdoor_container"}, None),
+    ("pest_check", "Check for pests & container issues",
+     "Inspect for pests. Also check for root-bound signs (roots circling drain holes, slowed growth, excessive watering needs).", 2, "high", {"outdoor_container"}, None),
+    ("ph_check", "Check runoff pH",
+     "Test runoff pH after watering — target 6.0-7.0. Container grows drift faster than in-ground.", 3, "medium", {"outdoor_container"}, None),
+
+    # ── Stage-specific (all types) ───────────────────────────────
+    ("defoliation", "Defoliation / training",
+     "Remove large fan leaves blocking bud sites. LST/HST as needed. Quality over quantity — open the canopy for light and airflow.", 7, "low", None, {"vegetative"}),
+    ("trichome_check", "Check trichomes",
+     "Use loupe/microscope to check trichome color. Target: mostly cloudy with 20-30% amber for peak terpene quality. Don't harvest early for yield — patience = quality.", 2, "high", None, {"late_flower", "ripening"}),
+    ("flush", "Flush (plain water only)",
+     "Switch to plain pH'd water. Proper flush before harvest = clean, smooth result. Quality over quantity.", 1, "urgent", None, {"flush"}),
 ]
 
 
@@ -448,34 +561,42 @@ async def create_task_from_alert(
 
 # ── Stage transition → preparation tasks ────────────────────────────
 
-STAGE_TRANSITION_TASKS: dict[str, list[tuple[str, str, str]]] = {
-    # stage: [(title, description, priority)]
+STAGE_TRANSITION_TASKS: dict[str, list[tuple[str, str, str, set[str] | None]]] = {
+    # stage: [(title, description, priority, grow_types_or_None)]
     "vegetative": [
-        ("Increase light hours to 18/6", "Plants are entering veg — switch light schedule to 18 on / 6 off for maximum vegetative growth.", "medium"),
-        ("Begin vegetative nutrient schedule", "Transition to veg-stage nutrients. Increase nitrogen ratio for leaf and stem development.", "medium"),
+        ("Increase light hours to 18/6", "Plants are entering veg — switch light schedule to 18 on / 6 off for maximum vegetative growth.", "medium", None),
+        ("Begin vegetative nutrient schedule", "Transition to veg-stage nutrients. Increase nitrogen ratio for leaf and stem development.", "medium", None),
+        ("Start LST / training plan", "Begin low-stress training while stems are flexible. Opening the canopy early = better bud sites later. Quality over quantity.", "low", None),
     ],
     "flowering": [
-        ("Switch light schedule to 12/12", "Flowering initiated — change light timer to 12 hours on / 12 hours off to trigger bloom.", "high"),
-        ("Transition to bloom nutrients", "Switch from veg to bloom nutrient formula. Increase phosphorus and potassium, reduce nitrogen.", "high"),
-        ("Remove male plants / check for hermies", "Inspect all plants for male pollen sacs or hermaphrodite traits. Remove immediately to protect quality.", "urgent"),
+        ("Switch light schedule to 12/12", "Flowering initiated — change light timer to 12 hours on / 12 hours off to trigger bloom.", "high", {t for t in HYDRO_TYPES | COCO_TYPES | {"soil"}} - OUTDOOR_TYPES),
+        ("Transition to bloom nutrients", "Switch from veg to bloom nutrient formula. Increase phosphorus and potassium, reduce nitrogen.", "high", None),
+        ("Remove male plants / check for hermies", "Inspect all plants for male pollen sacs or hermaphrodite traits. Remove immediately to protect quality.", "urgent", None),
+        ("Increase watering frequency for coco", "Coco in flower needs multiple waterings per day. Plants drink much more during stretch. Never let coco dry out.", "high", {"coco"}),
+        ("Adjust reservoir EC for bloom", "Increase EC to flower range (1.2-1.8 for DWC/RDWC, 1.4-2.2 for drip/coco). Bloom nutrients need higher concentration.", "high", HYDRO_TYPES | COCO_TYPES),
+        ("Prepare for outdoor flowering", "Natural photoperiod is triggering flower. Ensure no light pollution at night. Consider support stakes for heavy buds.", "high", OUTDOOR_TYPES),
     ],
     "late_flower": [
-        ("Begin daily trichome monitoring", "Use a jeweler's loupe or USB microscope to check trichome color daily. Target: mostly cloudy with 20-30% amber for peak quality.", "high"),
-        ("Lower room temperature for terpene preservation", "Drop temps to 65-70°F during dark period. Cooler temps in late flower preserve terpene profiles — quality over quantity.", "high"),
-        ("Reduce humidity to 40-45%", "Lower humidity to prevent bud rot and encourage resin production. Dense buds need airflow.", "high"),
+        ("Begin daily trichome monitoring", "Use a jeweler's loupe or USB microscope to check trichome color daily. Target: mostly cloudy with 20-30% amber for peak quality.", "high", None),
+        ("Lower room temperature for terpene preservation", "Drop temps to 65-70°F during dark period. Cooler temps in late flower preserve terpene profiles — quality over quantity.", "high", {t for t in HYDRO_TYPES | COCO_TYPES | {"soil"}} - OUTDOOR_TYPES),
+        ("Reduce humidity to 40-45%", "Lower humidity to prevent bud rot and encourage resin production. Dense buds need airflow.", "high", None),
+        ("Stop heavy defoliation", "Late flower is NOT the time for heavy defoliation. Only remove leaves directly blocking bud sites. Let the plant focus energy on resin.", "medium", None),
     ],
     "flush": [
-        ("Begin plain water flush", "Switch to plain pH'd water only. No nutrients. Goal: flush salt buildup for clean, smooth smoke.", "urgent"),
-        ("Prepare harvest tools and drying space", "Gather trimming scissors, drying rack/lines, and set up a dark, 60°F/60% humidity drying room.", "medium"),
-        ("Monitor runoff EC until below 0.3", "Keep flushing until runoff EC drops below 0.3 — this ensures a proper flush for the best taste.", "high"),
+        ("Begin plain water flush", "Switch to plain pH'd water only. No nutrients. Goal: flush salt buildup for clean, smooth smoke.", "urgent", None),
+        ("Prepare harvest tools and drying space", "Gather trimming scissors, drying rack/lines, and set up a dark, 60°F/60% humidity drying room.", "medium", None),
+        ("Monitor runoff EC until below 0.3", "Keep flushing until runoff EC drops below 0.3 — this ensures a proper flush for the best taste.", "high", HYDRO_TYPES | COCO_TYPES),
+        ("Flush Kratky — drain and refill with plain water", "Drain container and refill with plain pH'd water. Let roots sit in clean water for 5-7 days before harvest.", "high", {"kratky"}),
+        ("Flush soil — heavy water only", "Give soil a heavy plain water drench. Soil holds nutrients longer so start flush earlier (7-14 days). Target clean runoff.", "high", {"soil"}),
     ],
     "drying": [
-        ("Set drying room to 60°F / 60% humidity", "Slow dry for 10-14 days produces the best results. No fans directly on buds. Dark room.", "high"),
-        ("Check for mold daily during drying", "Inspect all drying branches daily for mold or rot. Remove affected areas immediately.", "high"),
+        ("Set drying room to 60°F / 60% humidity", "Slow dry for 10-14 days produces the best results. No fans directly on buds. Dark room.", "high", None),
+        ("Check for mold daily during drying", "Inspect all drying branches daily for mold or rot. Remove affected areas immediately.", "high", None),
+        ("Check stem snap test", "Gently bend stems daily. When small stems snap (not bend), buds are ready for jars. Don't rush — slow dry = better terps.", "medium", None),
     ],
     "curing": [
-        ("Begin jar curing — burp jars daily", "Place dried buds in mason jars at 58-62% humidity. Open jars for 15 min daily for the first 2 weeks.", "medium"),
-        ("Monitor humidity with hygrometer in jars", "Target 58-62% RH inside jars. Too high = mold risk. Too low = over-dried (add Boveda pack).", "medium"),
+        ("Begin jar curing — burp jars daily", "Place dried buds in mason jars at 58-62% humidity. Open jars for 15 min daily for the first 2 weeks.", "medium", None),
+        ("Monitor humidity with hygrometer in jars", "Target 58-62% RH inside jars. Too high = mold risk. Too low = over-dried (add Boveda pack).", "medium", None),
     ],
 }
 
@@ -497,7 +618,11 @@ async def create_stage_transition_tasks(
     now = datetime.now(timezone.utc)
     created = 0
 
-    for title, description, priority in tasks_for_stage:
+    for title, description, priority, grow_types in tasks_for_stage:
+        # Filter by grow type if specified
+        if grow_types and grow.grow_type not in grow_types:
+            continue
+
         # Don't duplicate
         existing = (await session.execute(
             select(Task.id).where(

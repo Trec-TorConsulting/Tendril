@@ -66,6 +66,7 @@ import { JournalTab } from "./journal-tab";
 import { HarvestTab } from "./harvest-tab";
 import { SensorsTab } from "./sensors-tab";
 import { PhotosTab } from "./photos-tab";
+import { TasksTab } from "./tasks-tab";
 import { WeatherCard } from "./weather-card";
 
 const STAGES = ["seedling", "vegetative", "flowering", "ripening", "drying", "curing"];
@@ -447,6 +448,7 @@ export default function GrowDetailPage() {
         <Tabs defaultValue="buckets">
           <TabsList className="flex-wrap">
             <TabsTrigger value="buckets">Buckets ({buckets.length})</TabsTrigger>
+            <TabsTrigger value="tasks">Tasks</TabsTrigger>
             <TabsTrigger value="feeding">Feeding</TabsTrigger>
             <TabsTrigger value="journal">Journal</TabsTrigger>
             <TabsTrigger value="harvest">Harvest</TabsTrigger>
@@ -465,6 +467,10 @@ export default function GrowDetailPage() {
                 setSensorDialog({ open: true, bucketId, bucketLabel: label });
               }}
             />
+          </TabsContent>
+
+          <TabsContent value="tasks" className="mt-4">
+            <TasksTab growId={id} />
           </TabsContent>
 
           <TabsContent value="feeding" className="mt-4">

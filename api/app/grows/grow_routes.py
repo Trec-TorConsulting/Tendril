@@ -150,8 +150,15 @@ async def delete_grow(
     grow = await session.get(GrowCycle, grow_id)
     if grow is None:
         raise HTTPException(status_code=404, detail="Grow cycle not found")
-    await session.delete(grow)
-    await session.commit()
+    try:
+        await session.delete(grow)
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot delete grow — it still has linked records. Try archiving instead.",
+        )
 
 
 class HarvestCountdownItem(BaseModel):

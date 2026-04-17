@@ -57,7 +57,7 @@ class Task(Base):
     source: Mapped[str] = mapped_column(String(50), default="manual")  # manual, auto, ai
     assigned_to: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    grow_cycle_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("grow_cycles.id"))
+    grow_cycle_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("grow_cycles.id", ondelete="CASCADE"))
     tent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("tents.id"))
     bucket_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("buckets.id", ondelete="SET NULL"))
     due_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

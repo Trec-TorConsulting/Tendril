@@ -80,10 +80,19 @@ const CATEGORY_LABELS: Record<string, string> = {
   calmag: "CalMag",
   top_dress: "Top Dress",
   feeding: "Feeding",
-  health_response: "Health Check Action",
+  health_response: "Health Action",
   alert_response: "Alert Response",
   stage_transition: "Stage Prep",
   followup: "Follow-up",
+  water_level: "Water Level",
+  nozzle_check: "Nozzle Check",
+  circulation_check: "Circulation",
+  algae_check: "Algae Check",
+  root_check: "Root Check",
+  weather_check: "Weather Check",
+  soil_amendment: "Soil Amendment",
+  runoff_check: "Runoff Check",
+  dryback_check: "Dry-back",
 };
 
 function getCategoryLabel(cat: string | null) {
@@ -108,6 +117,7 @@ export default function TasksPage() {
   const [grows, setGrows] = useState<GrowResponse[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [filter, setFilter] = useState<string>("");
+  const [growFilter, setGrowFilter] = useState<string>("");
   const [view, setView] = useState<"list" | "calendar">("list");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -128,14 +138,16 @@ export default function TasksPage() {
     const token = getAccessToken();
     if (!token) return;
     try {
-      const filters = filter ? { status: filter } : undefined;
+      const filters: Record<string, string> = {};
+      if (filter) filters.status = filter;
+      if (growFilter) filters.grow_cycle_id = growFilter;
       const [t, g] = await Promise.all([listTasks(token, filters), listGrows(token)]);
       setTasks(t);
       setGrows(g);
     } catch {
       /* empty */
     }
-  }, [filter]);
+  }, [filter, growFilter]);
 
   const refreshCalendar = useCallback(async () => {
     const token = getAccessToken();
@@ -258,6 +270,21 @@ export default function TasksPage() {
           </Button>
 
           <div className="ml-auto" />
+
+          {/* Grow filter */}
+          {grows.length > 0 && (
+            <Select value={growFilter || "all"} onValueChange={(v) => setGrowFilter(!v || v === "all" ? "" : v)}>
+              <SelectTrigger className="h-8 w-[180px]">
+                <SelectValue>{growFilter ? grows.find((g) => g.id === growFilter)?.name ?? "Grow" : "All Grows"}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Grows</SelectItem>
+                {grows.filter((g) => g.status === "active").map((g) => (
+                  <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
 
           {view === "list" &&
             [
@@ -469,6 +496,17 @@ export default function TasksPage() {
                       <SelectItem value="trichome_check">Trichome Check</SelectItem>
                       <SelectItem value="flush">Flush</SelectItem>
                       <SelectItem value="harvest">Harvest</SelectItem>
+                      <SelectItem value="root_check">Root Check</SelectItem>
+                      <SelectItem value="water_level">Water Level</SelectItem>
+                      <SelectItem value="nozzle_check">Nozzle Check</SelectItem>
+                      <SelectItem value="circulation_check">Circulation</SelectItem>
+                      <SelectItem value="algae_check">Algae Check</SelectItem>
+                      <SelectItem value="weather_check">Weather Check</SelectItem>
+                      <SelectItem value="soil_amendment">Soil Amendment</SelectItem>
+                      <SelectItem value="runoff_check">Runoff Check</SelectItem>
+                      <SelectItem value="dryback_check">Dry-back</SelectItem>
+                      <SelectItem value="calmag">CalMag</SelectItem>
+                      <SelectItem value="top_dress">Top Dress</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

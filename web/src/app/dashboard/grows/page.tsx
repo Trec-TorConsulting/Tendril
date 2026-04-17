@@ -81,11 +81,15 @@ export default function GrowsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this grow cycle?")) return;
+    if (!confirm("Delete this grow cycle? All associated tasks, buckets, and data will be removed.")) return;
     const token = getAccessToken();
     if (!token) return;
-    await deleteGrow(token, id);
-    refresh();
+    try {
+      await deleteGrow(token, id);
+      refresh();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to delete grow");
+    }
   };
 
   const tentName = (id: string) => tents.find((t) => t.id === id)?.name ?? "—";
