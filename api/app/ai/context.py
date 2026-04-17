@@ -91,13 +91,22 @@ def _fmt_journal(entries: list[dict]) -> str:
     parts = []
     for j in entries:
         date = j["created_at"][:10] if j.get("created_at") else "?"
-        parts.append(f"  {date} [{j['event_type']}] {j.get('content', '')}")
+        line = f"  {date} [{j['event_type']}] {j.get('content', '')}"
+        # Include payload data (pH readings, EC values, nutrient amounts, etc.)
+        payload = j.get("payload")
+        if payload and isinstance(payload, dict):
+            details = ", ".join(f"{k}: {v}" for k, v in payload.items() if v is not None and k != "bucket_id")
+            if details:
+                line += f"\n    Data: {details}"
+        parts.append(line)
     return "\n".join(parts)
 
 
 def _fmt_trends(trends: dict) -> str:
     lines = [f"  Period: {trends.get('period_hours', 24)}h ({trends.get('reading_count', 0)} readings)"]
-    for field in ("ph", "ec", "ppm", "water_temp_f", "dissolved_oxygen", "water_level_pct"):
+    for field in ("ph", "ec", "ppm", "water_temp_f", "dissolved_oxygen", "water_level_pct",
+                  "ambient_temp_f", "ambient_humidity", "soil_moisture", "soil_temp",
+                  "runoff_ph", "runoff_ec", "flow_rate", "mist_pressure"):
         avg = trends.get(f"{field}_avg")
         if avg is not None:
             label = field.replace("_", " ").title()
@@ -123,6 +132,117 @@ def _fmt_prev_eval(prev: dict) -> str:
     return "\n".join(parts)
 
 
+def _fmt_settings(settings: dict | None, grow_type: str) -> str:
+    """Format grow settings into human-readable lines for AI context.
+
+    Maps raw setting keys to descriptive labels so the AI understands
+    the grower's exact setup — equipment, configuration, targets, etc.
+    """
+    if not settings:
+        return ""
+    LABELS = {
+        # Reservoir / Container
+        "reservoir_liters": "Reservoir Size",
+        "container_size_liters": "Container Size",
+        "bucket_type": "Bucket Type",
+        "container_type": "Container Type",
+        "pot_type": "Pot Type",
+        "pot_size_gal": "Pot Size",
+        "tray_size": "Tray Size",
+        "slab_size": "Slab/Cube Size",
+        "connected_sites": "Connected Sites",
+        "plot_size_sqft": "Plot Size",
+        "plot_type": "Plot Type",
+        "container_color": "Container Color",
+        "mobility": "Container Mobility",
+        "saucer": "Saucer/Drip Tray",
+        # Equipment / Hardware
+        "air_pump_brand": "Air Pump",
+        "air_pump_watts": "Air Pump Wattage",
+        "air_stones": "Air Stone Type",
+        "circulation_pump": "Circulation Pump",
+        "return_line_size": "Return Line Size",
+        "pump_brand": "Pump Brand/Model",
+        "water_chiller": "Water Chiller",
+        "nozzle_count": "Nozzle Count",
+        "emitter_count": "Emitter Count",
+        "channel_count": "Channel Count",
+        "channel_length": "Channel Length",
+        "scale_for_weight": "Weight Tracking Scale",
+        # Media / Soil
+        "media_type": "Growing Media",
+        "soil_mix": "Soil Mix/Brand",
+        "soil_type": "Soil Type",
+        "coco_brand": "Coco Brand",
+        "perlite_ratio": "Perlite Mix Ratio",
+        "organic_or_synthetic": "Nutrient Approach",
+        "amendments": "Amendments",
+        "beneficial_microbes": "Beneficial Microbes",
+        "compost_tea": "Compost Tea",
+        "mulch_cover": "Mulch/Cover Crop",
+        "slab_covered": "Slab Covered",
+        # Watering / Irrigation
+        "watering_method": "Watering Method",
+        "watering_schedule": "Watering Schedule",
+        "fertigation_frequency": "Fertigation Frequency",
+        "drip_frequency": "Drip Frequency",
+        "drip_duration_sec": "Drip Duration (sec)",
+        "water_change_days": "Reservoir Change Interval (days)",
+        "top_feed": "Top Feed (Seedling)",
+        "recirculating": "Recirculating",
+        "irrigation": "Irrigation Method",
+        "flood_interval_min": "Flood Interval (min)",
+        "flood_duration_min": "Flood Duration (min)",
+        "spray_interval_sec": "Spray Interval (sec)",
+        "spray_duration_sec": "Spray Duration (sec)",
+        "nozzle_psi": "Nozzle Pressure (PSI)",
+        "flow_rate_lph": "Flow Rate (L/hr)",
+        "refill_strategy": "Refill Strategy",
+        "shots_per_day": "Irrigation Shots/Day",
+        "shot_volume_ml": "Shot Volume (ml)",
+        "target_dryback_pct": "Target Dry-back %",
+        # Runoff / Targets
+        "target_ph": "Target pH",
+        "target_ec": "Target EC (mS/cm)",
+        "target_runoff_pct": "Target Runoff %",
+        "runoff_target_pct": "Target Runoff %",
+        "target_vpd": "Target VPD (kPa)",
+        # Light
+        "light_type": "Light Type",
+        "light_brand": "Light Brand/Model",
+        "light_wattage": "Light Wattage (W)",
+        "light_schedule": "Light Schedule",
+        "light_height_in": "Light Height (in)",
+        # Nutrients / Water Source
+        "nutrient_line": "Nutrient Brand/Line",
+        "calmag_brand": "CalMag Product",
+        "ph_up_product": "pH Up Product",
+        "ph_down_product": "pH Down Product",
+        "water_source": "Water Source",
+        "water_source_ppm": "Source Water PPM",
+        # Environment
+        "ventilation": "Ventilation",
+        "exhaust_fan": "Exhaust Fan",
+        "carbon_filter": "Carbon Filter",
+        "humidifier_dehumidifier": "Humidity Control",
+        "controller_system": "Controller/Automation System",
+        # Outdoor
+        "sun_exposure": "Sun Exposure",
+        "companion_plants": "Companion Plants",
+        "pest_deterrent": "Pest Deterrent",
+        "frost_protection": "Frost Protection",
+        "hardiness_zone": "USDA Hardiness Zone",
+        "light_proof": "Light-Proof Container",
+    }
+    lines = []
+    for key, value in settings.items():
+        if value is None or value == "":
+            continue
+        label = LABELS.get(key, key.replace("_", " ").title())
+        lines.append(f"  {label}: {value}")
+    return "\n".join(lines)
+
+
 # ── Chat context ─────────────────────────────────────────────────────
 
 def build_chat_context(
@@ -140,7 +260,14 @@ def build_chat_context(
         f"Nutrient strength: {profile['nutrient_strength']}",
         f"pH range: {profile['ph_range']['min']}-{profile['ph_range']['max']}",
         f"Common problems: {', '.join(profile['common_problems'])}",
+        f"Health check questions to consider: {', '.join(profile.get('health_check_questions', []))}",
     ]
+
+    # Add terminology so the AI uses the right words for this grow type
+    terminology = profile.get("terminology", {})
+    if terminology:
+        term_str = ", ".join(f"{k}='{v}'" for k, v in terminology.items())
+        parts.append(f"Use these terms when talking to the grower: {term_str}")
 
     # Grow details
     parts.append(
@@ -152,6 +279,24 @@ def build_chat_context(
         f"  Started: {grow_data.get('started_at', '?')}\n"
         f"  Tent: {grow_data.get('tent_name', '?')} ({grow_data.get('environment_type', 'indoor')})"
     )
+
+    # Equipment & Setup (from grow settings)
+    settings = grow_data.get("settings")
+    settings_text = _fmt_settings(settings, grow_data.get("grow_type", ""))
+    if settings_text:
+        parts.append(
+            "\n=== Grower's Equipment & Setup ===\n" + settings_text
+            + "\n\nIMPORTANT: Use this equipment info to tailor ALL advice. "
+            "Reference the user's specific gear by name when relevant "
+            "(e.g., 'With your Spider Farmer SF-4000, I'd set it to...' or "
+            "'Your AC Infinity Controller 69 can automate VPD targeting...'). "
+            "If the user has a controller system, suggest how to leverage its features."
+        )
+
+    # Grower's notes
+    notes = grow_data.get("notes")
+    if notes:
+        parts.append(f"\n=== Grower's Notes ===\n  {notes}")
 
     # Buckets
     buckets = grow_data.get("buckets") or []
@@ -280,6 +425,17 @@ def build_health_check_prompt(
         f"The plant is in the {stage} stage. "
         f"Optimal pH range: {ph_range.get('min', '?')}-{ph_range.get('max', '?')}. "
         f"Common problems for this grow type: {common}.\n\n"
+    )
+
+    # Include health check questions for this grow type
+    health_questions = profile.get("health_check_questions", []) if profile else []
+    if health_questions:
+        system += "Key diagnostic questions for this grow type:\n"
+        for q in health_questions:
+            system += f"- {q}\n"
+        system += "\n"
+
+    system += (
         "CORE PHILOSOPHY: Quality over quantity. The grower wants the BEST buds, not the biggest. "
         "All recommendations should prioritize terpene preservation, proper flush timing, "
         "trichome maturity, stress reduction, and optimal harvest windows. "
@@ -317,7 +473,8 @@ def build_health_check_prompt(
         "Reference the user's current feeding schedule and dose profiles when recommending changes. "
         "Prioritize quality-focused actions: terpene preservation, proper flushing, trichome development.\n\n"
         "Be thorough and specific. Tie recommendations to the exact grow type, current stage, "
-        "and the user's actual setup. If sensor trends show drift, flag it. "
+        "and the user's actual setup. Reference their specific equipment, nutrient line, and controller "
+        "when making recommendations. If sensor trends show drift, flag it. "
         "If the previous health check noted issues, check whether they've been resolved.\n\n"
         "IMPORTANT: Respond ONLY with valid JSON. No markdown, no code fences.\n"
         'Format: {"score": <int 0-100>, "issues": ["issue1", ...], "actions": ["action1", ...]}'
@@ -339,6 +496,21 @@ def build_health_check_prompt(
         f"  Started: {grow_data.get('started_at', '?')}\n"
         f"  Tent: {grow_data.get('tent_name', '?')} ({grow_data.get('environment_type', 'indoor')})"
     )
+
+    # Equipment & Setup
+    settings = grow_data.get("settings")
+    settings_text = _fmt_settings(settings, grow_data.get("grow_type", ""))
+    if settings_text:
+        sections.append(
+            "=== Grower's Equipment & Setup ===\n" + settings_text
+            + "\n\nUse this equipment info for specific recommendations "
+            "(e.g., reference their exact nutrient line, light brand, controller features)."
+        )
+
+    # Grower's notes
+    notes = grow_data.get("notes")
+    if notes:
+        sections.append(f"=== Grower's Notes ===\n  {notes}")
 
     # Buckets
     buckets = grow_data.get("buckets") or []

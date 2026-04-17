@@ -123,7 +123,9 @@ async def gather_grow_data(
         ).scalars().all()
         if len(trends) > 1:
             trend_data: dict = {"reading_count": len(trends), "period_hours": sensor_history_hours}
-            for field in ("ph", "ec", "ppm", "water_temp_f", "dissolved_oxygen", "water_level_pct"):
+            for field in ("ph", "ec", "ppm", "water_temp_f", "dissolved_oxygen", "water_level_pct",
+                          "ambient_temp_f", "ambient_humidity", "soil_moisture", "soil_temp",
+                          "runoff_ph", "runoff_ec", "flow_rate", "mist_pressure"):
                 vals = [getattr(r, field) for r in trends if getattr(r, field) is not None]
                 if vals:
                     trend_data[f"{field}_min"] = round(min(vals), 2)
@@ -186,6 +188,7 @@ async def gather_grow_data(
             {
                 "event_type": j.event_type,
                 "content": j.content,
+                "payload": j.payload if j.payload else None,
                 "created_at": j.created_at.isoformat(),
             }
             for j in journals

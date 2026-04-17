@@ -691,86 +691,205 @@ interface SettingsField {
 }
 
 function getSettingsSchema(growType: string): SettingsField[] {
+  // Common indoor light fields
+  const LIGHT_FIELDS: SettingsField[] = [
+    { key: "light_type", label: "Light Type", options: ["LED", "HPS", "CMH", "CFL", "T5_Fluorescent", "COB_LED", "Quantum_Board"], hint: "Your primary light technology" },
+    { key: "light_brand", label: "Light Brand / Model", placeholder: "e.g. Spider Farmer SF-4000, HLG 650R" },
+    { key: "light_wattage", label: "Light Wattage", type: "number", unit: "W", placeholder: "e.g. 600" },
+    { key: "light_schedule", label: "Light Schedule", placeholder: "e.g. 18/6, 12/12", hint: "Hours on / hours off" },
+    { key: "light_height_in", label: "Light Height", type: "number", unit: "in", placeholder: "e.g. 24" },
+  ];
+  // Common environment fields
+  const ENV_FIELDS: SettingsField[] = [
+    { key: "ventilation", label: "Ventilation", options: ["inline_fan", "oscillating_fan", "both", "passive", "none"], hint: "Airflow setup" },
+    { key: "exhaust_fan", label: "Exhaust Fan Brand / CFM", placeholder: "e.g. AC Infinity Cloudline T6, 402 CFM" },
+    { key: "carbon_filter", label: "Carbon Filter", options: ["yes", "no"] },
+    { key: "humidifier_dehumidifier", label: "Humidity Control", options: ["humidifier", "dehumidifier", "both", "none"] },
+    { key: "controller_system", label: "Controller / Automation System", placeholder: "e.g. VivoSun GrowHub, AC Infinity Controller 69 Pro, Pulse One, Trolmaster", hint: "Smart controller brand/model if any" },
+    { key: "target_vpd", label: "Target VPD", type: "number", step: "0.1", unit: "kPa", placeholder: "e.g. 1.2", hint: "Vapor Pressure Deficit target" },
+  ];
+  // Common nutrient fields
+  const NUTRIENT_FIELDS: SettingsField[] = [
+    { key: "nutrient_line", label: "Nutrient Brand / Line", placeholder: "e.g. General Hydroponics Flora Series, Jack's 321, Athena Pro" },
+    { key: "ph_up_product", label: "pH Up Product", placeholder: "e.g. General Hydroponics pH Up" },
+    { key: "ph_down_product", label: "pH Down Product", placeholder: "e.g. General Hydroponics pH Down" },
+    { key: "water_source", label: "Water Source", options: ["tap", "RO", "distilled", "well", "rain", "spring"], hint: "Source water type" },
+    { key: "water_source_ppm", label: "Source Water PPM", type: "number", placeholder: "e.g. 150", hint: "Baseline PPM of your tap/source water" },
+  ];
+
   switch (growType) {
     case "dwc":
     case "deep_water_culture":
       return [
         { key: "reservoir_liters", label: "Reservoir Size", type: "number", step: "0.5", unit: "L", placeholder: "e.g. 20" },
-        { key: "air_pump_watts", label: "Air Pump", type: "number", unit: "W", placeholder: "e.g. 10" },
-        { key: "water_change_days", label: "Water Change Interval", type: "number", unit: "days", placeholder: "e.g. 7" },
+        { key: "bucket_type", label: "Bucket Type", options: ["5gal_bucket", "10gal_bucket", "tote", "custom"], hint: "Container style" },
+        { key: "air_pump_brand", label: "Air Pump Brand / Model", placeholder: "e.g. EcoPlus 793 GPH" },
+        { key: "air_pump_watts", label: "Air Pump Wattage", type: "number", unit: "W", placeholder: "e.g. 10" },
+        { key: "air_stones", label: "Air Stone Type", options: ["disc", "cylinder", "flexible", "none"], hint: "Type of air diffuser" },
+        { key: "water_chiller", label: "Water Chiller", options: ["yes_active", "frozen_bottles", "none"], hint: "How you manage water temp" },
+        { key: "water_change_days", label: "Reservoir Change Interval", type: "number", unit: "days", placeholder: "e.g. 7" },
+        { key: "top_feed", label: "Top Feed During Seedling?", options: ["yes", "no"], hint: "Drip ring for early root establishment" },
         { key: "target_ph", label: "Target pH", type: "number", step: "0.1", placeholder: "e.g. 5.8" },
         { key: "target_ec", label: "Target EC", type: "number", step: "0.1", unit: "mS/cm", placeholder: "e.g. 1.2" },
-        { key: "light_type", label: "Light Type", placeholder: "e.g. LED, HPS, CMH" },
-        { key: "light_wattage", label: "Light Wattage", type: "number", unit: "W", placeholder: "e.g. 600" },
-        { key: "light_schedule", label: "Light Schedule", placeholder: "e.g. 18/6, 12/12" },
-        { key: "light_height_in", label: "Light Height", type: "number", unit: "in", placeholder: "e.g. 24" },
+        ...NUTRIENT_FIELDS,
+        ...LIGHT_FIELDS,
+        ...ENV_FIELDS,
       ];
-    case "soil":
-    case "living_soil":
+    case "rdwc":
       return [
-        { key: "soil_mix", label: "Soil Mix", placeholder: "e.g. Fox Farm Ocean Forest" },
-        { key: "pot_size_gal", label: "Pot Size", type: "number", step: "0.5", unit: "gal", placeholder: "e.g. 5" },
-        { key: "amendments", label: "Amendments", placeholder: "e.g. Perlite 30%, Worm castings" },
-        { key: "watering_schedule", label: "Watering Schedule", options: ["daily", "every_2_days", "every_3_days", "as_needed"] },
-        { key: "light_type", label: "Light Type", placeholder: "e.g. LED, HPS, CMH" },
-        { key: "light_wattage", label: "Light Wattage", type: "number", unit: "W", placeholder: "e.g. 600" },
-        { key: "light_schedule", label: "Light Schedule", placeholder: "e.g. 18/6, 12/12" },
-        { key: "light_height_in", label: "Light Height", type: "number", unit: "in", placeholder: "e.g. 24" },
+        { key: "reservoir_liters", label: "Central Reservoir Size", type: "number", step: "0.5", unit: "L", placeholder: "e.g. 60" },
+        { key: "connected_sites", label: "Number of Connected Sites", type: "number", placeholder: "e.g. 4" },
+        { key: "circulation_pump", label: "Circulation Pump Brand", placeholder: "e.g. Active Aqua 800 GPH" },
+        { key: "return_line_size", label: "Return Line Size", placeholder: "e.g. 2 inch, 3 inch" },
+        { key: "air_pump_brand", label: "Air Pump Brand / Model", placeholder: "e.g. EcoPlus Commercial" },
+        { key: "water_chiller", label: "Water Chiller", options: ["yes_active", "frozen_bottles", "none"] },
+        { key: "water_change_days", label: "Reservoir Change Interval", type: "number", unit: "days", placeholder: "e.g. 7" },
+        { key: "target_ph", label: "Target pH", type: "number", step: "0.1", placeholder: "e.g. 5.8" },
+        { key: "target_ec", label: "Target EC", type: "number", step: "0.1", unit: "mS/cm", placeholder: "e.g. 1.2" },
+        ...NUTRIENT_FIELDS,
+        ...LIGHT_FIELDS,
+        ...ENV_FIELDS,
       ];
-    case "coco":
-    case "coco_coir":
+    case "nft":
+    case "nutrient_film":
       return [
-        { key: "coco_brand", label: "Coco Brand", placeholder: "e.g. Canna Coco" },
-        { key: "pot_size_gal", label: "Pot Size", type: "number", step: "0.5", unit: "gal", placeholder: "e.g. 3" },
-        { key: "fertigation_frequency", label: "Fertigation Frequency", options: ["1x_daily", "2x_daily", "3x_daily", "4x_daily"] },
-        { key: "runoff_target_pct", label: "Runoff Target", type: "number", unit: "%", placeholder: "e.g. 20" },
+        { key: "channel_count", label: "Channel Count", type: "number", placeholder: "e.g. 4" },
+        { key: "channel_length", label: "Channel Length", type: "number", unit: "ft", placeholder: "e.g. 4" },
+        { key: "flow_rate_lph", label: "Flow Rate", type: "number", unit: "L/hr", placeholder: "e.g. 2" },
+        { key: "pump_brand", label: "Pump Brand / Model", placeholder: "e.g. Active Aqua 400 GPH" },
+        { key: "reservoir_liters", label: "Reservoir Size", type: "number", step: "0.5", unit: "L", placeholder: "e.g. 40" },
+        { key: "target_ph", label: "Target pH", type: "number", step: "0.1", placeholder: "e.g. 5.8" },
         { key: "target_ec", label: "Target EC", type: "number", step: "0.1", unit: "mS/cm", placeholder: "e.g. 1.4" },
-        { key: "light_type", label: "Light Type", placeholder: "e.g. LED, HPS, CMH" },
-        { key: "light_wattage", label: "Light Wattage", type: "number", unit: "W", placeholder: "e.g. 600" },
-        { key: "light_schedule", label: "Light Schedule", placeholder: "e.g. 18/6, 12/12" },
-        { key: "light_height_in", label: "Light Height", type: "number", unit: "in", placeholder: "e.g. 24" },
+        ...NUTRIENT_FIELDS,
+        ...LIGHT_FIELDS,
+        ...ENV_FIELDS,
+      ];
+    case "ebb_flow":
+    case "ebb_and_flow":
+      return [
+        { key: "tray_size", label: "Tray Size", placeholder: "e.g. 4x4, 3x3" },
+        { key: "flood_interval_min", label: "Flood Interval", type: "number", unit: "min", placeholder: "e.g. 60" },
+        { key: "flood_duration_min", label: "Flood Duration", type: "number", unit: "min", placeholder: "e.g. 15" },
+        { key: "media_type", label: "Media Type", options: ["hydroton", "perlite", "rockwool", "growstones", "other"] },
+        { key: "reservoir_liters", label: "Reservoir Size", type: "number", step: "0.5", unit: "L", placeholder: "e.g. 30" },
+        { key: "target_ph", label: "Target pH", type: "number", step: "0.1", placeholder: "e.g. 5.8" },
+        { key: "target_ec", label: "Target EC", type: "number", step: "0.1", unit: "mS/cm", placeholder: "e.g. 1.4" },
+        ...NUTRIENT_FIELDS,
+        ...LIGHT_FIELDS,
+        ...ENV_FIELDS,
+      ];
+    case "drip":
+      return [
+        { key: "emitter_count", label: "Emitter Count", type: "number", placeholder: "e.g. 12" },
+        { key: "drip_frequency", label: "Drip Frequency", options: ["1x_daily", "2x_daily", "3x_daily", "4x_daily", "6x_daily", "continuous"] },
+        { key: "drip_duration_sec", label: "Drip Duration", type: "number", unit: "sec", placeholder: "e.g. 120" },
+        { key: "media_type", label: "Growing Media", options: ["coco", "rockwool", "perlite", "clay_pebbles", "other"] },
+        { key: "recirculating", label: "Recirculating?", options: ["yes", "no_drain_to_waste"], hint: "Do you recollect runoff?" },
+        { key: "reservoir_liters", label: "Reservoir Size", type: "number", step: "0.5", unit: "L", placeholder: "e.g. 30" },
+        { key: "target_runoff_pct", label: "Target Runoff %", type: "number", unit: "%", placeholder: "e.g. 20" },
+        { key: "target_ph", label: "Target pH", type: "number", step: "0.1", placeholder: "e.g. 5.8" },
+        { key: "target_ec", label: "Target EC", type: "number", step: "0.1", unit: "mS/cm", placeholder: "e.g. 1.4" },
+        ...NUTRIENT_FIELDS,
+        ...LIGHT_FIELDS,
+        ...ENV_FIELDS,
       ];
     case "aeroponics":
       return [
         { key: "spray_interval_sec", label: "Spray Interval", type: "number", unit: "sec", placeholder: "e.g. 5" },
         { key: "spray_duration_sec", label: "Spray Duration", type: "number", unit: "sec", placeholder: "e.g. 3" },
         { key: "nozzle_psi", label: "Nozzle Pressure", type: "number", unit: "PSI", placeholder: "e.g. 80" },
+        { key: "nozzle_count", label: "Nozzle Count", type: "number", placeholder: "e.g. 8" },
+        { key: "pump_brand", label: "Pump Brand / Model", placeholder: "e.g. Aquatec 8800 Booster" },
         { key: "reservoir_liters", label: "Reservoir Size", type: "number", step: "0.5", unit: "L", placeholder: "e.g. 20" },
-        { key: "light_type", label: "Light Type", placeholder: "e.g. LED, HPS, CMH" },
-        { key: "light_wattage", label: "Light Wattage", type: "number", unit: "W", placeholder: "e.g. 600" },
-        { key: "light_schedule", label: "Light Schedule", placeholder: "e.g. 18/6, 12/12" },
-        { key: "light_height_in", label: "Light Height", type: "number", unit: "in", placeholder: "e.g. 24" },
+        { key: "target_ph", label: "Target pH", type: "number", step: "0.1", placeholder: "e.g. 5.8" },
+        { key: "target_ec", label: "Target EC", type: "number", step: "0.1", unit: "mS/cm", placeholder: "e.g. 0.8" },
+        ...NUTRIENT_FIELDS,
+        ...LIGHT_FIELDS,
+        ...ENV_FIELDS,
       ];
-    case "nft":
-    case "nutrient_film":
+    case "kratky":
       return [
-        { key: "channel_count", label: "Channel Count", type: "number", placeholder: "e.g. 4" },
-        { key: "flow_rate_lph", label: "Flow Rate", type: "number", unit: "L/hr", placeholder: "e.g. 2" },
-        { key: "reservoir_liters", label: "Reservoir Size", type: "number", step: "0.5", unit: "L", placeholder: "e.g. 40" },
-        { key: "light_type", label: "Light Type", placeholder: "e.g. LED, HPS, CMH" },
-        { key: "light_wattage", label: "Light Wattage", type: "number", unit: "W", placeholder: "e.g. 600" },
-        { key: "light_schedule", label: "Light Schedule", placeholder: "e.g. 18/6, 12/12" },
-        { key: "light_height_in", label: "Light Height", type: "number", unit: "in", placeholder: "e.g. 24" },
+        { key: "container_type", label: "Container Type", options: ["mason_jar", "5gal_bucket", "tote", "custom"], hint: "What holds your solution" },
+        { key: "container_size_liters", label: "Container Size", type: "number", step: "0.5", unit: "L", placeholder: "e.g. 19" },
+        { key: "light_proof", label: "Container Light-Proof?", options: ["yes", "no_needs_wrapping"], hint: "Light causes algae" },
+        { key: "refill_strategy", label: "Refill Strategy", options: ["never", "only_when_critical", "partial_topoff"], hint: "Never refill to top — air gap is critical" },
+        { key: "target_ph", label: "Target pH", type: "number", step: "0.1", placeholder: "e.g. 6.0" },
+        ...NUTRIENT_FIELDS,
+        ...LIGHT_FIELDS,
+        ...ENV_FIELDS,
       ];
-    case "ebb_flow":
-    case "ebb_and_flow":
+    case "coco":
+    case "coco_coir":
       return [
-        { key: "flood_interval_min", label: "Flood Interval", type: "number", unit: "min", placeholder: "e.g. 60" },
-        { key: "flood_duration_min", label: "Flood Duration", type: "number", unit: "min", placeholder: "e.g. 15" },
-        { key: "media_type", label: "Media Type", options: ["hydroton", "perlite", "rockwool", "growstones", "other"] },
-        { key: "reservoir_liters", label: "Reservoir Size", type: "number", step: "0.5", unit: "L", placeholder: "e.g. 30" },
-        { key: "light_type", label: "Light Type", placeholder: "e.g. LED, HPS, CMH" },
-        { key: "light_wattage", label: "Light Wattage", type: "number", unit: "W", placeholder: "e.g. 600" },
-        { key: "light_schedule", label: "Light Schedule", placeholder: "e.g. 18/6, 12/12" },
-        { key: "light_height_in", label: "Light Height", type: "number", unit: "in", placeholder: "e.g. 24" },
+        { key: "coco_brand", label: "Coco Brand", placeholder: "e.g. Canna Coco Professional Plus" },
+        { key: "pot_type", label: "Pot Type", options: ["plastic", "fabric_cloth", "air_pot", "autopot", "custom"], hint: "Fabric pots promote air pruning" },
+        { key: "pot_size_gal", label: "Pot Size", type: "number", step: "0.5", unit: "gal", placeholder: "e.g. 3" },
+        { key: "perlite_ratio", label: "Perlite Mix Ratio", placeholder: "e.g. 70/30 coco/perlite", hint: "Higher perlite = more drainage" },
+        { key: "watering_method", label: "Watering Method", options: ["hand_water_top", "hand_water_bottom", "drip_system", "autopot_bottom", "flood_table"], hint: "How you deliver water/nutrients" },
+        { key: "fertigation_frequency", label: "Fertigation Frequency", options: ["1x_daily", "2x_daily", "3x_daily", "4x_daily", "6x_daily", "as_needed"] },
+        { key: "runoff_target_pct", label: "Runoff Target", type: "number", unit: "%", placeholder: "e.g. 20" },
+        { key: "calmag_brand", label: "CalMag Product", placeholder: "e.g. Botanicare Cal-Mag Plus", hint: "CalMag is essential in coco" },
+        { key: "target_ec", label: "Target EC", type: "number", step: "0.1", unit: "mS/cm", placeholder: "e.g. 1.4" },
+        ...NUTRIENT_FIELDS,
+        ...LIGHT_FIELDS,
+        ...ENV_FIELDS,
       ];
-    case "outdoor":
+    case "rockwool":
       return [
+        { key: "slab_size", label: "Slab / Cube Size", placeholder: "e.g. 6x36 slab, 4 inch cube" },
+        { key: "shots_per_day", label: "Irrigation Shots per Day", type: "number", placeholder: "e.g. 6" },
+        { key: "shot_volume_ml", label: "Shot Volume", type: "number", unit: "ml", placeholder: "e.g. 100" },
+        { key: "target_dryback_pct", label: "Target Dry-back %", type: "number", unit: "%", placeholder: "e.g. 10-15", hint: "Generative vs vegetative steering" },
+        { key: "slab_covered", label: "Slab Covered?", options: ["yes", "no_exposed"], hint: "Cover exposed rockwool to prevent algae" },
+        { key: "scale_for_weight", label: "Using Scale for Weight Tracking?", options: ["yes", "no"], hint: "Precise dry-back monitoring" },
+        { key: "target_ec", label: "Target EC", type: "number", step: "0.1", unit: "mS/cm", placeholder: "e.g. 1.6" },
+        ...NUTRIENT_FIELDS,
+        ...LIGHT_FIELDS,
+        ...ENV_FIELDS,
+      ];
+    case "soil":
+    case "living_soil":
+      return [
+        { key: "soil_mix", label: "Soil Mix / Brand", placeholder: "e.g. Fox Farm Ocean Forest, BuildASoil 3.0" },
+        { key: "organic_or_synthetic", label: "Nutrient Approach", options: ["organic_amendments", "synthetic_liquid", "hybrid", "living_soil_no_feed"], hint: "How you feed your plants" },
+        { key: "pot_type", label: "Pot Type", options: ["plastic", "fabric_cloth", "air_pot", "raised_bed", "no_till_bed", "custom"], hint: "Fabric pots air-prune roots" },
+        { key: "pot_size_gal", label: "Pot Size", type: "number", step: "0.5", unit: "gal", placeholder: "e.g. 5" },
+        { key: "watering_method", label: "Watering Method", options: ["hand_water_top", "hand_water_bottom", "drip_system", "wick_bottom", "blumat_carrots"], hint: "Top water vs bottom water changes nutrient distribution" },
+        { key: "amendments", label: "Amendments Used", placeholder: "e.g. Perlite 30%, Worm castings, Bat guano" },
+        { key: "beneficial_microbes", label: "Beneficial Microbes", placeholder: "e.g. Mycorrhizae, Recharge, Mammoth P", hint: "Beneficial bacteria and fungi" },
+        { key: "compost_tea", label: "Compost Tea?", options: ["yes_regular", "occasionally", "no"] },
+        { key: "mulch_cover", label: "Mulch / Cover Crop", placeholder: "e.g. Straw mulch, Clover cover crop", hint: "Protects soil biology and moisture" },
+        { key: "watering_schedule", label: "Watering Schedule", options: ["daily", "every_2_days", "every_3_days", "when_pot_is_light", "moisture_meter"] },
+        ...NUTRIENT_FIELDS,
+        ...LIGHT_FIELDS,
+        ...ENV_FIELDS,
+      ];
+    case "outdoor_soil":
+      return [
+        { key: "plot_type", label: "Plot Type", options: ["raised_bed", "in_ground", "guerrilla", "greenhouse"], hint: "Growing location type" },
         { key: "plot_size_sqft", label: "Plot Size", type: "number", unit: "sq ft", placeholder: "e.g. 100" },
-        { key: "soil_type", label: "Soil Type", placeholder: "e.g. Sandy loam" },
-        { key: "companion_plants", label: "Companion Plants", placeholder: "e.g. Basil, Marigold" },
-        { key: "irrigation", label: "Irrigation", options: ["hand_water", "drip", "sprinkler", "rain_only"] },
-        { key: "sun_exposure", label: "Sun Exposure", options: ["full_sun", "partial_sun", "partial_shade", "full_shade"] },
+        { key: "soil_type", label: "Soil Type", placeholder: "e.g. Sandy loam, Clay, Amended" },
+        { key: "amendments", label: "Amendments", placeholder: "e.g. Compost, Worm castings, Bone meal" },
+        { key: "sun_exposure", label: "Sun Exposure", options: ["full_sun_8plus_hrs", "partial_sun_6_hrs", "partial_shade_4_hrs", "dappled_light"] },
+        { key: "irrigation", label: "Irrigation Method", options: ["hand_water", "drip_irrigation", "soaker_hose", "sprinkler", "rain_only"] },
+        { key: "companion_plants", label: "Companion Plants", placeholder: "e.g. Basil, Marigold, Lavender", hint: "Natural pest deterrents" },
+        { key: "pest_deterrent", label: "Pest Deterrent Methods", placeholder: "e.g. Neem, Diatomaceous earth, Companion planting" },
+        { key: "frost_protection", label: "Frost Protection", options: ["row_cover", "cold_frame", "greenhouse", "bring_inside", "none_frost_free"] },
+        { key: "hardiness_zone", label: "USDA Hardiness Zone", placeholder: "e.g. 7b", hint: "Helps predict growing season" },
+        ...NUTRIENT_FIELDS,
+      ];
+    case "outdoor_container":
+      return [
+        { key: "container_type", label: "Container Type", options: ["plastic_pot", "fabric_pot", "air_pot", "terracotta", "smart_pot", "custom"] },
+        { key: "container_color", label: "Container Color", options: ["white", "light_colored", "dark_colored", "black"], hint: "Dark pots overheat in sun" },
+        { key: "pot_size_gal", label: "Container Size", type: "number", step: "0.5", unit: "gal", placeholder: "e.g. 10" },
+        { key: "media_type", label: "Growing Media", placeholder: "e.g. Soil, Coco-Perlite mix" },
+        { key: "mobility", label: "Can You Move Containers?", options: ["yes_easy", "yes_with_effort", "no_permanent"], hint: "Important for weather protection" },
+        { key: "sun_exposure", label: "Sun Exposure", options: ["full_sun_8plus_hrs", "partial_sun_6_hrs", "partial_shade_4_hrs", "can_move_to_shade"] },
+        { key: "irrigation", label: "Irrigation Method", options: ["hand_water", "drip_irrigation", "soaker_hose", "rain_only"] },
+        { key: "frost_protection", label: "Frost Protection", options: ["move_indoors", "row_cover", "garage", "none_frost_free"] },
+        { key: "saucer", label: "Saucer / Drip Tray?", options: ["yes", "no", "elevated_on_stand"], hint: "Prevents root sitting in water" },
+        ...NUTRIENT_FIELDS,
       ];
     default:
       return [];
