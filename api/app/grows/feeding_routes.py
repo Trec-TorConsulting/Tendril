@@ -108,6 +108,8 @@ class FeedingScheduleCreate(BaseModel):
     name: str
     stage: str
     nutrients: list[dict]
+    target_ppm: float | None = None
+    target_ec: float | None = None
     notes: str | None = None
 
 
@@ -115,6 +117,8 @@ class FeedingScheduleUpdate(BaseModel):
     name: str | None = None
     stage: str | None = None
     nutrients: list[dict] | None = None
+    target_ppm: float | None = None
+    target_ec: float | None = None
     notes: str | None = None
 
 
@@ -124,6 +128,8 @@ class FeedingScheduleResponse(BaseModel):
     name: str
     stage: str
     nutrients: list[dict]
+    target_ppm: float | None = None
+    target_ec: float | None = None
     notes: str | None
     model_config = {"from_attributes": True}
 

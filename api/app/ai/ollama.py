@@ -1,4 +1,4 @@
-"""Ollama client — wraps Ollama HTTP API for chat and vision."""
+"""Ollama client — wraps Ollama HTTP API for chat, vision, and tool-calling."""
 from __future__ import annotations
 
 import logging
@@ -33,6 +33,39 @@ async def chat_completion(
         resp.raise_for_status()
         data = resp.json()
         return data.get("message", {}).get("content", "")
+
+
+async def chat_with_tools(
+    messages: list[dict],
+    tools: list[dict],
+    *,
+    model: str | None = None,
+) -> dict:
+    """Non-streaming chat that may return tool calls.
+
+    Returns dict with keys: content, tool_calls, message (full msg for history).
+    """
+    settings = get_settings()
+    payload = {
+        "model": model or settings.ollama_model,
+        "messages": messages,
+        "tools": tools,
+        "stream": False,
+    }
+
+    async with httpx.AsyncClient(timeout=120) as client:
+        resp = await client.post(
+            f"{settings.ollama_base_url}/api/chat",
+            json=payload,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        msg = data.get("message", {})
+        return {
+            "content": msg.get("content", ""),
+            "tool_calls": msg.get("tool_calls"),
+            "message": msg,
+        }
 
 
 async def chat_completion_stream(

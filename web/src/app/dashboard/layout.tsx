@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { getAccessToken } from "@/lib/auth";
 import { useUser } from "@/hooks/use-user";
+import { GrowProvider } from "@/hooks/use-grow";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { MobileBottomNav } from "@/components/mobile-bottom-nav";
@@ -30,14 +31,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <SidebarProvider>
-      <AppSidebar user={user} onLogout={logout} />
-      <SidebarInset>
-        <main className="flex flex-1 flex-col pb-16 md:pb-0">
-          {children}
-        </main>
-      </SidebarInset>
-      <MobileBottomNav />
-    </SidebarProvider>
+    <GrowProvider>
+      <SidebarProvider>
+        <AppSidebar user={user} onLogout={logout} />
+        <SidebarInset>
+          <main className="flex flex-1 flex-col pb-16 md:pb-0">
+            {children}
+          </main>
+        </SidebarInset>
+        <MobileBottomNav />
+      </SidebarProvider>
+    </GrowProvider>
   );
 }

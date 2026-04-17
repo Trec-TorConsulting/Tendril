@@ -304,6 +304,7 @@ export interface GrowResponse {
   notes: string | null;
   milestones: Record<string, string> | null;
   settings: Record<string, unknown> | null;
+  auto_health_check: boolean;
 }
 
 export function listGrows(token: string, params?: { status?: string; tent_id?: string }) {
@@ -322,7 +323,7 @@ export function getGrow(token: string, id: string) {
   return apiFetch<GrowResponse>(`/grows/${id}`, { token });
 }
 
-export function updateGrow(token: string, id: string, data: Partial<{ name: string; stage: string; status: string; notes: string; started_at: string; milestones: Record<string, string>; settings: Record<string, unknown> }>) {
+export function updateGrow(token: string, id: string, data: Partial<{ name: string; stage: string; status: string; notes: string; started_at: string; milestones: Record<string, string>; settings: Record<string, unknown>; auto_health_check: boolean }>) {
   return apiFetch<GrowResponse>(`/grows/${id}`, { method: "PATCH", body: JSON.stringify(data), token });
 }
 
@@ -426,6 +427,8 @@ export interface FeedingScheduleResponse {
   name: string;
   stage: string;
   nutrients: { name: string; brand?: string; ml_per_gallon?: number; strength_pct?: number }[];
+  target_ppm: number | null;
+  target_ec: number | null;
   notes: string | null;
 }
 
@@ -433,11 +436,11 @@ export function listFeedingSchedules(token: string, growCycleId: string) {
   return apiFetch<FeedingScheduleResponse[]>(`/feeding/feeding?grow_cycle_id=${growCycleId}`, { token });
 }
 
-export function createFeedingSchedule(token: string, data: { grow_cycle_id: string; name: string; stage: string; nutrients: object[]; notes?: string }) {
+export function createFeedingSchedule(token: string, data: { grow_cycle_id: string; name: string; stage: string; nutrients: object[]; target_ppm?: number; target_ec?: number; notes?: string }) {
   return apiFetch<FeedingScheduleResponse>("/feeding/feeding", { method: "POST", body: JSON.stringify(data), token });
 }
 
-export function updateFeedingSchedule(token: string, id: string, data: Partial<{ name: string; stage: string; nutrients: object[]; notes: string }>) {
+export function updateFeedingSchedule(token: string, id: string, data: Partial<{ name: string; stage: string; nutrients: object[]; target_ppm: number | null; target_ec: number | null; notes: string }>) {
   return apiFetch<FeedingScheduleResponse>(`/feeding/feeding/${id}`, { method: "PATCH", body: JSON.stringify(data), token });
 }
 
@@ -669,10 +672,27 @@ export function getAiChatWsUrl() {
   return `${base}/ai/chat`;
 }
 
-export function runHealthCheck(token: string, data: { grow_id: string; observations: Record<string, string>; image_url?: string }) {
-  return apiFetch<{ score: number | null; issues: string[]; actions: string[]; raw_analysis: string }>(
+export interface HealthCheckResult {
+  id: string | null;
+  score: number | null;
+  issues: string[];
+  actions: string[];
+  raw_analysis: string;
+  source: string;
+  created_at: string | null;
+}
+
+export function runHealthCheck(token: string, data: { grow_id: string; observations: Record<string, string>; image_base64?: string; include_camera?: boolean }) {
+  return apiFetch<HealthCheckResult>(
     "/ai/health-check",
     { method: "POST", body: JSON.stringify(data), token },
+  );
+}
+
+export function getHealthCheckHistory(token: string, growId: string, limit = 10) {
+  return apiFetch<{ items: HealthCheckResult[] }>(
+    `/ai/health-check/${growId}/history?limit=${limit}`,
+    { token },
   );
 }
 

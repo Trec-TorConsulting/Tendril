@@ -54,59 +54,102 @@ class TaskRunner:
                 pass
 
     async def _health_check(self) -> None:
-        """Run AI health checks for active grows via Ollama."""
+        """Run Gemini health checks for active grows with auto_health_check enabled.
+
+        Uses full grow data (sensors, trends, feeding, journal, camera) for maximum detail.
+        """
         from app.database import async_session_factory
-        from app.grows.models import GrowCycle, Bucket, BucketSensorReading, Tent, WeatherReading
-        from app.ai.ollama import chat_completion
+        from app.grows.models import GrowCycle, HealthEval
+        from app.ai.gemini import chat_completion as gemini_chat, is_configured as gemini_configured, GeminiRateLimitError
         from app.ai.context import build_health_check_prompt
+        from app.ai.gather import gather_grow_data
         from sqlalchemy import select, desc
+
+        if not gemini_configured():
+            logger.warning("Gemini API key not configured — skipping scheduled health checks")
+            return
 
         try:
             async with async_session_factory() as session:
                 grows = (await session.execute(
-                    select(GrowCycle).where(GrowCycle.status == "active")
+                    select(GrowCycle).where(
+                        GrowCycle.status == "active",
+                        GrowCycle.auto_health_check.is_(True),
+                    )
                 )).scalars().all()
+
+                if not grows:
+                    logger.debug("No active grows with auto_health_check enabled")
+                    return
 
                 for grow in grows:
                     try:
-                        # Gather sensor data
-                        sensors = {}
-                        buckets = (await session.execute(
-                            select(Bucket).where(Bucket.grow_cycle_id == grow.id)
-                        )).scalars().all()
-                        if buckets:
-                            reading = (await session.execute(
-                                select(BucketSensorReading)
-                                .where(BucketSensorReading.bucket_id == buckets[0].id)
-                                .order_by(desc(BucketSensorReading.recorded_at))
-                                .limit(1)
-                            )).scalar_one_or_none()
-                            if reading:
-                                sensors = {"ph": reading.ph, "ec": reading.ec, "water_temp_f": reading.water_temp_f}
+                        # Check if last eval is recent enough (skip if < 11h to avoid drift)
+                        prev = (await session.execute(
+                            select(HealthEval)
+                            .where(HealthEval.grow_cycle_id == grow.id)
+                            .order_by(desc(HealthEval.created_at))
+                            .limit(1)
+                        )).scalar_one_or_none()
 
-                        # Get weather for outdoor tents
-                        weather = None
-                        tent = await session.get(Tent, grow.tent_id)
-                        if tent and tent.environment_type in ("outdoor", "greenhouse"):
-                            w = (await session.execute(
-                                select(WeatherReading)
-                                .where(WeatherReading.tent_id == tent.id)
-                                .order_by(desc(WeatherReading.recorded_at))
-                                .limit(1)
-                            )).scalar_one_or_none()
-                            if w:
-                                weather = {"temperature_c": w.temperature_c, "humidity_pct": w.humidity_pct}
+                        if prev:
+                            from datetime import datetime, timezone
+                            age_hours = (datetime.now(timezone.utc) - prev.created_at).total_seconds() / 3600
+                            if age_hours < 11:
+                                logger.debug("Grow %s last eval %.1fh ago — skipping", grow.id, age_hours)
+                                continue
 
-                        observations = {"automated_check": "Scheduled health check"}
-                        messages = build_health_check_prompt(
-                            grow.grow_type, grow.stage, observations, sensors, weather
+                        # Gather ALL data including camera snapshot
+                        grow_data = await gather_grow_data(
+                            session, grow, include_camera=True,
                         )
-                        result = await chat_completion(messages)
-                        logger.info("Health check for grow %s: %s", grow.id, result[:100])
-                    except Exception:
-                        logger.exception("Health check failed for grow %s", grow.id)
 
-                logger.info("Health checks completed for %d active grows", len(grows))
+                        observations = {"automated_check": "Scheduled 12-hour health check"}
+                        messages = build_health_check_prompt(grow_data, observations)
+
+                        camera_image: bytes | None = grow_data.get("camera_image")
+                        raw = await gemini_chat(messages, image_bytes=camera_image)
+
+                        # Parse result
+                        import json
+                        score = None
+                        issues: list[str] = []
+                        actions: list[str] = []
+                        try:
+                            cleaned = raw.strip()
+                            if cleaned.startswith("```"):
+                                cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
+                            if cleaned.endswith("```"):
+                                cleaned = cleaned[:-3]
+                            cleaned = cleaned.strip()
+                            parsed = json.loads(cleaned)
+                            score = parsed.get("score")
+                            issues = parsed.get("issues", [])
+                            actions = parsed.get("actions", [])
+                        except json.JSONDecodeError:
+                            logger.warning("Gemini returned non-JSON for grow %s", grow.id)
+
+                        # Store
+                        health_eval = HealthEval(
+                            tenant_id=grow.tenant_id,
+                            grow_cycle_id=grow.id,
+                            score=score,
+                            issues=issues,
+                            actions=actions,
+                            raw_analysis=raw,
+                            source="scheduled",
+                        )
+                        session.add(health_eval)
+                        await session.commit()
+
+                        logger.info("Scheduled health check for grow %s: score=%s", grow.id, score)
+                    except GeminiRateLimitError:
+                        logger.warning("Gemini rate limit during scheduled check for grow %s — stopping batch", grow.id)
+                        break
+                    except Exception:
+                        logger.exception("Scheduled health check failed for grow %s", grow.id)
+
+                logger.info("Scheduled health checks completed for %d eligible grows", len(grows))
         except Exception:
             logger.exception("Health check task failed")
 

@@ -1,47 +1,172 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
-import { listGrows, runHealthCheck, type GrowResponse } from "@/lib/api";
+import {
+  runHealthCheck,
+  getHealthCheckHistory,
+  updateGrow,
+  getTent,
+  type HealthCheckResult,
+  type TentResponse,
+} from "@/lib/api";
+import { useGrow } from "@/hooks/use-grow";
 import { HealthCheckForm } from "@/components/health-check-form";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Heart, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { Heart, AlertTriangle, CheckCircle2, Loader2, History, Clock, Camera, Upload, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-interface HealthResult {
-  score: number | null;
-  issues: string[];
-  actions: string[];
-  raw_analysis: string;
+function ScoreBadge({ score }: { score: number | null }) {
+  if (score == null) return <span className="text-muted-foreground">N/A</span>;
+  return (
+    <span
+      className={cn(
+        "text-2xl font-bold",
+        score >= 80 ? "text-primary" : score >= 50 ? "text-yellow-500" : "text-destructive",
+      )}
+    >
+      {score}
+    </span>
+  );
+}
+
+function ResultCards({ result }: { result: HealthCheckResult }) {
+  return (
+    <div className="grid gap-4 lg:grid-cols-3">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Health Score</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-baseline gap-2">
+            <span
+              className={cn(
+                "text-4xl font-bold",
+                (result.score ?? 0) >= 80
+                  ? "text-primary"
+                  : (result.score ?? 0) >= 50
+                    ? "text-yellow-500"
+                    : "text-destructive",
+              )}
+            >
+              {result.score ?? "N/A"}
+            </span>
+            <span className="text-muted-foreground">/ 100</span>
+          </div>
+          {result.source === "scheduled" && (
+            <p className="mt-1 text-xs text-muted-foreground">Auto check</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {result.issues.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <AlertTriangle className="size-4 text-destructive" />
+              Issues Found
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-2">
+              {result.issues.map((issue, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm">
+                  <Badge variant="destructive" className="mt-0.5 size-1.5 rounded-full p-0" />
+                  {issue}
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+
+      {result.actions.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <CheckCircle2 className="size-4 text-primary" />
+              Recommended Actions
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-2">
+              {result.actions.map((action, i) => (
+                <li key={i} className="flex items-start gap-2 text-sm">
+                  <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" />
+                  {action}
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
 }
 
 export default function HealthPage() {
-  const [grows, setGrows] = useState<GrowResponse[]>([]);
-  const [selectedGrow, setSelectedGrow] = useState<GrowResponse | null>(null);
-  const [result, setResult] = useState<HealthResult | null>(null);
+  const { selectedGrow, refreshGrows } = useGrow();
+  const [tent, setTent] = useState<TentResponse | null>(null);
+  const [result, setResult] = useState<HealthCheckResult | null>(null);
+  const [history, setHistory] = useState<HealthCheckResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [includeCamera, setIncludeCamera] = useState(true);
+  const [uploadedImage, setUploadedImage] = useState<string | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [autoCheck, setAutoCheck] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Load tent + history when grow changes
   useEffect(() => {
+    setResult(null);
+    setHistory([]);
+    setTent(null);
+    if (!selectedGrow) return;
+    setAutoCheck(selectedGrow.auto_health_check);
     const load = async () => {
       const token = getAccessToken();
       if (!token) return;
-      setGrows(await listGrows(token, { status: "active" }));
+      try {
+        const [tentData, historyData] = await Promise.all([
+          getTent(token, selectedGrow.tent_id),
+          getHealthCheckHistory(token, selectedGrow.id, 10),
+        ]);
+        setTent(tentData);
+        setHistory(historyData.items);
+        setIncludeCamera(!!tentData.camera_url);
+      } catch {
+        setTent(null);
+        setHistory([]);
+      }
     };
     load();
-  }, []);
+  }, [selectedGrow]);
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      setImagePreview(dataUrl);
+      // Extract base64 data (remove "data:image/...;base64," prefix)
+      const base64 = dataUrl.split(",")[1];
+      setUploadedImage(base64);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const clearImage = () => {
+    setUploadedImage(null);
+    setImagePreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
 
   const handleSubmit = useCallback(
     async (observations: Record<string, string>) => {
@@ -57,16 +182,35 @@ export default function HealthPage() {
         const res = await runHealthCheck(token, {
           grow_id: selectedGrow.id,
           observations,
+          include_camera: includeCamera && !!tent?.camera_url,
+          image_base64: uploadedImage || undefined,
         });
         setResult(res);
+        // Refresh history
+        const hist = await getHealthCheckHistory(token, selectedGrow.id, 10);
+        setHistory(hist.items);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Health check failed");
       } finally {
         setLoading(false);
       }
     },
-    [selectedGrow],
+    [selectedGrow, includeCamera, tent, uploadedImage],
   );
+
+  const toggleAutoCheck = async () => {
+    if (!selectedGrow) return;
+    const token = getAccessToken();
+    if (!token) return;
+    const newVal = !autoCheck;
+    try {
+      await updateGrow(token, selectedGrow.id, { auto_health_check: newVal });
+      setAutoCheck(newVal);
+      refreshGrows();
+    } catch {
+      // Ignore
+    }
+  };
 
   return (
     <>
@@ -79,50 +223,94 @@ export default function HealthPage() {
         ]}
       />
       <div className="flex flex-1 flex-col gap-6 p-4 lg:p-6">
-        {/* Grow selector */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Heart className="size-4" />
-              Select Grow
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Label className="mb-2 block">Choose a grow to assess</Label>
-            <Select
-              value={selectedGrow?.id || ""}
-              onValueChange={(val) => {
-                const g = grows.find((g) => g.id === val);
-                setSelectedGrow(g || null);
-                setResult(null);
-              }}
-            >
-              <SelectTrigger className="w-full sm:w-72">
-                <SelectValue placeholder="Choose a grow…" />
-              </SelectTrigger>
-              <SelectContent>
-                {grows.map((g) => (
-                  <SelectItem key={g.id} value={g.id}>
-                    {g.name} ({g.grow_type})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </CardContent>
-        </Card>
+        {!selectedGrow && (
+          <Alert>
+            <AlertDescription>Select a grow from the sidebar to run a health check.</AlertDescription>
+          </Alert>
+        )}
 
-        {/* Health check form */}
+        {/* Auto-check toggle */}
+        {selectedGrow && (
+          <div className="flex items-center gap-3">
+            <Switch checked={autoCheck} onCheckedChange={toggleAutoCheck} />
+            <div>
+              <Label className="text-sm">Auto Health Check</Label>
+              <p className="text-xs text-muted-foreground">
+                Run AI health checks every 12 hours automatically
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Health check form + image options */}
         {selectedGrow && (
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Observations</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
+              {/* Camera + image section */}
+              <div className="flex flex-wrap items-start gap-4 rounded-lg border p-3">
+                {tent?.camera_url && (
+                  <div className="flex items-center gap-3">
+                    <Camera className="size-4 text-muted-foreground" />
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        checked={includeCamera}
+                        onCheckedChange={setIncludeCamera}
+                      />
+                      <div>
+                        <Label className="text-sm">Include Camera Snapshot</Label>
+                        <p className="text-xs text-muted-foreground">
+                          Live image from {tent.name} camera
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div className="flex items-start gap-3">
+                  <Upload className="mt-1 size-4 text-muted-foreground" />
+                  <div>
+                    <Label className="mb-1 block text-sm">Upload Photo</Label>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      className="text-xs file:mr-2 file:rounded file:border-0 file:bg-primary/10 file:px-2 file:py-1 file:text-xs file:text-primary"
+                    />
+                    {imagePreview && (
+                      <div className="mt-2 flex items-start gap-2">
+                        <img
+                          src={imagePreview}
+                          alt="Upload preview"
+                          className="size-16 rounded object-cover"
+                        />
+                        <button onClick={clearImage} className="text-muted-foreground hover:text-destructive">
+                          <X className="size-4" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {!tent?.camera_url && !uploadedImage && (
+                  <p className="text-xs text-muted-foreground">
+                    No camera configured. Upload a photo for visual analysis.
+                  </p>
+                )}
+              </div>
+
               <HealthCheckForm growType={selectedGrow.grow_type} onSubmit={handleSubmit} />
               {loading && (
                 <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="size-4 animate-spin" />
                   Running health check…
+                  {(includeCamera && tent?.camera_url) && (
+                    <Badge variant="secondary" className="text-xs">
+                      <Camera className="mr-1 size-3" />
+                      Camera
+                    </Badge>
+                  )}
                 </div>
               )}
             </CardContent>
@@ -135,77 +323,75 @@ export default function HealthPage() {
           </Alert>
         )}
 
-        {/* Results */}
-        {result && (
-          <div className="grid gap-4 lg:grid-cols-3">
-            {/* Score */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Health Score</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-baseline gap-2">
-                  <span
-                    className={cn(
-                      "text-4xl font-bold",
-                      (result.score ?? 0) >= 80
-                        ? "text-primary"
-                        : (result.score ?? 0) >= 50
-                          ? "text-yellow-500"
-                          : "text-destructive"
-                    )}
+        {/* Latest result */}
+        {result && <ResultCards result={result} />}
+
+        {/* History */}
+        {history.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <History className="size-4" />
+                Health Check History
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {history.map((eval_item, i) => (
+                  <details
+                    key={eval_item.id || i}
+                    className="rounded-lg border"
+                    open={i === 0 && !result}
                   >
-                    {result.score ?? "N/A"}
-                  </span>
-                  <span className="text-muted-foreground">/ 100</span>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Issues */}
-            {result.issues.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <AlertTriangle className="size-4 text-destructive" />
-                    Issues Found
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ul className="space-y-2">
-                    {result.issues.map((issue, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm">
-                        <Badge variant="destructive" className="mt-0.5 size-1.5 rounded-full p-0" />
-                        {issue}
-                      </li>
-                    ))}
-                  </ul>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Actions */}
-            {result.actions.length > 0 && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <CheckCircle2 className="size-4 text-primary" />
-                    Recommended Actions
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ul className="space-y-2">
-                    {result.actions.map((action, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm">
-                        <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary" />
-                        {action}
-                      </li>
-                    ))}
-                  </ul>
-                </CardContent>
-              </Card>
-            )}
-          </div>
+                    <summary className="flex cursor-pointer items-center gap-3 p-3 hover:bg-muted/50">
+                      <ScoreBadge score={eval_item.score} />
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium">/100</span>
+                          {eval_item.source === "scheduled" && (
+                            <Badge variant="secondary" className="text-xs">
+                              <Clock className="mr-1 size-3" />
+                              Auto
+                            </Badge>
+                          )}
+                        </div>
+                        {eval_item.created_at && (
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(eval_item.created_at).toLocaleString()}
+                          </p>
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {eval_item.issues.length} issue{eval_item.issues.length !== 1 ? "s" : ""}
+                      </span>
+                    </summary>
+                    <div className="border-t p-3">
+                      {eval_item.issues.length > 0 && (
+                        <div className="mb-3">
+                          <p className="mb-1 text-xs font-medium text-destructive">Issues</p>
+                          <ul className="space-y-1">
+                            {eval_item.issues.map((issue, j) => (
+                              <li key={j} className="text-sm">• {issue}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {eval_item.actions.length > 0 && (
+                        <div>
+                          <p className="mb-1 text-xs font-medium text-primary">Actions</p>
+                          <ul className="space-y-1">
+                            {eval_item.actions.map((action, j) => (
+                              <li key={j} className="text-sm">• {action}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </details>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
         )}
       </div>
     </>

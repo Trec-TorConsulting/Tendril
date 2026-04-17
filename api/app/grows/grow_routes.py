@@ -23,6 +23,7 @@ class GrowCreate(BaseModel):
     stage: str = "seedling"
     notes: str | None = None
     settings: dict | None = None
+    auto_health_check: bool = False
 
 
 class GrowUpdate(BaseModel):
@@ -33,6 +34,7 @@ class GrowUpdate(BaseModel):
     started_at: datetime | None = None
     milestones: dict | None = None
     settings: dict | None = None
+    auto_health_check: bool | None = None
 
 
 class GrowResponse(BaseModel):
@@ -47,6 +49,7 @@ class GrowResponse(BaseModel):
     notes: str | None
     milestones: dict | None
     settings: dict | None
+    auto_health_check: bool
     model_config = {"from_attributes": True}
 
 

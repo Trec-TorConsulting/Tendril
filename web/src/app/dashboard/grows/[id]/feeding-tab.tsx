@@ -52,7 +52,7 @@ export function FeedingTab({ growId, growStage, buckets, feedingSchedules, onRef
   // Feeding schedule dialog (add/edit)
   const [feedingDialog, setFeedingDialog] = useState(false);
   const [editFeedingId, setEditFeedingId] = useState<string | null>(null);
-  const [feedingForm, setFeedingForm] = useState({ name: "", stage: "vegetative", notes: "", nutrients: [{ name: "", brand: "", ml_per_gallon: "" }] });
+  const [feedingForm, setFeedingForm] = useState({ name: "", stage: "vegetative", notes: "", target_ppm: "", target_ec: "", nutrients: [{ name: "", brand: "", ml_per_gallon: "" }] });
   const [feedingSaving, setFeedingSaving] = useState(false);
 
   // Dose profiles
@@ -83,6 +83,8 @@ export function FeedingTab({ growId, growStage, buckets, feedingSchedules, onRef
           name: feedingForm.name.trim(),
           stage: feedingForm.stage,
           nutrients,
+          target_ppm: feedingForm.target_ppm ? parseFloat(feedingForm.target_ppm) : null,
+          target_ec: feedingForm.target_ec ? parseFloat(feedingForm.target_ec) : null,
           notes: feedingForm.notes.trim() || undefined,
         });
       } else {
@@ -91,12 +93,14 @@ export function FeedingTab({ growId, growStage, buckets, feedingSchedules, onRef
           name: feedingForm.name.trim(),
           stage: feedingForm.stage,
           nutrients,
+          target_ppm: feedingForm.target_ppm ? parseFloat(feedingForm.target_ppm) : undefined,
+          target_ec: feedingForm.target_ec ? parseFloat(feedingForm.target_ec) : undefined,
           notes: feedingForm.notes.trim() || undefined,
         });
       }
       setFeedingDialog(false);
       setEditFeedingId(null);
-      setFeedingForm({ name: "", stage: "vegetative", notes: "", nutrients: [{ name: "", brand: "", ml_per_gallon: "" }] });
+      setFeedingForm({ name: "", stage: "vegetative", notes: "", target_ppm: "", target_ec: "", nutrients: [{ name: "", brand: "", ml_per_gallon: "" }] });
       onRefresh();
     } catch { /* empty */ } finally { setFeedingSaving(false); }
   };
@@ -160,7 +164,7 @@ export function FeedingTab({ growId, growStage, buckets, feedingSchedules, onRef
           </Button>
           <Button size="sm" onClick={() => {
             setEditFeedingId(null);
-            setFeedingForm({ name: "", stage: growStage || "vegetative", notes: "", nutrients: [{ name: "", brand: "", ml_per_gallon: "" }] });
+            setFeedingForm({ name: "", stage: growStage || "vegetative", notes: "", target_ppm: "", target_ec: "", nutrients: [{ name: "", brand: "", ml_per_gallon: "" }] });
             setFeedingDialog(true);
           }}>
             <Plus className="mr-1 size-3" /> Add Custom
@@ -184,6 +188,12 @@ export function FeedingTab({ growId, growStage, buckets, feedingSchedules, onRef
                       <span className="font-medium">{fs.name}</span>
                       <Badge variant="secondary" className="capitalize text-xs">{fs.stage}</Badge>
                     </div>
+                    {(fs.target_ppm || fs.target_ec) && (
+                      <div className="mt-1 flex gap-3 text-sm">
+                        {fs.target_ppm && <span className="text-muted-foreground">Target PPM: <span className="font-medium text-foreground">{fs.target_ppm}</span></span>}
+                        {fs.target_ec && <span className="text-muted-foreground">Target EC: <span className="font-medium text-foreground">{fs.target_ec} mS/cm</span></span>}
+                      </div>
+                    )}
                     {fs.nutrients.length > 0 && (
                       <div className="mt-2 space-y-1">
                         {fs.nutrients.map((n, i) => (
@@ -220,6 +230,8 @@ export function FeedingTab({ growId, growStage, buckets, feedingSchedules, onRef
                         name: fs.name,
                         stage: fs.stage,
                         notes: fs.notes || "",
+                        target_ppm: fs.target_ppm?.toString() || "",
+                        target_ec: fs.target_ec?.toString() || "",
                         nutrients: fs.nutrients.map((n) => ({ name: n.name, brand: n.brand || "", ml_per_gallon: n.ml_per_gallon?.toString() || "" })),
                       });
                       setFeedingDialog(true);
@@ -341,6 +353,16 @@ export function FeedingTab({ growId, growStage, buckets, feedingSchedules, onRef
               <Button type="button" variant="outline" size="sm" onClick={() => setFeedingForm((p) => ({ ...p, nutrients: [...p.nutrients, { name: "", brand: "", ml_per_gallon: "" }] }))}>
                 <Plus className="mr-1 size-3" /> Add Nutrient
               </Button>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Target PPM</Label>
+                <Input type="number" placeholder="e.g. 800" value={feedingForm.target_ppm} onChange={(e) => setFeedingForm((p) => ({ ...p, target_ppm: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Target EC (mS/cm)</Label>
+                <Input type="number" step="0.1" placeholder="e.g. 1.6" value={feedingForm.target_ec} onChange={(e) => setFeedingForm((p) => ({ ...p, target_ec: e.target.value }))} />
+              </div>
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Notes (optional)</Label>

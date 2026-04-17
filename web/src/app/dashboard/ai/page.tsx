@@ -2,45 +2,31 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
-import { getAiChatWsUrl, listGrows, type GrowResponse } from "@/lib/api";
+import { getAiChatWsUrl } from "@/lib/api";
+import { useGrow } from "@/hooks/use-grow";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Send, Bot, User } from "lucide-react";
+import { Send, Bot, User, CheckCircle2 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 import { cn } from "@/lib/utils";
 
 interface ChatMessage {
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "action";
   content: string;
+  tool?: string;
 }
 
 export default function AiChatPage() {
-  const [grows, setGrows] = useState<GrowResponse[]>([]);
-  const [selectedGrow, setSelectedGrow] = useState("");
+  const { selectedGrow } = useGrow();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [connected, setConnected] = useState(false);
   const [streaming, setStreaming] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const load = async () => {
-      const token = getAccessToken();
-      if (!token) return;
-      setGrows(await listGrows(token, { status: "active" }));
-    };
-    load();
-  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -54,7 +40,7 @@ export default function AiChatPage() {
     wsRef.current = ws;
 
     ws.onopen = () => {
-      ws.send(JSON.stringify({ token, grow_id: selectedGrow || undefined }));
+      ws.send(JSON.stringify({ token, grow_id: selectedGrow?.id || undefined }));
     };
 
     ws.onmessage = (event) => {
@@ -77,6 +63,14 @@ export default function AiChatPage() {
         return;
       }
 
+      if (data.type === "action") {
+        setMessages((prev) => [
+          ...prev,
+          { role: "action", content: data.result, tool: data.tool },
+        ]);
+        return;
+      }
+
       if (data.type === "done") {
         setStreaming(false);
         return;
@@ -93,7 +87,7 @@ export default function AiChatPage() {
     };
 
     return () => ws.close();
-  }, [selectedGrow]);
+  }, [selectedGrow?.id]);
 
   useEffect(() => {
     const cleanup = connect();
@@ -113,24 +107,9 @@ export default function AiChatPage() {
         title="AI Chat"
         breadcrumbs={[{ label: "Dashboard", href: "/dashboard" }, { label: "AI Chat" }]}
         actions={
-          <div className="flex items-center gap-2">
-            <Badge variant={connected ? "default" : "outline"} className="text-xs">
-              {connected ? "Connected" : "Connecting…"}
-            </Badge>
-            <Select value={selectedGrow} onValueChange={(v) => setSelectedGrow(v ?? "")}>
-              <SelectTrigger className="h-8 w-40 text-xs">
-                <SelectValue placeholder="No grow context" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value=" ">No grow context</SelectItem>
-                {grows.map((g) => (
-                  <SelectItem key={g.id} value={g.id}>
-                    {g.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          <Badge variant={connected ? "default" : "outline"} className="text-xs">
+            {connected ? "Connected" : "Connecting…"}
+          </Badge>
         }
       />
       <div className="flex flex-1 flex-col p-4 lg:p-6">
@@ -150,9 +129,17 @@ export default function AiChatPage() {
                 key={i}
                 className={cn(
                   "mb-3 flex gap-3",
-                  msg.role === "user" && "flex-row-reverse"
+                  msg.role === "user" && "flex-row-reverse",
+                  msg.role === "action" && "justify-center"
                 )}
               >
+                {msg.role === "action" ? (
+                  <div className="flex items-center gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs text-primary">
+                    <CheckCircle2 className="size-3.5" />
+                    <span>{msg.content}</span>
+                  </div>
+                ) : (
+                  <>
                 <div className={cn(
                   "flex size-7 shrink-0 items-center justify-center rounded-full",
                   msg.role === "user" ? "bg-primary/20" : "bg-muted"
@@ -171,8 +158,16 @@ export default function AiChatPage() {
                       : "bg-muted"
                   )}
                 >
-                  <pre className="whitespace-pre-wrap font-sans">{msg.content}</pre>
+                  {msg.role === "user" ? (
+                    <pre className="whitespace-pre-wrap font-sans">{msg.content}</pre>
+                  ) : (
+                    <div className="prose prose-sm dark:prose-invert max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                      <ReactMarkdown>{msg.content}</ReactMarkdown>
+                    </div>
+                  )}
                 </div>
+                  </>
+                )}
               </div>
             ))}
             {streaming && (

@@ -1,6 +1,7 @@
 """AI API routes — chat (WebSocket), health check, coach tips, insights, reports."""
 from __future__ import annotations
 
+import base64
 import json
 import logging
 from typing import Annotated
@@ -13,23 +14,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.jwt import decode_token
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
-from app.ai.ollama import chat_completion, chat_completion_stream, vision_analysis
+from app.ai.ollama import chat_completion, chat_completion_stream, chat_with_tools
 from app.ai.context import (
     build_chat_context,
     build_health_check_prompt,
     build_coach_tip_prompt,
     build_insight_prompt,
 )
+from app.ai.gather import gather_grow_data
+from app.ai.tools import CHAT_TOOLS, execute_tool
 
 logger = logging.getLogger("tendril.ai")
 router = APIRouter()
 
+MAX_TOOL_ROUNDS = 5
 
-# ---------- WebSocket Chat (4.1) ----------
+
+# ---------- WebSocket Chat (4.1) — with tool support ----------
 
 @router.websocket("/chat")
 async def websocket_chat(ws: WebSocket):
-    """AI chat via WebSocket. Expects token in first message for auth."""
+    """AI chat via WebSocket with full grow context and tool-calling support."""
     await ws.accept()
 
     # Auth: first message must be {"token": "...", "grow_id": "..."}
@@ -49,12 +54,13 @@ async def websocket_chat(ws: WebSocket):
         await ws.close()
         return
 
-    # Load grow context
+    # Load full grow context
     system_context = "You are Tendril, an AI grow assistant."
+    grow_uuid = None
     if grow_id:
         try:
             from app.database import async_session_factory
-            from app.grows.models import GrowCycle, BucketSensorReading, Bucket, Tent, WeatherReading
+            from app.grows.models import GrowCycle
             from sqlalchemy import text
 
             async with async_session_factory() as session:
@@ -62,59 +68,16 @@ async def websocket_chat(ws: WebSocket):
                 await session.execute(text(f"SET app.current_tenant = '{tid}'"))
                 grow = await session.get(GrowCycle, UUID(grow_id))
                 if grow and grow.tenant_id == tenant_id:
-                    # Get latest sensor data
-                    buckets = (await session.execute(
-                        select(Bucket).where(Bucket.grow_cycle_id == grow.id)
-                    )).scalars().all()
-
-                    recent_sensors = {}
-                    if buckets:
-                        reading = (await session.execute(
-                            select(BucketSensorReading)
-                            .where(BucketSensorReading.bucket_id == buckets[0].id)
-                            .order_by(desc(BucketSensorReading.recorded_at))
-                            .limit(1)
-                        )).scalar_one_or_none()
-                        if reading:
-                            recent_sensors = {
-                                "ph": reading.ph,
-                                "ec": reading.ec,
-                                "water_temp_f": reading.water_temp_f,
-                                "ambient_temp_f": reading.ambient_temp_f,
-                                "ambient_humidity": reading.ambient_humidity,
-                            }
-
-                    # Get weather if outdoor
-                    weather = None
-                    tent = await session.get(Tent, grow.tent_id)
-                    if tent and tent.environment_type in ("outdoor", "greenhouse"):
-                        w = (await session.execute(
-                            select(WeatherReading)
-                            .where(WeatherReading.tent_id == tent.id)
-                            .order_by(desc(WeatherReading.recorded_at))
-                            .limit(1)
-                        )).scalar_one_or_none()
-                        if w:
-                            weather = {
-                                "temperature_c": w.temperature_c,
-                                "humidity_pct": w.humidity_pct,
-                                "wind_speed_kmh": w.wind_speed_kmh,
-                                "uv_index": w.uv_index,
-                            }
-
-                    system_context = build_chat_context(
-                        grow.grow_type,
-                        stage=grow.stage,
-                        recent_sensors=recent_sensors,
-                        weather=weather,
-                    )
+                    grow_uuid = grow.id
+                    grow_data = await gather_grow_data(session, grow, include_camera=False)
+                    system_context = build_chat_context(grow_data)
         except Exception:
             logger.exception("Failed to load grow context for chat")
 
     messages = [{"role": "system", "content": system_context}]
     await ws.send_json({"type": "ready", "message": "Connected to Tendril AI"})
 
-    # Chat loop
+    # Chat loop with tool support
     try:
         while True:
             data = await ws.receive_json()
@@ -124,7 +87,56 @@ async def websocket_chat(ws: WebSocket):
 
             messages.append({"role": "user", "content": user_msg})
 
-            # Stream response
+            # Tool-calling loop: detect tool calls, execute, re-query
+            tool_used = False
+            if grow_uuid:
+                for _round in range(MAX_TOOL_ROUNDS):
+                    try:
+                        result = await chat_with_tools(messages, CHAT_TOOLS)
+                    except Exception:
+                        logger.exception("Ollama tool call failed")
+                        break
+
+                    tool_calls = result.get("tool_calls")
+                    if not tool_calls:
+                        break
+
+                    # Model wants to call tools
+                    tool_used = True
+                    messages.append(result["message"])
+
+                    for tc in tool_calls:
+                        fn = tc.get("function", {})
+                        fn_name = fn.get("name", "")
+                        fn_args = fn.get("arguments", {})
+
+                        try:
+                            from app.database import async_session_factory
+                            from sqlalchemy import text
+
+                            async with async_session_factory() as tool_session:
+                                tid = str(tenant_id)
+                                await tool_session.execute(
+                                    text(f"SET app.current_tenant = '{tid}'")
+                                )
+                                tool_result = await execute_tool(
+                                    fn_name, fn_args,
+                                    session=tool_session,
+                                    tenant_id=tenant_id,
+                                    grow_id=grow_uuid,
+                                )
+                        except Exception as e:
+                            logger.exception("Tool execution error")
+                            tool_result = f"Error: {e}"
+
+                        messages.append({"role": "tool", "content": tool_result})
+                        await ws.send_json({
+                            "type": "action",
+                            "tool": fn_name,
+                            "result": tool_result,
+                        })
+
+            # Stream the final natural-language response
             full_response = ""
             try:
                 async for chunk in chat_completion_stream(messages):
@@ -142,19 +154,27 @@ async def websocket_chat(ws: WebSocket):
         logger.debug("Chat WebSocket disconnected")
 
 
-# ---------- Health Check (4.2) ----------
+# ---------- Health Check (4.2) — powered by Gemini with camera + full data ----------
 
 class HealthCheckRequest(BaseModel):
     grow_id: str
     observations: dict[str, str]
-    image_url: str | None = None
+    image_base64: str | None = None
+    include_camera: bool = True
 
 
 class HealthCheckResponse(BaseModel):
+    id: str | None = None
     score: int | None = None
     issues: list[str] = []
     actions: list[str] = []
     raw_analysis: str = ""
+    source: str = "manual"
+    created_at: str | None = None
+
+
+class HealthCheckHistoryResponse(BaseModel):
+    items: list[HealthCheckResponse]
 
 
 @router.post("/health-check", response_model=HealthCheckResponse)
@@ -163,88 +183,131 @@ async def run_health_check(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
-    """Run an AI health check on a grow cycle."""
-    from app.grows.models import GrowCycle, BucketSensorReading, Bucket, Tent, WeatherReading
+    """Run a Gemini-powered AI health check with camera image and full grow data."""
+    from app.grows.models import GrowCycle, HealthEval
+    from app.ai.gemini import (
+        chat_completion as gemini_chat,
+        is_configured as gemini_configured,
+        GeminiRateLimitError,
+    )
+
+    if not gemini_configured():
+        raise HTTPException(status_code=503, detail="AI health check service not configured")
 
     grow = await session.get(GrowCycle, UUID(body.grow_id))
     if not grow:
         raise HTTPException(status_code=404, detail="Grow not found")
 
-    # Gather sensor data
-    sensors = {}
-    buckets = (await session.execute(
-        select(Bucket).where(Bucket.grow_cycle_id == grow.id)
-    )).scalars().all()
-    if buckets:
-        reading = (await session.execute(
-            select(BucketSensorReading)
-            .where(BucketSensorReading.bucket_id == buckets[0].id)
-            .order_by(desc(BucketSensorReading.recorded_at))
-            .limit(1)
-        )).scalar_one_or_none()
-        if reading:
-            sensors = {
-                "ph": reading.ph,
-                "ec": reading.ec,
-                "water_temp_f": reading.water_temp_f,
-                "ambient_temp_f": reading.ambient_temp_f,
-                "ambient_humidity": reading.ambient_humidity,
-            }
-
-    # Gather weather for outdoor
-    weather = None
-    tent = await session.get(Tent, grow.tent_id)
-    if tent and tent.environment_type in ("outdoor", "greenhouse"):
-        w = (await session.execute(
-            select(WeatherReading)
-            .where(WeatherReading.tent_id == tent.id)
-            .order_by(desc(WeatherReading.recorded_at))
-            .limit(1)
-        )).scalar_one_or_none()
-        if w:
-            weather = {
-                "temperature_c": w.temperature_c,
-                "humidity_pct": w.humidity_pct,
-                "precipitation_mm": w.precipitation_mm,
-                "wind_speed_kmh": w.wind_speed_kmh,
-                "uv_index": w.uv_index,
-            }
-
-    # Vision analysis if image provided
-    vision_text = ""
-    if body.image_url:
-        try:
-            vision_text = await vision_analysis(
-                body.image_url,
-                f"Analyze this {grow.grow_type} plant in {grow.stage} stage. "
-                "Describe plant health, leaf color, root condition if visible, and any signs of disease or deficiency.",
-            )
-        except Exception:
-            logger.exception("Vision analysis failed")
-
-    if vision_text:
-        body.observations["ai_vision"] = vision_text
-
-    messages = build_health_check_prompt(
-        grow.grow_type, grow.stage, body.observations, sensors, weather
+    # Gather ALL data
+    grow_data = await gather_grow_data(
+        session, grow, include_camera=body.include_camera,
     )
 
+    # Build prompt with all data
+    messages = build_health_check_prompt(grow_data, body.observations)
+
+    # Prepare images for Gemini
+    camera_image: bytes | None = grow_data.get("camera_image")
+    extra_images: list[tuple[str, bytes]] = []
+    if body.image_base64:
+        try:
+            user_image = base64.b64decode(body.image_base64)
+            if camera_image:
+                extra_images.append(("User uploaded photo", user_image))
+            else:
+                camera_image = user_image
+        except Exception:
+            logger.warning("Invalid base64 image from user")
+
     try:
-        raw = await chat_completion(messages)
+        raw = await gemini_chat(
+            messages,
+            image_bytes=camera_image,
+            extra_images=extra_images or None,
+        )
+    except GeminiRateLimitError:
+        raise HTTPException(
+            status_code=429,
+            detail="AI rate limit reached. Try again in a few minutes.",
+        )
     except Exception:
+        logger.exception("Gemini health check failed")
         raise HTTPException(status_code=503, detail="AI service unavailable")
 
     # Parse JSON response
+    score = None
+    issues: list[str] = []
+    actions: list[str] = []
     try:
-        parsed = json.loads(raw)
-        return HealthCheckResponse(
-            score=parsed.get("score"),
-            issues=parsed.get("issues", []),
-            actions=parsed.get("actions", []),
-            raw_analysis=raw,
-        )
+        cleaned = raw.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3]
+        cleaned = cleaned.strip()
+        parsed = json.loads(cleaned)
+        score = parsed.get("score")
+        issues = parsed.get("issues", [])
+        actions = parsed.get("actions", [])
     except json.JSONDecodeError:
-        return HealthCheckResponse(raw_analysis=raw)
+        logger.warning("Gemini returned non-JSON: %s", raw[:200])
+
+    # Store the eval
+    health_eval = HealthEval(
+        tenant_id=grow.tenant_id,
+        grow_cycle_id=grow.id,
+        score=score,
+        issues=issues,
+        actions=actions,
+        raw_analysis=raw,
+        source="manual",
+    )
+    session.add(health_eval)
+    await session.commit()
+    await session.refresh(health_eval)
+
+    return HealthCheckResponse(
+        id=str(health_eval.id),
+        score=score,
+        issues=issues,
+        actions=actions,
+        raw_analysis=raw,
+        source="manual",
+        created_at=health_eval.created_at.isoformat(),
+    )
+
+
+@router.get("/health-check/{grow_id}/history", response_model=HealthCheckHistoryResponse)
+async def get_health_check_history(
+    grow_id: str,
+    user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    limit: int = 10,
+):
+    """Get health check history for a grow cycle."""
+    from app.grows.models import HealthEval
+
+    evals = (await session.execute(
+        select(HealthEval)
+        .where(HealthEval.grow_cycle_id == UUID(grow_id))
+        .order_by(desc(HealthEval.created_at))
+        .limit(min(limit, 50))
+    )).scalars().all()
+
+    return HealthCheckHistoryResponse(
+        items=[
+            HealthCheckResponse(
+                id=str(e.id),
+                score=e.score,
+                issues=e.issues or [],
+                actions=e.actions or [],
+                raw_analysis=e.raw_analysis,
+                source=e.source,
+                created_at=e.created_at.isoformat(),
+            )
+            for e in evals
+        ]
+    )
 
 
 # ---------- Coach Tips (4.3) ----------

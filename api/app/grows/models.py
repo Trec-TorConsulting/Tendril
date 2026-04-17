@@ -55,6 +55,7 @@ class GrowCycle(Base):
     milestones: Mapped[dict | None] = mapped_column(JSON)  # {stage: iso-datetime}
     # Grow-type-specific settings stored as JSON
     settings: Mapped[dict | None] = mapped_column(JSON)
+    auto_health_check: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     tent: Mapped[Tent] = relationship(back_populates="grow_cycles")
@@ -182,6 +183,8 @@ class FeedingSchedule(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     stage: Mapped[str] = mapped_column(String(50), nullable=False)  # seedling | vegetative | flowering | etc.
     nutrients: Mapped[dict] = mapped_column(JSON, nullable=False)  # [{name, brand, ml_per_gallon, strength_pct}]
+    target_ppm: Mapped[float | None] = mapped_column(Float)
+    target_ec: Mapped[float | None] = mapped_column(Float)
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
@@ -301,3 +304,19 @@ class NutrientProduct(Base):
     image_url: Mapped[str | None] = mapped_column(String(1024))
     source: Mapped[str] = mapped_column(String(50), default="open_food_facts")
     synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+# ---------- Health Evaluations (Gemini-powered) ----------
+
+class HealthEval(Base):
+    __tablename__ = "health_evals"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    grow_cycle_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("grow_cycles.id", ondelete="CASCADE"), nullable=False)
+    score: Mapped[int | None] = mapped_column(Integer)
+    issues: Mapped[list | None] = mapped_column(JSON)
+    actions: Mapped[list | None] = mapped_column(JSON)
+    raw_analysis: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    source: Mapped[str] = mapped_column(String(50), default="manual")  # manual | scheduled
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

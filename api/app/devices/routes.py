@@ -9,13 +9,15 @@ from uuid import UUID
 import bcrypt
 import qrcode
 import qrcode.constants
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
+from app.auth.jwt import decode_token
+from app.database import async_session_factory
 from app.tenants.models import Device
 
 router = APIRouter()
@@ -200,12 +202,22 @@ async def delete_device(
 @router.get("/{device_id}/qr", response_class=StreamingResponse)
 async def get_device_qr(
     device_id: str,
-    user: Annotated[CurrentUser, Depends(get_current_user)],
-    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    token: str = Query(..., description="JWT access token"),
 ):
     """Generate a QR code PNG containing the device_id for pairing."""
-    result = await session.execute(select(Device).where(Device.device_id == device_id))
-    device = result.scalar_one_or_none()
+    from jose import JWTError
+    try:
+        payload = decode_token(token)
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    if payload.get("type") != "access":
+        raise HTTPException(status_code=401, detail="Invalid token type")
+    tenant_id = payload["tid"]
+
+    async with async_session_factory() as session:
+        await session.execute(text(f"SET app.current_tenant = '{tenant_id}'"))
+        result = await session.execute(select(Device).where(Device.device_id == device_id))
+        device = result.scalar_one_or_none()
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found")
 

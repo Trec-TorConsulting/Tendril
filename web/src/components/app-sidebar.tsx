@@ -48,7 +48,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { useGrow } from "@/hooks/use-grow";
 import type { UserData } from "@/hooks/use-user";
 
 const MAIN_NAV = [
@@ -89,6 +97,7 @@ interface AppSidebarProps {
 
 export function AppSidebar({ user, onLogout }: AppSidebarProps) {
   const pathname = usePathname();
+  const { grows, selectedGrow, setSelectedGrowId } = useGrow();
 
   const initials = user?.display_name
     ? user.display_name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)
@@ -114,6 +123,42 @@ export function AppSidebar({ user, onLogout }: AppSidebarProps) {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
+
+      {/* Global Grow Selector */}
+      {grows.length > 0 && (
+        <div className="px-3 pb-2 group-data-[collapsible=icon]:hidden">
+          <Select value={selectedGrow?.id || ""} onValueChange={(v) => setSelectedGrowId(v ?? "")}>
+            <SelectTrigger className="h-8 w-full text-xs">
+              <SelectValue>
+                {selectedGrow ? (
+                  <span className="flex items-center gap-1.5">
+                    <Sprout className="size-3 text-primary" />
+                    {selectedGrow.name}
+                  </span>
+                ) : "Select a grow"}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {grows.filter((g) => g.status === "active").length > 0 && (
+                <div className="px-2 py-1 text-[10px] font-medium text-muted-foreground">Active</div>
+              )}
+              {grows.filter((g) => g.status === "active").map((g) => (
+                <SelectItem key={g.id} value={g.id}>
+                  {g.name}
+                </SelectItem>
+              ))}
+              {grows.filter((g) => g.status !== "active").length > 0 && (
+                <div className="px-2 py-1 text-[10px] font-medium text-muted-foreground">Other</div>
+              )}
+              {grows.filter((g) => g.status !== "active").map((g) => (
+                <SelectItem key={g.id} value={g.id}>
+                  {g.name} ({g.status})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       <SidebarContent>
         <NavGroup label="Overview" items={MAIN_NAV} pathname={pathname} />

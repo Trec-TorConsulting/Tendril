@@ -151,13 +151,6 @@ export default function GrowDetailPage() {
 
   // --- Handlers ---
 
-  const handleStageChange = async (stage: string) => {
-    const token = getAccessToken();
-    if (!token || !grow) return;
-    await updateGrow(token, id, { stage });
-    refresh();
-  };
-
   const handleComplete = async () => {
     if (!confirm("Mark this grow as completed?")) return;
     const token = getAccessToken();
@@ -424,24 +417,6 @@ export default function GrowDetailPage() {
             )}
           </CardContent>
         </Card>
-
-        {/* Stage selector */}
-        {grow.status === "active" && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium">Advance Stage</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-2">
-                {STAGES.map((s) => (
-                  <Button key={s} variant={grow.stage === s ? "default" : "outline"} size="sm" className="capitalize" onClick={() => handleStageChange(s)}>
-                    {s}
-                  </Button>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
         {/* Weather (for outdoor/greenhouse tents) */}
         {tent && <WeatherCard tentId={tent.id} tentName={tent.name} environmentType={tent.environment_type} />}
@@ -714,10 +689,14 @@ function getSettingsSchema(growType: string): SettingsField[] {
     case "deep_water_culture":
       return [
         { key: "reservoir_liters", label: "Reservoir Size", type: "number", step: "0.5", unit: "L", placeholder: "e.g. 20" },
-        { key: "air_pump", label: "Air Pump", options: ["single", "dual", "commercial"], hint: "Number of air stones" },
+        { key: "air_pump_watts", label: "Air Pump", type: "number", unit: "W", placeholder: "e.g. 10" },
         { key: "water_change_days", label: "Water Change Interval", type: "number", unit: "days", placeholder: "e.g. 7" },
         { key: "target_ph", label: "Target pH", type: "number", step: "0.1", placeholder: "e.g. 5.8" },
         { key: "target_ec", label: "Target EC", type: "number", step: "0.1", unit: "mS/cm", placeholder: "e.g. 1.2" },
+        { key: "light_type", label: "Light Type", placeholder: "e.g. LED, HPS, CMH" },
+        { key: "light_wattage", label: "Light Wattage", type: "number", unit: "W", placeholder: "e.g. 600" },
+        { key: "light_schedule", label: "Light Schedule", placeholder: "e.g. 18/6, 12/12" },
+        { key: "light_height_in", label: "Light Height", type: "number", unit: "in", placeholder: "e.g. 24" },
       ];
     case "soil":
     case "living_soil":
@@ -726,6 +705,10 @@ function getSettingsSchema(growType: string): SettingsField[] {
         { key: "pot_size_gal", label: "Pot Size", type: "number", step: "0.5", unit: "gal", placeholder: "e.g. 5" },
         { key: "amendments", label: "Amendments", placeholder: "e.g. Perlite 30%, Worm castings" },
         { key: "watering_schedule", label: "Watering Schedule", options: ["daily", "every_2_days", "every_3_days", "as_needed"] },
+        { key: "light_type", label: "Light Type", placeholder: "e.g. LED, HPS, CMH" },
+        { key: "light_wattage", label: "Light Wattage", type: "number", unit: "W", placeholder: "e.g. 600" },
+        { key: "light_schedule", label: "Light Schedule", placeholder: "e.g. 18/6, 12/12" },
+        { key: "light_height_in", label: "Light Height", type: "number", unit: "in", placeholder: "e.g. 24" },
       ];
     case "coco":
     case "coco_coir":
@@ -735,6 +718,10 @@ function getSettingsSchema(growType: string): SettingsField[] {
         { key: "fertigation_frequency", label: "Fertigation Frequency", options: ["1x_daily", "2x_daily", "3x_daily", "4x_daily"] },
         { key: "runoff_target_pct", label: "Runoff Target", type: "number", unit: "%", placeholder: "e.g. 20" },
         { key: "target_ec", label: "Target EC", type: "number", step: "0.1", unit: "mS/cm", placeholder: "e.g. 1.4" },
+        { key: "light_type", label: "Light Type", placeholder: "e.g. LED, HPS, CMH" },
+        { key: "light_wattage", label: "Light Wattage", type: "number", unit: "W", placeholder: "e.g. 600" },
+        { key: "light_schedule", label: "Light Schedule", placeholder: "e.g. 18/6, 12/12" },
+        { key: "light_height_in", label: "Light Height", type: "number", unit: "in", placeholder: "e.g. 24" },
       ];
     case "aeroponics":
       return [
@@ -742,6 +729,10 @@ function getSettingsSchema(growType: string): SettingsField[] {
         { key: "spray_duration_sec", label: "Spray Duration", type: "number", unit: "sec", placeholder: "e.g. 3" },
         { key: "nozzle_psi", label: "Nozzle Pressure", type: "number", unit: "PSI", placeholder: "e.g. 80" },
         { key: "reservoir_liters", label: "Reservoir Size", type: "number", step: "0.5", unit: "L", placeholder: "e.g. 20" },
+        { key: "light_type", label: "Light Type", placeholder: "e.g. LED, HPS, CMH" },
+        { key: "light_wattage", label: "Light Wattage", type: "number", unit: "W", placeholder: "e.g. 600" },
+        { key: "light_schedule", label: "Light Schedule", placeholder: "e.g. 18/6, 12/12" },
+        { key: "light_height_in", label: "Light Height", type: "number", unit: "in", placeholder: "e.g. 24" },
       ];
     case "nft":
     case "nutrient_film":
@@ -749,6 +740,10 @@ function getSettingsSchema(growType: string): SettingsField[] {
         { key: "channel_count", label: "Channel Count", type: "number", placeholder: "e.g. 4" },
         { key: "flow_rate_lph", label: "Flow Rate", type: "number", unit: "L/hr", placeholder: "e.g. 2" },
         { key: "reservoir_liters", label: "Reservoir Size", type: "number", step: "0.5", unit: "L", placeholder: "e.g. 40" },
+        { key: "light_type", label: "Light Type", placeholder: "e.g. LED, HPS, CMH" },
+        { key: "light_wattage", label: "Light Wattage", type: "number", unit: "W", placeholder: "e.g. 600" },
+        { key: "light_schedule", label: "Light Schedule", placeholder: "e.g. 18/6, 12/12" },
+        { key: "light_height_in", label: "Light Height", type: "number", unit: "in", placeholder: "e.g. 24" },
       ];
     case "ebb_flow":
     case "ebb_and_flow":
@@ -757,6 +752,10 @@ function getSettingsSchema(growType: string): SettingsField[] {
         { key: "flood_duration_min", label: "Flood Duration", type: "number", unit: "min", placeholder: "e.g. 15" },
         { key: "media_type", label: "Media Type", options: ["hydroton", "perlite", "rockwool", "growstones", "other"] },
         { key: "reservoir_liters", label: "Reservoir Size", type: "number", step: "0.5", unit: "L", placeholder: "e.g. 30" },
+        { key: "light_type", label: "Light Type", placeholder: "e.g. LED, HPS, CMH" },
+        { key: "light_wattage", label: "Light Wattage", type: "number", unit: "W", placeholder: "e.g. 600" },
+        { key: "light_schedule", label: "Light Schedule", placeholder: "e.g. 18/6, 12/12" },
+        { key: "light_height_in", label: "Light Height", type: "number", unit: "in", placeholder: "e.g. 24" },
       ];
     case "outdoor":
       return [
@@ -764,6 +763,7 @@ function getSettingsSchema(growType: string): SettingsField[] {
         { key: "soil_type", label: "Soil Type", placeholder: "e.g. Sandy loam" },
         { key: "companion_plants", label: "Companion Plants", placeholder: "e.g. Basil, Marigold" },
         { key: "irrigation", label: "Irrigation", options: ["hand_water", "drip", "sprinkler", "rain_only"] },
+        { key: "sun_exposure", label: "Sun Exposure", options: ["full_sun", "partial_sun", "partial_shade", "full_shade"] },
       ];
     default:
       return [];

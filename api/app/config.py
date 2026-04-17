@@ -57,7 +57,15 @@ class Settings:
         )
     )
     ollama_model: str = field(
-        default_factory=lambda: os.environ.get("OLLAMA_MODEL", "llama3.2")
+        default_factory=lambda: os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
+    )
+
+    # Gemini (used for health checks)
+    gemini_api_key: str = field(
+        default_factory=lambda: os.environ.get("GEMINI_API_KEY", "")
+    )
+    gemini_model: str = field(
+        default_factory=lambda: os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
     )
 
     # Stripe
