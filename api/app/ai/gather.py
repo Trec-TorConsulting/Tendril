@@ -17,6 +17,7 @@ from app.grows.models import (
     GrowCycle,
     HealthEval,
     JournalEntry,
+    Strain,
     Tent,
     WeatherReading,
 )
@@ -56,8 +57,9 @@ async def gather_grow_data(
         )
     ).scalars().all()
 
-    data["buckets"] = [
-        {
+    bucket_list = []
+    for b in buckets:
+        bd: dict = {
             "position": b.position,
             "label": b.label,
             "strain_name": b.strain_name,
@@ -65,8 +67,21 @@ async def gather_grow_data(
             "status": b.status,
             "volume_gallons": b.volume_gallons,
         }
-        for b in buckets
-    ]
+        # Include full strain profile when linked
+        if b.strain_id:
+            strain = b.strain or await session.get(Strain, b.strain_id)
+            if strain:
+                bd["strain_profile"] = {
+                    "name": strain.name,
+                    "genetics": strain.genetics,
+                    "flowering_days": strain.flowering_days,
+                    "thc_pct": strain.thc_pct,
+                    "cbd_pct": strain.cbd_pct,
+                    "terpene_profile": strain.terpene_profile,
+                    "notes": strain.notes,
+                }
+        bucket_list.append(bd)
+    data["buckets"] = bucket_list
 
     # ── Latest sensors per bucket ────────────────────────────────
     bucket_sensors: dict = {}

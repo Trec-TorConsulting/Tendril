@@ -228,6 +228,7 @@ export default function GrowDetailPage() {
         await createBucket(token, {
           grow_cycle_id: newGrow.id,
           label: b.label || undefined,
+          strain_id: b.strain_id || undefined,
           strain_name: b.strain_name || undefined,
           position: b.position,
           volume_gallons: b.volume_gallons || undefined,

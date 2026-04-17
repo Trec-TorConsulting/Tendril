@@ -332,12 +332,25 @@ export function deleteGrow(token: string, id: string) {
 }
 
 // Buckets
+export interface StrainSummary {
+  id: string;
+  name: string;
+  breeder: string | null;
+  genetics: string | null;
+  flowering_days: number | null;
+  thc_pct: number | null;
+  cbd_pct: number | null;
+  terpene_profile: Record<string, number> | null;
+}
+
 export interface BucketResponse {
   id: string;
   grow_cycle_id: string;
   position: number;
   label: string | null;
   strain_name: string | null;
+  strain_id: string | null;
+  strain: StrainSummary | null;
   growth_stage: string;
   status: string;
   volume_gallons: number | null;
@@ -349,11 +362,11 @@ export function listBuckets(token: string, growCycleId?: string) {
   return apiFetch<BucketResponse[]>(`/buckets${q}`, { token });
 }
 
-export function createBucket(token: string, data: { grow_cycle_id: string; label?: string; strain_name?: string; position?: number; volume_gallons?: number }) {
+export function createBucket(token: string, data: { grow_cycle_id: string; label?: string; strain_name?: string; strain_id?: string; position?: number; volume_gallons?: number }) {
   return apiFetch<BucketResponse>("/buckets", { method: "POST", body: JSON.stringify(data), token });
 }
 
-export function updateBucket(token: string, id: string, data: Partial<{ label: string; strain_name: string; growth_stage: string; status: string; volume_gallons: number }>) {
+export function updateBucket(token: string, id: string, data: Partial<{ label: string; strain_name: string; strain_id: string; growth_stage: string; status: string; volume_gallons: number }>) {
   return apiFetch<BucketResponse>(`/buckets/${id}`, { method: "PATCH", body: JSON.stringify(data), token });
 }
 
@@ -484,7 +497,9 @@ export interface StrainResponse {
   flowering_days: number | null;
   thc_pct: number | null;
   cbd_pct: number | null;
+  terpene_profile: Record<string, number> | null;
   notes: string | null;
+  is_global: boolean;
 }
 
 export function listStrains(token: string) {
@@ -501,6 +516,48 @@ export function updateStrain(token: string, id: string, data: Partial<{ name: st
 
 export function deleteStrain(token: string, id: string) {
   return apiFetch<void>(`/strains/${id}`, { method: "DELETE", token });
+}
+
+export interface FeedingSuggestion {
+  stage: string;
+  target_ec: number;
+  target_ppm: number;
+  notes: string;
+}
+
+export function getStrainFeedingSuggestions(token: string, strainId: string) {
+  return apiFetch<FeedingSuggestion[]>(`/strains/${strainId}/feeding-suggestions`, { token });
+}
+
+export interface HarvestCountdownItem {
+  grow_id: string;
+  grow_name: string;
+  bucket_id: string;
+  bucket_label: string | null;
+  strain_name: string | null;
+  flowering_days: number;
+  flowering_start: string;
+  estimated_harvest: string;
+  days_remaining: number;
+}
+
+export function getHarvestCountdown(token: string) {
+  return apiFetch<HarvestCountdownItem[]>("/grows/harvest-countdown", { token });
+}
+
+export interface StrainGrowComparison {
+  grow_id: string;
+  grow_name: string;
+  grow_type: string;
+  bucket_count: number;
+  avg_dry_weight_g: number | null;
+  avg_quality: number | null;
+  total_dry_weight_g: number | null;
+  grow_duration_days: number | null;
+}
+
+export function getStrainComparison(token: string, strainId: string) {
+  return apiFetch<StrainGrowComparison[]>(`/strains/${strainId}/comparison`, { token });
 }
 
 export function getStrainLeaderboard(token: string) {

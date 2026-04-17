@@ -3,26 +3,32 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { getAccessToken } from "@/lib/auth";
-import { listGrows, listDevices, type GrowResponse, type DeviceResponse } from "@/lib/api";
+import { listGrows, listDevices, getHarvestCountdown, type GrowResponse, type DeviceResponse, type HarvestCountdownItem } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Sprout, Cpu, Activity, Plus, ArrowRight } from "lucide-react";
+import { Sprout, Cpu, Activity, Plus, ArrowRight, Timer } from "lucide-react";
 
 export default function DashboardPage() {
   const [grows, setGrows] = useState<GrowResponse[]>([]);
   const [devices, setDevices] = useState<DeviceResponse[]>([]);
+  const [countdown, setCountdown] = useState<HarvestCountdownItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     const token = getAccessToken();
     if (!token) return;
     try {
-      const [g, d] = await Promise.all([listGrows(token), listDevices(token)]);
+      const [g, d, hc] = await Promise.all([
+        listGrows(token),
+        listDevices(token),
+        getHarvestCountdown(token).catch(() => [] as HarvestCountdownItem[]),
+      ]);
       setGrows(g);
       setDevices(d);
+      setCountdown(hc);
     } finally {
       setLoading(false);
     }
@@ -68,6 +74,37 @@ export default function DashboardPage() {
             loading={loading}
           />
         </div>
+
+        {/* Harvest Countdown */}
+        {!loading && countdown.length > 0 && (
+          <div>
+            <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold">
+              <Timer className="size-5" /> Harvest Countdown
+            </h2>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {countdown.map((item) => (
+                <Card key={item.bucket_id} className={item.days_remaining <= 3 ? "border-orange-500/50" : item.days_remaining <= 0 ? "border-red-500/50" : ""}>
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-medium">{item.strain_name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {item.grow_name} — {item.bucket_label || "Bucket"}
+                        </p>
+                      </div>
+                      <Badge variant={item.days_remaining <= 0 ? "destructive" : item.days_remaining <= 3 ? "secondary" : "outline"}>
+                        {item.days_remaining <= 0 ? "Ready!" : `${item.days_remaining}d`}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {item.flowering_days}d flower cycle — est. {new Date(item.estimated_harvest).toLocaleDateString()}
+                    </p>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Active Grows */}
         {!loading && activeGrows > 0 && (

@@ -7,7 +7,9 @@ import {
   createStrain,
   deleteStrain,
   getStrainLeaderboard,
+  getStrainComparison,
   type StrainResponse,
+  type StrainGrowComparison,
 } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -23,6 +25,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Table,
   TableBody,
   TableCell,
@@ -37,7 +46,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { Plus, Trash2, Trophy, Library, MoreHorizontal } from "lucide-react";
+import { Plus, Trash2, Trophy, Library, MoreHorizontal, BarChart3 } from "lucide-react";
 
 export default function StrainsPage() {
   const [strains, setStrains] = useState<StrainResponse[]>([]);
@@ -46,7 +55,9 @@ export default function StrainsPage() {
   >([]);
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ name: "", breeder: "", genetics: "" });
-  const [tab, setTab] = useState<"library" | "leaderboard">("library");
+  const [tab, setTab] = useState<"library" | "leaderboard" | "comparison">("library");
+  const [comparisonStrainId, setComparisonStrainId] = useState("");
+  const [comparison, setComparison] = useState<StrainGrowComparison[]>([]);
 
   const refresh = useCallback(async () => {
     const token = getAccessToken();
@@ -114,6 +125,14 @@ export default function StrainsPage() {
           >
             <Trophy className="mr-1 h-4 w-4" />
             Leaderboard
+          </Button>
+          <Button
+            variant={tab === "comparison" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setTab("comparison")}
+          >
+            <BarChart3 className="mr-1 h-4 w-4" />
+            Comparison
           </Button>
         </div>
 
@@ -201,6 +220,77 @@ export default function StrainsPage() {
               </Card>
             )}
           </>
+        )}
+
+        {tab === "comparison" && (
+          <div className="space-y-4">
+            <div className="max-w-xs">
+              <Label className="mb-1 text-sm">Select a strain to compare across grows</Label>
+              <Select
+                value={comparisonStrainId}
+                onValueChange={async (v) => {
+                  const id = v ?? "";
+                  setComparisonStrainId(id);
+                  if (!id) { setComparison([]); return; }
+                  const token = getAccessToken();
+                  if (!token) return;
+                  const data = await getStrainComparison(token, id);
+                  setComparison(data);
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue>
+                    {comparisonStrainId
+                      ? strains.find((s) => s.id === comparisonStrainId)?.name ?? "Select strain"
+                      : "Select strain"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {strains.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {comparison.length > 0 && (
+              <Card>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Grow</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Buckets</TableHead>
+                        <TableHead>Avg Dry (g)</TableHead>
+                        <TableHead>Total Dry (g)</TableHead>
+                        <TableHead>Avg Quality</TableHead>
+                        <TableHead>Duration (d)</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {comparison.map((row) => (
+                        <TableRow key={row.grow_id}>
+                          <TableCell className="font-medium">{row.grow_name}</TableCell>
+                          <TableCell>{row.grow_type}</TableCell>
+                          <TableCell>{row.bucket_count}</TableCell>
+                          <TableCell>{row.avg_dry_weight_g ?? "—"}</TableCell>
+                          <TableCell>{row.total_dry_weight_g ?? "—"}</TableCell>
+                          <TableCell>{row.avg_quality ? `${row.avg_quality}/10` : "—"}</TableCell>
+                          <TableCell>{row.grow_duration_days ?? "—"}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            )}
+            {comparisonStrainId && comparison.length === 0 && (
+              <p className="text-muted-foreground">No grows found with this strain.</p>
+            )}
+          </div>
         )}
 
         {/* Create dialog */}

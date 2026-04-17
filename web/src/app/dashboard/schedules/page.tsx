@@ -250,7 +250,9 @@ function CreateScheduleDialog({
             <Label>Tent</Label>
             <Select value={tentId} onValueChange={(v) => setTentId(v ?? "")}>
               <SelectTrigger className="w-full">
-                <SelectValue />
+                <SelectValue>
+                  {tents.find((t) => t.id === tentId)?.name || "Select a tent"}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {tents.map((t) => (
@@ -275,11 +277,17 @@ function CreateScheduleDialog({
             </div>
             <div className="space-y-2">
               <Label>Stage (optional)</Label>
-              <Input
-                value={stage}
-                onChange={(e) => setStage(e.target.value)}
-                placeholder="e.g. veg, flower"
-              />
+              <Select value={stage} onValueChange={(v) => setStage(v ?? "")}>
+                <SelectTrigger className="w-full">
+                  <SelectValue>{stage || "Any stage"}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Any stage</SelectItem>
+                  {["seedling", "vegetative", "flowering", "ripening", "harvesting", "drying", "curing"].map((s) => (
+                    <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">

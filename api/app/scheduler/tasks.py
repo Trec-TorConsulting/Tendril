@@ -15,6 +15,7 @@ ALERT_EVAL_INTERVAL = 60             # 1 minute
 RULE_EVAL_INTERVAL = 30              # 30 seconds
 RETENTION_INTERVAL = 24 * 3600       # Daily
 DAILY_REPORT_INTERVAL = 24 * 3600    # Daily
+HARVEST_CHECK_INTERVAL = 4 * 3600    # 4 hours
 
 
 class TaskRunner:
@@ -30,6 +31,7 @@ class TaskRunner:
             asyncio.create_task(self._loop(shutdown_event, "rule_eval", RULE_EVAL_INTERVAL, self._rule_eval)),
             asyncio.create_task(self._loop(shutdown_event, "retention", RETENTION_INTERVAL, self._data_retention)),
             asyncio.create_task(self._loop(shutdown_event, "daily_report", DAILY_REPORT_INTERVAL, self._daily_report)),
+            asyncio.create_task(self._loop(shutdown_event, "harvest_check", HARVEST_CHECK_INTERVAL, self._harvest_countdown_check)),
         ]
         await shutdown_event.wait()
         for t in tasks:
@@ -325,3 +327,104 @@ class TaskRunner:
                     logger.debug("Data retention: nothing to prune")
         except Exception:
             logger.exception("Data retention task failed")
+
+    async def _harvest_countdown_check(self) -> None:
+        """Check harvest windows and send countdown notifications.
+
+        Alerts at 7 days, 3 days, and 0 days (harvest day) before estimated harvest.
+        """
+        from datetime import datetime, timezone, timedelta
+        from app.database import async_session_factory
+        from app.grows.models import Bucket, GrowCycle
+        from app.automation.models import AlertHistory
+        from app.notifications.service import dispatch_alert
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+
+        try:
+            async with async_session_factory() as session:
+                result = await session.execute(
+                    select(GrowCycle)
+                    .options(selectinload(GrowCycle.buckets).selectinload(Bucket.strain))
+                    .where(GrowCycle.status == "active")
+                )
+                grows = result.scalars().all()
+                now = datetime.now(timezone.utc)
+
+                for grow in grows:
+                    milestones = grow.milestones or {}
+                    flowering_start_str = milestones.get("flowering") or milestones.get("flower")
+                    if not flowering_start_str:
+                        continue
+
+                    flowering_start = datetime.fromisoformat(flowering_start_str)
+                    if flowering_start.tzinfo is None:
+                        flowering_start = flowering_start.replace(tzinfo=timezone.utc)
+
+                    for bucket in grow.buckets:
+                        if bucket.status != "active":
+                            continue
+                        strain = bucket.strain
+                        if not strain or not strain.flowering_days:
+                            continue
+
+                        estimated_harvest = flowering_start + timedelta(days=strain.flowering_days)
+                        days_remaining = (estimated_harvest - now).days
+
+                        # Alert thresholds
+                        for threshold in (7, 3, 0):
+                            if days_remaining > threshold or days_remaining < threshold - 1:
+                                continue
+
+                            alert_type = f"harvest_{threshold}d_{bucket.id}"
+                            # Check cooldown (24h per alert type)
+                            cutoff = now - timedelta(hours=24)
+                            existing = (await session.execute(
+                                select(AlertHistory).where(
+                                    AlertHistory.tenant_id == grow.tenant_id,
+                                    AlertHistory.alert_type == alert_type,
+                                    AlertHistory.created_at > cutoff,
+                                )
+                            )).scalar_one_or_none()
+                            if existing:
+                                continue
+
+                            if threshold == 0:
+                                severity = "critical"
+                                title = "Harvest Day!"
+                                msg = (
+                                    f"🌿 {strain.name} in '{grow.name}' "
+                                    f"(bucket {bucket.label or bucket.position}) has reached its "
+                                    f"estimated harvest window ({strain.flowering_days} flowering days)."
+                                )
+                            elif threshold == 3:
+                                severity = "warning"
+                                title = "Harvest in 3 Days"
+                                msg = (
+                                    f"🌿 {strain.name} in '{grow.name}' "
+                                    f"(bucket {bucket.label or bucket.position}) — estimated harvest "
+                                    f"in ~{days_remaining} days. Begin final flush preparations."
+                                )
+                            else:
+                                severity = "info"
+                                title = "Harvest in 7 Days"
+                                msg = (
+                                    f"🌿 {strain.name} in '{grow.name}' "
+                                    f"(bucket {bucket.label or bucket.position}) — estimated harvest "
+                                    f"in ~{days_remaining} days. Consider starting flush soon."
+                                )
+
+                            alert = AlertHistory(
+                                tenant_id=grow.tenant_id,
+                                alert_type=alert_type,
+                                severity=severity,
+                                message=msg,
+                            )
+                            session.add(alert)
+                            await dispatch_alert(session, grow.tenant_id, severity, title, msg)
+                            logger.info("Harvest alert: %s for grow %s bucket %s (%dd)", title, grow.id, bucket.id, days_remaining)
+
+                await session.commit()
+                logger.debug("Harvest countdown check completed for %d grows", len(grows))
+        except Exception:
+            logger.exception("Harvest countdown check failed")

@@ -37,6 +37,22 @@ def _fmt_bucket_list(buckets: list[dict]) -> str:
         if b.get("volume_gallons"):
             desc += f", {b['volume_gallons']} gal"
         desc += f", stage: {b.get('growth_stage', '?')}, status: {b.get('status', '?')}"
+        # Include strain profile if available
+        sp = b.get("strain_profile")
+        if sp:
+            if sp.get("genetics"):
+                desc += f"\n    Genetics: {sp['genetics']}"
+            if sp.get("flowering_days"):
+                desc += f"\n    Flowering days: {sp['flowering_days']}"
+            if sp.get("thc_pct"):
+                desc += f"\n    THC: {sp['thc_pct']}%"
+            if sp.get("cbd_pct"):
+                desc += f"\n    CBD: {sp['cbd_pct']}%"
+            if sp.get("terpene_profile"):
+                terps = ", ".join(f"{k}: {v}" for k, v in sp["terpene_profile"].items())
+                desc += f"\n    Terpenes: {terps}"
+            if sp.get("notes"):
+                desc += f"\n    Strain notes: {sp['notes']}"
         parts.append(desc)
     return "\n".join(parts)
 
@@ -194,6 +210,13 @@ def build_chat_context(
         "\nYou can update the user's grow, buckets, feeding schedules, tent, and journal entries using the available tools.",
         "Respond concisely and practically. Focus on actionable advice.",
         "Use the grow-type terminology the user would expect.",
+        "\n=== Strain-Aware Guidelines ===",
+        "When strain profile data is available for a bucket:",
+        "- Use flowering_days to estimate harvest window and adjust late-flower advice.",
+        "- Reference terpene profiles for environment tuning (e.g., lower temps in final weeks to preserve myrcene/linalool).",
+        "- Adjust pH/EC recommendations based on indica vs sativa genetics.",
+        "- Note strain-specific characteristics (e.g., purple coloring on certain genetics is NORMAL, not deficiency).",
+        "- Factor in THC/CBD ratios when advising on harvest timing (amber trichomes for higher CBD, clear for higher THC).",
     ])
 
     return "\n".join(parts)
@@ -240,6 +263,12 @@ def build_health_check_prompt(
         "Perform the MOST thorough health evaluation possible. "
         "Analyze ALL provided data — observations, sensor readings, sensor trends, "
         "feeding schedules, journal history, and the camera image.\n\n"
+        "When strain profile data is available:\n"
+        "- Consider strain genetics (indica/sativa/hybrid) when evaluating symptoms.\n"
+        "- Purple coloring may be NORMAL for certain genetics — check before flagging as deficiency.\n"
+        "- Use flowering_days to assess whether the plant is on track for its expected timeline.\n"
+        "- Factor terpene profiles into environment recommendations (temp/humidity adjustments).\n"
+        "- Adjust pH/EC targets based on strain sensitivity.\n\n"
         "Your report must cover:\n"
         "1. **Overall Health Score** (0-100): Factor in ALL data. "
         "Weight sensor readings, visual assessment, trends, and stage-appropriate expectations.\n"

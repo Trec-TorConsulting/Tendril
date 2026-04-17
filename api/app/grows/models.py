@@ -73,6 +73,7 @@ class Bucket(Base):
     position: Mapped[int] = mapped_column(Integer, default=1)
     label: Mapped[str | None] = mapped_column(String(255))
     strain_name: Mapped[str | None] = mapped_column(String(255))
+    strain_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("strains.id", ondelete="SET NULL"), nullable=True)
     growth_stage: Mapped[str] = mapped_column(String(50), default="seedling")
     status: Mapped[str] = mapped_column(String(50), default="active")  # active | harvested | removed
     volume_gallons: Mapped[float | None] = mapped_column(Float)
@@ -81,6 +82,7 @@ class Bucket(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     grow_cycle: Mapped[GrowCycle] = relationship(back_populates="buckets")
+    strain: Mapped["Strain | None"] = relationship(lazy="joined")
     sensor_readings: Mapped[list[BucketSensorReading]] = relationship(back_populates="bucket", cascade="all, delete-orphan")
     journal_entries: Mapped[list[JournalEntry]] = relationship(back_populates="bucket", cascade="all, delete-orphan")
     photos: Mapped[list[BucketPhoto]] = relationship(back_populates="bucket", cascade="all, delete-orphan")
@@ -195,7 +197,7 @@ class Strain(Base):
     __tablename__ = "strains"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     breeder: Mapped[str | None] = mapped_column(String(255))
     genetics: Mapped[str | None] = mapped_column(String(255))  # e.g., "indica/sativa hybrid"

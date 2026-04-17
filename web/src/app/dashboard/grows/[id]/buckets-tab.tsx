@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
 import {
   createBucket,
   deleteBucket,
   updateBucket,
+  listStrains,
   type BucketResponse,
   type SensorReadingResponse,
+  type StrainResponse,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,7 +24,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Plus, Trash2, Droplets, Pencil, Loader2 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Plus, Trash2, Droplets, Pencil, Loader2, Dna } from "lucide-react";
 
 interface BucketsTabProps {
   growId: string;
@@ -34,13 +43,22 @@ interface BucketsTabProps {
 
 export function BucketsTab({ growId, buckets, latestReadings, onRefresh, onOpenSensorDialog }: BucketsTabProps) {
   const [addLabel, setAddLabel] = useState("");
-  const [addStrain, setAddStrain] = useState("");
+  const [addStrainId, setAddStrainId] = useState("");
   const [addVolume, setAddVolume] = useState("");
+  const [strains, setStrains] = useState<StrainResponse[]>([]);
 
   const [editDialog, setEditDialog] = useState(false);
   const [editId, setEditId] = useState("");
-  const [editForm, setEditForm] = useState({ label: "", strain_name: "", volume_gallons: "" });
+  const [editForm, setEditForm] = useState({ label: "", strain_id: "", volume_gallons: "" });
   const [editSaving, setEditSaving] = useState(false);
+
+  useEffect(() => {
+    const token = getAccessToken();
+    if (!token) return;
+    listStrains(token).then(setStrains).catch(() => {});
+  }, []);
+
+  const strainMap = Object.fromEntries(strains.map((s) => [s.id, s]));
 
   const handleAdd = async () => {
     const token = getAccessToken();
@@ -48,12 +66,12 @@ export function BucketsTab({ growId, buckets, latestReadings, onRefresh, onOpenS
     await createBucket(token, {
       grow_cycle_id: growId,
       label: addLabel || undefined,
-      strain_name: addStrain || undefined,
+      strain_id: addStrainId || undefined,
       volume_gallons: addVolume ? parseFloat(addVolume) : undefined,
       position: buckets.length + 1,
     });
     setAddLabel("");
-    setAddStrain("");
+    setAddStrainId("");
     setAddVolume("");
     onRefresh();
   };
@@ -73,7 +91,7 @@ export function BucketsTab({ growId, buckets, latestReadings, onRefresh, onOpenS
     try {
       await updateBucket(token, editId, {
         label: editForm.label || undefined,
-        strain_name: editForm.strain_name || undefined,
+        strain_id: editForm.strain_id || undefined,
         volume_gallons: editForm.volume_gallons ? parseFloat(editForm.volume_gallons) : undefined,
       });
       setEditDialog(false);
@@ -86,6 +104,7 @@ export function BucketsTab({ growId, buckets, latestReadings, onRefresh, onOpenS
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {buckets.map((b) => {
           const reading = latestReadings[b.id];
+          const strain = b.strain_id ? strainMap[b.strain_id] : null;
           return (
             <Card key={b.id}>
               <CardContent className="p-4">
@@ -93,8 +112,15 @@ export function BucketsTab({ growId, buckets, latestReadings, onRefresh, onOpenS
                   <span className="font-medium">#{b.position} {b.label || "Unnamed"}</span>
                   <Badge variant="outline" className="text-xs">{b.growth_stage}</Badge>
                 </div>
-                {b.strain_name && (
-                  <p className="text-sm text-muted-foreground">Strain: {b.strain_name}</p>
+                {(b.strain_name || strain) && (
+                  <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                    <Dna className="size-3" />
+                    <span>{strain?.name || b.strain_name}</span>
+                    {strain?.genetics && <span className="text-xs opacity-70">({strain.genetics})</span>}
+                  </div>
+                )}
+                {strain?.flowering_days && (
+                  <p className="text-xs text-muted-foreground">{strain.flowering_days}d flower</p>
                 )}
                 <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                   <span>{b.volume_gallons ? `${b.volume_gallons} gal` : "No size set"}</span>
@@ -113,7 +139,7 @@ export function BucketsTab({ growId, buckets, latestReadings, onRefresh, onOpenS
                 <div className="mt-3 flex items-center gap-2">
                   <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => {
                     setEditId(b.id);
-                    setEditForm({ label: b.label || "", strain_name: b.strain_name || "", volume_gallons: b.volume_gallons?.toString() || "" });
+                    setEditForm({ label: b.label || "", strain_id: b.strain_id || "", volume_gallons: b.volume_gallons?.toString() || "" });
                     setEditDialog(true);
                   }}>
                     <Pencil className="mr-1 size-3" /> Edit
@@ -135,7 +161,18 @@ export function BucketsTab({ growId, buckets, latestReadings, onRefresh, onOpenS
           <CardContent className="p-4">
             <p className="mb-2 text-sm font-medium text-muted-foreground">Add bucket/plant</p>
             <Input className="mb-2" placeholder="Label (optional)" value={addLabel} onChange={(e) => setAddLabel(e.target.value)} />
-            <Input className="mb-2" placeholder="Strain (optional)" value={addStrain} onChange={(e) => setAddStrain(e.target.value)} />
+            <Select value={addStrainId} onValueChange={(v) => setAddStrainId(v ?? "")}>
+              <SelectTrigger className="mb-2">
+                <SelectValue>{addStrainId ? strainMap[addStrainId]?.name ?? "Select strain" : "Select strain (optional)"}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {strains.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>
+                    {s.name}{s.genetics ? ` (${s.genetics})` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Input className="mb-2" type="number" step="0.5" placeholder="Bucket size (gallons)" value={addVolume} onChange={(e) => setAddVolume(e.target.value)} />
             <Button size="sm" onClick={handleAdd}>
               <Plus className="mr-1 size-3" /> Add
@@ -158,7 +195,18 @@ export function BucketsTab({ growId, buckets, latestReadings, onRefresh, onOpenS
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Strain</Label>
-              <Input placeholder="e.g. Blue Dream" value={editForm.strain_name} onChange={(e) => setEditForm((p) => ({ ...p, strain_name: e.target.value }))} />
+              <Select value={editForm.strain_id} onValueChange={(v) => setEditForm((p) => ({ ...p, strain_id: v ?? "" }))}>
+                <SelectTrigger>
+                  <SelectValue>{editForm.strain_id ? strainMap[editForm.strain_id]?.name ?? "Select strain" : "Select strain"}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {strains.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}{s.genetics ? ` (${s.genetics})` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Bucket Size (gallons)</Label>
