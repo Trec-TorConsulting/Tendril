@@ -241,6 +241,55 @@ async def gather_grow_data(
             }
     data["weather"] = weather
 
+    # ── Pending tasks ────────────────────────────────────────────
+    from app.commercial.models import Task
+    pending_tasks = (
+        await session.execute(
+            select(Task)
+            .where(
+                Task.grow_cycle_id == grow.id,
+                Task.status.in_(["pending", "in_progress"]),
+            )
+            .order_by(Task.due_date.asc().nullslast())
+            .limit(20)
+        )
+    ).scalars().all()
+    data["pending_tasks"] = [
+        {
+            "title": t.title,
+            "category": t.category,
+            "priority": t.priority,
+            "source": t.source,
+            "due_date": t.due_date.isoformat() if t.due_date else None,
+            "status": t.status,
+        }
+        for t in pending_tasks
+    ]
+
+    # Recently completed tasks (last 7 days)
+    from datetime import timedelta as _td
+    recent_cutoff = datetime.now(timezone.utc) - _td(days=7)
+    completed_tasks = (
+        await session.execute(
+            select(Task)
+            .where(
+                Task.grow_cycle_id == grow.id,
+                Task.status == "completed",
+                Task.completed_at >= recent_cutoff,
+            )
+            .order_by(Task.completed_at.desc())
+            .limit(10)
+        )
+    ).scalars().all()
+    data["completed_tasks"] = [
+        {
+            "title": t.title,
+            "category": t.category,
+            "completed_at": t.completed_at.isoformat() if t.completed_at else None,
+        }
+        for t in completed_tasks
+    ]
+
     # ── Camera image ─────────────────────────────────────────────
     camera_image = None
     if include_camera and tent and tent.camera_url:

@@ -933,25 +933,53 @@ export function submitGrowTypeForReview(id: string, token: string) {
   return apiFetch(`/custom-grow-types/${id}/submit`, { method: "POST", token });
 }
 
-// Tasks (Commercial)
-export function listTasks(token: string, filters?: { status?: string; assigned_to?: string }) {
+// Tasks
+export interface TaskItem {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  category: string | null;
+  source: string;
+  assigned_to: string | null;
+  created_by: string;
+  grow_cycle_id: string | null;
+  tent_id: string | null;
+  bucket_id: string | null;
+  due_date: string | null;
+  completed_at: string | null;
+  recurring: string | null;
+  created_at: string;
+}
+
+export function listTasks(token: string, filters?: { status?: string; assigned_to?: string; category?: string; grow_cycle_id?: string; due_from?: string; due_to?: string }) {
   const params = new URLSearchParams();
   if (filters?.status) params.set("status", filters.status);
   if (filters?.assigned_to) params.set("assigned_to", filters.assigned_to);
+  if (filters?.category) params.set("category", filters.category);
+  if (filters?.grow_cycle_id) params.set("grow_cycle_id", filters.grow_cycle_id);
+  if (filters?.due_from) params.set("due_from", filters.due_from);
+  if (filters?.due_to) params.set("due_to", filters.due_to);
   const qs = params.toString();
-  return apiFetch<Array<{ id: string; title: string; description: string | null; status: string; priority: string; assigned_to: string | null; created_by: string; due_date: string | null; completed_at: string | null; recurring: string | null; created_at: string }>>(`/tasks${qs ? `?${qs}` : ""}`, { token });
+  return apiFetch<TaskItem[]>(`/tasks${qs ? `?${qs}` : ""}`, { token });
 }
-export function createTask(data: { title: string; description?: string; priority?: string; assigned_to?: string; due_date?: string; recurring?: string; grow_cycle_id?: string; tent_id?: string }, token: string) {
-  return apiFetch("/tasks", { method: "POST", body: JSON.stringify(data), token });
+
+export function getCalendarTasks(token: string, start: string, end: string) {
+  return apiFetch<TaskItem[]>(`/tasks/calendar?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`, { token });
+}
+
+export function createTask(data: { title: string; description?: string; priority?: string; category?: string; assigned_to?: string; due_date?: string; recurring?: string; grow_cycle_id?: string; tent_id?: string; bucket_id?: string }, token: string) {
+  return apiFetch<TaskItem>("/tasks", { method: "POST", body: JSON.stringify(data), token });
 }
 export function updateTask(id: string, data: Record<string, unknown>, token: string) {
-  return apiFetch(`/tasks/${id}`, { method: "PATCH", body: JSON.stringify(data), token });
+  return apiFetch<TaskItem>(`/tasks/${id}`, { method: "PATCH", body: JSON.stringify(data), token });
 }
 export function completeTask(id: string, token: string) {
-  return apiFetch(`/tasks/${id}/complete`, { method: "POST", token });
+  return apiFetch<TaskItem>(`/tasks/${id}/complete`, { method: "POST", token });
 }
 export function deleteTask(id: string, token: string) {
-  return apiFetch(`/tasks/${id}`, { method: "DELETE", token });
+  return apiFetch<void>(`/tasks/${id}`, { method: "DELETE", token });
 }
 
 // Audit Trail (Commercial)

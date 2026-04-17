@@ -44,7 +44,7 @@ class CustomGrowType(Base):
 # ---------- Task Management (6.4) ----------
 
 class Task(Base):
-    """Team task management (Commercial only)."""
+    """Task management — manual or auto-generated grow tasks."""
     __tablename__ = "tasks"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -53,10 +53,13 @@ class Task(Base):
     description: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(50), default="pending")  # pending, in_progress, completed, cancelled
     priority: Mapped[str] = mapped_column(String(20), default="medium")  # low, medium, high, urgent
+    category: Mapped[str | None] = mapped_column(String(100))  # water_change, ph_check, ec_check, feeding, defoliation, pest_check, trichome_check, flush, etc.
+    source: Mapped[str] = mapped_column(String(50), default="manual")  # manual, auto, ai
     assigned_to: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     grow_cycle_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("grow_cycles.id"))
     tent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("tents.id"))
+    bucket_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("buckets.id", ondelete="SET NULL"))
     due_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     recurring: Mapped[str | None] = mapped_column(String(50))  # daily, weekly, biweekly, monthly, or null

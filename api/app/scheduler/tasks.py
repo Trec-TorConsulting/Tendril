@@ -16,6 +16,7 @@ RULE_EVAL_INTERVAL = 30              # 30 seconds
 RETENTION_INTERVAL = 24 * 3600       # Daily
 DAILY_REPORT_INTERVAL = 24 * 3600    # Daily
 HARVEST_CHECK_INTERVAL = 4 * 3600    # 4 hours
+TASK_GENERATION_INTERVAL = 6 * 3600  # 6 hours
 
 
 class TaskRunner:
@@ -32,6 +33,7 @@ class TaskRunner:
             asyncio.create_task(self._loop(shutdown_event, "retention", RETENTION_INTERVAL, self._data_retention)),
             asyncio.create_task(self._loop(shutdown_event, "daily_report", DAILY_REPORT_INTERVAL, self._daily_report)),
             asyncio.create_task(self._loop(shutdown_event, "harvest_check", HARVEST_CHECK_INTERVAL, self._harvest_countdown_check)),
+            asyncio.create_task(self._loop(shutdown_event, "task_generation", TASK_GENERATION_INTERVAL, self._generate_tasks)),
         ]
         await shutdown_event.wait()
         for t in tasks:
@@ -428,3 +430,18 @@ class TaskRunner:
                 logger.debug("Harvest countdown check completed for %d grows", len(grows))
         except Exception:
             logger.exception("Harvest countdown check failed")
+
+    async def _generate_tasks(self) -> None:
+        """Auto-generate grow tasks based on grow type, stage, and strain data."""
+        from app.database import async_session_factory
+        from app.scheduler.task_generator import generate_all_tasks
+
+        try:
+            async with async_session_factory() as session:
+                count = await generate_all_tasks(session)
+                if count:
+                    logger.info("Auto-generated %d tasks", count)
+                else:
+                    logger.debug("Task generation: no new tasks needed")
+        except Exception:
+            logger.exception("Task generation failed")

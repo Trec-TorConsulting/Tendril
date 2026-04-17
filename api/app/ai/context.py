@@ -206,6 +206,27 @@ def build_chat_context(
         m_lines = "\n".join(f"  {k}: {v}" for k, v in milestones.items() if v)
         parts.append(f"\n=== Milestones ===\n{m_lines}")
 
+    # Pending tasks
+    pending_tasks = grow_data.get("pending_tasks") or []
+    if pending_tasks:
+        task_lines = []
+        for t in pending_tasks:
+            line = f"  [{t.get('priority', 'medium')}] {t['title']}"
+            if t.get("due_date"):
+                line += f" (due: {t['due_date'][:10]})"
+            if t.get("category"):
+                line += f" [{t['category']}]"
+            if t.get("source") == "auto":
+                line += " [auto]"
+            task_lines.append(line)
+        parts.append("\n=== Pending Tasks ===\n" + "\n".join(task_lines))
+
+    # Recently completed tasks
+    completed_tasks = grow_data.get("completed_tasks") or []
+    if completed_tasks:
+        done_lines = [f"  ✓ {t['title']} ({t.get('completed_at', '?')[:10]})" for t in completed_tasks]
+        parts.append("\n=== Recently Completed Tasks (7d) ===\n" + "\n".join(done_lines))
+
     parts.extend([
         "\nYou can update the user's grow, buckets, feeding schedules, tent, and journal entries using the available tools.",
         "Respond concisely and practically. Focus on actionable advice.",
@@ -348,6 +369,17 @@ def build_health_check_prompt(
     if milestones:
         m_lines = "\n".join(f"  {k}: {v}" for k, v in milestones.items() if v)
         sections.append(f"=== Milestones ===\n{m_lines}")
+
+    # Tasks context
+    pending = grow_data.get("pending_tasks") or []
+    if pending:
+        task_lines = [f"  [{t.get('priority')}] {t['title']}" + (f" (due: {t['due_date'][:10]})" if t.get("due_date") else "") for t in pending[:10]]
+        sections.append("=== Pending Tasks ===\n" + "\n".join(task_lines))
+
+    completed = grow_data.get("completed_tasks") or []
+    if completed:
+        done_lines = [f"  ✓ {t['title']} ({t.get('completed_at', '?')[:10]})" for t in completed[:5]]
+        sections.append("=== Recently Completed Tasks ===\n" + "\n".join(done_lines))
 
     # Previous eval (full, not truncated)
     prev = grow_data.get("previous_eval")

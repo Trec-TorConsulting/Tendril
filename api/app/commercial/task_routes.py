@@ -1,4 +1,4 @@
-"""Task management API — create, assign, complete, recurring (Commercial only)."""
+"""Task management API — create, assign, complete, recurring, calendar."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -16,32 +16,30 @@ from app.commercial.models import Task
 router = APIRouter()
 
 
-async def _require_commercial(user: CurrentUser, session: AsyncSession) -> None:
-    from app.tenants.models import Tenant
-    tenant = await session.get(Tenant, user.tenant_id)
-    if not tenant or tenant.plan != "commercial":
-        raise HTTPException(status_code=403, detail="Task management requires Commercial plan")
-
-
 # ---------- Schemas ----------
 
 class TaskCreate(BaseModel):
     title: str
     description: str | None = None
     priority: str = "medium"
+    category: str | None = None
     assigned_to: str | None = None
     grow_cycle_id: str | None = None
     tent_id: str | None = None
+    bucket_id: str | None = None
     due_date: str | None = None  # ISO datetime
     recurring: str | None = None  # daily, weekly, biweekly, monthly
+
 
 class TaskUpdate(BaseModel):
     title: str | None = None
     description: str | None = None
     status: str | None = None
     priority: str | None = None
+    category: str | None = None
     assigned_to: str | None = None
     due_date: str | None = None
+
 
 class TaskResponse(BaseModel):
     id: str
@@ -49,10 +47,13 @@ class TaskResponse(BaseModel):
     description: str | None
     status: str
     priority: str
+    category: str | None
+    source: str
     assigned_to: str | None
     created_by: str
     grow_cycle_id: str | None
     tent_id: str | None
+    bucket_id: str | None
     due_date: str | None
     completed_at: str | None
     recurring: str | None
@@ -61,12 +62,18 @@ class TaskResponse(BaseModel):
 
 def _to_response(t: Task) -> TaskResponse:
     return TaskResponse(
-        id=str(t.id), title=t.title, description=t.description,
-        status=t.status, priority=t.priority,
+        id=str(t.id),
+        title=t.title,
+        description=t.description,
+        status=t.status,
+        priority=t.priority,
+        category=t.category,
+        source=t.source,
         assigned_to=str(t.assigned_to) if t.assigned_to else None,
         created_by=str(t.created_by),
         grow_cycle_id=str(t.grow_cycle_id) if t.grow_cycle_id else None,
         tent_id=str(t.tent_id) if t.tent_id else None,
+        bucket_id=str(t.bucket_id) if t.bucket_id else None,
         due_date=t.due_date.isoformat() if t.due_date else None,
         completed_at=t.completed_at.isoformat() if t.completed_at else None,
         recurring=t.recurring,
@@ -82,17 +89,18 @@ async def create_task(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
-    await _require_commercial(user, session)
-
     task = Task(
         tenant_id=user.tenant_id,
         title=body.title,
         description=body.description,
         priority=body.priority,
+        category=body.category,
+        source="manual",
         assigned_to=UUID(body.assigned_to) if body.assigned_to else None,
         created_by=user.user_id,
         grow_cycle_id=UUID(body.grow_cycle_id) if body.grow_cycle_id else None,
         tent_id=UUID(body.tent_id) if body.tent_id else None,
+        bucket_id=UUID(body.bucket_id) if body.bucket_id else None,
         due_date=datetime.fromisoformat(body.due_date) if body.due_date else None,
         recurring=body.recurring,
     )
@@ -107,16 +115,51 @@ async def list_tasks(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
     status: str | None = Query(None),
+    category: str | None = Query(None),
+    grow_cycle_id: str | None = Query(None),
     assigned_to: str | None = Query(None),
+    due_from: str | None = Query(None),
+    due_to: str | None = Query(None),
 ):
-    query = select(Task).where(Task.tenant_id == user.tenant_id)
+    query = select(Task)
     if status:
         query = query.where(Task.status == status)
+    if category:
+        query = query.where(Task.category == category)
+    if grow_cycle_id:
+        query = query.where(Task.grow_cycle_id == UUID(grow_cycle_id))
     if assigned_to:
         query = query.where(Task.assigned_to == UUID(assigned_to))
-    query = query.order_by(Task.created_at.desc())
+    if due_from:
+        query = query.where(Task.due_date >= datetime.fromisoformat(due_from))
+    if due_to:
+        query = query.where(Task.due_date <= datetime.fromisoformat(due_to))
+    query = query.order_by(Task.due_date.asc().nullslast(), Task.created_at.desc())
 
     result = await session.execute(query)
+    return [_to_response(t) for t in result.scalars().all()]
+
+
+@router.get("/calendar")
+async def calendar_tasks(
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    start: str = Query(..., description="ISO start date"),
+    end: str = Query(..., description="ISO end date"),
+):
+    """Get tasks for calendar view within a date range."""
+    start_dt = datetime.fromisoformat(start)
+    end_dt = datetime.fromisoformat(end)
+    if start_dt.tzinfo is None:
+        start_dt = start_dt.replace(tzinfo=timezone.utc)
+    if end_dt.tzinfo is None:
+        end_dt = end_dt.replace(tzinfo=timezone.utc)
+
+    result = await session.execute(
+        select(Task)
+        .where(Task.due_date >= start_dt, Task.due_date <= end_dt)
+        .order_by(Task.due_date.asc())
+    )
     return [_to_response(t) for t in result.scalars().all()]
 
 
@@ -127,7 +170,7 @@ async def get_task(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     task = await session.get(Task, UUID(task_id))
-    if not task or task.tenant_id != user.tenant_id:
+    if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     return _to_response(task)
 
@@ -140,7 +183,7 @@ async def update_task(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     task = await session.get(Task, UUID(task_id))
-    if not task or task.tenant_id != user.tenant_id:
+    if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
     if body.title is not None:
@@ -149,6 +192,8 @@ async def update_task(
         task.description = body.description
     if body.priority is not None:
         task.priority = body.priority
+    if body.category is not None:
+        task.category = body.category
     if body.assigned_to is not None:
         task.assigned_to = UUID(body.assigned_to)
     if body.due_date is not None:
@@ -170,7 +215,7 @@ async def delete_task(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     task = await session.get(Task, UUID(task_id))
-    if not task or task.tenant_id != user.tenant_id:
+    if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     await session.delete(task)
     await session.commit()
@@ -184,7 +229,7 @@ async def complete_task(
 ):
     """Mark a task as completed. Creates next recurring instance if applicable."""
     task = await session.get(Task, UUID(task_id))
-    if not task or task.tenant_id != user.tenant_id:
+    if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
     task.status = "completed"
@@ -206,10 +251,13 @@ async def complete_task(
                 title=task.title,
                 description=task.description,
                 priority=task.priority,
+                category=task.category,
+                source=task.source,
                 assigned_to=task.assigned_to,
                 created_by=task.created_by,
                 grow_cycle_id=task.grow_cycle_id,
                 tent_id=task.tent_id,
+                bucket_id=task.bucket_id,
                 due_date=task.due_date + delta,
                 recurring=task.recurring,
                 recurring_parent_id=task.id,
