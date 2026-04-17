@@ -66,16 +66,20 @@ async def _task_exists(
     grow_cycle_id: UUID,
     due_date: datetime,
 ) -> bool:
-    """Check if a pending/in_progress auto-task already exists for this category+grow+date."""
+    """Check if an auto-task already exists for this category+grow+date.
+
+    Checks ALL statuses (pending, in_progress, completed) so completed tasks
+    are not re-created by the next scheduler run.
+    """
+    day_start = due_date.replace(hour=0, minute=0, second=0)
     result = await session.execute(
         select(Task.id).where(
             Task.tenant_id == tenant_id,
             Task.category == category,
             Task.grow_cycle_id == grow_cycle_id,
             Task.source == "auto",
-            Task.status.in_(["pending", "in_progress"]),
-            Task.due_date >= due_date.replace(hour=0, minute=0, second=0),
-            Task.due_date < due_date.replace(hour=0, minute=0, second=0) + timedelta(days=1),
+            Task.due_date >= day_start,
+            Task.due_date < day_start + timedelta(days=1),
         ).limit(1)
     )
     return result.scalar_one_or_none() is not None
