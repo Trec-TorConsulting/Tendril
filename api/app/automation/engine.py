@@ -110,6 +110,22 @@ async def evaluate_rules(session: AsyncSession) -> list[AlertHistory]:
                 rule.last_triggered = now
                 triggered.append(alert)
 
+                # Create urgent task from automation alert
+                from app.scheduler.task_generator import create_task_from_alert
+                try:
+                    await create_task_from_alert(
+                        session,
+                        tenant_id=rule.tenant_id,
+                        grow_cycle_id=rule.grow_cycle_id,
+                        tent_id=None,
+                        severity=rule.severity,
+                        alert_type=f"{rule.sensor}_{rule.condition}",
+                        message=f"Rule '{rule.name}': {rule.sensor} is {value} ({rule.condition} {rule.threshold})",
+                        sensor_value=value,
+                    )
+                except Exception:
+                    logger.exception("Failed to create task from rule alert")
+
     if triggered:
         await session.commit()
         logger.info("Triggered %d automation alerts", len(triggered))

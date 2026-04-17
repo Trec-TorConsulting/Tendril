@@ -128,6 +128,15 @@ async def update_grow(
             .values(growth_stage=updates["stage"])
         )
     await session.commit()
+
+    # Create stage transition tasks when stage changes
+    if "stage" in updates:
+        try:
+            from app.scheduler.task_generator import create_stage_transition_tasks
+            await create_stage_transition_tasks(session, grow, updates["stage"])
+        except Exception:
+            pass  # Don't fail the API call if task creation fails
+
     await session.refresh(grow)
     return grow
 

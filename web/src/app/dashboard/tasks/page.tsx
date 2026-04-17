@@ -80,6 +80,10 @@ const CATEGORY_LABELS: Record<string, string> = {
   calmag: "CalMag",
   top_dress: "Top Dress",
   feeding: "Feeding",
+  health_response: "Health Check Action",
+  alert_response: "Alert Response",
+  stage_transition: "Stage Prep",
+  followup: "Follow-up",
 };
 
 function getCategoryLabel(cat: string | null) {
@@ -565,7 +569,7 @@ function TaskCard({
           {task.description && (
             <p className={cn(
               "text-sm text-muted-foreground whitespace-pre-line",
-              task.category === "flush_and_fill" ? "line-clamp-6" : "line-clamp-1",
+              task.category === "flush_and_fill" || task.category === "health_response" || task.category === "alert_response" ? "line-clamp-6" : "line-clamp-1",
             )}>{task.description}</p>
           )}
           <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">

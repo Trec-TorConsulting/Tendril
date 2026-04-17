@@ -146,6 +146,18 @@ class TaskRunner:
                         session.add(health_eval)
                         await session.commit()
 
+                        # ── Create tasks from health eval actions ──
+                        if actions:
+                            from app.scheduler.task_generator import create_tasks_from_health_eval
+                            try:
+                                task_count = await create_tasks_from_health_eval(
+                                    session, grow, score, issues, actions,
+                                )
+                                if task_count:
+                                    logger.info("Created %d tasks from health eval for grow %s", task_count, grow.id)
+                            except Exception:
+                                logger.exception("Failed to create tasks from health eval for grow %s", grow.id)
+
                         logger.info("Scheduled health check for grow %s: score=%s", grow.id, score)
                     except GeminiRateLimitError:
                         logger.warning("Gemini rate limit during scheduled check for grow %s — stopping batch", grow.id)
@@ -253,6 +265,27 @@ class TaskRunner:
                                 sensor_value=value,
                             )
                             session.add(alert)
+
+                            # Create urgent task from weather alert
+                            from app.scheduler.task_generator import create_task_from_alert
+                            # Find active grow for this tent
+                            from app.grows.models import GrowCycle as GC
+                            active_grow = (await session.execute(
+                                select(GC).where(GC.tent_id == tent.id, GC.status == "active").limit(1)
+                            )).scalar_one_or_none()
+                            try:
+                                await create_task_from_alert(
+                                    session,
+                                    tenant_id=tent.tenant_id,
+                                    grow_cycle_id=active_grow.id if active_grow else None,
+                                    tent_id=tent.id,
+                                    severity=rule["severity"],
+                                    alert_type=f"weather_{rule['type']}",
+                                    message=rule["message"],
+                                    sensor_value=value,
+                                )
+                            except Exception:
+                                logger.exception("Failed to create task from weather alert")
 
                             # Dispatch notification
                             from app.notifications.service import dispatch_alert

@@ -48,6 +48,26 @@ async def create_entry(
     session.add(entry)
     await session.commit()
     await session.refresh(entry)
+
+    # Create follow-up tasks based on event type
+    if body.event_type in ("feeding", "water_change", "training", "topping", "defoliation", "transplant"):
+        try:
+            from app.grows.models import Bucket
+            bucket = await session.get(Bucket, body.bucket_id)
+            grow_cycle_id = bucket.grow_cycle_id if bucket else None
+            from app.scheduler.task_generator import create_journal_followup_tasks
+            await create_journal_followup_tasks(
+                session,
+                tenant_id=user.tenant_id,
+                grow_cycle_id=grow_cycle_id,
+                bucket_id=body.bucket_id,
+                event_type=body.event_type,
+                content=body.content,
+                payload=body.payload,
+            )
+        except Exception:
+            pass  # Don't fail the journal creation
+
     return entry
 
 

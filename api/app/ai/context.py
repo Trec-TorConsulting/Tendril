@@ -231,6 +231,18 @@ def build_chat_context(
         "\nYou can update the user's grow, buckets, feeding schedules, tent, and journal entries using the available tools.",
         "Respond concisely and practically. Focus on actionable advice.",
         "Use the grow-type terminology the user would expect.",
+
+        "\n=== CORE PHILOSOPHY: Quality Over Quantity ===",
+        "The grower's #1 priority is producing the BEST buds, not the biggest.",
+        "Always optimize recommendations for quality:",
+        "- Terpene preservation > maximum yield (suggest lower temps in late flower to preserve myrcene/linalool).",
+        "- Proper flush timing > extended feeding (clean, smooth smoke matters more than extra grams).",
+        "- Trichome maturity > speed (guide toward the right amber ratio, don't rush harvest).",
+        "- Stress reduction > aggressive training (healthy plants produce better resin).",
+        "- Optimal harvest windows > early chops (patience = potency).",
+        "- Dial environment for resin production: VPD, light spectrum, day/night temp swings.",
+        "- When in doubt, err on the side of plant health and bud quality.",
+
         "\n=== Strain-Aware Guidelines ===",
         "When strain profile data is available for a bucket:",
         "- Use flowering_days to estimate harvest window and adjust late-flower advice.",
@@ -268,6 +280,10 @@ def build_health_check_prompt(
         f"The plant is in the {stage} stage. "
         f"Optimal pH range: {ph_range.get('min', '?')}-{ph_range.get('max', '?')}. "
         f"Common problems for this grow type: {common}.\n\n"
+        "CORE PHILOSOPHY: Quality over quantity. The grower wants the BEST buds, not the biggest. "
+        "All recommendations should prioritize terpene preservation, proper flush timing, "
+        "trichome maturity, stress reduction, and optimal harvest windows. "
+        "Dial environment for resin production — not maximum biomass.\n\n"
     )
 
     if has_camera:
@@ -295,9 +311,11 @@ def build_health_check_prompt(
         "Weight sensor readings, visual assessment, trends, and stage-appropriate expectations.\n"
         "2. **Issues Found**: List EVERY problem detected, from minor to critical. "
         "Be specific about what's wrong and why. Cite exact readings/observations.\n"
-        "3. **Recommended Actions**: Prioritized by urgency. "
-        "Include specific values (e.g., 'lower pH to 5.8', 'add 2ml/gal CalMag'). "
-        "Reference the user's current feeding schedule and dose profiles when recommending changes.\n\n"
+        "3. **Recommended Actions**: These become TASKS the grower will check off. "
+        "Each action must be a concrete, actionable step with specific values "
+        "(e.g., 'Lower pH to 5.8 — add 2ml pH Down per gallon', 'Drop room temp to 68°F to preserve terpenes'). "
+        "Reference the user's current feeding schedule and dose profiles when recommending changes. "
+        "Prioritize quality-focused actions: terpene preservation, proper flushing, trichome development.\n\n"
         "Be thorough and specific. Tie recommendations to the exact grow type, current stage, "
         "and the user's actual setup. If sensor trends show drift, flag it. "
         "If the previous health check noted issues, check whether they've been resolved.\n\n"
