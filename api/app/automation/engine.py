@@ -31,6 +31,7 @@ CRITICAL_ALERTS = {
     ],
     "dwc": [
         {"sensor": "dissolved_oxygen", "condition": "lt", "threshold": 4, "message": "DWC dissolved oxygen critically low — check air pump!", "severity": "critical"},
+        {"sensor": "water_temp_f", "condition": "gt", "threshold": 72, "message": "DWC water temp above 72°F — risk of root rot. Ensure Hydroguard (2 ml/gal) is dosed and air stones are running.", "severity": "warning"},
     ],
     "rdwc": [
         {"sensor": "flow_rate", "condition": "lt", "threshold": 0.1, "message": "RDWC circulation pump failure!", "severity": "critical"},

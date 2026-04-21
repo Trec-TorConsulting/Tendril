@@ -27,6 +27,33 @@ export interface NutrientBrand {
   feedChart: FeedChartPhase[];
 }
 
+/**
+ * Standalone additives that work alongside any nutrient brand.
+ * These are not full feed lines — they're dosed independently.
+ */
+export interface StandaloneAdditive {
+  id: string;
+  name: string;
+  brand: string;
+  description: string;
+  ml_per_gallon: number;
+  when: string;
+  growTypes: string[];
+}
+
+export const STANDALONE_ADDITIVES: StandaloneAdditive[] = [
+  {
+    id: "botanicare-hydroguard",
+    name: "Hydroguard",
+    brand: "Botanicare",
+    description:
+      "Beneficial bacteria (Bacillus amyloliquefaciens) that colonizes roots and outcompetes harmful pathogens like pythium. Essential for DWC when water temps exceed 68°F.",
+    ml_per_gallon: 2,
+    when: "Every reservoir change and top-off. Safe from seedling through harvest (not a nutrient — does not need to be flushed).",
+    growTypes: ["dwc", "rdwc", "nft", "ebb_flow", "aeroponics", "kratky"],
+  },
+];
+
 export const NUTRIENT_BRANDS: NutrientBrand[] = [
   {
     id: "gh-flora",

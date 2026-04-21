@@ -36,11 +36,11 @@ TASK_TEMPLATES: list[tuple[str, str, str, int, str, set[str] | None, set[str] | 
      "Measure EC/PPM in reservoir. Adjust nutrient concentration. DWC roots absorb 24/7 so drift is fast.", 1, "high", {"dwc"}, None),
     ("flush_and_fill", "Flush & Fill reservoir", None, 7, "high", {"dwc"}, None),
     ("water_temp", "Check water temperature",
-     "Verify reservoir temp is 65-72°F. DWC roots are submerged — warm water causes root rot and low dissolved oxygen.", 1, "medium", {"dwc"}, None),
+     "Verify reservoir temp is 65-72°F. DWC roots are submerged — warm water causes root rot and low dissolved oxygen. If temps are above 72°F, ensure Hydroguard (2 ml/gal) was added at last res change.", 1, "medium", {"dwc"}, None),
     ("top_off", "Top off reservoir with pH'd water",
-     "Add plain pH'd water to maintain reservoir level. EC rises as water evaporates — top off between changes.", 2, "medium", {"dwc"}, None),
+     "Add plain pH'd water to maintain reservoir level. EC rises as water evaporates — top off between changes. Add Hydroguard (2 ml/gal of new water added) to maintain beneficial bacteria.", 2, "medium", {"dwc"}, None),
     ("root_check", "Inspect root health",
-     "Check roots for white, healthy growth. Brown/slimy roots = root rot. Ensure air stones are bubbling vigorously.", 3, "high", {"dwc"}, None),
+     "Check roots for white, healthy growth. Brown/slimy roots = root rot. Ensure air stones are bubbling vigorously. Hydroguard helps prevent pythium — if roots are browning, verify dosage.", 3, "high", {"dwc"}, None),
 
     # ── RDWC-specific ────────────────────────────────────────────
     ("ph_check", "Check central reservoir pH",
@@ -259,6 +259,10 @@ async def _build_flush_fill_description(
     else:
         lines.append("\nNo feeding schedule found for this stage — mix nutrients per your usual recipe.")
 
+    lines.append("\n--- Additives ---")
+    lines.append("  • Hydroguard: 2 ml/gal")
+    if total_gallons:
+        lines.append(f"    → {2 * total_gallons:.1f} ml total (root rot prevention — especially important with warm water temps)")
     lines.append("\npH to 5.8-6.2 after mixing. Let solution aerate before adding to reservoir.")
     return "\n".join(lines)
 
