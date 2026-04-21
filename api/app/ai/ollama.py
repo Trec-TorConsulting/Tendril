@@ -51,6 +51,7 @@ async def chat_with_tools(
         "messages": messages,
         "tools": tools,
         "stream": False,
+        "options": {"num_ctx": 8192},
     }
 
     async with httpx.AsyncClient(timeout=120) as client:
@@ -79,6 +80,7 @@ async def chat_completion_stream(
         "model": model or settings.ollama_model,
         "messages": messages,
         "stream": True,
+        "options": {"num_ctx": 8192},
     }
 
     async with httpx.AsyncClient(timeout=120) as client:
@@ -121,6 +123,7 @@ async def vision_analysis(
         "model": model or settings.ollama_model,
         "messages": messages,
         "stream": False,
+        "options": {"num_ctx": 8192},
     }
 
     async with httpx.AsyncClient(timeout=120) as client:
