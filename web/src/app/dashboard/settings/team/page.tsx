@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
+import { useConfirm } from "@/components/confirm-dialog";
 import { formatDate } from "@/lib/utils";
 import {
   listTenantMembers,
@@ -45,6 +46,7 @@ import {
 import { Plus, Trash2, CheckCircle2, Clock, Loader2, Users } from "lucide-react";
 
 export default function TeamPage() {
+  const confirm = useConfirm();
   const [members, setMembers] = useState<TenantMember[]>([]);
   const [currentUserId, setCurrentUserId] = useState("");
   const [isOwner, setIsOwner] = useState(false);
@@ -115,7 +117,7 @@ export default function TeamPage() {
   };
 
   const handleRemove = async (memberId: string, email: string) => {
-    if (!confirm(`Remove ${email} from the team?`)) return;
+    if (!await confirm({ title: "Remove Member", description: `Remove ${email} from the team?`, confirmLabel: "Remove", variant: "destructive" })) return;
     const token = getAccessToken();
     if (!token) return;
     try {

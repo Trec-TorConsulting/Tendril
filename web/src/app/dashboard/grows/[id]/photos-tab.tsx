@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
+import { useConfirm } from "@/components/confirm-dialog";
 import { formatDate } from "@/lib/utils";
 import {
   listGrowPhotos,
@@ -136,8 +137,10 @@ export function PhotosTab({ growId, buckets }: PhotosTabProps) {
     } catch { /* empty */ } finally { setEditSaving(false); }
   };
 
+  const confirm = useConfirm();
+
   const handleDelete = async (photoId: string) => {
-    if (!confirm("Delete this photo?")) return;
+    if (!await confirm({ title: "Delete Photo", description: "Delete this photo?", confirmLabel: "Delete", variant: "destructive" })) return;
     const token = getAccessToken();
     if (!token) return;
     await deleteGrowPhoto(token, photoId);

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
+import { useConfirm } from "@/components/confirm-dialog";
 import { formatCalendarDate } from "@/lib/utils";
 import {
   listYields,
@@ -108,8 +109,10 @@ export function HarvestTab({ growId, buckets }: HarvestTabProps) {
     } catch { /* empty */ } finally { setSaving(false); }
   };
 
+  const confirm = useConfirm();
+
   const handleDelete = async (yieldId: string) => {
-    if (!confirm("Delete this harvest record?")) return;
+    if (!await confirm({ title: "Delete Harvest", description: "Delete this harvest record?", confirmLabel: "Delete", variant: "destructive" })) return;
     const token = getAccessToken();
     if (!token) return;
     await deleteYield(token, yieldId);

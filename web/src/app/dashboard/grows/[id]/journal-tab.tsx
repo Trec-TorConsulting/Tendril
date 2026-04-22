@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { getAccessToken } from "@/lib/auth";
+import { useConfirm } from "@/components/confirm-dialog";
 import { formatDate, formatTime } from "@/lib/utils";
 import {
   createJournalEntry,
@@ -71,8 +72,10 @@ export function JournalTab({ buckets, journalEntries, bucketLabelMap, onRefresh 
     } catch { /* empty */ } finally { setSaving(false); }
   };
 
+  const confirm = useConfirm();
+
   const handleDelete = async (entryId: string) => {
-    if (!confirm("Delete this journal entry?")) return;
+    if (!await confirm({ title: "Delete Entry", description: "Delete this journal entry?", confirmLabel: "Delete", variant: "destructive" })) return;
     const token = getAccessToken();
     if (!token) return;
     await deleteJournalEntry(token, entryId);

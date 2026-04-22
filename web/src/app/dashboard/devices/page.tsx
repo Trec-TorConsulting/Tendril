@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useConfirm } from "@/components/confirm-dialog";
 import { formatDateTime } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
@@ -56,6 +57,7 @@ type ModalState =
   | { type: "rename"; device: DeviceResponse };
 
 export default function DevicesPage() {
+  const confirm = useConfirm();
   const [devices, setDevices] = useState<DeviceResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<ModalState>({ type: "none" });
@@ -99,7 +101,7 @@ export default function DevicesPage() {
   }
 
   async function handleDelete(deviceId: string) {
-    if (!confirm("Permanently delete this device?")) return;
+    if (!await confirm({ title: "Delete Device", description: "Permanently delete this device?", confirmLabel: "Delete", variant: "destructive" })) return;
     await deleteDevice(token, deviceId);
     refresh();
   }

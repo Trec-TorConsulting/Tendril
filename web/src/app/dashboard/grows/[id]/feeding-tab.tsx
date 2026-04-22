@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { getAccessToken } from "@/lib/auth";
+import { useConfirm } from "@/components/confirm-dialog";
 import {
   createFeedingSchedule,
   updateFeedingSchedule,
@@ -105,8 +106,10 @@ export function FeedingTab({ growId, growStage, buckets, feedingSchedules, onRef
     } catch { /* empty */ } finally { setFeedingSaving(false); }
   };
 
+  const confirm = useConfirm();
+
   const handleDeleteFeeding = async (schedId: string) => {
-    if (!confirm("Delete this feeding schedule?")) return;
+    if (!await confirm({ title: "Delete Schedule", description: "Delete this feeding schedule?", confirmLabel: "Delete", variant: "destructive" })) return;
     const token = getAccessToken();
     if (!token) return;
     await deleteFeedingSchedule(token, schedId);
@@ -146,7 +149,7 @@ export function FeedingTab({ growId, growStage, buckets, feedingSchedules, onRef
   };
 
   const handleDeleteDose = async (doseId: string) => {
-    if (!confirm("Delete this dose profile?")) return;
+    if (!await confirm({ title: "Delete Dose Profile", description: "Delete this dose profile?", confirmLabel: "Delete", variant: "destructive" })) return;
     const token = getAccessToken();
     if (!token) return;
     await deleteDoseProfile(token, doseId);

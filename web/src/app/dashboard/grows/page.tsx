@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { getAccessToken } from "@/lib/auth";
+import { useConfirm } from "@/components/confirm-dialog";
 import { formatCalendarDate } from "@/lib/utils";
 import {
   listGrows,
@@ -36,9 +38,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Sprout, ArrowRight, Trash2 } from "lucide-react";
+import { Plus, Sprout, Trash2 } from "lucide-react";
 
 export default function GrowsPage() {
+  const router = useRouter();
+  const confirm = useConfirm();
   const [grows, setGrows] = useState<GrowResponse[]>([]);
   const [tents, setTents] = useState<TentResponse[]>([]);
   const [growTypes, setGrowTypes] = useState<GrowTypeSummary[]>([]);
@@ -82,7 +86,7 @@ export default function GrowsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this grow cycle? All associated tasks, buckets, and data will be removed.")) return;
+    if (!await confirm({ title: "Delete Grow", description: "Delete this grow cycle? All associated tasks, buckets, and data will be removed.", confirmLabel: "Delete", variant: "destructive" })) return;
     const token = getAccessToken();
     if (!token) return;
     try {
@@ -138,12 +142,13 @@ export default function GrowsPage() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {grows.map((g) => (
-              <Card key={g.id} className="p-4">
+              <Card key={g.id} className="p-4 transition-colors hover:border-primary/50 cursor-pointer" onClick={() => router.push(`/dashboard/grows/${g.id}`)}>
                 <div className="flex items-start justify-between">
                   <div className="min-w-0 flex-1">
                     <Link
                       href={`/dashboard/grows/${g.id}`}
                       className="font-semibold hover:text-primary"
+                      onClick={(e) => e.stopPropagation()}
                     >
                       {g.name}
                     </Link>
@@ -159,15 +164,12 @@ export default function GrowsPage() {
                     {g.status}
                   </Badge>
                 </div>
-                <div className="mt-3 flex items-center justify-between">
-                  <Button variant="ghost" size="sm" render={<Link href={`/dashboard/grows/${g.id}`} />}>
-                    View <ArrowRight className="ml-1 size-3" />
-                  </Button>
+                <div className="mt-3 flex items-center justify-end">
                   <Button
                     variant="ghost"
                     size="icon"
                     className="size-8 text-muted-foreground hover:text-destructive"
-                    onClick={() => handleDelete(g.id)}
+                    onClick={(e) => { e.stopPropagation(); handleDelete(g.id); }}
                   >
                     <Trash2 className="size-4" />
                   </Button>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
+import { useConfirm } from "@/components/confirm-dialog";
 import {
   createBucket,
   deleteBucket,
@@ -78,8 +79,10 @@ export function BucketsTab({ growId, buckets, latestReadings, onRefresh, onOpenS
     onRefresh();
   };
 
+  const confirm = useConfirm();
+
   const handleDelete = async (bucketId: string) => {
-    if (!confirm("Delete this bucket/plant?")) return;
+    if (!await confirm({ title: "Delete Bucket", description: "Delete this bucket/plant?", confirmLabel: "Delete", variant: "destructive" })) return;
     const token = getAccessToken();
     if (!token) return;
     await deleteBucket(token, bucketId);

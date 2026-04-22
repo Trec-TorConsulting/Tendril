@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getAccessToken } from "@/lib/auth";
+import { useConfirm } from "@/components/confirm-dialog";
 import {
   getGrow,
   updateGrow,
@@ -95,6 +96,7 @@ const MILESTONE_LABELS: Record<string, string> = {
 export default function GrowDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const confirm = useConfirm();
   const [grow, setGrow] = useState<GrowResponse | null>(null);
   const [tent, setTent] = useState<TentResponse | null>(null);
   const [buckets, setBuckets] = useState<BucketResponse[]>([]);
@@ -173,7 +175,7 @@ export default function GrowDetailPage() {
   // --- Handlers ---
 
   const handleComplete = async () => {
-    if (!confirm("Mark this grow as completed?")) return;
+    if (!await confirm({ title: "Complete Grow", description: "Mark this grow as completed?", confirmLabel: "Complete" })) return;
     const token = getAccessToken();
     if (!token) return;
     await updateGrow(token, id, { status: "completed" });

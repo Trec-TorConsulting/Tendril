@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { getAccessToken } from "@/lib/auth";
 import { useUser } from "@/hooks/use-user";
 import { GrowProvider } from "@/hooks/use-grow";
+import { ConfirmProvider } from "@/components/confirm-dialog";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { MobileBottomNav } from "@/components/mobile-bottom-nav";
@@ -32,6 +33,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <GrowProvider>
+      <ConfirmProvider>
       <SidebarProvider>
         <AppSidebar user={user} onLogout={logout} />
         <SidebarInset>
@@ -41,6 +43,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </SidebarInset>
         <MobileBottomNav />
       </SidebarProvider>
+      </ConfirmProvider>
     </GrowProvider>
   );
 }

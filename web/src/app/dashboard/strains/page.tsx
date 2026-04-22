@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
+import { useConfirm } from "@/components/confirm-dialog";
 import {
   listStrains,
   createStrain,
@@ -56,6 +57,7 @@ export default function StrainsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ name: "", breeder: "", genetics: "" });
   const [tab, setTab] = useState<"library" | "leaderboard" | "comparison">("library");
+  const confirm = useConfirm();
   const [comparisonStrainId, setComparisonStrainId] = useState("");
   const [comparison, setComparison] = useState<StrainGrowComparison[]>([]);
 
@@ -85,7 +87,7 @@ export default function StrainsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this strain?")) return;
+    if (!await confirm({ title: "Delete Strain", description: "Delete this strain?", confirmLabel: "Delete", variant: "destructive" })) return;
     const token = getAccessToken();
     if (!token) return;
     await deleteStrain(token, id);

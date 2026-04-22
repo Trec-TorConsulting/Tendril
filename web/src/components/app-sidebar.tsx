@@ -56,6 +56,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { useGrow } from "@/hooks/use-grow";
 import type { UserData } from "@/hooks/use-user";
 
@@ -203,6 +204,9 @@ export function AppSidebar({ user, onLogout }: AppSidebarProps) {
       </SidebarContent>
 
       <SidebarFooter>
+        <div className="px-2 group-data-[collapsible=icon]:hidden">
+          <ThemeToggle className="w-full justify-start" />
+        </div>
         <SidebarMenu>
           <SidebarMenuItem>
             <DropdownMenu>
