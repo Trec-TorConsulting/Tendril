@@ -369,7 +369,7 @@ export default function TentsPage() {
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Size</Label>
-                  <Select value={size || "__custom__"} onValueChange={(v) => setSize(v === "__custom__" ? "" : v)}>
+                  <Select value={size || "__custom__"} onValueChange={(v) => setSize(!v || v === "__custom__" ? "" : v)}>
                     <SelectTrigger><SelectValue placeholder="Select size" /></SelectTrigger>
                     <SelectContent>
                       {TENT_SIZES.map((s) => (
@@ -477,7 +477,7 @@ export default function TentsPage() {
                           <Label className="text-[11px] text-muted-foreground">Type</Label>
                           <Select
                             value={item.type}
-                            onValueChange={(v) => setEquipment((prev) => prev.map((e, i) => i === idx ? { ...e, type: v } : e))}
+                            onValueChange={(v) => { if (v) setEquipment((prev) => prev.map((e, i) => i === idx ? { ...e, type: v } : e)); }}
                           >
                             <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                             <SelectContent>
@@ -493,7 +493,7 @@ export default function TentsPage() {
                           {BRAND_SUGGESTIONS[item.type] ? (
                             <Select
                               value={item.brand && BRAND_SUGGESTIONS[item.type]?.includes(item.brand) ? item.brand : "__custom__"}
-                              onValueChange={(v) => setEquipment((prev) => prev.map((e, i) => i === idx ? { ...e, brand: v === "__custom__" ? "" : v } : e))}
+                              onValueChange={(v) => setEquipment((prev) => prev.map((e, i) => i === idx ? { ...e, brand: !v || v === "__custom__" ? "" : v } : e))}
                             >
                               <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select brand" /></SelectTrigger>
                               <SelectContent>
