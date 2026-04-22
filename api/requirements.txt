@@ -31,5 +31,8 @@ qrcode>=8.0,<9
 # Stripe billing
 stripe>=8.0,<10
 
+# Multipart form data (file uploads)
+python-multipart>=0.0.9,<1
+
 # S3 / MinIO
 boto3>=1.34,<2
