@@ -814,12 +814,11 @@ function getSettingsSchema(growType: string): SettingsField[] {
   ];
   // Common environment fields
   const ENV_FIELDS: SettingsField[] = [
-    { key: "ventilation", label: "Ventilation", group: "environment", options: ["inline_fan", "oscillating_fan", "both", "passive", "none"], hint: "Airflow setup" },
-    { key: "exhaust_fan", label: "Exhaust Fan Brand / CFM", group: "environment", placeholder: "e.g. AC Infinity Cloudline T6, 402 CFM" },
-    { key: "carbon_filter", label: "Carbon Filter", group: "environment", options: ["yes", "no"] },
-    { key: "humidifier_dehumidifier", label: "Humidity Control", group: "environment", options: ["humidifier", "dehumidifier", "both", "none"] },
-    { key: "controller_system", label: "Controller / Automation System", group: "environment", placeholder: "e.g. VivoSun GrowHub, AC Infinity Controller 69 Pro, Pulse One, Trolmaster", hint: "Smart controller brand/model if any" },
     { key: "target_vpd", label: "Target VPD", group: "environment", type: "number", step: "0.1", unit: "kPa", placeholder: "e.g. 1.2", hint: "Vapor Pressure Deficit target" },
+    { key: "target_temp_day_f", label: "Day Temp Target", group: "environment", type: "number", step: "1", unit: "°F", placeholder: "e.g. 80" },
+    { key: "target_temp_night_f", label: "Night Temp Target", group: "environment", type: "number", step: "1", unit: "°F", placeholder: "e.g. 70" },
+    { key: "target_humidity_pct", label: "Target Humidity", group: "environment", type: "number", step: "1", unit: "%", placeholder: "e.g. 55" },
+    { key: "co2_ppm", label: "CO₂ Target", group: "environment", type: "number", step: "50", unit: "ppm", placeholder: "e.g. 1000", hint: "Only if supplementing CO₂" },
   ];
   // Common nutrient fields
   const NUTRIENT_FIELDS: SettingsField[] = [

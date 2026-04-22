@@ -261,14 +261,24 @@ export function getGrowType(token: string, id: string) {
 }
 
 // Tents
+export interface EquipmentItem {
+  type: string;
+  brand?: string;
+  model?: string;
+  specs?: string;
+  quantity: number;
+}
+
 export interface TentResponse {
   id: string;
   name: string;
   environment_type: string;
+  size: string | null;
   latitude: number | null;
   longitude: number | null;
   camera_url: string | null;
-  settings: Record<string, unknown> | null;
+  equipment: EquipmentItem[] | null;
+  notes: string | null;
 }
 
 export function listTents(token: string) {
@@ -279,11 +289,11 @@ export function getTent(token: string, id: string) {
   return apiFetch<TentResponse>(`/tents/${id}`, { token });
 }
 
-export function createTent(token: string, data: { name: string; environment_type?: string; latitude?: number; longitude?: number; camera_url?: string }) {
+export function createTent(token: string, data: { name: string; environment_type?: string; size?: string; latitude?: number; longitude?: number; camera_url?: string; equipment?: EquipmentItem[] }) {
   return apiFetch<TentResponse>("/tents", { method: "POST", body: JSON.stringify(data), token });
 }
 
-export function updateTent(token: string, id: string, data: Partial<{ name: string; environment_type: string; latitude: number | null; longitude: number | null; camera_url: string | null }>) {
+export function updateTent(token: string, id: string, data: Partial<{ name: string; environment_type: string; size: string | null; latitude: number | null; longitude: number | null; camera_url: string | null; equipment: EquipmentItem[] }>) {
   return apiFetch<TentResponse>(`/tents/${id}`, { method: "PATCH", body: JSON.stringify(data), token });
 }
 

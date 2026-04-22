@@ -28,9 +28,11 @@ class Tent(Base):
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     environment_type: Mapped[str] = mapped_column(String(50), default="indoor")  # indoor | outdoor | greenhouse
+    size: Mapped[str | None] = mapped_column(String(50))  # e.g. "4x4", "3x3", "5x5x8"
     latitude: Mapped[float | None] = mapped_column(Float)
     longitude: Mapped[float | None] = mapped_column(Float)
     camera_url: Mapped[str | None] = mapped_column(String(1024))
+    equipment: Mapped[list | None] = mapped_column(JSON, default=list)  # list of equipment objects
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 

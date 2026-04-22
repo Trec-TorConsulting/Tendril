@@ -19,21 +19,33 @@ from app.grows.models import Tent
 router = APIRouter()
 
 
+class EquipmentItem(BaseModel):
+    type: str  # exhaust_fan, inline_fan, oscillating_fan, carbon_filter, humidifier, dehumidifier, heater, ac_unit, co2_system, controller, custom
+    brand: str | None = None
+    model: str | None = None
+    specs: str | None = None  # e.g. "402 CFM", "16 inch"
+    quantity: int = 1
+
+
 class TentCreate(BaseModel):
     name: str
     environment_type: str = "indoor"
+    size: str | None = None
     latitude: float | None = None
     longitude: float | None = None
     camera_url: str | None = None
+    equipment: list[EquipmentItem] | None = None
     notes: str | None = None
 
 
 class TentUpdate(BaseModel):
     name: str | None = None
     environment_type: str | None = None
+    size: str | None = None
     latitude: float | None = None
     longitude: float | None = None
     camera_url: str | None = None
+    equipment: list[EquipmentItem] | None = None
     notes: str | None = None
 
 
@@ -41,9 +53,11 @@ class TentResponse(BaseModel):
     id: UUID
     name: str
     environment_type: str
+    size: str | None
     latitude: float | None
     longitude: float | None
     camera_url: str | None
+    equipment: list[dict] | None
     notes: str | None
     model_config = {"from_attributes": True}
 
