@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -41,6 +42,9 @@ const EQUIPMENT_TYPES = [
   { value: "exhaust_fan", label: "Exhaust Fan" },
   { value: "inline_fan", label: "Inline Fan" },
   { value: "oscillating_fan", label: "Oscillating Fan" },
+  { value: "air_pump", label: "Air Pump" },
+  { value: "water_pump", label: "Water / Circulation Pump" },
+  { value: "water_chiller", label: "Water Chiller" },
   { value: "carbon_filter", label: "Carbon Filter" },
   { value: "humidifier", label: "Humidifier" },
   { value: "dehumidifier", label: "Dehumidifier" },
@@ -56,6 +60,9 @@ const BRAND_SUGGESTIONS: Record<string, string[]> = {
   exhaust_fan: ["AC Infinity", "Vivosun", "TerraBloom", "Can-Fan", "Hurricane", "iPower"],
   inline_fan: ["AC Infinity", "Vivosun", "TerraBloom", "Can-Fan", "Hurricane", "iPower"],
   oscillating_fan: ["Secret Jardin", "Hurricane", "AC Infinity", "Vivosun", "Honeywell", "Lasko"],
+  air_pump: ["EcoPlus", "Active Aqua", "Vivosun", "Hydrofarm", "Pawfly", "Tetra"],
+  water_pump: ["Active Aqua", "EcoPlus", "Hydrofarm", "Vivosun", "Aquatec", "Danner"],
+  water_chiller: ["Active Aqua", "EcoPlus", "Hydrofarm", "JBJ", "IceProbe"],
   carbon_filter: ["Phresh", "Can-Fan", "AC Infinity", "Vivosun", "TerraBloom", "Fox Carbon"],
   humidifier: ["Levoit", "TaoTronics", "AC Infinity", "Vivosun", "hOmeLabs"],
   dehumidifier: ["hOmeLabs", "Frigidaire", "Midea", "Tosot", "AC Infinity"],
@@ -98,6 +105,7 @@ export default function TentsPage() {
   const [zipLoading, setZipLoading] = useState(false);
   const [cameraUrl, setCameraUrl] = useState("");
   const [equipment, setEquipment] = useState<EquipmentItem[]>([]);
+  const [notes, setNotes] = useState("");
 
   const refresh = useCallback(async () => {
     const token = getAccessToken();
@@ -124,6 +132,7 @@ export default function TentsPage() {
     setZipCode("");
     setCameraUrl("");
     setEquipment([]);
+    setNotes("");
     setError("");
     setModal({ type: "create" });
   }
@@ -137,6 +146,7 @@ export default function TentsPage() {
     setZipCode("");
     setCameraUrl(tent.camera_url ?? "");
     setEquipment((tent.equipment ?? []).map((e) => ({ ...e, quantity: e.quantity ?? 1 })));
+    setNotes(tent.notes ?? "");
     setError("");
     setModal({ type: "edit", tent });
   }
@@ -157,6 +167,7 @@ export default function TentsPage() {
           ...(longitude ? { longitude: parseFloat(longitude) } : {}),
           ...(cameraUrl.trim() ? { camera_url: cameraUrl.trim() } : {}),
           equipment: cleanEquipment,
+          ...(notes.trim() ? { notes: notes.trim() } : {}),
         });
       } else if (modal.type === "edit") {
         await updateTent(token, modal.tent.id, {
@@ -167,6 +178,7 @@ export default function TentsPage() {
           ...(longitude ? { longitude: parseFloat(longitude) } : {}),
           camera_url: cameraUrl.trim() || null,
           equipment: cleanEquipment,
+          notes: notes.trim() || null,
         });
       }
       setModal({ type: "closed" });
@@ -395,6 +407,16 @@ export default function TentsPage() {
                     value={cameraUrl}
                     onChange={(e) => setCameraUrl(e.target.value)}
                     placeholder="e.g. http://192.168.1.50:8554/tent-cam"
+                  />
+                </div>
+                <div className="space-y-1 sm:col-span-2">
+                  <Label className="text-xs">Notes (optional)</Label>
+                  <Textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Any extra details about this grow space..."
+                    rows={2}
+                    className="text-xs"
                   />
                 </div>
               </div>

@@ -289,11 +289,11 @@ export function getTent(token: string, id: string) {
   return apiFetch<TentResponse>(`/tents/${id}`, { token });
 }
 
-export function createTent(token: string, data: { name: string; environment_type?: string; size?: string; latitude?: number; longitude?: number; camera_url?: string; equipment?: EquipmentItem[] }) {
+export function createTent(token: string, data: { name: string; environment_type?: string; size?: string; latitude?: number; longitude?: number; camera_url?: string; equipment?: EquipmentItem[]; notes?: string }) {
   return apiFetch<TentResponse>("/tents", { method: "POST", body: JSON.stringify(data), token });
 }
 
-export function updateTent(token: string, id: string, data: Partial<{ name: string; environment_type: string; size: string | null; latitude: number | null; longitude: number | null; camera_url: string | null; equipment: EquipmentItem[] }>) {
+export function updateTent(token: string, id: string, data: Partial<{ name: string; environment_type: string; size: string | null; latitude: number | null; longitude: number | null; camera_url: string | null; equipment: EquipmentItem[]; notes: string | null }>) {
   return apiFetch<TentResponse>(`/tents/${id}`, { method: "PATCH", body: JSON.stringify(data), token });
 }
 
