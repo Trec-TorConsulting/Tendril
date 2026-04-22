@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { getAccessToken } from "@/lib/auth";
+import { formatDate } from "@/lib/utils";
 import {
   listGrows,
   listTents,
@@ -151,7 +152,7 @@ export default function GrowsPage() {
                     </p>
                     <p className="text-xs text-muted-foreground">
                       Stage: {g.stage} · Started{" "}
-                      {new Date(g.started_at).toLocaleDateString()}
+                      {formatDate(g.started_at)}
                     </p>
                   </div>
                   <Badge variant={statusVariant(g.status)} className="ml-2 shrink-0">

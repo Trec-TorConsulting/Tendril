@@ -30,7 +30,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import {
   Plus,
   Copy,
@@ -238,13 +238,13 @@ export default function ApiKeysPage() {
                       {k.expires_at && (
                         <span className="flex items-center gap-1">
                           <Calendar className="h-3 w-3" />
-                          Expires: {new Date(k.expires_at).toLocaleDateString()}
+                          Expires: {formatDate(k.expires_at)}
                         </span>
                       )}
                       {k.last_used && (
                         <span className="flex items-center gap-1">
                           <Clock className="h-3 w-3" />
-                          Last used: {new Date(k.last_used).toLocaleDateString()}
+                          Last used: {formatDate(k.last_used)}
                         </span>
                       )}
                     </div>

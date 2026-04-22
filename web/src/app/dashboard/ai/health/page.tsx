@@ -19,7 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Heart, AlertTriangle, CheckCircle2, Loader2, History, Clock, Camera, Upload, X } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatDateTime } from "@/lib/utils";
 
 function ScoreBadge({ score }: { score: number | null }) {
   if (score == null) return <span className="text-muted-foreground">N/A</span>;
@@ -357,7 +357,7 @@ export default function HealthPage() {
                         </div>
                         {eval_item.created_at && (
                           <p className="text-xs text-muted-foreground">
-                            {new Date(eval_item.created_at).toLocaleString()}
+                            {formatDateTime(eval_item.created_at)}
                           </p>
                         )}
                       </div>

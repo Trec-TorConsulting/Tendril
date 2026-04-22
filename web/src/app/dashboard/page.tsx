@@ -6,6 +6,7 @@ import { getAccessToken } from "@/lib/auth";
 import { listGrows, listDevices, getHarvestCountdown, type GrowResponse, type DeviceResponse, type HarvestCountdownItem } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { formatDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -97,7 +98,7 @@ export default function DashboardPage() {
                       </Badge>
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {item.flowering_days}d flower cycle — est. {new Date(item.estimated_harvest).toLocaleDateString()}
+                      {item.flowering_days}d flower cycle — est. {formatDate(item.estimated_harvest)}
                     </p>
                   </CardContent>
                 </Card>

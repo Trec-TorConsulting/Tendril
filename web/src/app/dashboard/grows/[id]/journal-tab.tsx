@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { getAccessToken } from "@/lib/auth";
+import { formatDate, formatTime } from "@/lib/utils";
 import {
   createJournalEntry,
   updateJournalEntry,
@@ -106,7 +107,7 @@ export function JournalTab({ buckets, journalEntries, bucketLabelMap, onRefresh 
                     <Badge variant="outline" className="text-xs capitalize">{je.event_type.replace("_", " ")}</Badge>
                     <span className="text-xs text-muted-foreground">{bucketLabelMap[je.bucket_id] || "Unknown"}</span>
                     <span className="text-xs text-muted-foreground">
-                      {new Date(je.created_at).toLocaleDateString()} {new Date(je.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      {formatDate(je.created_at)} {formatTime(je.created_at)}
                     </span>
                   </div>
                   {je.content && <p className="mt-1 text-sm">{je.content}</p>}

@@ -72,6 +72,7 @@ import {
 } from "lucide-react";
 
 import { BrandTemplateDialog } from "./brand-template-dialog";
+import { formatDate, formatDateTime } from "@/lib/utils";
 import { BucketsTab } from "./buckets-tab";
 import { FeedingTab } from "./feeding-tab";
 import { JournalTab } from "./journal-tab";
@@ -383,7 +384,7 @@ export default function GrowDetailPage() {
               <div className="flex items-center gap-4 text-sm">
                 {tentAmbient.ambient_temp_f != null && <span>🌡 {tentAmbient.ambient_temp_f.toFixed(1)}°F</span>}
                 {tentAmbient.ambient_humidity != null && <span>💧 {tentAmbient.ambient_humidity.toFixed(0)}%</span>}
-                <span className="text-xs text-muted-foreground">{new Date(tentAmbient.recorded_at).toLocaleString()}</span>
+                <span className="text-xs text-muted-foreground">{formatDateTime(tentAmbient.recorded_at)}</span>
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">No ambient readings yet</p>
@@ -435,8 +436,8 @@ export default function GrowDetailPage() {
               <div><span className="text-muted-foreground">Stage</span><p className="font-medium capitalize">{grow.stage}</p></div>
               <div><span className="text-muted-foreground">Status</span><p className="font-medium"><Badge variant={grow.status === "active" ? "default" : "secondary"} className="text-xs">{grow.status}</Badge></p></div>
               <div><span className="text-muted-foreground">Tent</span><p className="font-medium">{tent?.name || "\u2014"}</p></div>
-              <div><span className="text-muted-foreground">Started</span><p className="font-medium">{new Date(grow.started_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p></div>
-              {grow.ended_at && <div><span className="text-muted-foreground">Ended</span><p className="font-medium">{new Date(grow.ended_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p></div>}
+              <div><span className="text-muted-foreground">Started</span><p className="font-medium">{formatDate(grow.started_at)}</p></div>
+              {grow.ended_at && <div><span className="text-muted-foreground">Ended</span><p className="font-medium">{formatDate(grow.ended_at)}</p></div>}
               <div><span className="text-muted-foreground">Buckets</span><p className="font-medium">{buckets.length}</p></div>
             </div>
 
@@ -453,7 +454,7 @@ export default function GrowDetailPage() {
                     return (
                       <div key={key}>
                         <span className="text-muted-foreground">{MILESTONE_LABELS[key] || key}</span>
-                        <p className="font-medium">{new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>
+                        <p className="font-medium">{formatDate(iso)}</p>
                       </div>
                     );
                   })}
@@ -618,7 +619,7 @@ export default function GrowDetailPage() {
           </DialogHeader>
           {tentAmbient && (
             <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-              Last reading: {tentAmbient.ambient_temp_f != null && `${tentAmbient.ambient_temp_f.toFixed(1)}°F`} {tentAmbient.ambient_humidity != null && `${tentAmbient.ambient_humidity.toFixed(0)}%`} — {new Date(tentAmbient.recorded_at).toLocaleString()}
+              Last reading: {tentAmbient.ambient_temp_f != null && `${tentAmbient.ambient_temp_f.toFixed(1)}°F`} {tentAmbient.ambient_humidity != null && `${tentAmbient.ambient_humidity.toFixed(0)}%`} — {formatDateTime(tentAmbient.recorded_at)}
             </div>
           )}
           <div className="grid grid-cols-2 gap-3">

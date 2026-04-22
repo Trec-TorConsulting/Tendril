@@ -39,7 +39,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/page-header";
-import { cn } from "@/lib/utils";
+import { cn, formatDateTime } from "@/lib/utils";
 import {
   Plus,
   MoreHorizontal,
@@ -209,7 +209,7 @@ export default function AutomationPage() {
                         <span className="text-sm">{alert.message}</span>
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        {new Date(alert.created_at).toLocaleString()}
+                        {formatDateTime(alert.created_at)}
                         {alert.sensor_value != null && ` — Value: ${alert.sensor_value}`}
                       </p>
                     </div>

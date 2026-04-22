@@ -28,7 +28,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { cn } from "@/lib/utils";
+import { cn, formatDateTime } from "@/lib/utils";
 import { ChevronLeft, ChevronRight, Eye, EyeOff } from "lucide-react";
 
 interface AuditEntry {
@@ -146,7 +146,7 @@ export default function AuditPage() {
                     <>
                       <TableRow key={e.id}>
                         <TableCell className="text-xs text-muted-foreground">
-                          {new Date(e.created_at).toLocaleString()}
+                          {formatDateTime(e.created_at)}
                         </TableCell>
                         <TableCell>
                           <Badge variant={ACTION_VARIANT[e.action] || "outline"}>

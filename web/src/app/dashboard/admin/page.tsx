@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
+import { formatDate } from "@/lib/utils";
 import {
   adminGetStats,
   adminListTenants,
@@ -147,77 +148,7 @@ export default function AdminPage() {
                       </td>
                       <td className="py-2 pr-4 text-white">{t.user_count}</td>
                       <td className="py-2 text-neutral-500">
-                        {new Date(t.created_at).toLocaleDateString()}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Users */}
-      {tab === "users" && (
-        <div className="space-y-3">
-          {users.length === 0 ? (
-            <p className="text-neutral-500">No users found.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-neutral-800 text-left text-neutral-400">
-                    <th className="pb-2 pr-4">Email</th>
-                    <th className="pb-2 pr-4">Name</th>
-                    <th className="pb-2 pr-4">Org</th>
-                    <th className="pb-2 pr-4">Role</th>
-                    <th className="pb-2 pr-4">Admin</th>
-                    <th className="pb-2 pr-4">Support</th>
-                    <th className="pb-2">Joined</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map((u) => (
-                    <tr key={u.id} className="border-b border-neutral-800/50">
-                      <td className="py-2 pr-4 text-white">{u.email}</td>
-                      <td className="py-2 pr-4 text-neutral-300">{u.display_name || "—"}</td>
-                      <td className="py-2 pr-4 text-neutral-400">{u.tenant_name}</td>
-                      <td className="py-2 pr-4">
-                        <span className="rounded bg-neutral-800 px-2 py-0.5 text-xs text-neutral-300">
-                          {u.role}
-                        </span>
-                      </td>
-                      <td className="py-2 pr-4">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className={
-                            u.is_platform_admin
-                              ? "border-green-600 text-green-400 text-xs"
-                              : "text-neutral-500 text-xs"
-                          }
-                          onClick={() => toggleFlag(u.id, "is_platform_admin", u.is_platform_admin)}
-                        >
-                          {u.is_platform_admin ? "✓ Admin" : "—"}
-                        </Button>
-                      </td>
-                      <td className="py-2 pr-4">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className={
-                            u.is_support
-                              ? "border-blue-600 text-blue-400 text-xs"
-                              : "text-neutral-500 text-xs"
-                          }
-                          onClick={() => toggleFlag(u.id, "is_support", u.is_support)}
-                        >
-                          {u.is_support ? "✓ Support" : "—"}
-                        </Button>
-                      </td>
-                      <td className="py-2 text-neutral-500">
-                        {new Date(u.created_at).toLocaleDateString()}
+                        {formatDate(t.created_at)}
                       </td>
                     </tr>
                   ))}

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
+import { formatDate } from "@/lib/utils";
 import {
   listGrowPhotos,
   uploadGrowPhoto,
@@ -224,7 +225,7 @@ export function PhotosTab({ growId, buckets }: PhotosTabProps) {
               <CardContent className="p-2">
                 {p.bucket_id && <p className="text-xs text-muted-foreground truncate">{bucketLabelMap[p.bucket_id] || "Bucket"}</p>}
                 {p.caption && <p className="text-xs truncate">{p.caption}</p>}
-                <p className="text-xs text-muted-foreground">{new Date(p.created_at).toLocaleDateString()}</p>
+                <p className="text-xs text-muted-foreground">{formatDate(p.created_at)}</p>
               </CardContent>
             </Card>
           ))}
@@ -311,7 +312,7 @@ export function PhotosTab({ growId, buckets }: PhotosTabProps) {
                       </Badge>
                     )}
                   </span>
-                  <span className="text-xs text-muted-foreground font-normal">{new Date(viewPhoto.created_at).toLocaleDateString()}</span>
+                  <span className="text-xs text-muted-foreground font-normal">{formatDate(viewPhoto.created_at)}</span>
                 </DialogTitle>
               </DialogHeader>
               <div className="rounded-lg overflow-hidden border">

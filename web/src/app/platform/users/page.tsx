@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { formatDate } from "@/lib/utils";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -159,7 +160,7 @@ export default function PlatformUsersPage() {
                     )}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
-                    {new Date(u.created_at).toLocaleDateString()}
+                    {formatDate(u.created_at)}
                   </TableCell>
                 </TableRow>
               ))}

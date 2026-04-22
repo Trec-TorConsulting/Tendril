@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
+import { formatShortDateTime } from "@/lib/utils";
 import {
   listBuckets,
   listSensorReadings,
@@ -242,7 +243,7 @@ export default function AnalyticsPage() {
 
   // Chart data formatting
   const chartData = sensorData.map((r) => ({
-    time: new Date(r.recorded_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }),
+    time: formatShortDateTime(r.recorded_at),
     pH: r.ph,
     EC: r.ec,
     PPM: r.ppm,

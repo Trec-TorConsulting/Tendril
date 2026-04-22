@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
+import { formatShortDateTime } from "@/lib/utils";
 import { listSensorReadings, type SensorReadingResponse, type BucketResponse } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -82,7 +83,7 @@ export function SensorsTab({ buckets }: SensorsTabProps) {
   // Build chart data (sorted oldest first)
   const chartData = [...readings].reverse().map((r) => {
     const point: Record<string, unknown> = {
-      time: new Date(r.recorded_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }),
+      time: formatShortDateTime(r.recorded_at),
     };
     for (const m of metricsWithData) {
       point[m.key] = getMetricValue(r, m.key);

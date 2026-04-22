@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { formatDateTime } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -209,7 +210,7 @@ export default function DevicesPage() {
                 </div>
                 {d.last_seen && (
                   <p className="mt-2 text-xs text-muted-foreground">
-                    Last seen: {new Date(d.last_seen).toLocaleString()}
+                    Last seen: {formatDateTime(d.last_seen)}
                   </p>
                 )}
                 {d.firmware_version && (

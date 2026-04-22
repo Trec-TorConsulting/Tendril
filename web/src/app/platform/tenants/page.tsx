@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
 import { adminListTenants, adminListTenantUsers } from "@/lib/api";
 import type { AdminTenantSummary, AdminUserSummary } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -120,7 +120,7 @@ export default function PlatformTenantsPage() {
                       </Badge>
                       <span className="text-sm text-muted-foreground">{t.user_count} users</span>
                       <span className="text-sm text-muted-foreground">
-                        {new Date(t.created_at).toLocaleDateString()}
+                        {formatDate(t.created_at)}
                       </span>
                       <ChevronDown
                         className={cn(

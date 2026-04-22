@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
+import { formatDate } from "@/lib/utils";
 import {
   listTenantMembers,
   addTenantMember,
@@ -248,7 +249,7 @@ export default function TeamPage() {
                             )}
                           </TableCell>
                           <TableCell className="hidden lg:table-cell text-muted-foreground">
-                            {new Date(m.created_at).toLocaleDateString()}
+                            {formatDate(m.created_at)}
                           </TableCell>
                           {isOwner && (
                             <TableCell>

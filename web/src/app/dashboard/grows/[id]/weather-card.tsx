@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
+import { formatWeekday } from "@/lib/utils";
 import { getCurrentWeather, getWeatherForecast, getWeatherHistory } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -154,7 +155,7 @@ export function WeatherCard({ tentId, tentName, environmentType }: WeatherCardPr
                 const fc = f as Record<string, unknown>;
                 return (
                   <div key={i} className="flex-shrink-0 rounded-md border p-2 text-center min-w-[5rem]">
-                    <p className="text-xs text-muted-foreground">{fc.date ? new Date(fc.date as string).toLocaleDateString([], { weekday: "short" }) : `Day ${i + 1}`}</p>
+                    <p className="text-xs text-muted-foreground">{fc.date ? formatWeekday(fc.date as string) : `Day ${i + 1}`}</p>
                     <p className="text-sm font-medium">{fc.temp_max_c != null ? `${Number(fc.temp_max_c).toFixed(0)}°` : fc.temperature_c != null ? `${Number(fc.temperature_c).toFixed(0)}°` : "—"}</p>
                     {fc.condition ? <p className="text-xs text-muted-foreground capitalize">{String(fc.condition)}</p> : null}
                   </div>

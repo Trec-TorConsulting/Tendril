@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Building2, Users, CreditCard } from "lucide-react";
+import { formatDate } from "@/lib/utils";
 
 export default function PlatformOverviewPage() {
   const [stats, setStats] = useState<{
@@ -127,7 +128,7 @@ export default function PlatformOverviewPage() {
                       <Badge variant="outline" className="capitalize text-xs">{t.plan}</Badge>
                     </div>
                     <span className="text-muted-foreground">
-                      {new Date(t.created_at).toLocaleDateString()}
+                      {formatDate(t.created_at)}
                     </span>
                   </div>
                 ))}
@@ -152,7 +153,7 @@ export default function PlatformOverviewPage() {
                       <span className="ml-2 text-muted-foreground">{u.tenant_name}</span>
                     </div>
                     <span className="text-muted-foreground">
-                      {new Date(u.created_at).toLocaleDateString()}
+                      {formatDate(u.created_at)}
                     </span>
                   </div>
                 ))}
