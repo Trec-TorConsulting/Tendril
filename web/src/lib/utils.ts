@@ -24,10 +24,20 @@ export function formatDateTime(iso: string | Date): string {
   });
 }
 
-/** Date only: "Apr 22, 2026" */
+/** Date only: "Apr 22, 2026" (timezone-aware — for timestamps with time component) */
 export function formatDate(iso: string | Date): string {
   return new Date(iso).toLocaleDateString("en-US", {
     timeZone: userTz,
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+/** Calendar date only: "Apr 22, 2026" (UTC — for date-only values that should not shift days) */
+export function formatCalendarDate(iso: string | Date): string {
+  return new Date(iso).toLocaleDateString("en-US", {
+    timeZone: "UTC",
     month: "short",
     day: "numeric",
     year: "numeric",

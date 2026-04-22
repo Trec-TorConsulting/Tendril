@@ -72,7 +72,7 @@ import {
 } from "lucide-react";
 
 import { BrandTemplateDialog } from "./brand-template-dialog";
-import { formatDate, formatDateTime } from "@/lib/utils";
+import { formatCalendarDate, formatDateTime } from "@/lib/utils";
 import { BucketsTab } from "./buckets-tab";
 import { FeedingTab } from "./feeding-tab";
 import { JournalTab } from "./journal-tab";
@@ -436,8 +436,8 @@ export default function GrowDetailPage() {
               <div><span className="text-muted-foreground">Stage</span><p className="font-medium capitalize">{grow.stage}</p></div>
               <div><span className="text-muted-foreground">Status</span><p className="font-medium"><Badge variant={grow.status === "active" ? "default" : "secondary"} className="text-xs">{grow.status}</Badge></p></div>
               <div><span className="text-muted-foreground">Tent</span><p className="font-medium">{tent?.name || "\u2014"}</p></div>
-              <div><span className="text-muted-foreground">Started</span><p className="font-medium">{formatDate(grow.started_at)}</p></div>
-              {grow.ended_at && <div><span className="text-muted-foreground">Ended</span><p className="font-medium">{formatDate(grow.ended_at)}</p></div>}
+              <div><span className="text-muted-foreground">Started</span><p className="font-medium">{formatCalendarDate(grow.started_at)}</p></div>
+              {grow.ended_at && <div><span className="text-muted-foreground">Ended</span><p className="font-medium">{formatCalendarDate(grow.ended_at)}</p></div>}
               <div><span className="text-muted-foreground">Buckets</span><p className="font-medium">{buckets.length}</p></div>
             </div>
 
@@ -454,7 +454,7 @@ export default function GrowDetailPage() {
                     return (
                       <div key={key}>
                         <span className="text-muted-foreground">{MILESTONE_LABELS[key] || key}</span>
-                        <p className="font-medium">{formatDate(iso)}</p>
+                        <p className="font-medium">{formatCalendarDate(iso)}</p>
                       </div>
                     );
                   })}

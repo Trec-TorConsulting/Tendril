@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
-import { formatDate } from "@/lib/utils";
+import { formatCalendarDate } from "@/lib/utils";
 import {
   listYields,
   createYield,
@@ -164,7 +164,7 @@ export function HarvestTab({ growId, buckets }: HarvestTabProps) {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-medium text-sm">{bucketLabelMap[y.bucket_id] || "Unknown"}</span>
-                      {y.harvest_date && <span className="text-xs text-muted-foreground">{formatDate(y.harvest_date)}</span>}
+                      {y.harvest_date && <span className="text-xs text-muted-foreground">{formatCalendarDate(y.harvest_date)}</span>}
                       {y.quality_rating && (
                         <Badge variant="outline" className="text-xs">
                           <Star className="mr-0.5 size-3" />{y.quality_rating}/10
@@ -179,8 +179,8 @@ export function HarvestTab({ growId, buckets }: HarvestTabProps) {
                     {/* Drying/curing dates */}
                     {(y.dry_start || y.cure_start) && (
                       <div className="mt-2 flex flex-wrap gap-x-4 text-xs text-muted-foreground">
-                        {y.dry_start && <span>Dry: {formatDate(y.dry_start)}{y.dry_end ? ` – ${formatDate(y.dry_end)}` : " (ongoing)"}</span>}
-                        {y.cure_start && <span>Cure: {formatDate(y.cure_start)}{y.cure_end ? ` – ${formatDate(y.cure_end)}` : " (ongoing)"}</span>}
+                        {y.dry_start && <span>Dry: {formatCalendarDate(y.dry_start)}{y.dry_end ? ` – ${formatCalendarDate(y.dry_end)}` : " (ongoing)"}</span>}
+                        {y.cure_start && <span>Cure: {formatCalendarDate(y.cure_start)}{y.cure_end ? ` – ${formatCalendarDate(y.cure_end)}` : " (ongoing)"}</span>}
                       </div>
                     )}
                     {y.terpene_notes && <p className="mt-1 text-xs text-muted-foreground">Terpenes: {y.terpene_notes}</p>}

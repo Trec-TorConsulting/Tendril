@@ -17,7 +17,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { cn, formatDate } from "@/lib/utils";
+import { cn, formatCalendarDate } from "@/lib/utils";
 import {
   CheckCircle2,
   Trash2,
@@ -170,7 +170,7 @@ export function TasksTab({ growId }: { growId: string }) {
                     )}
                   </div>
                   <span className="text-xs text-muted-foreground">
-                    {t.completed_at ? formatDate(t.completed_at) : ""}
+                    {t.completed_at ? formatCalendarDate(t.completed_at) : ""}
                   </span>
                 </div>
               </CardContent>
@@ -230,7 +230,7 @@ function GrowTaskCard({
               <span className={cn("flex items-center gap-1", isOverdue && "text-red-500 font-medium")}>
                 <CalendarIcon className="h-3 w-3" />
                 {isOverdue ? "Overdue: " : "Due: "}
-                {formatDate(task.due_date)}
+                {formatCalendarDate(task.due_date)}
               </span>
             )}
             {task.recurring && (
