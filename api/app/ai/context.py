@@ -132,6 +132,30 @@ def _fmt_prev_eval(prev: dict) -> str:
     return "\n".join(parts)
 
 
+def _fmt_tent_equipment(equipment: list[dict] | None) -> str:
+    """Format a tent's equipment list as readable lines."""
+    if not equipment:
+        return ""
+    lines = []
+    for item in equipment:
+        etype = item.get("type", "unknown").replace("_", " ").title()
+        qty = item.get("quantity", 1)
+        desc = f"  {etype}"
+        if qty > 1:
+            desc += f" (x{qty})"
+        brand = item.get("brand")
+        model = item.get("model")
+        if brand:
+            desc += f" — {brand}"
+        if model:
+            desc += f" {model}"
+        specs = item.get("specs")
+        if specs:
+            desc += f" [{specs}]"
+        lines.append(desc)
+    return "\n".join(lines)
+
+
 def _fmt_settings(settings: dict | None, grow_type: str) -> str:
     """Format grow settings into human-readable lines for AI context.
 
@@ -270,6 +294,11 @@ def build_chat_context(
         parts.append(f"Use these terms when talking to the grower: {term_str}")
 
     # Grow details
+    tent_size = grow_data.get("tent_size")
+    tent_line = f"  Tent: {grow_data.get('tent_name', '?')}"
+    if tent_size:
+        tent_line += f" ({tent_size})"
+    tent_line += f" [{grow_data.get('environment_type', 'indoor')}]"
     parts.append(
         f"\n=== Active Grow ===\n"
         f"  Name: {grow_data.get('grow_name', '?')}\n"
@@ -277,8 +306,21 @@ def build_chat_context(
         f"  Stage: {grow_data.get('stage', '?')}\n"
         f"  Status: {grow_data.get('status', '?')}\n"
         f"  Started: {grow_data.get('started_at', '?')}\n"
-        f"  Tent: {grow_data.get('tent_name', '?')} ({grow_data.get('environment_type', 'indoor')})"
+        + tent_line
     )
+
+    # Tent equipment (physical hardware attached to the tent)
+    tent_equip_text = _fmt_tent_equipment(grow_data.get("tent_equipment"))
+    if tent_equip_text:
+        parts.append(
+            "\n=== Tent Equipment ===\n" + tent_equip_text
+            + "\n\nThis is the physical hardware in the grower's tent. "
+            "Reference specific equipment by brand/model when giving advice "
+            "(e.g., light height recommendations for their exact light, fan speed settings for their controller)."
+        )
+    tent_notes = grow_data.get("tent_notes")
+    if tent_notes:
+        parts.append(f"  Tent Notes: {tent_notes}")
 
     # Equipment & Setup (from grow settings)
     settings = grow_data.get("settings")
@@ -421,6 +463,16 @@ def build_chat_context(
         "- Adjust pH/EC recommendations based on indica vs sativa genetics.",
         "- Note strain-specific characteristics (e.g., purple coloring on certain genetics is NORMAL, not deficiency).",
         "- Factor in THC/CBD ratios when advising on harvest timing (amber trichomes for higher CBD, clear for higher THC).",
+
+        "\n=== ACCURACY & HONESTY — NON-NEGOTIABLE ===",
+        "You MUST be 100% accurate and honest in every response. The grower's plants depend on correct information.",
+        "- Only state facts you are confident are true. If you are not sure, say 'I'm not sure' or 'I don't know' — that is always an acceptable answer.",
+        "- Never guess, fabricate, or hallucinate information. Wrong advice can kill plants.",
+        "- Base ALL recommendations on the actual sensor data, equipment, and settings provided above. Do not assume data that isn't there.",
+        "- If sensor data is missing or stale, explicitly say so — don't fill in the gaps with assumptions.",
+        "- If a question is outside your expertise, say so honestly rather than giving a potentially wrong answer.",
+        "- When citing numbers (pH, EC, PPM, temperatures), use the exact values from the provided data.",
+        "- Distinguish between established growing science and personal opinion. Label opinions as such.",
     ])
 
     return "\n".join(parts)
@@ -502,6 +554,14 @@ def build_health_check_prompt(
         "and the user's actual setup. Reference their specific equipment, nutrient line, and controller "
         "when making recommendations. If sensor trends show drift, flag it. "
         "If the previous health check noted issues, check whether they've been resolved.\n\n"
+        "ACCURACY & HONESTY — NON-NEGOTIABLE:\n"
+        "- You MUST be 100% accurate. The grower's plants depend on correct information.\n"
+        "- Only report issues you can confirm from the provided data. Do not invent problems.\n"
+        "- If sensor data is missing or stale, say so explicitly — do not assume values.\n"
+        "- If you cannot determine something from the available data, state that clearly.\n"
+        "- When citing readings, use the EXACT numbers provided. Do not round or approximate.\n"
+        "- 'I don't have enough data to assess this' is always a valid statement.\n"
+        "- Distinguish between confirmed issues (backed by data) and potential concerns (educated guesses). Label each clearly.\n\n"
         "IMPORTANT: Respond ONLY with valid JSON. No markdown, no code fences.\n"
         'Format: {"score": <int 0-100>, "issues": ["issue1", ...], "actions": ["action1", ...]}'
     )
@@ -514,14 +574,31 @@ def build_health_check_prompt(
     sections.append(f"=== Plant Observations ===\n{obs_text}")
 
     # Grow details
+    tent_size = grow_data.get("tent_size")
+    tent_line = f"  Tent: {grow_data.get('tent_name', '?')}"
+    if tent_size:
+        tent_line += f" ({tent_size})"
+    tent_line += f" [{grow_data.get('environment_type', 'indoor')}]"
     sections.append(
         f"=== Grow Details ===\n"
         f"  Name: {grow_data.get('grow_name', '?')}\n"
         f"  Type: {type_name}\n"
         f"  Stage: {stage}\n"
         f"  Started: {grow_data.get('started_at', '?')}\n"
-        f"  Tent: {grow_data.get('tent_name', '?')} ({grow_data.get('environment_type', 'indoor')})"
+        + tent_line
     )
+
+    # Tent equipment (physical hardware)
+    tent_equip_text = _fmt_tent_equipment(grow_data.get("tent_equipment"))
+    if tent_equip_text:
+        sections.append(
+            "=== Tent Equipment ===\n" + tent_equip_text
+            + "\n\nThis is the physical hardware in the grower's tent. "
+            "Factor this into your diagnosis — reference specific equipment by brand/model."
+        )
+    tent_notes = grow_data.get("tent_notes")
+    if tent_notes:
+        sections.append(f"=== Tent Notes ===\n  {tent_notes}")
 
     # Equipment & Setup
     settings = grow_data.get("settings")
@@ -640,7 +717,8 @@ def build_coach_tip_prompt(
         f"Feeding approach: {feeding}. "
         f"The plant is in the {stage} stage. "
         "Give ONE concise, actionable tip for this exact situation. "
-        "Keep it under 2 sentences. Be specific to this grow type and stage."
+        "Keep it under 2 sentences. Be specific to this grow type and stage. "
+        "Only state facts you are confident are true — never guess or make things up."
     )
 
     user_content = f"Give me a tip for my {type_name} grow in {stage} stage."
@@ -685,6 +763,7 @@ def build_insight_prompt(
     }
 
     system = prompts.get(insight_type, f"Analyze this {type_name} grow data and provide insights.")
+    system += " Be 100% accurate — only report what the data supports. If data is insufficient, say so."
     data_str = "\n".join(f"- {k}: {v}" for k, v in data.items())
 
     return [

@@ -265,7 +265,10 @@ async def gather_grow_data(
     # ── Tent + weather ───────────────────────────────────────────
     tent = await session.get(Tent, grow.tent_id)
     data["tent_name"] = tent.name if tent else None
+    data["tent_size"] = tent.size if tent else None
     data["environment_type"] = tent.environment_type if tent else None
+    data["tent_equipment"] = tent.equipment if tent else []
+    data["tent_notes"] = tent.notes if tent else None
     data["camera_url"] = tent.camera_url if tent else None
 
     weather = None
