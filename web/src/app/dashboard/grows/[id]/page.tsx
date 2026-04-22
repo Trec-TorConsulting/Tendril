@@ -64,7 +64,6 @@ import {
   Droplets,
   Loader2,
   Pencil,
-  CalendarDays,
   Download,
   Copy,
   Settings,
@@ -343,23 +342,65 @@ export default function GrowDetailPage() {
         }
       />
       <div className="flex flex-1 flex-col gap-6 p-4 lg:p-6">
+        {/* Grow Info Bar */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border bg-card px-4 py-3 text-sm">
+          <Badge variant={grow.status === "active" ? "default" : "secondary"} className="text-xs capitalize">{grow.status}</Badge>
+          <span className="capitalize font-medium">{grow.stage}</span>
+          <span className="text-muted-foreground">·</span>
+          <span>{grow.grow_type}</span>
+          <span className="text-muted-foreground">·</span>
+          <span>{tent?.name || "No tent"}</span>
+          <span className="text-muted-foreground">·</span>
+          <span className="text-muted-foreground">Started {formatCalendarDate(grow.started_at)}</span>
+          {grow.ended_at && <><span className="text-muted-foreground">·</span><span className="text-muted-foreground">Ended {formatCalendarDate(grow.ended_at)}</span></>}
+          <span className="text-muted-foreground">·</span>
+          <span>{buckets.length} bucket{buckets.length !== 1 ? "s" : ""}</span>
+          <div className="ml-auto flex items-center gap-1">
+            {settingsSchema.length > 0 && (
+              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => {
+                const form: Record<string, string> = {};
+                for (const s of settingsSchema) form[s.key] = ((grow.settings as Record<string, unknown>)?.[s.key] as string) || "";
+                setSettingsForm(form);
+                setSettingsDialog(true);
+              }}>
+                <Settings className="size-3" />
+              </Button>
+            )}
+            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => {
+              const msForm: Record<string, string> = {};
+              for (const key of [...STAGES, "harvest"]) {
+                const iso = grow.milestones?.[key];
+                msForm[key] = iso ? new Date(iso).toISOString().slice(0, 10) : "";
+              }
+              setEditGrowForm({
+                name: grow.name,
+                notes: grow.notes || "",
+                started_at: new Date(grow.started_at).toISOString().slice(0, 10),
+                milestones: msForm,
+              });
+              setEditGrowDialog(true);
+            }}>
+              <Pencil className="size-3" />
+            </Button>
+          </div>
+        </div>
+
         {/* Camera Snapshot */}
         {tent?.camera_url && (
           <Card>
-            <CardHeader className="pb-3">
+            <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-sm font-medium">
                 <Camera className="size-4" /> Camera Snapshot
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="overflow-hidden rounded-lg border bg-black">
+              <div className="mx-auto max-w-xl overflow-hidden rounded-lg border bg-black">
                 <img
                   src={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/v1"}/tents/${grow.tent_id}/camera-snapshot?token=${encodeURIComponent(getAccessToken() || "")}&t=${Date.now()}`}
                   alt="Camera snapshot"
                   className="aspect-video w-full object-contain"
                 />
               </div>
-              <p className="mt-2 text-xs text-muted-foreground">Latest snapshot from {tent.name}</p>
             </CardContent>
           </Card>
         )}
@@ -394,81 +435,6 @@ export default function GrowDetailPage() {
 
         {/* Weather (for outdoor/greenhouse tents) */}
         {tent && <WeatherCard tentId={tent.id} tentName={tent.name} environmentType={tent.environment_type} />}
-
-        {/* Grow Info Card (compact — settings in tab) */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium">Grow Info</CardTitle>
-              <div className="flex items-center gap-1">
-                {settingsSchema.length > 0 && (
-                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => {
-                    const form: Record<string, string> = {};
-                    for (const s of settingsSchema) form[s.key] = ((grow.settings as Record<string, unknown>)?.[s.key] as string) || "";
-                    setSettingsForm(form);
-                    setSettingsDialog(true);
-                  }}>
-                    <Settings className="mr-1 size-3" /> Settings
-                  </Button>
-                )}
-                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => {
-                  const msForm: Record<string, string> = {};
-                  for (const key of [...STAGES, "harvest"]) {
-                    const iso = grow.milestones?.[key];
-                    msForm[key] = iso ? new Date(iso).toISOString().slice(0, 10) : "";
-                  }
-                  setEditGrowForm({
-                    name: grow.name,
-                    notes: grow.notes || "",
-                    started_at: new Date(grow.started_at).toISOString().slice(0, 10),
-                    milestones: msForm,
-                  });
-                  setEditGrowDialog(true);
-                }}>
-                  <Pencil className="mr-1 size-3" /> Edit
-                </Button>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3 text-sm">
-              <div><span className="text-muted-foreground">Type</span><p className="font-medium">{grow.grow_type}</p></div>
-              <div><span className="text-muted-foreground">Stage</span><p className="font-medium capitalize">{grow.stage}</p></div>
-              <div><span className="text-muted-foreground">Status</span><p className="font-medium"><Badge variant={grow.status === "active" ? "default" : "secondary"} className="text-xs">{grow.status}</Badge></p></div>
-              <div><span className="text-muted-foreground">Tent</span><p className="font-medium">{tent?.name || "\u2014"}</p></div>
-              <div><span className="text-muted-foreground">Started</span><p className="font-medium">{formatCalendarDate(grow.started_at)}</p></div>
-              {grow.ended_at && <div><span className="text-muted-foreground">Ended</span><p className="font-medium">{formatCalendarDate(grow.ended_at)}</p></div>}
-              <div><span className="text-muted-foreground">Buckets</span><p className="font-medium">{buckets.length}</p></div>
-            </div>
-
-            {/* Milestone dates */}
-            {grow.milestones && Object.keys(grow.milestones).length > 0 && (
-              <div className="mt-3 border-t pt-3">
-                <div className="mb-1.5 flex items-center gap-1 text-xs font-medium text-muted-foreground">
-                  <CalendarDays className="size-3" /> Milestones
-                </div>
-                <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2 lg:grid-cols-3 text-sm">
-                  {[...STAGES, "harvest"].map((key) => {
-                    const iso = grow.milestones?.[key];
-                    if (!iso) return null;
-                    return (
-                      <div key={key}>
-                        <span className="text-muted-foreground">{MILESTONE_LABELS[key] || key}</span>
-                        <p className="font-medium">{formatCalendarDate(iso)}</p>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-            {grow.notes && (
-              <div className="mt-3 border-t pt-3 text-sm">
-                <span className="text-muted-foreground">Notes</span>
-                <p className="mt-0.5 whitespace-pre-wrap">{grow.notes}</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
 
         {/* Tabbed sections */}
         <Tabs defaultValue="buckets">
