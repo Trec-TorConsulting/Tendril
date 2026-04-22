@@ -272,7 +272,7 @@ export function PhotosTab({ growId, buckets }: PhotosTabProps) {
             {buckets.length > 0 && (
               <div className="space-y-1">
                 <Label className="text-xs">Bucket (optional)</Label>
-                <Select value={addForm.bucket_id} onValueChange={(v) => setAddForm((p) => ({ ...p, bucket_id: v === "__none__" ? "" : v }))}>
+                <Select value={addForm.bucket_id} onValueChange={(v) => setAddForm((p) => ({ ...p, bucket_id: !v || v === "__none__" ? "" : v }))}>
                   <SelectTrigger><SelectValue placeholder="Whole grow" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none__">Whole grow</SelectItem>
