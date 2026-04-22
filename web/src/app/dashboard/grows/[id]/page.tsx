@@ -342,7 +342,59 @@ export default function GrowDetailPage() {
         }
       />
       <div className="flex flex-1 flex-col gap-6 p-4 lg:p-6">
-        {/* Grow Info Card */}
+        {/* Camera Snapshot */}
+        {tent?.camera_url && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-sm font-medium">
+                <Camera className="size-4" /> Camera Snapshot
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-hidden rounded-lg border bg-black">
+                <img
+                  src={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/v1"}/tents/${grow.tent_id}/camera-snapshot?token=${encodeURIComponent(getAccessToken() || "")}&t=${Date.now()}`}
+                  alt="Camera snapshot"
+                  className="aspect-video w-full object-contain"
+                />
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">Latest snapshot from {tent.name}</p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Tent Ambient */}
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-sm font-medium">
+                <Thermometer className="size-4" /> Tent Environment
+              </CardTitle>
+              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => {
+                setAmbientForm({ ambient_temp_f: "", ambient_humidity: "" });
+                setAmbientDialog(true);
+              }}>
+                <Droplets className="mr-1 size-3" /> Log Ambient
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {tentAmbient ? (
+              <div className="flex items-center gap-4 text-sm">
+                {tentAmbient.ambient_temp_f != null && <span>🌡 {tentAmbient.ambient_temp_f.toFixed(1)}°F</span>}
+                {tentAmbient.ambient_humidity != null && <span>💧 {tentAmbient.ambient_humidity.toFixed(0)}%</span>}
+                <span className="text-xs text-muted-foreground">{new Date(tentAmbient.recorded_at).toLocaleString()}</span>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No ambient readings yet</p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Weather (for outdoor/greenhouse tents) */}
+        {tent && <WeatherCard tentId={tent.id} tentName={tent.name} environmentType={tent.environment_type} />}
+
+        {/* Grow Info Card (compact — settings in tab) */}
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
@@ -388,27 +440,6 @@ export default function GrowDetailPage() {
               <div><span className="text-muted-foreground">Buckets</span><p className="font-medium">{buckets.length}</p></div>
             </div>
 
-            {/* Type-specific settings display */}
-            {grow.settings && Object.keys(grow.settings).length > 0 && (
-              <div className="mt-3 border-t pt-3">
-                <div className="mb-1.5 flex items-center gap-1 text-xs font-medium text-muted-foreground">
-                  <Settings className="size-3" /> Grow Settings
-                </div>
-                <div className="grid gap-x-6 gap-y-1 sm:grid-cols-2 lg:grid-cols-3 text-sm">
-                  {settingsSchema.map((s) => {
-                    const val = (grow.settings as Record<string, unknown>)?.[s.key];
-                    if (!val) return null;
-                    return (
-                      <div key={s.key}>
-                        <span className="text-muted-foreground">{s.label}</span>
-                        <p className="font-medium">{String(val)}{s.unit || ""}</p>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
             {/* Milestone dates */}
             {grow.milestones && Object.keys(grow.milestones).length > 0 && (
               <div className="mt-3 border-t pt-3">
@@ -438,58 +469,6 @@ export default function GrowDetailPage() {
           </CardContent>
         </Card>
 
-        {/* Tent Ambient */}
-        <Card>
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                <Thermometer className="size-4" /> Tent Environment
-              </CardTitle>
-              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => {
-                setAmbientForm({ ambient_temp_f: "", ambient_humidity: "" });
-                setAmbientDialog(true);
-              }}>
-                <Droplets className="mr-1 size-3" /> Log Ambient
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {tentAmbient ? (
-              <div className="flex items-center gap-4 text-sm">
-                {tentAmbient.ambient_temp_f != null && <span>🌡 {tentAmbient.ambient_temp_f.toFixed(1)}°F</span>}
-                {tentAmbient.ambient_humidity != null && <span>💧 {tentAmbient.ambient_humidity.toFixed(0)}%</span>}
-                <span className="text-xs text-muted-foreground">{new Date(tentAmbient.recorded_at).toLocaleString()}</span>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">No ambient readings yet</p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Weather (for outdoor/greenhouse tents) */}
-        {tent && <WeatherCard tentId={tent.id} tentName={tent.name} environmentType={tent.environment_type} />}
-
-        {/* Camera Snapshot */}
-        {tent?.camera_url && (
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                <Camera className="size-4" /> Camera Snapshot
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-hidden rounded-lg border bg-black">
-                <img
-                  src={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/v1"}/tents/${grow.tent_id}/camera-snapshot?token=${encodeURIComponent(getAccessToken() || "")}&t=${Date.now()}`}
-                  alt="Camera snapshot"
-                  className="aspect-video w-full object-contain"
-                />
-              </div>
-              <p className="mt-2 text-xs text-muted-foreground">Latest snapshot from {tent.name}</p>
-            </CardContent>
-          </Card>
-        )}
-
         {/* Tabbed sections */}
         <Tabs defaultValue="buckets">
           <TabsList className="flex-wrap">
@@ -500,6 +479,7 @@ export default function GrowDetailPage() {
             <TabsTrigger value="harvest">Harvest</TabsTrigger>
             <TabsTrigger value="sensors">Sensors</TabsTrigger>
             <TabsTrigger value="photos">Photos</TabsTrigger>
+            {settingsSchema.length > 0 && <TabsTrigger value="settings">Settings</TabsTrigger>}
           </TabsList>
 
           <TabsContent value="buckets" className="mt-4">
@@ -550,6 +530,46 @@ export default function GrowDetailPage() {
           <TabsContent value="photos" className="mt-4">
             <PhotosTab growId={id} buckets={buckets} />
           </TabsContent>
+
+          {settingsSchema.length > 0 && (
+            <TabsContent value="settings" className="mt-4">
+              <Card>
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="flex items-center gap-2 text-sm font-medium">
+                      <Settings className="size-4" /> Grow Settings
+                    </CardTitle>
+                    <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => {
+                      const form: Record<string, string> = {};
+                      for (const s of settingsSchema) form[s.key] = ((grow.settings as Record<string, unknown>)?.[s.key] as string) || "";
+                      setSettingsForm(form);
+                      setSettingsDialog(true);
+                    }}>
+                      <Pencil className="mr-1 size-3" /> Edit Settings
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {grow.settings && Object.keys(grow.settings).length > 0 ? (
+                    <div className="grid gap-x-6 gap-y-2 sm:grid-cols-2 lg:grid-cols-3 text-sm">
+                      {settingsSchema.map((s) => {
+                        const val = (grow.settings as Record<string, unknown>)?.[s.key];
+                        if (!val) return null;
+                        return (
+                          <div key={s.key}>
+                            <span className="text-muted-foreground">{s.label}</span>
+                            <p className="font-medium">{String(val)}{s.unit ? ` ${s.unit}` : ""}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No settings configured yet. Click Edit Settings to add your grow-type-specific configuration.</p>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
         </Tabs>
       </div>
 

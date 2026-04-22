@@ -45,6 +45,7 @@ export function BucketsTab({ growId, buckets, latestReadings, onRefresh, onOpenS
   const [addLabel, setAddLabel] = useState("");
   const [addStrainId, setAddStrainId] = useState("");
   const [addVolume, setAddVolume] = useState("");
+  const [addDialog, setAddDialog] = useState(false);
   const [strains, setStrains] = useState<StrainResponse[]>([]);
 
   const [editDialog, setEditDialog] = useState(false);
@@ -73,6 +74,7 @@ export function BucketsTab({ growId, buckets, latestReadings, onRefresh, onOpenS
     setAddLabel("");
     setAddStrainId("");
     setAddVolume("");
+    setAddDialog(false);
     onRefresh();
   };
 
@@ -101,6 +103,17 @@ export function BucketsTab({ growId, buckets, latestReadings, onRefresh, onOpenS
 
   return (
     <>
+      <div className="mb-4 flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">{buckets.length} bucket{buckets.length !== 1 ? "s" : ""}</p>
+        <Button size="sm" onClick={() => {
+          setAddLabel("");
+          setAddStrainId("");
+          setAddVolume("");
+          setAddDialog(true);
+        }}>
+          <Plus className="mr-1 size-3" /> Add Bucket
+        </Button>
+      </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {buckets.map((b) => {
           const reading = latestReadings[b.id];
@@ -154,30 +167,48 @@ export function BucketsTab({ growId, buckets, latestReadings, onRefresh, onOpenS
           );
         })}
 
-        {/* Add bucket card */}
-        <Card className="border-dashed">
-          <CardContent className="p-4">
-            <p className="mb-2 text-sm font-medium text-muted-foreground">Add bucket/plant</p>
-            <Input className="mb-2" placeholder="Label (optional)" value={addLabel} onChange={(e) => setAddLabel(e.target.value)} />
-            <Select value={addStrainId} onValueChange={(v) => setAddStrainId(v ?? "")}>
-              <SelectTrigger className="mb-2">
-                <SelectValue>{addStrainId ? strainMap[addStrainId]?.name ?? "Select strain" : "Select strain (optional)"}</SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {strains.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name}{s.genetics ? ` (${s.genetics})` : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Input className="mb-2" type="number" step="0.5" placeholder="Bucket size (gallons)" value={addVolume} onChange={(e) => setAddVolume(e.target.value)} />
-            <Button size="sm" onClick={handleAdd}>
-              <Plus className="mr-1 size-3" /> Add
-            </Button>
-          </CardContent>
-        </Card>
       </div>
+
+      {/* Add Bucket Dialog */}
+      <Dialog open={addDialog} onOpenChange={(open) => !open && setAddDialog(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Bucket / Plant</DialogTitle>
+            <DialogDescription>Add a new bucket or plant to this grow cycle.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Label (optional)</Label>
+              <Input placeholder="e.g. Bucket A" value={addLabel} onChange={(e) => setAddLabel(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Strain (optional)</Label>
+              <Select value={addStrainId} onValueChange={(v) => setAddStrainId(v ?? "")}>
+                <SelectTrigger>
+                  <SelectValue>{addStrainId ? strainMap[addStrainId]?.name ?? "Select strain" : "Select strain"}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {strains.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}{s.genetics ? ` (${s.genetics})` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Bucket Size (gallons)</Label>
+              <Input type="number" step="0.5" placeholder="e.g. 5" value={addVolume} onChange={(e) => setAddVolume(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" type="button" onClick={() => setAddDialog(false)}>Cancel</Button>
+            <Button type="button" onClick={handleAdd}>
+              <Plus className="mr-1 size-3" /> Add Bucket
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit Bucket Dialog */}
       <Dialog open={editDialog} onOpenChange={(open) => !open && setEditDialog(false)}>
