@@ -165,7 +165,7 @@ export function SensorsTab({ buckets }: SensorsTabProps) {
                         <Badge variant="outline" className="text-xs"><Minus className="mr-0.5 size-3" />0</Badge>
                       )}
                     </div>
-                    <p className="text-lg font-bold mt-1">{typeof t.current === "number" ? t.current.toFixed(m.key === "ppm" ? 0 : m.key === "ambient_humidity" || m.key === "water_level_pct" || m.key === "soil_moisture" ? 0 : 2) : t.current}{m.unit}</p>
+                    <p className="text-lg font-bold mt-1">{typeof t.current === "number" ? t.current.toFixed(m.key === "ppm" ? 0 : m.key === "water_level_pct" || m.key === "soil_moisture" ? 0 : 2) : t.current}{m.unit}</p>
                   </CardContent>
                 </Card>
               );
