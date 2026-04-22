@@ -20,6 +20,7 @@ from app.grows.feeding_routes import router as feeding_router
 from app.grows.strain_routes import router as strains_router
 from app.grows.yield_routes import router as yields_router
 from app.sensors.routes import router as sensors_router
+from app.sensors.tent_routes import router as tent_sensors_router
 from app.weather.routes import router as weather_router
 from app.reference.routes import router as reference_router
 from app.ai.routes import router as ai_router
@@ -82,6 +83,7 @@ def create_app() -> FastAPI:
     app.include_router(grows_router, prefix=f"{settings.api_prefix}/grows", tags=["grows"])
     app.include_router(buckets_router, prefix=f"{settings.api_prefix}/buckets", tags=["buckets"])
     app.include_router(sensors_router, prefix=f"{settings.api_prefix}/sensors", tags=["sensors"])
+    app.include_router(tent_sensors_router, prefix=f"{settings.api_prefix}/tent-sensors", tags=["tent-sensors"])
     app.include_router(journal_router, prefix=f"{settings.api_prefix}/journal", tags=["journal"])
     app.include_router(photos_router, prefix=f"{settings.api_prefix}/photos", tags=["photos"])
     app.include_router(feeding_router, prefix=f"{settings.api_prefix}/feeding", tags=["feeding"])

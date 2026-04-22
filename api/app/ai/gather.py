@@ -19,6 +19,7 @@ from app.grows.models import (
     JournalEntry,
     Strain,
     Tent,
+    TentSensorReading,
     WeatherReading,
 )
 
@@ -99,7 +100,7 @@ async def gather_grow_data(
                 k: getattr(reading, k)
                 for k in (
                     "ph", "ec", "ppm", "water_temp_f", "dissolved_oxygen",
-                    "water_level_pct", "ambient_temp_f", "ambient_humidity",
+                    "water_level_pct",
                     "soil_moisture", "soil_temp", "runoff_ph", "runoff_ec",
                     "flow_rate", "mist_pressure",
                 )
@@ -107,6 +108,26 @@ async def gather_grow_data(
             }
             bucket_sensors[b.position]["recorded_at"] = reading.recorded_at.isoformat()
     data["bucket_sensors"] = bucket_sensors
+
+    # ── Tent ambient readings (shared across all buckets) ────────
+    tent_ambient: dict | None = None
+    tent_ambient_reading = (
+        await session.execute(
+            select(TentSensorReading)
+            .where(TentSensorReading.tent_id == grow.tent_id)
+            .order_by(desc(TentSensorReading.recorded_at))
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if tent_ambient_reading:
+        tent_ambient = {}
+        if tent_ambient_reading.ambient_temp_f is not None:
+            tent_ambient["ambient_temp_f"] = tent_ambient_reading.ambient_temp_f
+        if tent_ambient_reading.ambient_humidity is not None:
+            tent_ambient["ambient_humidity"] = tent_ambient_reading.ambient_humidity
+        if tent_ambient:
+            tent_ambient["recorded_at"] = tent_ambient_reading.recorded_at.isoformat()
+    data["tent_ambient"] = tent_ambient
 
     # ── Sensor trends (24h from first bucket) ────────────────────
     if buckets:
@@ -124,7 +145,7 @@ async def gather_grow_data(
         if len(trends) > 1:
             trend_data: dict = {"reading_count": len(trends), "period_hours": sensor_history_hours}
             for field in ("ph", "ec", "ppm", "water_temp_f", "dissolved_oxygen", "water_level_pct",
-                          "ambient_temp_f", "ambient_humidity", "soil_moisture", "soil_temp",
+                          "soil_moisture", "soil_temp",
                           "runoff_ph", "runoff_ec", "flow_rate", "mist_pressure"):
                 vals = [getattr(r, field) for r in trends if getattr(r, field) is not None]
                 if vals:
@@ -136,6 +157,30 @@ async def gather_grow_data(
             data["sensor_trends"] = None
     else:
         data["sensor_trends"] = None
+
+    # ── Tent ambient trends (24h) ────────────────────────────────
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=sensor_history_hours)
+    tent_trends_rows = (
+        await session.execute(
+            select(TentSensorReading)
+            .where(
+                TentSensorReading.tent_id == grow.tent_id,
+                TentSensorReading.recorded_at >= cutoff,
+            )
+            .order_by(TentSensorReading.recorded_at)
+        )
+    ).scalars().all()
+    if len(tent_trends_rows) > 1:
+        ambient_trend: dict = {"reading_count": len(tent_trends_rows), "period_hours": sensor_history_hours}
+        for field in ("ambient_temp_f", "ambient_humidity"):
+            vals = [getattr(r, field) for r in tent_trends_rows if getattr(r, field) is not None]
+            if vals:
+                ambient_trend[f"{field}_min"] = round(min(vals), 2)
+                ambient_trend[f"{field}_max"] = round(max(vals), 2)
+                ambient_trend[f"{field}_avg"] = round(sum(vals) / len(vals), 2)
+        data["ambient_trends"] = ambient_trend
+    else:
+        data["ambient_trends"] = None
 
     # ── Feeding schedules ────────────────────────────────────────
     feeds = (

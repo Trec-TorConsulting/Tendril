@@ -144,6 +144,27 @@ class TaskRunner:
                             source="scheduled",
                         )
                         session.add(health_eval)
+
+                        # Save camera snapshot as a grow photo for timelapse / gallery
+                        if camera_image:
+                            try:
+                                from app.grows.models import GrowPhoto
+                                from app.storage import upload_photo as s3_upload
+
+                                key = await asyncio.get_running_loop().run_in_executor(
+                                    None, s3_upload, camera_image, "image/jpeg",
+                                    str(grow.tenant_id), str(grow.id),
+                                )
+                                session.add(GrowPhoto(
+                                    tenant_id=grow.tenant_id,
+                                    grow_cycle_id=grow.id,
+                                    source="health_check",
+                                    storage_key=key,
+                                    caption=f"Scheduled snapshot (score: {score})" if score else "Scheduled snapshot",
+                                ))
+                            except Exception:
+                                logger.warning("Failed to save scheduled snapshot to S3 for grow %s", grow.id)
+
                         await session.commit()
 
                         # ── Create tasks from health eval actions ──

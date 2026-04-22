@@ -38,7 +38,11 @@ async def handle_message(message) -> None:
 async def handle_sensor_message(
     tenant_id: UUID, device_id_str: str, sensor_type: str, payload_bytes
 ) -> None:
-    """Parse sensor payload and store reading."""
+    """Parse sensor payload and store reading.
+
+    sensor_type "ambient" → tent_sensor_readings (tent-level)
+    sensor_type "readings" → bucket_sensor_readings (per-bucket)
+    """
     try:
         payload = json.loads(payload_bytes)
     except (json.JSONDecodeError, TypeError):

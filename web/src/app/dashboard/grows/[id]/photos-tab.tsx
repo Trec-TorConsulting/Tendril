@@ -1,19 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
 import {
-  listPhotos,
-  createPhoto,
-  updatePhoto,
-  deletePhoto,
-  type PhotoResponse,
+  listGrowPhotos,
+  uploadGrowPhoto,
+  updateGrowPhoto,
+  deleteGrowPhoto,
+  growPhotoUrl,
+  timelapseUrl,
+  type GrowPhotoResponse,
   type BucketResponse,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -29,21 +32,27 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ImageIcon, Plus, Trash2, Pencil, Loader2, X } from "lucide-react";
+import { ImageIcon, Plus, Trash2, Pencil, Loader2, Upload, Camera, Film } from "lucide-react";
 
 interface PhotosTabProps {
+  growId: string;
   buckets: BucketResponse[];
 }
 
-export function PhotosTab({ buckets }: PhotosTabProps) {
-  const [photos, setPhotos] = useState<PhotoResponse[]>([]);
+export function PhotosTab({ growId, buckets }: PhotosTabProps) {
+  const [photos, setPhotos] = useState<GrowPhotoResponse[]>([]);
   const [loading, setLoading] = useState(false);
   const [addDialog, setAddDialog] = useState(false);
-  const [addForm, setAddForm] = useState({ bucket_id: "", url: "", caption: "" });
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string>("");
+  const [addForm, setAddForm] = useState({ bucket_id: "", caption: "" });
   const [saving, setSaving] = useState(false);
-  const [viewPhoto, setViewPhoto] = useState<PhotoResponse | null>(null);
+  const [viewPhoto, setViewPhoto] = useState<GrowPhotoResponse | null>(null);
   const [editCaption, setEditCaption] = useState("");
   const [editSaving, setEditSaving] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [timelapseDialog, setTimelapseDialog] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const bucketLabelMap: Record<string, string> = {};
   buckets.forEach((b) => { bucketLabelMap[b.id] = `#${b.position} ${b.label || "Unnamed"}`; });
@@ -52,34 +61,66 @@ export function PhotosTab({ buckets }: PhotosTabProps) {
     const token = getAccessToken();
     if (!token) return;
     setLoading(true);
-    const allPhotos: PhotoResponse[] = [];
-    await Promise.all(buckets.map(async (b) => {
-      try {
-        const p = await listPhotos(token, b.id);
-        allPhotos.push(...p);
-      } catch { /* empty */ }
-    }));
-    allPhotos.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-    setPhotos(allPhotos);
+    try {
+      const data = await listGrowPhotos(token, growId);
+      setPhotos(data);
+    } catch { /* empty */ }
     setLoading(false);
-  }, [buckets]);
+  }, [growId]);
 
   useEffect(() => { loadPhotos(); }, [loadPhotos]);
 
+  // Clean up object URLs on unmount
+  useEffect(() => {
+    return () => { if (previewUrl) URL.revokeObjectURL(previewUrl); };
+  }, [previewUrl]);
+
+  const handleFileSelect = (file: File) => {
+    if (!file.type.match(/^image\/(jpeg|png|webp)$/)) {
+      alert("Only JPEG, PNG, and WebP images are allowed");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      alert("Image must be under 10 MB");
+      return;
+    }
+    setSelectedFile(file);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(URL.createObjectURL(file));
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleFileSelect(file);
+  };
+
   const handleAdd = async () => {
     const token = getAccessToken();
-    if (!token || !addForm.bucket_id || !addForm.url.trim()) return;
+    if (!token || !selectedFile) return;
     setSaving(true);
     try {
-      await createPhoto(token, {
-        bucket_id: addForm.bucket_id,
-        url: addForm.url.trim(),
-        caption: addForm.caption.trim() || undefined,
-      });
+      await uploadGrowPhoto(
+        token,
+        selectedFile,
+        growId,
+        addForm.bucket_id || undefined,
+        addForm.caption.trim() || undefined,
+      );
       setAddDialog(false);
-      setAddForm({ bucket_id: "", url: "", caption: "" });
+      resetAddForm();
       loadPhotos();
-    } catch { /* empty */ } finally { setSaving(false); }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Upload failed");
+    } finally { setSaving(false); }
+  };
+
+  const resetAddForm = () => {
+    setSelectedFile(null);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl("");
+    setAddForm({ bucket_id: "", caption: "" });
   };
 
   const handleUpdateCaption = async () => {
@@ -88,7 +129,7 @@ export function PhotosTab({ buckets }: PhotosTabProps) {
     if (!token) return;
     setEditSaving(true);
     try {
-      await updatePhoto(token, viewPhoto.id, { caption: editCaption.trim() });
+      await updateGrowPhoto(token, viewPhoto.id, { caption: editCaption.trim() });
       setViewPhoto(null);
       loadPhotos();
     } catch { /* empty */ } finally { setEditSaving(false); }
@@ -98,22 +139,64 @@ export function PhotosTab({ buckets }: PhotosTabProps) {
     if (!confirm("Delete this photo?")) return;
     const token = getAccessToken();
     if (!token) return;
-    await deletePhoto(token, photoId);
+    await deleteGrowPhoto(token, photoId);
     if (viewPhoto?.id === photoId) setViewPhoto(null);
     loadPhotos();
+  };
+
+  const getImageSrc = (photo: GrowPhotoResponse) => {
+    const token = getAccessToken();
+    if (!token) return "";
+    return growPhotoUrl(token, photo.id);
+  };
+
+  const snapshotCount = photos.filter((p) => p.source === "health_check").length;
+  const hasTimelapse = snapshotCount >= 2;
+
+  const getTimelapseSrc = () => {
+    const token = getAccessToken();
+    if (!token) return "";
+    return timelapseUrl(token, growId);
   };
 
   return (
     <>
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-sm font-medium">Photo Gallery ({photos.length})</h3>
-        <Button size="sm" onClick={() => {
-          setAddForm({ bucket_id: buckets[0]?.id || "", url: "", caption: "" });
-          setAddDialog(true);
-        }} disabled={buckets.length === 0}>
-          <Plus className="mr-1 size-3" /> Add Photo
-        </Button>
+        <div className="flex items-center gap-2">
+          {hasTimelapse && (
+            <Button size="sm" variant="outline" onClick={() => setTimelapseDialog(true)}>
+              <Film className="mr-1 size-3" /> Timelapse
+            </Button>
+          )}
+          <Button size="sm" onClick={() => { resetAddForm(); setAddDialog(true); }}>
+            <Plus className="mr-1 size-3" /> Add Photo
+          </Button>
+        </div>
       </div>
+
+      {/* Timelapse Preview */}
+      {hasTimelapse && !loading && (
+        <Card className="mb-4 overflow-hidden">
+          <CardContent className="p-3">
+            <button
+              type="button"
+              className="flex w-full items-center gap-3 text-left"
+              onClick={() => setTimelapseDialog(true)}
+            >
+              <div className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                <Film className="size-5 text-primary" />
+              </div>
+              <div>
+                <p className="text-sm font-medium">Grow Timelapse</p>
+                <p className="text-xs text-muted-foreground">
+                  {snapshotCount} health-check snapshots — click to view animated timelapse
+                </p>
+              </div>
+            </button>
+          </CardContent>
+        </Card>
+      )}
 
       {loading ? (
         <Card className="flex items-center justify-center py-12">
@@ -123,18 +206,23 @@ export function PhotosTab({ buckets }: PhotosTabProps) {
         <Card className="flex flex-col items-center justify-center py-12">
           <ImageIcon className="size-10 text-muted-foreground/50" />
           <p className="mt-3 text-sm text-muted-foreground">No photos yet</p>
-          <p className="text-xs text-muted-foreground">Add photo URLs to track your grow visually</p>
+          <p className="text-xs text-muted-foreground">Upload photos or run health checks with camera to build your gallery</p>
         </Card>
       ) : (
         <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
           {photos.map((p) => (
             <Card key={p.id} className="overflow-hidden cursor-pointer group" onClick={() => { setViewPhoto(p); setEditCaption(p.caption || ""); }}>
               <div className="aspect-square bg-muted relative">
-                <img src={p.url} alt={p.caption || "Photo"} className="size-full object-cover" loading="lazy" />
+                <img src={getImageSrc(p)} alt={p.caption || "Photo"} className="size-full object-cover" loading="lazy" />
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
+                {p.source === "health_check" && (
+                  <Badge variant="secondary" className="absolute top-1.5 right-1.5 text-[10px] gap-1">
+                    <Camera className="size-2.5" /> Health Check
+                  </Badge>
+                )}
               </div>
               <CardContent className="p-2">
-                <p className="text-xs text-muted-foreground truncate">{bucketLabelMap[p.bucket_id] || "Unknown"}</p>
+                {p.bucket_id && <p className="text-xs text-muted-foreground truncate">{bucketLabelMap[p.bucket_id] || "Bucket"}</p>}
                 {p.caption && <p className="text-xs truncate">{p.caption}</p>}
                 <p className="text-xs text-muted-foreground">{new Date(p.created_at).toLocaleDateString()}</p>
               </CardContent>
@@ -143,42 +231,66 @@ export function PhotosTab({ buckets }: PhotosTabProps) {
         </div>
       )}
 
-      {/* Add Photo Dialog */}
-      <Dialog open={addDialog} onOpenChange={(open) => !open && setAddDialog(false)}>
+      {/* Upload Photo Dialog */}
+      <Dialog open={addDialog} onOpenChange={(open) => { if (!open) { setAddDialog(false); resetAddForm(); } }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add Photo</DialogTitle>
-            <DialogDescription>Provide a URL to an image of your grow</DialogDescription>
+            <DialogTitle>Upload Photo</DialogTitle>
+            <DialogDescription>Add a photo of your grow</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
-            <div className="space-y-1">
-              <Label className="text-xs">Bucket</Label>
-              <Select value={addForm.bucket_id} onValueChange={(v) => setAddForm((p) => ({ ...p, bucket_id: v ?? "" }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {buckets.map((b) => <SelectItem key={b.id} value={b.id}>#{b.position} {b.label || "Unnamed"}</SelectItem>)}
-                </SelectContent>
-              </Select>
+            {/* Drop zone / file picker */}
+            <div
+              className={`relative flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 transition-colors cursor-pointer ${
+                dragOver ? "border-primary bg-primary/5" : "border-muted-foreground/25 hover:border-muted-foreground/50"
+              }`}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileSelect(f); }}
+              />
+              {previewUrl ? (
+                <img src={previewUrl} alt="Preview" className="max-h-48 w-full rounded object-contain" />
+              ) : (
+                <>
+                  <Upload className="size-8 text-muted-foreground/50" />
+                  <p className="mt-2 text-sm text-muted-foreground">Drop an image here or click to browse</p>
+                  <p className="text-xs text-muted-foreground">JPEG, PNG, WebP — max 10 MB</p>
+                </>
+              )}
             </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Image URL</Label>
-              <Input placeholder="https://..." value={addForm.url} onChange={(e) => setAddForm((p) => ({ ...p, url: e.target.value }))} />
-            </div>
+            {selectedFile && (
+              <p className="text-xs text-muted-foreground">{selectedFile.name} ({(selectedFile.size / 1024).toFixed(0)} KB)</p>
+            )}
+            {buckets.length > 0 && (
+              <div className="space-y-1">
+                <Label className="text-xs">Bucket (optional)</Label>
+                <Select value={addForm.bucket_id} onValueChange={(v) => setAddForm((p) => ({ ...p, bucket_id: v === "__none__" ? "" : v }))}>
+                  <SelectTrigger><SelectValue placeholder="Whole grow" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">Whole grow</SelectItem>
+                    {buckets.map((b) => <SelectItem key={b.id} value={b.id}>#{b.position} {b.label || "Unnamed"}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-1">
               <Label className="text-xs">Caption (optional)</Label>
               <Input placeholder="e.g. Day 14 - first pistils" value={addForm.caption} onChange={(e) => setAddForm((p) => ({ ...p, caption: e.target.value }))} />
             </div>
-            {addForm.url && (
-              <div className="rounded-lg border overflow-hidden">
-                <img src={addForm.url} alt="Preview" className="max-h-48 w-full object-contain bg-muted" />
-              </div>
-            )}
           </div>
           <DialogFooter>
-            <Button variant="outline" type="button" onClick={() => setAddDialog(false)}>Cancel</Button>
-            <Button type="button" onClick={handleAdd} disabled={saving || !addForm.bucket_id || !addForm.url.trim()}>
+            <Button variant="outline" type="button" onClick={() => { setAddDialog(false); resetAddForm(); }}>Cancel</Button>
+            <Button type="button" onClick={handleAdd} disabled={saving || !selectedFile}>
               {saving && <Loader2 className="mr-2 size-4 animate-spin" />}
-              Save Photo
+              Upload
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -191,12 +303,19 @@ export function PhotosTab({ buckets }: PhotosTabProps) {
             <>
               <DialogHeader>
                 <DialogTitle className="flex items-center justify-between">
-                  <span>{bucketLabelMap[viewPhoto.bucket_id] || "Photo"}</span>
+                  <span className="flex items-center gap-2">
+                    {viewPhoto.source === "health_check" ? "Health Check Snapshot" : "Photo"}
+                    {viewPhoto.source === "health_check" && (
+                      <Badge variant="secondary" className="text-[10px] gap-1">
+                        <Camera className="size-2.5" /> Auto
+                      </Badge>
+                    )}
+                  </span>
                   <span className="text-xs text-muted-foreground font-normal">{new Date(viewPhoto.created_at).toLocaleDateString()}</span>
                 </DialogTitle>
               </DialogHeader>
               <div className="rounded-lg overflow-hidden border">
-                <img src={viewPhoto.url} alt={viewPhoto.caption || "Photo"} className="w-full max-h-[60vh] object-contain bg-muted" />
+                <img src={getImageSrc(viewPhoto)} alt={viewPhoto.caption || "Photo"} className="w-full max-h-[60vh] object-contain bg-muted" />
               </div>
               <div className="flex items-end gap-2">
                 <div className="flex-1 space-y-1">
@@ -212,6 +331,31 @@ export function PhotosTab({ buckets }: PhotosTabProps) {
               </div>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Timelapse Dialog */}
+      <Dialog open={timelapseDialog} onOpenChange={(open) => !open && setTimelapseDialog(false)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Film className="size-4" /> Grow Timelapse
+            </DialogTitle>
+            <DialogDescription>
+              Animated timelapse from {snapshotCount} health-check camera snapshots
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-lg overflow-hidden border bg-black">
+            <img
+              src={getTimelapseSrc()}
+              alt="Grow timelapse"
+              className="w-full object-contain"
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Snapshots are captured every 12 hours during scheduled health checks.
+            The timelapse will grow as more snapshots are collected.
+          </p>
         </DialogContent>
       </Dialog>
     </>

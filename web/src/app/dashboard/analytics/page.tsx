@@ -9,8 +9,10 @@ import {
   getStrainLeaderboard,
   listYields,
   getLatestReading,
+  getLatestTentReading,
   type BucketResponse,
   type SensorReadingResponse,
+  type TentReadingResponse,
   type YieldResponse,
 } from "@/lib/api";
 import { useGrow } from "@/hooks/use-grow";
@@ -94,8 +96,6 @@ interface LeaderboardEntry {
 
 interface EnvSnapshot {
   bucketLabel: string;
-  ambient_temp_f: number | null;
-  ambient_humidity: number | null;
   water_temp_f: number | null;
   ph: number | null;
   ec: number | null;
@@ -110,6 +110,7 @@ export default function AnalyticsPage() {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [allYields, setAllYields] = useState<YieldResponse[]>([]);
   const [envSnapshots, setEnvSnapshots] = useState<EnvSnapshot[]>([]);
+  const [tentAmbient, setTentAmbient] = useState<TentReadingResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [sensorLoading, setSensorLoading] = useState(false);
 
@@ -138,6 +139,7 @@ export default function AnalyticsPage() {
       setBuckets([]);
       setSelectedBucketId("");
       setEnvSnapshots([]);
+      setTentAmbient(null);
       return;
     }
     const token = getAccessToken();
@@ -153,7 +155,12 @@ export default function AnalyticsPage() {
       } else {
         setSelectedBucketId("");
       }
-      // Load environment snapshots for all active buckets
+      // Load tent ambient reading (shared for all buckets)
+      try {
+        const ambient = await getLatestTentReading(token, selectedGrow.tent_id);
+        setTentAmbient(ambient);
+      } catch { setTentAmbient(null); }
+      // Load environment snapshots for all active buckets (bucket-level sensors only)
       const snapshots: EnvSnapshot[] = [];
       for (const b of activeBuckets.slice(0, 10)) {
         try {
@@ -161,8 +168,6 @@ export default function AnalyticsPage() {
           if (latest) {
             snapshots.push({
               bucketLabel: `#${b.position} ${b.label || b.strain_name || ""}`.trim(),
-              ambient_temp_f: latest.ambient_temp_f,
-              ambient_humidity: latest.ambient_humidity,
               water_temp_f: latest.water_temp_f,
               ph: latest.ph,
               ec: latest.ec,
@@ -242,8 +247,6 @@ export default function AnalyticsPage() {
     EC: r.ec,
     PPM: r.ppm,
     "Water °F": r.water_temp_f,
-    "Temp °F": r.ambient_temp_f,
-    "Humidity %": r.ambient_humidity,
   }));
 
   return (
@@ -402,16 +405,23 @@ export default function AnalyticsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {envSnapshots.length === 0 ? (
+              {envSnapshots.length === 0 && !tentAmbient ? (
                 <p className="py-6 text-center text-sm text-muted-foreground">No active bucket readings</p>
               ) : (
                 <div className="space-y-2">
+                  {tentAmbient && (
+                    <div className="flex items-center justify-between rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                      <span className="font-medium min-w-[6rem]">Tent Ambient</span>
+                      <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                        {tentAmbient.ambient_temp_f != null && <span>🌡 {tentAmbient.ambient_temp_f.toFixed(1)}°F</span>}
+                        {tentAmbient.ambient_humidity != null && <span>💧 {tentAmbient.ambient_humidity.toFixed(0)}%</span>}
+                      </div>
+                    </div>
+                  )}
                   {envSnapshots.map((s, i) => (
                     <div key={i} className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
                       <span className="font-medium min-w-[6rem]">{s.bucketLabel}</span>
                       <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-                        {s.ambient_temp_f != null && <span>🌡 {s.ambient_temp_f.toFixed(1)}°F</span>}
-                        {s.ambient_humidity != null && <span>💧 {s.ambient_humidity.toFixed(0)}%</span>}
                         {s.water_temp_f != null && <span>🌊 {s.water_temp_f.toFixed(1)}°F</span>}
                         {s.ph != null && <span>pH {s.ph.toFixed(1)}</span>}
                         {s.ec != null && <span>EC {s.ec.toFixed(2)}</span>}

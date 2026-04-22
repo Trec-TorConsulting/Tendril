@@ -131,8 +131,6 @@ export function BucketsTab({ growId, buckets, latestReadings, onRefresh, onOpenS
                     {reading.ec != null && <div><span className="text-muted-foreground">EC</span><p className="font-medium">{reading.ec.toFixed(2)}</p></div>}
                     {reading.ppm != null && <div><span className="text-muted-foreground">PPM</span><p className="font-medium">{Math.round(reading.ppm)}</p></div>}
                     {reading.water_temp_f != null && <div><span className="text-muted-foreground">Water °F</span><p className="font-medium">{reading.water_temp_f.toFixed(1)}</p></div>}
-                    {reading.ambient_temp_f != null && <div><span className="text-muted-foreground">Ambient °F</span><p className="font-medium">{reading.ambient_temp_f.toFixed(1)}</p></div>}
-                    {reading.ambient_humidity != null && <div><span className="text-muted-foreground">Humidity</span><p className="font-medium">{reading.ambient_humidity.toFixed(0)}%</p></div>}
                   </div>
                 )}
                 {!reading && <p className="mt-2 text-xs text-muted-foreground">No readings yet</p>}

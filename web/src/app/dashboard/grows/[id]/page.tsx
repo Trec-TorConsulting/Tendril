@@ -11,6 +11,8 @@ import {
   createBucket,
   getLatestReading,
   createSensorReading,
+  createTentReading,
+  getLatestTentReading,
   getTent,
   listFeedingSchedules,
   createFeedingSchedule,
@@ -19,6 +21,7 @@ import {
   type GrowResponse,
   type BucketResponse,
   type SensorReadingResponse,
+  type TentReadingResponse,
   type TentResponse,
   type FeedingScheduleResponse,
   type JournalEntryResponse,
@@ -48,6 +51,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import {
   CheckCircle,
   Camera,
   Droplets,
@@ -57,6 +68,7 @@ import {
   Download,
   Copy,
   Settings,
+  Thermometer,
 } from "lucide-react";
 
 import { BrandTemplateDialog } from "./brand-template-dialog";
@@ -92,8 +104,14 @@ export default function GrowDetailPage() {
 
   // Sensor reading dialog
   const [sensorDialog, setSensorDialog] = useState<{ open: boolean; bucketId: string; bucketLabel: string }>({ open: false, bucketId: "", bucketLabel: "" });
-  const [sensorForm, setSensorForm] = useState({ ph: "", ec: "", ppm: "", water_temp_f: "", ambient_temp_f: "", ambient_humidity: "" });
+  const [sensorForm, setSensorForm] = useState({ ph: "", ec: "", ppm: "", water_temp_f: "" });
   const [sensorSaving, setSensorSaving] = useState(false);
+
+  // Tent ambient dialog
+  const [ambientDialog, setAmbientDialog] = useState(false);
+  const [ambientForm, setAmbientForm] = useState({ ambient_temp_f: "", ambient_humidity: "" });
+  const [ambientSaving, setAmbientSaving] = useState(false);
+  const [tentAmbient, setTentAmbient] = useState<TentReadingResponse | null>(null);
 
   // Edit grow dialog
   const [editGrowDialog, setEditGrowDialog] = useState(false);
@@ -124,6 +142,8 @@ export default function GrowDetailPage() {
     setBuckets(bkts);
 
     try { setTent(await getTent(token, g.tent_id)); } catch { setTent(null); }
+
+    try { setTentAmbient(await getLatestTentReading(token, g.tent_id)); } catch { setTentAmbient(null); }
 
     const readings: Record<string, SensorReadingResponse | null> = {};
     await Promise.all(
@@ -170,11 +190,9 @@ export default function GrowDetailPage() {
       if (sensorForm.ec) data.ec = parseFloat(sensorForm.ec);
       if (sensorForm.ppm) data.ppm = parseFloat(sensorForm.ppm);
       if (sensorForm.water_temp_f) data.water_temp_f = parseFloat(sensorForm.water_temp_f);
-      if (sensorForm.ambient_temp_f) data.ambient_temp_f = parseFloat(sensorForm.ambient_temp_f);
-      if (sensorForm.ambient_humidity) data.ambient_humidity = parseFloat(sensorForm.ambient_humidity);
       await createSensorReading(token, data as Parameters<typeof createSensorReading>[1]);
       setSensorDialog({ open: false, bucketId: "", bucketLabel: "" });
-      setSensorForm({ ph: "", ec: "", ppm: "", water_temp_f: "", ambient_temp_f: "", ambient_humidity: "" });
+      setSensorForm({ ph: "", ec: "", ppm: "", water_temp_f: "" });
       refresh();
     } catch { /* empty */ } finally { setSensorSaving(false); }
   };
@@ -420,6 +438,34 @@ export default function GrowDetailPage() {
           </CardContent>
         </Card>
 
+        {/* Tent Ambient */}
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-sm font-medium">
+                <Thermometer className="size-4" /> Tent Environment
+              </CardTitle>
+              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => {
+                setAmbientForm({ ambient_temp_f: "", ambient_humidity: "" });
+                setAmbientDialog(true);
+              }}>
+                <Droplets className="mr-1 size-3" /> Log Ambient
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {tentAmbient ? (
+              <div className="flex items-center gap-4 text-sm">
+                {tentAmbient.ambient_temp_f != null && <span>🌡 {tentAmbient.ambient_temp_f.toFixed(1)}°F</span>}
+                {tentAmbient.ambient_humidity != null && <span>💧 {tentAmbient.ambient_humidity.toFixed(0)}%</span>}
+                <span className="text-xs text-muted-foreground">{new Date(tentAmbient.recorded_at).toLocaleString()}</span>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No ambient readings yet</p>
+            )}
+          </CardContent>
+        </Card>
+
         {/* Weather (for outdoor/greenhouse tents) */}
         {tent && <WeatherCard tentId={tent.id} tentName={tent.name} environmentType={tent.environment_type} />}
 
@@ -463,7 +509,7 @@ export default function GrowDetailPage() {
               latestReadings={latestReadings}
               onRefresh={refresh}
               onOpenSensorDialog={(bucketId, label) => {
-                setSensorForm({ ph: "", ec: "", ppm: "", water_temp_f: "", ambient_temp_f: "", ambient_humidity: "" });
+                setSensorForm({ ph: "", ec: "", ppm: "", water_temp_f: "" });
                 setSensorDialog({ open: true, bucketId, bucketLabel: label });
               }}
             />
@@ -502,7 +548,7 @@ export default function GrowDetailPage() {
           </TabsContent>
 
           <TabsContent value="photos" className="mt-4">
-            <PhotosTab buckets={buckets} />
+            <PhotosTab growId={id} buckets={buckets} />
           </TabsContent>
         </Tabs>
       </div>
@@ -531,20 +577,58 @@ export default function GrowDetailPage() {
               <Label className="text-xs">Water Temp °F</Label>
               <Input type="number" step="0.1" placeholder="e.g. 68.0" value={sensorForm.water_temp_f} onChange={(e) => setSensorForm((p) => ({ ...p, water_temp_f: e.target.value }))} />
             </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Ambient Temp °F</Label>
-              <Input type="number" step="0.1" placeholder="e.g. 78.0" value={sensorForm.ambient_temp_f} onChange={(e) => setSensorForm((p) => ({ ...p, ambient_temp_f: e.target.value }))} />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Humidity %</Label>
-              <Input type="number" step="1" placeholder="e.g. 55" value={sensorForm.ambient_humidity} onChange={(e) => setSensorForm((p) => ({ ...p, ambient_humidity: e.target.value }))} />
-            </div>
           </div>
+          <p className="text-xs text-muted-foreground">Ambient temp & humidity are logged at the tent level. <button type="button" className="underline" onClick={() => { setSensorDialog({ open: false, bucketId: "", bucketLabel: "" }); setAmbientDialog(true); }}>Log ambient reading →</button></p>
           <DialogFooter>
             <Button variant="outline" type="button" onClick={() => setSensorDialog({ open: false, bucketId: "", bucketLabel: "" })}>Cancel</Button>
             <Button type="button" onClick={handleSensorSubmit} disabled={sensorSaving}>
               {sensorSaving && <Loader2 className="mr-2 size-4 animate-spin" />}
               Save Reading
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* --- TENT AMBIENT DIALOG --- */}
+      <Dialog open={ambientDialog} onOpenChange={(open) => !open && setAmbientDialog(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Log Tent Ambient</DialogTitle>
+            <DialogDescription>Record ambient temp & humidity for the whole tent{tent ? ` (${tent.name})` : ""}</DialogDescription>
+          </DialogHeader>
+          {tentAmbient && (
+            <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              Last reading: {tentAmbient.ambient_temp_f != null && `${tentAmbient.ambient_temp_f.toFixed(1)}°F`} {tentAmbient.ambient_humidity != null && `${tentAmbient.ambient_humidity.toFixed(0)}%`} — {new Date(tentAmbient.recorded_at).toLocaleString()}
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Ambient Temp °F</Label>
+              <Input type="number" step="0.1" placeholder="e.g. 78.0" value={ambientForm.ambient_temp_f} onChange={(e) => setAmbientForm((p) => ({ ...p, ambient_temp_f: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Humidity %</Label>
+              <Input type="number" step="1" placeholder="e.g. 55" value={ambientForm.ambient_humidity} onChange={(e) => setAmbientForm((p) => ({ ...p, ambient_humidity: e.target.value }))} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" type="button" onClick={() => setAmbientDialog(false)}>Cancel</Button>
+            <Button type="button" disabled={ambientSaving} onClick={async () => {
+              const token = getAccessToken();
+              if (!token || !grow) return;
+              setAmbientSaving(true);
+              try {
+                const data: { tent_id: string; ambient_temp_f?: number; ambient_humidity?: number } = { tent_id: grow.tent_id };
+                if (ambientForm.ambient_temp_f) data.ambient_temp_f = parseFloat(ambientForm.ambient_temp_f);
+                if (ambientForm.ambient_humidity) data.ambient_humidity = parseFloat(ambientForm.ambient_humidity);
+                await createTentReading(token, data);
+                setAmbientDialog(false);
+                setAmbientForm({ ambient_temp_f: "", ambient_humidity: "" });
+                refresh();
+              } catch { /* empty */ } finally { setAmbientSaving(false); }
+            }}>
+              {ambientSaving && <Loader2 className="mr-2 size-4 animate-spin" />}
+              Save
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -623,49 +707,68 @@ export default function GrowDetailPage() {
         </DialogContent>
       </Dialog>
 
-      {/* --- SETTINGS DIALOG --- */}
-      <Dialog open={settingsDialog} onOpenChange={(open) => !open && setSettingsDialog(false)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Grow Settings</DialogTitle>
-            <DialogDescription>Configuration specific to {grow.grow_type} grows</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            {settingsSchema.map((s) => (
-              <div key={s.key} className="space-y-1">
-                <Label className="text-xs">{s.label}{s.unit ? ` (${s.unit})` : ""}</Label>
-                {s.options ? (
-                  <Select value={settingsForm[s.key] || ""} onValueChange={(v) => setSettingsForm((p) => ({ ...p, [s.key]: v ?? "" }))}>
-                    <SelectTrigger><SelectValue placeholder={`Select ${s.label.toLowerCase()}`} /></SelectTrigger>
-                    <SelectContent>
-                      {s.options.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <Input
-                    type={s.type || "text"}
-                    step={s.step}
-                    placeholder={s.placeholder}
-                    value={settingsForm[s.key] || ""}
-                    onChange={(e) => setSettingsForm((p) => ({ ...p, [s.key]: e.target.value }))}
-                  />
-                )}
-                {s.hint && <p className="text-xs text-muted-foreground">{s.hint}</p>}
-              </div>
-            ))}
-            {settingsSchema.length === 0 && (
-              <p className="text-sm text-muted-foreground py-4 text-center">No configurable settings for this grow type</p>
+      {/* --- SETTINGS SHEET --- */}
+      <Sheet open={settingsDialog} onOpenChange={(open) => !open && setSettingsDialog(false)}>
+        <SheetContent side="right" className="sm:max-w-lg w-full flex flex-col">
+          <SheetHeader>
+            <SheetTitle>Grow Settings</SheetTitle>
+            <SheetDescription>Configuration specific to {grow.grow_type} grows</SheetDescription>
+          </SheetHeader>
+          <div className="flex-1 overflow-y-auto -mx-6 px-6 space-y-6">
+            {settingsSchema.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-8 text-center">No configurable settings for this grow type</p>
+            ) : (
+              (() => {
+                const groups = new Map<string, SettingsField[]>();
+                for (const s of settingsSchema) {
+                  const g = s.group || "setup";
+                  if (!groups.has(g)) groups.set(g, []);
+                  groups.get(g)!.push(s);
+                }
+                const ordered = [...groups.entries()].sort(
+                  ([a], [b]) => (GROUP_ORDER.indexOf(a) === -1 ? 99 : GROUP_ORDER.indexOf(a)) - (GROUP_ORDER.indexOf(b) === -1 ? 99 : GROUP_ORDER.indexOf(b)),
+                );
+                return ordered.map(([groupKey, fields]) => (
+                  <div key={groupKey}>
+                    <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-3">{GROUP_LABELS[groupKey] || groupKey}</h4>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {fields.map((s) => (
+                        <div key={s.key} className="space-y-1">
+                          <Label className="text-xs">{s.label}{s.unit ? ` (${s.unit})` : ""}</Label>
+                          {s.options ? (
+                            <Select value={settingsForm[s.key] || ""} onValueChange={(v) => setSettingsForm((p) => ({ ...p, [s.key]: v ?? "" }))}>
+                              <SelectTrigger><SelectValue placeholder={`Select ${s.label.toLowerCase()}`} /></SelectTrigger>
+                              <SelectContent>
+                                {s.options.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <Input
+                              type={s.type || "text"}
+                              step={s.step}
+                              placeholder={s.placeholder}
+                              value={settingsForm[s.key] || ""}
+                              onChange={(e) => setSettingsForm((p) => ({ ...p, [s.key]: e.target.value }))}
+                            />
+                          )}
+                          {s.hint && <p className="text-[11px] text-muted-foreground leading-tight">{s.hint}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ));
+              })()
             )}
           </div>
-          <DialogFooter>
+          <SheetFooter className="border-t pt-4 gap-2 sm:gap-2">
             <Button variant="outline" type="button" onClick={() => setSettingsDialog(false)}>Cancel</Button>
             <Button type="button" onClick={handleSettingsSave} disabled={settingsSaving}>
               {settingsSaving && <Loader2 className="mr-2 size-4 animate-spin" />}
               Save Settings
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
 
       {/* --- BRAND TEMPLATE DIALOG --- */}
       <BrandTemplateDialog
@@ -688,33 +791,43 @@ interface SettingsField {
   placeholder?: string;
   hint?: string;
   options?: string[];
+  group?: string;
 }
+
+const GROUP_ORDER = ["setup", "nutrients", "lighting", "environment", "outdoor"];
+const GROUP_LABELS: Record<string, string> = {
+  setup: "Setup & Targets",
+  nutrients: "Nutrients & Water",
+  lighting: "Lighting",
+  environment: "Environment",
+  outdoor: "Outdoor & Protection",
+};
 
 function getSettingsSchema(growType: string): SettingsField[] {
   // Common indoor light fields
   const LIGHT_FIELDS: SettingsField[] = [
-    { key: "light_type", label: "Light Type", options: ["LED", "HPS", "CMH", "CFL", "T5_Fluorescent", "COB_LED", "Quantum_Board"], hint: "Your primary light technology" },
-    { key: "light_brand", label: "Light Brand / Model", placeholder: "e.g. Spider Farmer SF-4000, HLG 650R" },
-    { key: "light_wattage", label: "Light Wattage", type: "number", unit: "W", placeholder: "e.g. 600" },
-    { key: "light_schedule", label: "Light Schedule", placeholder: "e.g. 18/6, 12/12", hint: "Hours on / hours off" },
-    { key: "light_height_in", label: "Light Height", type: "number", unit: "in", placeholder: "e.g. 24" },
+    { key: "light_type", label: "Light Type", group: "lighting", options: ["LED", "HPS", "CMH", "CFL", "T5_Fluorescent", "COB_LED", "Quantum_Board"], hint: "Your primary light technology" },
+    { key: "light_brand", label: "Light Brand / Model", group: "lighting", placeholder: "e.g. Spider Farmer SF-4000, HLG 650R" },
+    { key: "light_wattage", label: "Light Wattage", group: "lighting", type: "number", unit: "W", placeholder: "e.g. 600" },
+    { key: "light_schedule", label: "Light Schedule", group: "lighting", placeholder: "e.g. 18/6, 12/12", hint: "Hours on / hours off" },
+    { key: "light_height_in", label: "Light Height", group: "lighting", type: "number", unit: "in", placeholder: "e.g. 24" },
   ];
   // Common environment fields
   const ENV_FIELDS: SettingsField[] = [
-    { key: "ventilation", label: "Ventilation", options: ["inline_fan", "oscillating_fan", "both", "passive", "none"], hint: "Airflow setup" },
-    { key: "exhaust_fan", label: "Exhaust Fan Brand / CFM", placeholder: "e.g. AC Infinity Cloudline T6, 402 CFM" },
-    { key: "carbon_filter", label: "Carbon Filter", options: ["yes", "no"] },
-    { key: "humidifier_dehumidifier", label: "Humidity Control", options: ["humidifier", "dehumidifier", "both", "none"] },
-    { key: "controller_system", label: "Controller / Automation System", placeholder: "e.g. VivoSun GrowHub, AC Infinity Controller 69 Pro, Pulse One, Trolmaster", hint: "Smart controller brand/model if any" },
-    { key: "target_vpd", label: "Target VPD", type: "number", step: "0.1", unit: "kPa", placeholder: "e.g. 1.2", hint: "Vapor Pressure Deficit target" },
+    { key: "ventilation", label: "Ventilation", group: "environment", options: ["inline_fan", "oscillating_fan", "both", "passive", "none"], hint: "Airflow setup" },
+    { key: "exhaust_fan", label: "Exhaust Fan Brand / CFM", group: "environment", placeholder: "e.g. AC Infinity Cloudline T6, 402 CFM" },
+    { key: "carbon_filter", label: "Carbon Filter", group: "environment", options: ["yes", "no"] },
+    { key: "humidifier_dehumidifier", label: "Humidity Control", group: "environment", options: ["humidifier", "dehumidifier", "both", "none"] },
+    { key: "controller_system", label: "Controller / Automation System", group: "environment", placeholder: "e.g. VivoSun GrowHub, AC Infinity Controller 69 Pro, Pulse One, Trolmaster", hint: "Smart controller brand/model if any" },
+    { key: "target_vpd", label: "Target VPD", group: "environment", type: "number", step: "0.1", unit: "kPa", placeholder: "e.g. 1.2", hint: "Vapor Pressure Deficit target" },
   ];
   // Common nutrient fields
   const NUTRIENT_FIELDS: SettingsField[] = [
-    { key: "nutrient_line", label: "Nutrient Brand / Line", placeholder: "e.g. General Hydroponics Flora Series, Jack's 321, Athena Pro" },
-    { key: "ph_up_product", label: "pH Up Product", placeholder: "e.g. General Hydroponics pH Up" },
-    { key: "ph_down_product", label: "pH Down Product", placeholder: "e.g. General Hydroponics pH Down" },
-    { key: "water_source", label: "Water Source", options: ["tap", "RO", "distilled", "well", "rain", "spring"], hint: "Source water type" },
-    { key: "water_source_ppm", label: "Source Water PPM", type: "number", placeholder: "e.g. 150", hint: "Baseline PPM of your tap/source water" },
+    { key: "nutrient_line", label: "Nutrient Brand / Line", group: "nutrients", placeholder: "e.g. General Hydroponics Flora Series, Jack's 321, Athena Pro" },
+    { key: "ph_up_product", label: "pH Up Product", group: "nutrients", placeholder: "e.g. General Hydroponics pH Up" },
+    { key: "ph_down_product", label: "pH Down Product", group: "nutrients", placeholder: "e.g. General Hydroponics pH Down" },
+    { key: "water_source", label: "Water Source", group: "nutrients", options: ["tap", "RO", "distilled", "well", "rain", "spring"], hint: "Source water type" },
+    { key: "water_source_ppm", label: "Source Water PPM", group: "nutrients", type: "number", placeholder: "e.g. 150", hint: "Baseline PPM of your tap/source water" },
   ];
 
   switch (growType) {

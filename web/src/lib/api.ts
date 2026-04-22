@@ -427,10 +427,38 @@ export function createSensorReading(token: string, data: {
   soil_temp?: number;
   runoff_ph?: number;
   runoff_ec?: number;
+}) {
+  return apiFetch<SensorReadingResponse>("/sensors", { method: "POST", body: JSON.stringify(data), token });
+}
+
+// Tent Sensor Readings (ambient temp & humidity — tent-level, shared across buckets)
+export interface TentReadingResponse {
+  id: string;
+  tent_id: string;
+  device_id: string | null;
+  ambient_temp_f: number | null;
+  ambient_humidity: number | null;
+  recorded_at: string;
+}
+
+export function listTentReadings(token: string, tentId?: string, limit?: number) {
+  const qs = new URLSearchParams();
+  if (tentId) qs.set("tent_id", tentId);
+  if (limit) qs.set("limit", String(limit));
+  const q = qs.toString();
+  return apiFetch<TentReadingResponse[]>(`/tent-sensors${q ? `?${q}` : ""}`, { token });
+}
+
+export function getLatestTentReading(token: string, tentId: string) {
+  return apiFetch<TentReadingResponse | null>(`/tent-sensors/latest/${tentId}`, { token });
+}
+
+export function createTentReading(token: string, data: {
+  tent_id: string;
   ambient_temp_f?: number;
   ambient_humidity?: number;
 }) {
-  return apiFetch<SensorReadingResponse>("/sensors", { method: "POST", body: JSON.stringify(data), token });
+  return apiFetch<TentReadingResponse>("/tent-sensors", { method: "POST", body: JSON.stringify(data), token });
 }
 
 // Feeding Schedules
@@ -650,6 +678,64 @@ export function updatePhoto(token: string, id: string, data: Partial<{ caption: 
 
 export function deletePhoto(token: string, id: string) {
   return apiFetch<void>(`/photos/${id}`, { method: "DELETE", token });
+}
+
+// Grow Photos (S3 file uploads)
+export interface GrowPhotoResponse {
+  id: string;
+  grow_cycle_id: string;
+  bucket_id: string | null;
+  source: string;
+  caption: string | null;
+  created_at: string;
+}
+
+export function listGrowPhotos(token: string, growCycleId: string) {
+  return apiFetch<GrowPhotoResponse[]>(`/photos/grow?grow_cycle_id=${growCycleId}`, { token });
+}
+
+export async function uploadGrowPhoto(
+  token: string,
+  file: File,
+  growCycleId: string,
+  bucketId?: string,
+  caption?: string,
+): Promise<GrowPhotoResponse> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("grow_cycle_id", growCycleId);
+  if (bucketId) form.append("bucket_id", bucketId);
+  if (caption) form.append("caption", caption);
+
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/v1";
+  const res = await fetch(`${API_BASE_URL}/photos/grow`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Upload failed" }));
+    throw new Error(err.detail || "Upload failed");
+  }
+  return res.json();
+}
+
+export function growPhotoUrl(token: string, photoId: string) {
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/v1";
+  return `${API_BASE_URL}/photos/grow/file/${photoId}?token=${encodeURIComponent(token)}`;
+}
+
+export function updateGrowPhoto(token: string, id: string, data: Partial<{ caption: string }>) {
+  return apiFetch<GrowPhotoResponse>(`/photos/grow/${id}`, { method: "PATCH", body: JSON.stringify(data), token });
+}
+
+export function deleteGrowPhoto(token: string, id: string) {
+  return apiFetch<void>(`/photos/grow/${id}`, { method: "DELETE", token });
+}
+
+export function timelapseUrl(token: string, growCycleId: string) {
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/v1";
+  return `${API_BASE_URL}/photos/grow/timelapse/${growCycleId}?token=${encodeURIComponent(token)}`;
 }
 
 // Dose Profiles

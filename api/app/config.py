@@ -76,6 +76,22 @@ class Settings:
         default_factory=lambda: os.environ.get("STRIPE_WEBHOOK_SECRET", "")
     )
 
+    # S3 / MinIO
+    s3_endpoint: str = field(
+        default_factory=lambda: os.environ.get(
+            "S3_ENDPOINT", "http://minio.minio.svc.cluster.local:9000"
+        )
+    )
+    s3_access_key: str = field(
+        default_factory=lambda: os.environ.get("S3_ACCESS_KEY", "minioadmin")
+    )
+    s3_secret_key: str = field(
+        default_factory=lambda: os.environ.get("S3_SECRET_KEY", "")
+    )
+    s3_bucket: str = field(
+        default_factory=lambda: os.environ.get("S3_BUCKET", "tendril-photos")
+    )
+
     # Web Push (VAPID)
     vapid_private_key: str = field(
         default_factory=lambda: os.environ.get("VAPID_PRIVATE_KEY", "")

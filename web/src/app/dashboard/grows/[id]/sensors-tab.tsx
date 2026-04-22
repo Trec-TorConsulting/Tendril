@@ -30,8 +30,6 @@ const METRICS = [
   { key: "ec", label: "EC", color: "#3b82f6", unit: " mS" },
   { key: "ppm", label: "PPM", color: "#f59e0b", unit: "" },
   { key: "water_temp_f", label: "Water Temp", color: "#ef4444", unit: "°F" },
-  { key: "ambient_temp_f", label: "Ambient Temp", color: "#f97316", unit: "°F" },
-  { key: "ambient_humidity", label: "Humidity", color: "#06b6d4", unit: "%" },
   { key: "dissolved_oxygen", label: "DO", color: "#8b5cf6", unit: " mg/L" },
   { key: "water_level_pct", label: "Water Level", color: "#64748b", unit: "%" },
   { key: "soil_moisture", label: "Soil Moisture", color: "#84cc16", unit: "%" },

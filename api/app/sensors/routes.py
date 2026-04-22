@@ -31,8 +31,8 @@ class SensorReadingCreate(BaseModel):
     soil_temp: float | None = None
     runoff_ph: float | None = None
     runoff_ec: float | None = None
-    ambient_temp_f: float | None = None
-    ambient_humidity: float | None = None
+    # ambient_temp_f and ambient_humidity moved to tent-level readings
+    # (POST /tent-sensors). Kept in response for backward compat.
 
 
 class SensorReadingResponse(BaseModel):

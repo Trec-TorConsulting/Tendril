@@ -12,18 +12,28 @@ void sensors_setup() {
 void sensors_read_and_publish() {
     JsonDocument doc;
 
-    // Simulated readings — replace with real sensor reads
+    // Bucket-level readings (per-bucket sensors)
     doc["water_temp_f"] = 68.5;
     doc["ph"] = 5.9;
     doc["ec"] = 1.2;
     doc["water_level_pct"] = 85;
-    doc["ambient_temp_f"] = 75.2;
-    doc["ambient_humidity"] = 55.0;
 
     char payload[256];
     serializeJson(doc, payload, sizeof(payload));
 
     mqtt_publish("readings", payload);
-    Serial.print("Published: ");
+    Serial.print("Published bucket: ");
     Serial.println(payload);
+
+    // Tent-level ambient readings (shared across all buckets in tent)
+    JsonDocument ambient;
+    ambient["ambient_temp_f"] = 75.2;
+    ambient["ambient_humidity"] = 55.0;
+
+    char ambient_payload[128];
+    serializeJson(ambient, ambient_payload, sizeof(ambient_payload));
+
+    mqtt_publish("ambient", ambient_payload);
+    Serial.print("Published ambient: ");
+    Serial.println(ambient_payload);
 }

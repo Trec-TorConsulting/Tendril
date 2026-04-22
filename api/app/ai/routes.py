@@ -263,6 +263,31 @@ async def run_health_check(
         source="manual",
     )
     session.add(health_eval)
+
+    # Save camera snapshot as a grow photo for the gallery
+    if camera_image and not body.image_base64:
+        # Only auto-save the camera image (not user-uploaded duplicates)
+        try:
+            import asyncio
+            from app.grows.models import GrowPhoto
+            from app.storage import upload_photo as s3_upload
+
+            loop = asyncio.get_running_loop()
+            key = await loop.run_in_executor(
+                None, s3_upload, camera_image, "image/jpeg",
+                str(grow.tenant_id), str(grow.id),
+            )
+            grow_photo = GrowPhoto(
+                tenant_id=grow.tenant_id,
+                grow_cycle_id=grow.id,
+                source="health_check",
+                storage_key=key,
+                caption=f"Health check snapshot (score: {score})" if score else "Health check snapshot",
+            )
+            session.add(grow_photo)
+        except Exception:
+            logger.warning("Failed to save health check snapshot to S3")
+
     await session.commit()
     await session.refresh(health_eval)
 

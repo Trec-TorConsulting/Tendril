@@ -105,7 +105,7 @@ def _fmt_journal(entries: list[dict]) -> str:
 def _fmt_trends(trends: dict) -> str:
     lines = [f"  Period: {trends.get('period_hours', 24)}h ({trends.get('reading_count', 0)} readings)"]
     for field in ("ph", "ec", "ppm", "water_temp_f", "dissolved_oxygen", "water_level_pct",
-                  "ambient_temp_f", "ambient_humidity", "soil_moisture", "soil_temp",
+                  "soil_moisture", "soil_temp",
                   "runoff_ph", "runoff_ec", "flow_rate", "mist_pressure"):
         avg = trends.get(f"{field}_avg")
         if avg is not None:
@@ -311,10 +311,36 @@ def build_chat_context(
             sensor_section += f"\n  Bucket {pos}:\n" + _fmt_sensors(readings)
         parts.append(sensor_section)
 
+    # Tent ambient (shared across all buckets)
+    tent_ambient = grow_data.get("tent_ambient")
+    if tent_ambient:
+        ambient_lines = []
+        if tent_ambient.get("ambient_temp_f") is not None:
+            ambient_lines.append(f"  Ambient Temp: {tent_ambient['ambient_temp_f']}°F")
+        if tent_ambient.get("ambient_humidity") is not None:
+            ambient_lines.append(f"  Ambient Humidity: {tent_ambient['ambient_humidity']}%")
+        if tent_ambient.get("recorded_at"):
+            ambient_lines.append(f"  Recorded: {tent_ambient['recorded_at']}")
+        if ambient_lines:
+            parts.append("\n=== Tent Environment (shared) ===\n" + "\n".join(ambient_lines))
+
     # Sensor trends
     trends = grow_data.get("sensor_trends")
     if trends:
-        parts.append("\n=== Sensor Trends ===\n" + _fmt_trends(trends))
+        parts.append("\n=== Bucket Sensor Trends ===\n" + _fmt_trends(trends))
+
+    # Ambient trends (tent-level)
+    ambient_trends = grow_data.get("ambient_trends")
+    if ambient_trends:
+        ambient_trend_lines = [f"  Period: {ambient_trends.get('period_hours', 24)}h ({ambient_trends.get('reading_count', 0)} readings)"]
+        for field in ("ambient_temp_f", "ambient_humidity"):
+            avg = ambient_trends.get(f"{field}_avg")
+            if avg is not None:
+                label = field.replace("_", " ").title()
+                lo = ambient_trends.get(f"{field}_min")
+                hi = ambient_trends.get(f"{field}_max")
+                ambient_trend_lines.append(f"  {label}: avg {avg}, range {lo}–{hi}")
+        parts.append("\n=== Tent Ambient Trends ===\n" + "\n".join(ambient_trend_lines))
 
     # Feeding schedules
     feeds = grow_data.get("feeding_schedules") or []

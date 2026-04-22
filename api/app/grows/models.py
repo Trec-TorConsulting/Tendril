@@ -35,6 +35,7 @@ class Tent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     grow_cycles: Mapped[list[GrowCycle]] = relationship(back_populates="tent", cascade="all, delete-orphan")
+    ambient_readings: Mapped[list["TentSensorReading"]] = relationship(back_populates="tent", cascade="all, delete-orphan")
 
 
 # ---------- Grow Cycles ----------
@@ -60,6 +61,7 @@ class GrowCycle(Base):
 
     tent: Mapped[Tent] = relationship(back_populates="grow_cycles")
     buckets: Mapped[list[Bucket]] = relationship(back_populates="grow_cycle", cascade="all, delete-orphan")
+    grow_photos: Mapped[list["GrowPhoto"]] = relationship(back_populates="grow_cycle", cascade="all, delete-orphan")
 
 
 # ---------- Buckets ----------
@@ -158,6 +160,23 @@ class BucketPhoto(Base):
     bucket: Mapped[Bucket] = relationship(back_populates="photos")
 
 
+# ---------- Grow Photos (grow-level, supports file uploads & health-check snapshots) ----------
+
+class GrowPhoto(Base):
+    __tablename__ = "grow_photos"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    grow_cycle_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("grow_cycles.id", ondelete="CASCADE"), nullable=False)
+    bucket_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("buckets.id", ondelete="SET NULL"), nullable=True)
+    source: Mapped[str] = mapped_column(String(50), default="upload")  # upload | health_check
+    storage_key: Mapped[str] = mapped_column(String(1024), nullable=False)  # S3 object key
+    caption: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    grow_cycle: Mapped[GrowCycle] = relationship(back_populates="grow_photos")
+
+
 # ---------- Dose Profiles ----------
 
 class DoseProfile(Base):
@@ -249,6 +268,22 @@ class WeatherReading(Base):
     weather_code: Mapped[int | None] = mapped_column(Integer)
     forecast: Mapped[dict | None] = mapped_column(JSON)  # 7-day forecast data
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+# ---------- Tent Sensor Readings (ambient temp & humidity — one per tent, not per bucket) ----------
+
+class TentSensorReading(Base):
+    __tablename__ = "tent_sensor_readings"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    tent_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tents.id", ondelete="CASCADE"), nullable=False)
+    device_id: Mapped[str | None] = mapped_column(String(100))
+    ambient_temp_f: Mapped[float | None] = mapped_column(Float)
+    ambient_humidity: Mapped[float | None] = mapped_column(Float)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    tent: Mapped["Tent"] = relationship(back_populates="ambient_readings")
 
 
 # ---------- Grow Type Profiles (seed data — read-only) ----------
