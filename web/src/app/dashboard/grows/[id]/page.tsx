@@ -804,11 +804,8 @@ const GROUP_LABELS: Record<string, string> = {
 };
 
 function getSettingsSchema(growType: string): SettingsField[] {
-  // Common indoor light fields
+  // Common indoor light fields (hardware lives on Tent equipment; these are per-grow-cycle)
   const LIGHT_FIELDS: SettingsField[] = [
-    { key: "light_type", label: "Light Type", group: "lighting", options: ["LED", "HPS", "CMH", "CFL", "T5_Fluorescent", "COB_LED", "Quantum_Board"], hint: "Your primary light technology" },
-    { key: "light_brand", label: "Light Brand / Model", group: "lighting", placeholder: "e.g. Spider Farmer SF-4000, HLG 650R" },
-    { key: "light_wattage", label: "Light Wattage", group: "lighting", type: "number", unit: "W", placeholder: "e.g. 600" },
     { key: "light_schedule", label: "Light Schedule", group: "lighting", placeholder: "e.g. 18/6, 12/12", hint: "Hours on / hours off" },
     { key: "light_height_in", label: "Light Height", group: "lighting", type: "number", unit: "in", placeholder: "e.g. 24" },
   ];

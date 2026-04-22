@@ -20,7 +20,7 @@ router = APIRouter()
 
 
 class EquipmentItem(BaseModel):
-    type: str  # exhaust_fan, inline_fan, oscillating_fan, carbon_filter, humidifier, dehumidifier, heater, ac_unit, co2_system, controller, custom
+    type: str  # grow_light, exhaust_fan, inline_fan, oscillating_fan, carbon_filter, humidifier, dehumidifier, heater, ac_unit, co2_system, controller, custom
     brand: str | None = None
     model: str | None = None
     specs: str | None = None  # e.g. "402 CFM", "16 inch"

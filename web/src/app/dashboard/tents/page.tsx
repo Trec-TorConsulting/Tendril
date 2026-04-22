@@ -37,6 +37,7 @@ import { Plus, MoreHorizontal, Pencil, Trash2, MapPin, Warehouse, Loader2, Locat
 
 // Equipment presets
 const EQUIPMENT_TYPES = [
+  { value: "grow_light", label: "Grow Light" },
   { value: "exhaust_fan", label: "Exhaust Fan" },
   { value: "inline_fan", label: "Inline Fan" },
   { value: "oscillating_fan", label: "Oscillating Fan" },
@@ -51,6 +52,7 @@ const EQUIPMENT_TYPES = [
 ] as const;
 
 const BRAND_SUGGESTIONS: Record<string, string[]> = {
+  grow_light: ["Spider Farmer", "HLG (Horticulture Lighting Group)", "Mars Hydro", "AC Infinity", "Vivosun", "Gavita", "Luxx", "Growers Choice", "Kind LED", "Fluence"],
   exhaust_fan: ["AC Infinity", "Vivosun", "TerraBloom", "Can-Fan", "Hurricane", "iPower"],
   inline_fan: ["AC Infinity", "Vivosun", "TerraBloom", "Can-Fan", "Hurricane", "iPower"],
   oscillating_fan: ["Secret Jardin", "Hurricane", "AC Infinity", "Vivosun", "Honeywell", "Lasko"],
