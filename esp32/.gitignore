@@ -1,0 +1,6 @@
+# Build output
+.pio/
+.vscode/
+
+# Real credentials — use config.example.h as template
+src/config.h
