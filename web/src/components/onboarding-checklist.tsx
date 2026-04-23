@@ -1,10 +1,12 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Sprout, Warehouse, Cpu, CheckCircle2, ArrowRight } from "lucide-react";
+import { fireBurst } from "@/lib/confetti";
 
 interface OnboardingProps {
   hasTents: boolean;
@@ -44,6 +46,14 @@ const steps = [
 
 export function OnboardingChecklist(props: OnboardingProps) {
   const completedCount = steps.filter((s) => s.check(props)).length;
+  const prevCount = useRef(completedCount);
+
+  useEffect(() => {
+    if (completedCount === steps.length && prevCount.current < steps.length) {
+      fireBurst();
+    }
+    prevCount.current = completedCount;
+  }, [completedCount]);
 
   if (completedCount === steps.length) return null; // fully onboarded
 

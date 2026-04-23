@@ -9,6 +9,7 @@ import { ConfirmProvider } from "@/components/confirm-dialog";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { MobileBottomNav } from "@/components/mobile-bottom-nav";
+import { CommandPalette } from "@/components/command-palette";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -42,6 +43,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </main>
         </SidebarInset>
         <MobileBottomNav />
+        <CommandPalette />
       </SidebarProvider>
       </ConfirmProvider>
     </GrowProvider>

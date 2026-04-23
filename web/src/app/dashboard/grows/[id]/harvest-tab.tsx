@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
 import { useConfirm } from "@/components/confirm-dialog";
+import { fireCannons } from "@/lib/confetti";
 import { formatCalendarDate } from "@/lib/utils";
 import {
   listYields,
@@ -101,6 +102,7 @@ export function HarvestTab({ growId, buckets }: HarvestTabProps) {
         await updateYield(token, editId, data as Parameters<typeof updateYield>[2]);
       } else {
         await createYield(token, { bucket_id: form.bucket_id, ...data } as Parameters<typeof createYield>[1]);
+        fireCannons();
       }
       setDialog(false);
       setEditId(null);

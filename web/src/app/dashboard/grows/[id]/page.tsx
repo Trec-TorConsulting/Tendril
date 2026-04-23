@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getAccessToken } from "@/lib/auth";
 import { useConfirm } from "@/components/confirm-dialog";
+import { fireBurst } from "@/lib/confetti";
 import {
   getGrow,
   updateGrow,
@@ -179,6 +180,7 @@ export default function GrowDetailPage() {
     const token = getAccessToken();
     if (!token) return;
     await updateGrow(token, id, { status: "completed" });
+    fireBurst();
     refresh();
   };
 

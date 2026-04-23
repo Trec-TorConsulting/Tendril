@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
+import { fireRain } from "@/lib/confetti";
 import {
   listTasks,
   createTask,
@@ -206,10 +207,17 @@ export default function TasksPage() {
     }
   };
 
+  const completionStreak = useRef(0);
+
   const handleComplete = async (id: string) => {
     const token = getAccessToken();
     if (!token) return;
     await completeTask(id, token);
+    completionStreak.current += 1;
+    if (completionStreak.current >= 3) {
+      fireRain();
+      completionStreak.current = 0;
+    }
     refresh();
     if (view === "calendar") refreshCalendar();
   };

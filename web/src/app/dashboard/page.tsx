@@ -4,15 +4,16 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { getAccessToken } from "@/lib/auth";
-import { listGrows, listDevices, listTents, getHarvestCountdown, getTent, type GrowResponse, type DeviceResponse, type HarvestCountdownItem, type TentResponse } from "@/lib/api";
+import { listGrows, listDevices, listTents, getHarvestCountdown, getTent, listSensorReadings, listTentReadings, type GrowResponse, type DeviceResponse, type HarvestCountdownItem, type TentResponse, type SensorReadingResponse, type TentReadingResponse } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { OnboardingChecklist } from "@/components/onboarding-checklist";
+import { SensorSparkline } from "@/components/sparkline";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCalendarDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Sprout, Cpu, Activity, Plus, ArrowRight, Timer, Camera, ChevronRight, Settings2 } from "lucide-react";
+import { Sprout, Cpu, Activity, Plus, ArrowRight, Timer, Camera, ChevronRight, Settings2, Thermometer, Droplets } from "lucide-react";
 import { PullToRefresh } from "@/components/pull-to-refresh";
 import { useWidgetLayout, type WidgetId } from "@/hooks/use-widget-layout";
 import { CustomizeWidgetsDialog } from "@/components/customize-widgets-dialog";
@@ -25,6 +26,7 @@ export default function DashboardPage() {
   const [tents, setTents] = useState<TentResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [customizeOpen, setCustomizeOpen] = useState(false);
+  const [sensorTrends, setSensorTrends] = useState<{ ph: number[]; ec: number[]; temp: number[]; humidity: number[] }>({ ph: [], ec: [], temp: [], humidity: [] });
   const { widgets, toggle, moveUp, moveDown, reset, isVisible } = useWidgetLayout();
 
   const refresh = useCallback(async () => {
@@ -46,6 +48,18 @@ export default function DashboardPage() {
       if (primaryGrow) {
         try { setHeroTent(await getTent(token, primaryGrow.tent_id)); } catch { setHeroTent(null); }
       }
+      // Fetch sensor trends for sparklines (last 50 readings)
+      try {
+        const [sensorReadings, tentReadings] = await Promise.all([
+          listSensorReadings(token, undefined, 50).catch(() => [] as SensorReadingResponse[]),
+          listTentReadings(token, undefined, 50).catch(() => [] as TentReadingResponse[]),
+        ]);
+        const phVals = sensorReadings.map((r) => r.ph).filter((v): v is number => v != null).reverse();
+        const ecVals = sensorReadings.map((r) => r.ec).filter((v): v is number => v != null).reverse();
+        const tempVals = tentReadings.map((r) => r.ambient_temp_f).filter((v): v is number => v != null).reverse();
+        const humVals = tentReadings.map((r) => r.ambient_humidity).filter((v): v is number => v != null).reverse();
+        setSensorTrends({ ph: phVals, ec: ecVals, temp: tempVals, humidity: humVals });
+      } catch { /* non-critical */ }
     } finally {
       setLoading(false);
     }
@@ -101,6 +115,33 @@ export default function DashboardPage() {
                     icon={<Activity className="size-4 text-primary" />}
                     loading={loading}
                   />
+                  {sensorTrends.ph.length >= 2 && (
+                    <StatsCard
+                      title="pH Trend"
+                      value={sensorTrends.ph[sensorTrends.ph.length - 1]?.toFixed(1)}
+                      icon={<Droplets className="size-4 text-primary" />}
+                      sparklineData={sensorTrends.ph}
+                      sparklineRanges={{ min: 5.5, max: 6.5 }}
+                    />
+                  )}
+                  {sensorTrends.ec.length >= 2 && (
+                    <StatsCard
+                      title="EC Trend"
+                      value={sensorTrends.ec[sensorTrends.ec.length - 1]?.toFixed(2)}
+                      icon={<Activity className="size-4 text-primary" />}
+                      sparklineData={sensorTrends.ec}
+                      sparklineRanges={{ min: 1.0, max: 2.5 }}
+                    />
+                  )}
+                  {sensorTrends.temp.length >= 2 && (
+                    <StatsCard
+                      title="Temp Trend"
+                      value={`${sensorTrends.temp[sensorTrends.temp.length - 1]?.toFixed(0)}°F`}
+                      icon={<Thermometer className="size-4 text-primary" />}
+                      sparklineData={sensorTrends.temp}
+                      sparklineRanges={{ min: 68, max: 82 }}
+                    />
+                  )}
                 </div>
               );
 
@@ -258,11 +299,15 @@ function StatsCard({
   value,
   icon,
   loading,
+  sparklineData,
+  sparklineRanges,
 }: {
   title: string;
   value?: string | number;
   icon: React.ReactNode;
   loading?: boolean;
+  sparklineData?: number[];
+  sparklineRanges?: { min: number; max: number };
 }) {
   return (
     <Card>
@@ -274,7 +319,12 @@ function StatsCard({
         {loading ? (
           <Skeleton className="h-8 w-20" />
         ) : (
-          <div className="text-2xl font-bold">{value}</div>
+          <div className="flex items-end justify-between gap-3">
+            <div className="text-2xl font-bold">{value}</div>
+            {sparklineData && sparklineData.length >= 2 && (
+              <SensorSparkline data={sparklineData} ranges={sparklineRanges} height={28} className="w-24 shrink-0" />
+            )}
+          </div>
         )}
       </CardContent>
     </Card>
