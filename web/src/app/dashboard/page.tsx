@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { motion } from "framer-motion";
 import { getAccessToken } from "@/lib/auth";
 import { listGrows, listDevices, getHarvestCountdown, type GrowResponse, type DeviceResponse, type HarvestCountdownItem } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
@@ -84,7 +85,9 @@ export default function DashboardPage() {
             </h2>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {countdown.map((item) => (
-                <Card key={item.bucket_id} className={item.days_remaining <= 3 ? "border-orange-500/50" : item.days_remaining <= 0 ? "border-red-500/50" : ""}>
+                <motion.div key={item.bucket_id} whileTap={{ scale: 0.98 }} transition={{ type: "spring", stiffness: 400, damping: 25 }}>
+                <Link href={`/dashboard/grows/${item.grow_id}`}>
+                <Card className={`transition-colors hover:border-primary/50 cursor-pointer ${item.days_remaining <= 3 ? "border-orange-500/50" : item.days_remaining <= 0 ? "border-red-500/50" : ""}`}>
                   <CardContent className="p-4">
                     <div className="flex items-center justify-between">
                       <div>
@@ -102,6 +105,8 @@ export default function DashboardPage() {
                     </p>
                   </CardContent>
                 </Card>
+                </Link>
+                </motion.div>
               ))}
             </div>
           </div>
@@ -121,7 +126,8 @@ export default function DashboardPage() {
                 .filter((g) => g.status === "active")
                 .slice(0, 6)
                 .map((g) => (
-                  <Card key={g.id} className="transition-colors hover:border-primary/50">
+                  <motion.div key={g.id} whileTap={{ scale: 0.98 }} transition={{ type: "spring", stiffness: 400, damping: 25 }}>
+                  <Card className="transition-colors hover:border-primary/50">
                     <Link href={`/dashboard/grows/${g.id}`} className="block p-4">
                       <div className="flex items-start justify-between">
                         <div>
@@ -132,6 +138,7 @@ export default function DashboardPage() {
                       </div>
                     </Link>
                   </Card>
+                  </motion.div>
                 ))}
             </div>
           </div>

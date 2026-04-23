@@ -25,6 +25,7 @@ import {
   Shield,
   LogOut,
   ChevronUp,
+  ChevronRight,
   Leaf,
 } from "lucide-react";
 import {
@@ -41,6 +42,11 @@ import {
   SidebarRail,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -266,17 +272,32 @@ function NavGroup({
   items: { href: string; label: string; icon: React.ComponentType<{ className?: string }> }[];
   pathname: string;
 }) {
+  const hasActive = items.some(
+    (item) => pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href + "/"))
+  );
+
   return (
-    <SidebarGroup>
-      <SidebarGroupLabel>{label}</SidebarGroupLabel>
-      <SidebarGroupContent>
-        <SidebarMenu>
-          {items.map((item) => (
-            <NavItem key={item.href} {...item} pathname={pathname} />
-          ))}
-        </SidebarMenu>
-      </SidebarGroupContent>
-    </SidebarGroup>
+    <Collapsible defaultOpen={hasActive || label === "Overview"}>
+      <SidebarGroup>
+        <CollapsibleTrigger
+          render={
+            <SidebarGroupLabel className="cursor-pointer select-none hover:text-sidebar-foreground transition-colors" />
+          }
+        >
+          {label}
+          <ChevronRight className="ml-auto size-4 transition-transform duration-200 [[data-panel-open]_&]:rotate-90" />
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {items.map((item) => (
+                <NavItem key={item.href} {...item} pathname={pathname} />
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </CollapsibleContent>
+      </SidebarGroup>
+    </Collapsible>
   );
 }
 

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
 import { getAccessToken } from "@/lib/auth";
 import { useConfirm } from "@/components/confirm-dialog";
 import { formatCalendarDate } from "@/lib/utils";
@@ -142,7 +143,8 @@ export default function GrowsPage() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {grows.map((g) => (
-              <Card key={g.id} className="p-4 transition-colors hover:border-primary/50 cursor-pointer" onClick={() => router.push(`/dashboard/grows/${g.id}`)}>
+              <motion.div key={g.id} whileTap={{ scale: 0.98 }} transition={{ type: "spring", stiffness: 400, damping: 25 }}>
+              <Card className="p-4 transition-colors hover:border-primary/50 cursor-pointer" onClick={() => router.push(`/dashboard/grows/${g.id}`)}>
                 <div className="flex items-start justify-between">
                   <div className="min-w-0 flex-1">
                     <Link
@@ -175,6 +177,7 @@ export default function GrowsPage() {
                   </Button>
                 </div>
               </Card>
+              </motion.div>
             ))}
           </div>
         )}
