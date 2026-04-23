@@ -40,6 +40,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Plus, Leaf, ChevronDown, Trash2, Send } from "lucide-react";
+import { PageSkeleton } from "@/components/page-skeleton";
 
 interface CustomGrowType {
   id: string;
@@ -94,6 +95,7 @@ export default function GrowTypesPage() {
   const [aiContext, setAiContext] = useState("");
   const [error, setError] = useState("");
   const [tab, setTab] = useState("built-in");
+  const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     const token = getAccessToken();
@@ -109,7 +111,7 @@ export default function GrowTypesPage() {
       setCustomTypes(custom);
     } catch {
       /* tier restricted */
-    }
+    } finally { setLoading(false); }
   }, []);
 
   useEffect(() => {
@@ -190,6 +192,8 @@ export default function GrowTypesPage() {
     },
     {} as Record<string, BuiltInType[]>,
   );
+
+  if (loading) return <PageSkeleton rows={4} cards />;
 
   return (
     <>

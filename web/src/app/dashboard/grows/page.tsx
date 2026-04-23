@@ -4,6 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
+import { z } from "zod";
+import { useForm, Controller } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { getAccessToken } from "@/lib/auth";
 import { useConfirm } from "@/components/confirm-dialog";
 import { formatCalendarDate } from "@/lib/utils";
@@ -41,6 +44,13 @@ import {
 } from "@/components/ui/select";
 import { Plus, Sprout, Trash2 } from "lucide-react";
 
+const createGrowSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  tent_id: z.string().min(1, "Grow space is required"),
+  grow_type: z.string().min(1, "Grow type is required"),
+});
+type CreateGrowForm = z.infer<typeof createGrowSchema>;
+
 export default function GrowsPage() {
   const router = useRouter();
   const confirm = useConfirm();
@@ -49,8 +59,12 @@ export default function GrowsPage() {
   const [growTypes, setGrowTypes] = useState<GrowTypeSummary[]>([]);
   const [filter, setFilter] = useState<string>("active");
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [form, setForm] = useState({ name: "", tent_id: "", grow_type: "" });
   const [error, setError] = useState("");
+
+  const { register, handleSubmit, control, reset, formState: { errors, isSubmitting } } = useForm<CreateGrowForm>({
+    resolver: zodResolver(createGrowSchema),
+    defaultValues: { name: "", tent_id: "", grow_type: "" },
+  });
 
   const refresh = useCallback(async () => {
     const token = getAccessToken();
@@ -69,17 +83,17 @@ export default function GrowsPage() {
     refresh();
   }, [refresh]);
 
-  const handleCreate = async () => {
+  const handleCreate = async (data: CreateGrowForm) => {
     const token = getAccessToken();
-    if (!token || !form.name || !form.tent_id || !form.grow_type) return;
+    if (!token) return;
     try {
       await createGrow(token, {
-        tent_id: form.tent_id,
-        name: form.name,
-        grow_type: form.grow_type,
+        tent_id: data.tent_id,
+        name: data.name,
+        grow_type: data.grow_type,
       });
       setDialogOpen(false);
-      setForm({ name: "", tent_id: "", grow_type: "" });
+      reset();
       refresh();
     } catch {
       setError("Failed to create grow");
@@ -184,8 +198,9 @@ export default function GrowsPage() {
       </div>
 
       {/* Create Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { reset(); setError(""); } }}>
         <DialogContent>
+          <form onSubmit={handleSubmit(handleCreate)}>
           <DialogHeader>
             <DialogTitle>New Grow Cycle</DialogTitle>
             <DialogDescription>Start tracking a new grow from seed to harvest.</DialogDescription>
@@ -193,52 +208,59 @@ export default function GrowsPage() {
           {error && (
             <p className="text-sm text-destructive">{error}</p>
           )}
-          <div className="space-y-4">
+          <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label>Name</Label>
               <Input
                 placeholder="Grow name"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                {...register("name")}
               />
+              {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
             </div>
             <div className="space-y-2">
               <Label>Grow Space</Label>
-              <Select value={form.tent_id} onValueChange={(v) => setForm({ ...form, tent_id: v ?? "" })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select space" />
-                </SelectTrigger>
-                <SelectContent>
-                  {tents.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Controller name="tent_id" control={control} render={({ field }) => (
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select space" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tents.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )} />
+              {errors.tent_id && <p className="text-xs text-destructive">{errors.tent_id.message}</p>}
             </div>
             <div className="space-y-2">
               <Label>Grow Type</Label>
-              <Select value={form.grow_type} onValueChange={(v) => setForm({ ...form, grow_type: v ?? "" })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {growTypes.map((gt) => (
-                    <SelectItem key={gt.id} value={gt.id}>
-                      {gt.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Controller name="grow_type" control={control} render={({ field }) => (
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {growTypes.map((gt) => (
+                      <SelectItem key={gt.id} value={gt.id}>
+                        {gt.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )} />
+              {errors.grow_type && <p className="text-xs text-destructive">{errors.grow_type.message}</p>}
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+            <Button variant="outline" type="button" onClick={() => setDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleCreate}>Create</Button>
+            <Button type="submit" disabled={isSubmitting}>Create</Button>
           </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </>

@@ -43,6 +43,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { PageHeader } from "@/components/page-header";
+import { PageSkeleton } from "@/components/page-skeleton";
 import { cn } from "@/lib/utils";
 import {
   Plus,
@@ -72,6 +73,7 @@ export default function NotificationsPage() {
   const [showPref, setShowPref] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [testing, setTesting] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     const token = getAccessToken();
@@ -82,6 +84,7 @@ export default function NotificationsPage() {
     ]);
     setChannels(ch);
     setPreferences(prefs);
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -146,6 +149,8 @@ export default function NotificationsPage() {
       setPushEnabled(true);
     }
   };
+
+  if (loading) return <PageSkeleton rows={4} cards />;
 
   return (
     <>
@@ -264,9 +269,12 @@ export default function NotificationsPage() {
           </CardHeader>
           <CardContent>
             {preferences.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">
-                {channels.length === 0 ? "Add a channel first to configure preferences." : "No preferences configured. All events go to all enabled channels."}
-              </p>
+              <div className="flex flex-col items-center justify-center py-8">
+                <Bell className="size-10 text-muted-foreground/50" />
+                <p className="mt-2 text-sm text-muted-foreground text-center">
+                  {channels.length === 0 ? "Add a channel first to configure preferences." : "No preferences configured. All events go to all enabled channels."}
+                </p>
+              </div>
             ) : (
               <div className="space-y-2">
                 {preferences.map((pref) => {

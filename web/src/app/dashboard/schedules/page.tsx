@@ -36,6 +36,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { PageHeader } from "@/components/page-header";
+import { PageSkeleton } from "@/components/page-skeleton";
 import { cn } from "@/lib/utils";
 import {
   Plus,
@@ -68,6 +69,7 @@ export default function SchedulesPage() {
   const [schedules, setSchedules] = useState<ScheduleResponse[]>([]);
   const [tents, setTents] = useState<TentOption[]>([]);
   const [showCreate, setShowCreate] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     const token = getAccessToken();
@@ -78,6 +80,7 @@ export default function SchedulesPage() {
     ]);
     setSchedules(s);
     setTents(t.map((t: { id: string; name: string }) => ({ id: t.id, name: t.name })));
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -97,6 +100,8 @@ export default function SchedulesPage() {
     await deleteSchedule(token, id);
     refresh();
   };
+
+  if (loading) return <PageSkeleton rows={4} cards />;
 
   return (
     <>

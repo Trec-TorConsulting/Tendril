@@ -4,19 +4,20 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { getAccessToken } from "@/lib/auth";
-import { listGrows, listDevices, getHarvestCountdown, type GrowResponse, type DeviceResponse, type HarvestCountdownItem } from "@/lib/api";
+import { listGrows, listDevices, getHarvestCountdown, getTent, type GrowResponse, type DeviceResponse, type HarvestCountdownItem, type TentResponse } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatCalendarDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Sprout, Cpu, Activity, Plus, ArrowRight, Timer } from "lucide-react";
+import { Sprout, Cpu, Activity, Plus, ArrowRight, Timer, Camera, ChevronRight } from "lucide-react";
 
 export default function DashboardPage() {
   const [grows, setGrows] = useState<GrowResponse[]>([]);
   const [devices, setDevices] = useState<DeviceResponse[]>([]);
   const [countdown, setCountdown] = useState<HarvestCountdownItem[]>([]);
+  const [heroTent, setHeroTent] = useState<TentResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
@@ -31,6 +32,11 @@ export default function DashboardPage() {
       setGrows(g);
       setDevices(d);
       setCountdown(hc);
+      // Fetch tent for the primary active grow (hero card camera)
+      const primaryGrow = g.find((gr) => gr.status === "active");
+      if (primaryGrow) {
+        try { setHeroTent(await getTent(token, primaryGrow.tent_id)); } catch { setHeroTent(null); }
+      }
     } finally {
       setLoading(false);
     }
@@ -76,6 +82,58 @@ export default function DashboardPage() {
             loading={loading}
           />
         </div>
+
+        {/* Hero Card — Primary Active Grow */}
+        {!loading && (() => {
+          const primaryGrow = grows.find((g) => g.status === "active");
+          if (!primaryGrow) return null;
+          const hasCamera = heroTent?.camera_url;
+          const daysSinceStart = Math.floor((Date.now() - new Date(primaryGrow.started_at).getTime()) / 86400000);
+          const heroCountdown = countdown.find((c) => c.grow_id === primaryGrow.id);
+          return (
+            <Link href={`/dashboard/grows/${primaryGrow.id}`}>
+              <motion.div whileTap={{ scale: 0.99 }} transition={{ type: "spring", stiffness: 400, damping: 25 }}>
+                <Card className="overflow-hidden border-primary/20 hover:border-primary/40 transition-colors cursor-pointer">
+                  <div className={hasCamera ? "grid md:grid-cols-[1fr_auto]" : ""}>
+                    <CardContent className="p-5">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Badge variant="default" className="text-xs capitalize">{primaryGrow.stage}</Badge>
+                        <span className="text-xs text-muted-foreground">Day {daysSinceStart}</span>
+                        {heroCountdown && heroCountdown.days_remaining > 0 && (
+                          <Badge variant="outline" className="text-xs ml-auto">
+                            <Timer className="mr-1 size-3" /> {heroCountdown.days_remaining}d to harvest
+                          </Badge>
+                        )}
+                        {heroCountdown && heroCountdown.days_remaining <= 0 && (
+                          <Badge variant="destructive" className="text-xs ml-auto">Ready to harvest!</Badge>
+                        )}
+                      </div>
+                      <h2 className="text-xl font-bold">{primaryGrow.name}</h2>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {heroTent?.name || "—"} · {primaryGrow.grow_type}
+                      </p>
+                      <div className="mt-4 flex items-center gap-1 text-sm text-primary font-medium">
+                        View grow <ChevronRight className="size-4" />
+                      </div>
+                    </CardContent>
+                    {hasCamera && (
+                      <div className="relative h-48 md:h-auto md:w-64 bg-black overflow-hidden">
+                        <img
+                          src={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/v1"}/tents/${primaryGrow.tent_id}/camera-snapshot?token=${encodeURIComponent(getAccessToken() || "")}&t=${Date.now()}`}
+                          alt="Live camera"
+                          className="size-full object-cover opacity-90"
+                        />
+                        <div className="absolute top-2 left-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-white">
+                          <Camera className="size-3" /> Live
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </Card>
+              </motion.div>
+            </Link>
+          );
+        })()}
 
         {/* Harvest Countdown */}
         {!loading && countdown.length > 0 && (

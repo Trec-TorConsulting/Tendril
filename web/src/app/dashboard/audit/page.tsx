@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/collapsible";
 import { cn, formatDateTime } from "@/lib/utils";
 import { ChevronLeft, ChevronRight, Eye, EyeOff } from "lucide-react";
+import { PageSkeleton } from "@/components/page-skeleton";
 
 interface AuditEntry {
   id: string;
@@ -56,6 +57,7 @@ export default function AuditPage() {
   const [actionFilter, setActionFilter] = useState("");
   const [resourceFilter, setResourceFilter] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     const token = getAccessToken();
@@ -71,7 +73,7 @@ export default function AuditPage() {
       setTotal(data.total);
     } catch {
       /* tier restricted */
-    }
+    } finally { setLoading(false); }
   }, [page, actionFilter, resourceFilter]);
 
   useEffect(() => {
@@ -79,6 +81,8 @@ export default function AuditPage() {
   }, [refresh]);
 
   const totalPages = Math.ceil(total / 50);
+
+  if (loading) return <PageSkeleton rows={6} />;
 
   return (
     <>
@@ -126,7 +130,11 @@ export default function AuditPage() {
 
         {/* Table */}
         {entries.length === 0 ? (
-          <p className="text-muted-foreground">No audit entries found.</p>
+          <Card className="flex flex-col items-center justify-center py-16">
+            <Eye className="size-12 text-muted-foreground/50" />
+            <h3 className="mt-4 text-lg font-semibold">No audit entries found</h3>
+            <p className="mt-1 text-sm text-muted-foreground">Activity will appear here as changes are made.</p>
+          </Card>
         ) : (
           <Card>
             <CardContent className="p-0">

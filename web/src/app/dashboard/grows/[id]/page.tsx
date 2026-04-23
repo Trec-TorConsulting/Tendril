@@ -440,16 +440,18 @@ export default function GrowDetailPage() {
 
         {/* Tabbed sections */}
         <Tabs defaultValue="buckets">
-          <TabsList className="flex-wrap">
-            <TabsTrigger value="buckets">Buckets ({buckets.length})</TabsTrigger>
-            <TabsTrigger value="tasks">Tasks</TabsTrigger>
-            <TabsTrigger value="feeding">Feeding</TabsTrigger>
-            <TabsTrigger value="journal">Journal</TabsTrigger>
-            <TabsTrigger value="harvest">Harvest</TabsTrigger>
-            <TabsTrigger value="sensors">Sensors</TabsTrigger>
-            <TabsTrigger value="photos">Photos</TabsTrigger>
-            {settingsSchema.length > 0 && <TabsTrigger value="settings">Settings</TabsTrigger>}
-          </TabsList>
+          <div className="-mx-4 px-4 overflow-x-auto scrollbar-none md:mx-0 md:px-0">
+            <TabsList className="w-max">
+              <TabsTrigger value="buckets">Buckets ({buckets.length})</TabsTrigger>
+              <TabsTrigger value="tasks">Tasks</TabsTrigger>
+              <TabsTrigger value="feeding">Feeding</TabsTrigger>
+              <TabsTrigger value="journal">Journal</TabsTrigger>
+              <TabsTrigger value="harvest">Harvest</TabsTrigger>
+              <TabsTrigger value="sensors">Sensors</TabsTrigger>
+              <TabsTrigger value="photos">Photos</TabsTrigger>
+              {settingsSchema.length > 0 && <TabsTrigger value="settings">Settings</TabsTrigger>}
+            </TabsList>
+          </div>
 
           <TabsContent value="buckets" className="mt-4">
             <BucketsTab

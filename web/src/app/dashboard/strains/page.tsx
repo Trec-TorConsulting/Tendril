@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
+import { PageSkeleton } from "@/components/page-skeleton";
 import { useConfirm } from "@/components/confirm-dialog";
 import {
   listStrains,
@@ -58,15 +59,18 @@ export default function StrainsPage() {
   const [form, setForm] = useState({ name: "", breeder: "", genetics: "" });
   const [tab, setTab] = useState<"library" | "leaderboard" | "comparison">("library");
   const confirm = useConfirm();
+  const [loading, setLoading] = useState(true);
   const [comparisonStrainId, setComparisonStrainId] = useState("");
   const [comparison, setComparison] = useState<StrainGrowComparison[]>([]);
 
   const refresh = useCallback(async () => {
     const token = getAccessToken();
     if (!token) return;
-    const [s, lb] = await Promise.all([listStrains(token), getStrainLeaderboard(token)]);
-    setStrains(s);
-    setLeaderboard(lb);
+    try {
+      const [s, lb] = await Promise.all([listStrains(token), getStrainLeaderboard(token)]);
+      setStrains(s);
+      setLeaderboard(lb);
+    } finally { setLoading(false); }
   }, []);
 
   useEffect(() => {
@@ -93,6 +97,8 @@ export default function StrainsPage() {
     await deleteStrain(token, id);
     refresh();
   };
+
+  if (loading) return <PageSkeleton rows={4} cards />;
 
   return (
     <>
@@ -141,7 +147,14 @@ export default function StrainsPage() {
         {tab === "library" && (
           <>
             {strains.length === 0 ? (
-              <p className="text-muted-foreground">No strains yet.</p>
+              <Card className="flex flex-col items-center justify-center py-16">
+                <Library className="size-12 text-muted-foreground/50" />
+                <h3 className="mt-4 text-lg font-semibold">No strains yet</h3>
+                <p className="mt-1 text-sm text-muted-foreground">Add your first strain to start tracking genetics.</p>
+                <Button className="mt-4" size="sm" onClick={() => setShowCreate(true)}>
+                  <Plus className="mr-1 h-4 w-4" /> Add Strain
+                </Button>
+              </Card>
             ) : (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {strains.map((s) => (
@@ -192,7 +205,11 @@ export default function StrainsPage() {
         {tab === "leaderboard" && (
           <>
             {leaderboard.length === 0 ? (
-              <p className="text-muted-foreground">No harvest data yet. Complete grows to see strain rankings.</p>
+              <Card className="flex flex-col items-center justify-center py-16">
+                <Trophy className="size-12 text-muted-foreground/50" />
+                <h3 className="mt-4 text-lg font-semibold">No harvest data yet</h3>
+                <p className="mt-1 text-sm text-muted-foreground">Complete grows to see strain rankings.</p>
+              </Card>
             ) : (
               <Card>
                 <CardContent className="p-0">

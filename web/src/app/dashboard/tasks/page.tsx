@@ -41,6 +41,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn, formatCalendarDate, formatMonthYear } from "@/lib/utils";
+import { PageSkeleton } from "@/components/page-skeleton";
 import {
   Plus,
   CheckCircle2,
@@ -127,6 +128,7 @@ export default function TasksPage() {
   const [dueDate, setDueDate] = useState("");
   const [recurring, setRecurring] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
 
   // Calendar state
   const now = new Date();
@@ -146,7 +148,7 @@ export default function TasksPage() {
       setGrows(g);
     } catch {
       /* empty */
-    }
+    } finally { setLoading(false); }
   }, [filter, growFilter]);
 
   const refreshCalendar = useCallback(async () => {
@@ -171,7 +173,8 @@ export default function TasksPage() {
 
   const handleCreate = async () => {
     const token = getAccessToken();
-    if (!token || !title) return;
+    if (!token) return;
+    if (!title.trim()) { setError("Title is required"); return; }
     setError("");
     try {
       await createTask(
@@ -233,6 +236,8 @@ export default function TasksPage() {
   }, [calTasks]);
 
   const growMap = Object.fromEntries(grows.map((g) => [g.id, g.name]));
+
+  if (loading) return <PageSkeleton rows={5} cards />;
 
   return (
     <>

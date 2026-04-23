@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/page-header";
+import { PageSkeleton } from "@/components/page-skeleton";
 import { cn, formatDateTime } from "@/lib/utils";
 import {
   Plus,
@@ -56,6 +57,7 @@ export default function AutomationPage() {
   const [rules, setRules] = useState<AutomationRuleResponse[]>([]);
   const [alerts, setAlerts] = useState<AlertResponse[]>([]);
   const [showCreate, setShowCreate] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     const token = getAccessToken();
@@ -66,6 +68,7 @@ export default function AutomationPage() {
     ]);
     setRules(r);
     setAlerts(a);
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -98,6 +101,8 @@ export default function AutomationPage() {
     if (severity === "warning") return "outline" as const;
     return "secondary" as const;
   };
+
+  if (loading) return <PageSkeleton rows={4} cards />;
 
   return (
     <>

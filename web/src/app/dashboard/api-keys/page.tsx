@@ -42,6 +42,7 @@ import {
   Calendar,
   Clock,
 } from "lucide-react";
+import { PageSkeleton } from "@/components/page-skeleton";
 
 interface ApiKeyItem {
   id: string;
@@ -62,6 +63,7 @@ export default function ApiKeysPage() {
   const [scopes, setScopes] = useState("read");
   const [expiresDays, setExpiresDays] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     const token = getAccessToken();
@@ -70,7 +72,7 @@ export default function ApiKeysPage() {
       setKeys(await listApiKeys(token));
     } catch {
       /* tier restricted */
-    }
+    } finally { setLoading(false); }
   }, []);
 
   useEffect(() => {
@@ -113,6 +115,8 @@ export default function ApiKeysPage() {
       navigator.clipboard.writeText(newKey);
     }
   };
+
+  if (loading) return <PageSkeleton rows={3} cards />;
 
   return (
     <>
@@ -219,7 +223,14 @@ export default function ApiKeysPage() {
 
         {/* Key list */}
         {keys.length === 0 ? (
-          <p className="text-muted-foreground">No API keys yet.</p>
+          <Card className="flex flex-col items-center justify-center py-16">
+            <Key className="size-12 text-muted-foreground/50" />
+            <h3 className="mt-4 text-lg font-semibold">No API keys yet</h3>
+            <p className="mt-1 text-sm text-muted-foreground">Create a key to access the Tendril API.</p>
+            <Button className="mt-4" size="sm" onClick={() => setShowCreate(true)}>
+              <Plus className="mr-1 size-4" /> Create Key
+            </Button>
+          </Card>
         ) : (
           <div className="space-y-3">
             {keys.map((k) => (
