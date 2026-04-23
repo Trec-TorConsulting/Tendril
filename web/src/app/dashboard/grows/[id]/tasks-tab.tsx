@@ -29,6 +29,7 @@ import {
   Zap,
 } from "lucide-react";
 import Link from "next/link";
+import { SwipeableCard } from "@/components/swipeable-card";
 
 const PRIORITY_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
   low: "secondary",
@@ -145,12 +146,17 @@ export function TasksTab({ growId }: { growId: string }) {
       )}
 
       {activeTasks.map((t) => (
-        <GrowTaskCard
+        <SwipeableCard
           key={t.id}
-          task={t}
-          onComplete={handleComplete}
-          onDelete={handleDelete}
-        />
+          onSwipeRight={() => handleComplete(t.id)}
+          onSwipeLeft={() => handleDelete(t.id)}
+        >
+          <GrowTaskCard
+            task={t}
+            onComplete={handleComplete}
+            onDelete={handleDelete}
+          />
+        </SwipeableCard>
       ))}
 
       {completedTasks.length > 0 && (

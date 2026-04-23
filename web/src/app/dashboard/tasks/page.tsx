@@ -42,6 +42,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn, formatCalendarDate, formatMonthYear } from "@/lib/utils";
 import { PageSkeleton } from "@/components/page-skeleton";
+import { SwipeableCard } from "@/components/swipeable-card";
+import { PullToRefresh } from "@/components/pull-to-refresh";
 import {
   Plus,
   CheckCircle2,
@@ -254,6 +256,7 @@ export default function TasksPage() {
           </Button>
         }
       />
+      <PullToRefresh onRefresh={refresh}>
       <div className="flex flex-1 flex-col gap-6 p-4 lg:p-6">
         {/* View toggle + filters */}
         <div className="flex flex-wrap items-center gap-2">
@@ -322,13 +325,18 @@ export default function TasksPage() {
             )}
 
             {activeTasks.map((t) => (
-              <TaskCard
+              <SwipeableCard
                 key={t.id}
-                task={t}
-                growName={t.grow_cycle_id ? growMap[t.grow_cycle_id] : undefined}
-                onComplete={handleComplete}
-                onDelete={handleDelete}
-              />
+                onSwipeRight={() => handleComplete(t.id)}
+                onSwipeLeft={() => handleDelete(t.id)}
+              >
+                <TaskCard
+                  task={t}
+                  growName={t.grow_cycle_id ? growMap[t.grow_cycle_id] : undefined}
+                  onComplete={handleComplete}
+                  onDelete={handleDelete}
+                />
+              </SwipeableCard>
             ))}
 
             {completedTasks.length > 0 && (
@@ -566,6 +574,7 @@ export default function TasksPage() {
           </DialogContent>
         </Dialog>
       </div>
+      </PullToRefresh>
     </>
   );
 }

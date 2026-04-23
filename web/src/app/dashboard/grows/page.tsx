@@ -43,6 +43,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Plus, Sprout, Trash2 } from "lucide-react";
+import { PullToRefresh } from "@/components/pull-to-refresh";
 
 const createGrowSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -132,6 +133,7 @@ export default function GrowsPage() {
           </Button>
         }
       />
+      <PullToRefresh onRefresh={refresh}>
       <div className="flex flex-1 flex-col gap-4 p-4 lg:p-6">
         <Tabs value={filter} onValueChange={setFilter}>
           <TabsList>
@@ -196,6 +198,7 @@ export default function GrowsPage() {
           </div>
         )}
       </div>
+      </PullToRefresh>
 
       {/* Create Dialog */}
       <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { reset(); setError(""); } }}>
