@@ -57,10 +57,9 @@ bool sensors_setup() {
         Serial.println("WARNING: BME680 not found! Ambient readings disabled.");
     }
 
-    // Soil sensor pins — input only (no pullup needed for capacitive)
+    // Soil sensor pin — input only (no pullup needed for capacitive)
     pinMode(SOIL_SENSOR_1_PIN, INPUT);
-    pinMode(SOIL_SENSOR_2_PIN, INPUT);
-    Serial.println("Soil sensors initialized");
+    Serial.println("Soil sensor initialized");
 
     return bmeOk;
 }
@@ -69,9 +68,7 @@ bool sensors_setup() {
 void sensors_read_and_publish() {
     // ── Soil / bucket-level readings ─────────────────
     int soil1 = readSoilPercent(SOIL_SENSOR_1_PIN, SOIL_1_DRY_VALUE, SOIL_1_WET_VALUE);
-    int soil2 = readSoilPercent(SOIL_SENSOR_2_PIN, SOIL_2_DRY_VALUE, SOIL_2_WET_VALUE);
 
-    // Publish bucket 1
     {
         JsonDocument doc;
         doc["soil_moisture"] = soil1;
@@ -79,18 +76,7 @@ void sensors_read_and_publish() {
         char payload[128];
         serializeJson(doc, payload, sizeof(payload));
         mqtt_publish("readings", payload);
-        Serial.printf("Soil 1: %d%%\n", soil1);
-    }
-
-    // Publish bucket 2
-    {
-        JsonDocument doc;
-        doc["soil_moisture"] = soil2;
-        doc["position"] = 2;
-        char payload[128];
-        serializeJson(doc, payload, sizeof(payload));
-        mqtt_publish("readings", payload);
-        Serial.printf("Soil 2: %d%%\n", soil2);
+        Serial.printf("Soil: %d%%\n", soil1);
     }
 
     // ── Ambient / tent-level readings (BME680) ───────
