@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { getAccessToken } from "@/lib/auth";
 import { listTents, createTent, updateTent, deleteTent } from "@/lib/api";
 import type { TentResponse, EquipmentItem } from "@/lib/api";
@@ -35,6 +36,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, MoreHorizontal, Pencil, Trash2, MapPin, Warehouse, Loader2, LocateFixed, Search, Camera, Fan, X } from "lucide-react";
+import { motion } from "framer-motion";
 
 // Equipment presets
 const EQUIPMENT_TYPES = [
@@ -90,6 +92,7 @@ function equipmentLabel(type: string) {
 }
 
 export default function TentsPage() {
+  const router = useRouter();
   const [tents, setTents] = useState<TentResponse[]>([]);
   const [modal, setModal] = useState<ModalState>({ type: "closed" });
   const [name, setName] = useState("");
@@ -284,7 +287,8 @@ export default function TentsPage() {
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {tents.map((tent) => (
-              <Card key={tent.id} className="p-4">
+              <motion.div key={tent.id} whileTap={{ scale: 0.98 }} transition={{ type: "spring", stiffness: 400, damping: 25 }}>
+              <Card className="p-4 transition-colors hover:border-primary/50 cursor-pointer" onClick={() => router.push(`/dashboard/tents/${tent.id}`)}>
                 <div className="flex items-start justify-between">
                   <div>
                     <h3 className="font-medium">{tent.name}</h3>
@@ -294,7 +298,7 @@ export default function TentsPage() {
                     </div>
                   </div>
                   <DropdownMenu>
-                    <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="size-8" />}>
+                    <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="size-8" onClick={(e: React.MouseEvent) => e.stopPropagation()} />}>
                       <MoreHorizontal className="size-4" />
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
@@ -334,6 +338,7 @@ export default function TentsPage() {
                   </div>
                 )}
               </Card>
+              </motion.div>
             ))}
           </div>
         )}
