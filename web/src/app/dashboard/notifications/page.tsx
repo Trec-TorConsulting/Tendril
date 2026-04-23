@@ -78,13 +78,16 @@ export default function NotificationsPage() {
   const refresh = useCallback(async () => {
     const token = getAccessToken();
     if (!token) return;
-    const [ch, prefs] = await Promise.all([
-      listChannels(token),
-      listNotificationPreferences(token).catch(() => [] as NotificationPreference[]),
-    ]);
-    setChannels(ch);
-    setPreferences(prefs);
-    setLoading(false);
+    try {
+      const [ch, prefs] = await Promise.all([
+        listChannels(token).catch(() => [] as ChannelResponse[]),
+        listNotificationPreferences(token).catch(() => [] as NotificationPreference[]),
+      ]);
+      setChannels(ch);
+      setPreferences(prefs);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
