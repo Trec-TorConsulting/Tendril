@@ -499,6 +499,19 @@ export function deleteFeedingSchedule(token: string, id: string) {
   return apiFetch<void>(`/feeding/feeding/${id}`, { method: "DELETE", token });
 }
 
+// Feeding Advice (AI-powered)
+export interface FeedingAdviceResponse {
+  current_stage_advice: string | null;
+  adjustments: { schedule_name: string; change: string; reason: string }[];
+  alerts: { severity: string; message: string; type: string }[];
+  next_transition: { stage: string; action: string; estimated_timing: string } | null;
+  health_impact: string | null;
+}
+
+export function getFeedingAdvice(token: string, growId: string) {
+  return apiFetch<FeedingAdviceResponse>(`/ai/feeding-advice/${growId}`, { token });
+}
+
 // Journal Entries
 export interface JournalEntryResponse {
   id: string;

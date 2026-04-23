@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "next-themes";
+import { useChat } from "@/components/chat-provider";
 
 /* ── FAB quick actions ── */
 const FAB_ACTIONS = [
@@ -63,9 +64,7 @@ const LEFT_TABS = [
   { href: "/dashboard", label: "Home", icon: LayoutDashboard },
   { href: "/dashboard/grows", label: "Grows", icon: Sprout },
 ];
-const RIGHT_TABS = [
-  { href: "/dashboard/ai", label: "AI", icon: MessageSquare },
-];
+const RIGHT_TABS: { href: string; label: string; icon: React.ComponentType<{ className?: string }> }[] = [];
 
 export function MobileBottomNav() {
   const pathname = usePathname();
@@ -82,7 +81,6 @@ export function MobileBottomNav() {
   const isMoreActive =
     !isTabActive("/dashboard") &&
     !isTabActive("/dashboard/grows") &&
-    !isTabActive("/dashboard/ai") &&
     pathname !== "/dashboard";
 
   return (
@@ -208,10 +206,8 @@ export function MobileBottomNav() {
             </motion.div>
           </button>
 
-          {/* Right tabs */}
-          {RIGHT_TABS.map((tab) => (
-            <TabButton key={tab.href} tab={tab} active={isTabActive(tab.href)} />
-          ))}
+          {/* AI Chat toggle */}
+          <ChatTabButton />
 
           {/* More */}
           <button
@@ -231,6 +227,22 @@ export function MobileBottomNav() {
         </div>
       </nav>
     </>
+  );
+}
+
+function ChatTabButton() {
+  const { open, toggle } = useChat();
+  return (
+    <button
+      onClick={toggle}
+      className={cn(
+        "flex flex-col items-center gap-0.5 px-3 py-2 text-[10px] font-medium transition-colors",
+        open ? "text-primary" : "text-muted-foreground"
+      )}
+    >
+      <MessageSquare className="size-5" />
+      AI
+    </button>
   );
 }
 

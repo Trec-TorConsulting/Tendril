@@ -20,6 +20,7 @@ from app.ai.context import (
     build_health_check_prompt,
     build_coach_tip_prompt,
     build_insight_prompt,
+    build_feeding_advice_prompt,
 )
 from app.ai.gather import gather_grow_data
 from app.ai.tools import CHAT_TOOLS, execute_tool
@@ -264,6 +265,10 @@ async def run_health_check(
     )
     session.add(health_eval)
 
+    # Invalidate cached feeding advice so next request regenerates
+    grow.cached_feeding_advice = None
+    grow.feeding_advice_cached_at = None
+
     # Save camera snapshot as a grow photo for the gallery
     if camera_image and not body.image_base64:
         # Only auto-save the camera image (not user-uploaded duplicates)
@@ -452,6 +457,111 @@ async def get_insight(
         result = raw
 
     return InsightResponse(insight_type=body.insight_type, result=result)
+
+
+# ---------- Feeding Advice (AI-powered) ----------
+
+class FeedingAdviceResponse(BaseModel):
+    current_stage_advice: str | None = None
+    adjustments: list[dict] = []
+    alerts: list[dict] = []
+    next_transition: dict | None = None
+    health_impact: str | None = None
+
+
+@router.get("/feeding-advice/{grow_id}", response_model=FeedingAdviceResponse)
+async def get_feeding_advice(
+    grow_id: str,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """AI-powered feeding recommendations — cached until the next health check."""
+    from datetime import datetime, timezone
+    from app.grows.models import GrowCycle, HealthEval
+
+    grow = await session.get(GrowCycle, UUID(grow_id))
+    if not grow:
+        raise HTTPException(status_code=404, detail="Grow not found")
+
+    # Check if we have a valid cache: advice exists and no newer health eval
+    if grow.cached_feeding_advice and grow.feeding_advice_cached_at:
+        latest_eval = (await session.execute(
+            select(HealthEval)
+            .where(HealthEval.grow_cycle_id == grow.id)
+            .order_by(desc(HealthEval.created_at))
+            .limit(1)
+        )).scalar_one_or_none()
+
+        cache_valid = True
+        if latest_eval and latest_eval.created_at > grow.feeding_advice_cached_at:
+            cache_valid = False  # New health check since last cache
+
+        if cache_valid:
+            cached = grow.cached_feeding_advice
+            return FeedingAdviceResponse(
+                current_stage_advice=cached.get("current_stage_advice"),
+                adjustments=cached.get("adjustments") or [],
+                alerts=cached.get("alerts") or [],
+                next_transition=cached.get("next_transition"),
+                health_impact=cached.get("health_impact"),
+            )
+
+    # Cache miss or stale — regenerate
+    grow_data = await gather_grow_data(session, grow, include_camera=False)
+    messages = build_feeding_advice_prompt(grow_data)
+
+    try:
+        raw = await chat_completion(messages)
+    except Exception:
+        logger.exception("Feeding advice AI call failed")
+        # If we have stale cache, return it rather than erroring
+        if grow.cached_feeding_advice:
+            cached = grow.cached_feeding_advice
+            return FeedingAdviceResponse(
+                current_stage_advice=cached.get("current_stage_advice"),
+                adjustments=cached.get("adjustments") or [],
+                alerts=cached.get("alerts") or [],
+                next_transition=cached.get("next_transition"),
+                health_impact=cached.get("health_impact"),
+            )
+        raise HTTPException(status_code=503, detail="AI service unavailable")
+
+    # Parse JSON response
+    try:
+        cleaned = raw.strip()
+        if "```" in cleaned:
+            parts = cleaned.split("```")
+            for part in parts[1:]:
+                candidate = part.strip()
+                if candidate.lower().startswith("json"):
+                    candidate = candidate[4:].strip()
+                if candidate.startswith("{"):
+                    cleaned = candidate
+                    break
+            if cleaned.endswith("```"):
+                cleaned = cleaned[:-3].strip()
+        if not cleaned.startswith("{"):
+            start = cleaned.find("{")
+            end = cleaned.rfind("}")
+            if start != -1 and end != -1 and end > start:
+                cleaned = cleaned[start:end + 1]
+        parsed = json.loads(cleaned)
+
+        # Cache the parsed result on the grow
+        grow.cached_feeding_advice = parsed
+        grow.feeding_advice_cached_at = datetime.now(timezone.utc)
+        await session.commit()
+
+        return FeedingAdviceResponse(
+            current_stage_advice=parsed.get("current_stage_advice"),
+            adjustments=parsed.get("adjustments") or [],
+            alerts=parsed.get("alerts") or [],
+            next_transition=parsed.get("next_transition"),
+            health_impact=parsed.get("health_impact"),
+        )
+    except (json.JSONDecodeError, Exception):
+        logger.warning("Could not parse feeding advice JSON, returning raw")
+        return FeedingAdviceResponse(current_stage_advice=raw[:500])
 
 
 # ---------- PDF Report (4.14) ----------

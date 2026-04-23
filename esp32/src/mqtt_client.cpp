@@ -1,10 +1,10 @@
 #include "mqtt_client.h"
 #include "config.h"
 #include <PubSubClient.h>
-#include <WiFiClientSecure.h>
+#include <WiFi.h>
 #include <ArduinoJson.h>
 
-static WiFiClientSecure espClient;
+static WiFiClient espClient;
 static PubSubClient mqttClient(espClient);
 
 static char topicBase[128];
@@ -14,9 +14,6 @@ static char lastWillPayload[] = "{\"status\":\"offline\"}";
 void mqtt_setup() {
     snprintf(topicBase, sizeof(topicBase), "t/%s/d/%s/sensor", TENANT_ID, MQTT_DEVICE_ID);
     snprintf(statusTopic, sizeof(statusTopic), "t/%s/d/%s/status", TENANT_ID, MQTT_DEVICE_ID);
-
-    // TLS — skip cert verification for self-signed; add CA cert for production
-    espClient.setInsecure();
 
     mqttClient.setServer(MQTT_HOST, MQTT_PORT);
     mqttClient.setBufferSize(512);

@@ -10,7 +10,6 @@ import {
   BarChart3,
   Cpu,
   MessageSquare,
-  Stethoscope,
   Bot,
   Clock,
   Bell,
@@ -64,20 +63,20 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useGrow } from "@/hooks/use-grow";
+import { useChat } from "@/components/chat-provider";
 import type { UserData } from "@/hooks/use-user";
 
 const MAIN_NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/dashboard/tents", label: "Grow Spaces", icon: Warehouse },
-  { href: "/dashboard/grows", label: "Grows", icon: Sprout },
-  { href: "/dashboard/grow-types", label: "Grow Types", icon: FlaskConical },
+  { href: "/dashboard/grows", label: "Grows", icon: Sprout, children: [
+    { href: "/dashboard/tents", label: "Grow Spaces", icon: Warehouse },
+    { href: "/dashboard/grow-types", label: "Grow Types", icon: FlaskConical },
+  ] },
   { href: "/dashboard/devices", label: "Devices", icon: Cpu },
 ];
 
 const INSIGHTS_NAV = [
   { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
-  { href: "/dashboard/ai", label: "AI Chat", icon: MessageSquare },
-  { href: "/dashboard/ai/health", label: "Health Check", icon: Stethoscope },
 ];
 
 const AUTOMATION_NAV = [
@@ -210,6 +209,11 @@ export function AppSidebar({ user, onLogout }: AppSidebarProps) {
       </SidebarContent>
 
       <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <ChatToggleButton />
+          </SidebarMenuItem>
+        </SidebarMenu>
         <div className="px-2 group-data-[collapsible=icon]:hidden">
           <ThemeToggle className="w-full justify-start" />
         </div>
@@ -263,17 +267,27 @@ export function AppSidebar({ user, onLogout }: AppSidebarProps) {
   );
 }
 
+type NavItemDef = {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  children?: NavItemDef[];
+};
+
 function NavGroup({
   label,
   items,
   pathname,
 }: {
   label: string;
-  items: { href: string; label: string; icon: React.ComponentType<{ className?: string }> }[];
+  items: NavItemDef[];
   pathname: string;
 }) {
   const hasActive = items.some(
-    (item) => pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href + "/"))
+    (item) =>
+      pathname === item.href ||
+      (item.href !== "/dashboard" && pathname.startsWith(item.href + "/")) ||
+      item.children?.some((c) => pathname === c.href || pathname.startsWith(c.href + "/"))
   );
 
   return (
@@ -306,13 +320,46 @@ function NavItem({
   label,
   icon: Icon,
   pathname,
-}: {
-  href: string;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-  pathname: string;
-}) {
+  children,
+}: NavItemDef & { pathname: string }) {
   const isActive = pathname === href || (href !== "/dashboard" && pathname.startsWith(href + "/"));
+  const childActive = children?.some((c) => pathname === c.href || pathname.startsWith(c.href + "/"));
+
+  if (children && children.length > 0) {
+    return (
+      <Collapsible defaultOpen={isActive || childActive}>
+        <SidebarMenuItem>
+          <SidebarMenuButton render={<Link href={href} />} isActive={isActive && !childActive} tooltip={label}>
+            <Icon className="size-4" />
+            <span>{label}</span>
+          </SidebarMenuButton>
+          <CollapsibleTrigger
+            render={
+              <button className="absolute right-1 top-1.5 rounded-md p-0.5 hover:bg-sidebar-accent" />
+            }
+          >
+            <ChevronRight className="size-3 transition-transform duration-200 [[data-panel-open]_&]:rotate-90" />
+          </CollapsibleTrigger>
+        </SidebarMenuItem>
+        <CollapsibleContent>
+          <SidebarMenu className="ml-4 border-l border-sidebar-border pl-2">
+            {children.map((child) => {
+              const active = pathname === child.href || pathname.startsWith(child.href + "/");
+              return (
+                <SidebarMenuItem key={child.href}>
+                  <SidebarMenuButton render={<Link href={child.href} />} isActive={active} tooltip={child.label}>
+                    <child.icon className="size-3.5" />
+                    <span className="text-xs">{child.label}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              );
+            })}
+          </SidebarMenu>
+        </CollapsibleContent>
+      </Collapsible>
+    );
+  }
+
   return (
     <SidebarMenuItem>
       <SidebarMenuButton render={<Link href={href} />} isActive={isActive} tooltip={label}>
@@ -320,5 +367,15 @@ function NavItem({
         <span>{label}</span>
       </SidebarMenuButton>
     </SidebarMenuItem>
+  );
+}
+
+function ChatToggleButton() {
+  const { toggle } = useChat();
+  return (
+    <SidebarMenuButton onClick={toggle} tooltip="AI Chat">
+      <MessageSquare className="size-4" />
+      <span>AI Chat</span>
+    </SidebarMenuButton>
   );
 }

@@ -16,16 +16,14 @@ import {
   createTentReading,
   getLatestTentReading,
   getTent,
-  listFeedingSchedules,
-  createFeedingSchedule,
   listJournalEntries,
   getExportUrl,
+  getHealthCheckHistory,
   type GrowResponse,
   type BucketResponse,
   type SensorReadingResponse,
   type TentReadingResponse,
   type TentResponse,
-  type FeedingScheduleResponse,
   type JournalEntryResponse,
 } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
@@ -70,9 +68,13 @@ import {
   Copy,
   Settings,
   Thermometer,
+  Heart,
+  MessageSquare,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useChat } from "@/components/chat-provider";
 
-import { BrandTemplateDialog } from "./brand-template-dialog";
+// Brand selection is now handled inside FeedingTab
 import { formatCalendarDate, formatDateTime } from "@/lib/utils";
 import { BucketsTab } from "./buckets-tab";
 import { FeedingTab } from "./feeding-tab";
@@ -81,6 +83,7 @@ import { HarvestTab } from "./harvest-tab";
 import { SensorsTab } from "./sensors-tab";
 import { PhotosTab } from "./photos-tab";
 import { TasksTab } from "./tasks-tab";
+import { HealthTab } from "./health-tab";
 import { WeatherCard } from "./weather-card";
 
 const STAGES = ["seedling", "vegetative", "flowering", "ripening", "drying", "curing"];
@@ -94,6 +97,16 @@ const MILESTONE_LABELS: Record<string, string> = {
   harvest: "Harvest",
 };
 
+function ChatButton() {
+  const { toggle } = useChat();
+  return (
+    <Button variant="outline" size="sm" onClick={toggle} className="gap-2">
+      <MessageSquare className="size-4" />
+      AI Chat
+    </Button>
+  );
+}
+
 export default function GrowDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -102,7 +115,7 @@ export default function GrowDetailPage() {
   const [tent, setTent] = useState<TentResponse | null>(null);
   const [buckets, setBuckets] = useState<BucketResponse[]>([]);
   const [latestReadings, setLatestReadings] = useState<Record<string, SensorReadingResponse | null>>({});
-  const [feedingSchedules, setFeedingSchedules] = useState<FeedingScheduleResponse[]>([]);
+
   const [journalEntries, setJournalEntries] = useState<JournalEntryResponse[]>([]);
 
   // Sensor reading dialog
@@ -121,8 +134,7 @@ export default function GrowDetailPage() {
   const [editGrowForm, setEditGrowForm] = useState({ name: "", notes: "", started_at: "", milestones: {} as Record<string, string> });
   const [editGrowSaving, setEditGrowSaving] = useState(false);
 
-  // Brand template dialog
-  const [brandDialog, setBrandDialog] = useState(false);
+
 
   // Clone dialog
   const [cloneDialog, setCloneDialog] = useState(false);
@@ -133,6 +145,9 @@ export default function GrowDetailPage() {
   const [settingsDialog, setSettingsDialog] = useState(false);
   const [settingsForm, setSettingsForm] = useState<Record<string, string>>({});
   const [settingsSaving, setSettingsSaving] = useState(false);
+
+  // Health score
+  const [healthScore, setHealthScore] = useState<number | null>(null);
 
   const refresh = useCallback(async () => {
     const token = getAccessToken();
@@ -156,7 +171,11 @@ export default function GrowDetailPage() {
     );
     setLatestReadings(readings);
 
-    try { setFeedingSchedules(await listFeedingSchedules(token, id)); } catch { /* empty */ }
+
+    try {
+      const hist = await getHealthCheckHistory(token, id, 1);
+      setHealthScore(hist.items.length > 0 ? hist.items[0].score : null);
+    } catch { setHealthScore(null); }
 
     try {
       const allEntries: JournalEntryResponse[] = [];
@@ -217,7 +236,16 @@ export default function GrowDetailPage() {
       for (const [k, v] of Object.entries(editGrowForm.milestones)) {
         if (v) ms[k] = new Date(v).toISOString();
       }
-      if (Object.keys(ms).length) payload.milestones = ms;
+      if (Object.keys(ms).length) {
+        payload.milestones = ms;
+        // Auto-advance stage to the latest milestone that has a date set
+        const allMilestones = { ...(grow?.milestones || {}), ...ms };
+        let latestStage: string | undefined;
+        for (const s of STAGES) {
+          if (allMilestones[s]) latestStage = s;
+        }
+        if (latestStage) payload.stage = latestStage;
+      }
       await updateGrow(token, id, payload);
       setEditGrowDialog(false);
       refresh();
@@ -257,15 +285,9 @@ export default function GrowDetailPage() {
           volume_gallons: b.volume_gallons || undefined,
         });
       }
-      // Copy feeding schedules
-      for (const fs of feedingSchedules) {
-        await createFeedingSchedule(token, {
-          grow_cycle_id: newGrow.id,
-          name: fs.name,
-          stage: fs.stage,
-          nutrients: fs.nutrients,
-          notes: fs.notes || undefined,
-        });
+      // Copy settings (including nutrient brand selection)
+      if (grow.settings && Object.keys(grow.settings).length > 0) {
+        await updateGrow(token, newGrow.id, { settings: grow.settings });
       }
       setCloneDialog(false);
       setCloneName("");
@@ -321,7 +343,7 @@ export default function GrowDetailPage() {
   const settingsSchema = getSettingsSchema(grow.grow_type);
 
   return (
-    <>
+    <Tabs defaultValue="overview" className="flex flex-1 flex-col">
       <PageHeader
         title={grow.name}
         breadcrumbs={[
@@ -345,9 +367,37 @@ export default function GrowDetailPage() {
           </div>
         }
       />
+      <div className="sticky top-0 z-10 border-b bg-background">
+        <div className="overflow-x-auto scrollbar-none px-4 lg:px-6">
+          <TabsList className="w-max">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="buckets">Buckets ({buckets.length})</TabsTrigger>
+            <TabsTrigger value="tasks">Tasks</TabsTrigger>
+            <TabsTrigger value="feeding">Feeding</TabsTrigger>
+            <TabsTrigger value="journal">Journal</TabsTrigger>
+            <TabsTrigger value="harvest">Harvest</TabsTrigger>
+            <TabsTrigger value="sensors">Sensors</TabsTrigger>
+            <TabsTrigger value="photos">Photos</TabsTrigger>
+            <TabsTrigger value="health">Health</TabsTrigger>
+            {settingsSchema.length > 0 && <TabsTrigger value="settings">Settings</TabsTrigger>}
+          </TabsList>
+        </div>
+      </div>
       <div className="flex flex-1 flex-col gap-6 p-4 lg:p-6">
+        <TabsContent value="overview" className="mt-0 flex flex-col gap-6">
         {/* Grow Info Bar */}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border bg-card px-4 py-3 text-sm">
+          {healthScore != null ? (
+            <Badge variant="outline" className={cn("gap-1 text-xs", healthScore >= 80 ? "border-primary/40 text-primary" : healthScore >= 50 ? "border-yellow-500/40 text-yellow-500" : "border-destructive/40 text-destructive")}>
+              <Heart className="size-3" />
+              {healthScore}
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="gap-1 text-xs text-muted-foreground">
+              <Heart className="size-3" />
+              —
+            </Badge>
+          )}
           <Badge variant={grow.status === "active" ? "default" : "secondary"} className="text-xs capitalize">{grow.status}</Badge>
           <span className="capitalize font-medium">{grow.stage}</span>
           <span className="text-muted-foreground">·</span>
@@ -389,16 +439,19 @@ export default function GrowDetailPage() {
           </div>
         </div>
 
-        {/* Camera Snapshot */}
+        {/* Camera Snapshot + AI Chat button */}
         {tent?.camera_url && (
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                <Camera className="size-4" /> Camera Snapshot
-              </CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2 text-sm font-medium">
+                  <Camera className="size-4" /> Camera Snapshot
+                </CardTitle>
+                <ChatButton />
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="mx-auto max-w-xl overflow-hidden rounded-lg border bg-black">
+              <div className="mx-auto overflow-hidden rounded-lg border bg-black">
                 <img
                   src={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/v1"}/tents/${grow.tent_id}/camera-snapshot?token=${encodeURIComponent(getAccessToken() || "")}&t=${Date.now()}`}
                   alt="Camera snapshot"
@@ -439,23 +492,9 @@ export default function GrowDetailPage() {
 
         {/* Weather (for outdoor/greenhouse tents) */}
         {tent && <WeatherCard tentId={tent.id} tentName={tent.name} environmentType={tent.environment_type} />}
+        </TabsContent>
 
-        {/* Tabbed sections */}
-        <Tabs defaultValue="buckets">
-          <div className="-mx-4 px-4 overflow-x-auto scrollbar-none md:mx-0 md:px-0">
-            <TabsList className="w-max">
-              <TabsTrigger value="buckets">Buckets ({buckets.length})</TabsTrigger>
-              <TabsTrigger value="tasks">Tasks</TabsTrigger>
-              <TabsTrigger value="feeding">Feeding</TabsTrigger>
-              <TabsTrigger value="journal">Journal</TabsTrigger>
-              <TabsTrigger value="harvest">Harvest</TabsTrigger>
-              <TabsTrigger value="sensors">Sensors</TabsTrigger>
-              <TabsTrigger value="photos">Photos</TabsTrigger>
-              {settingsSchema.length > 0 && <TabsTrigger value="settings">Settings</TabsTrigger>}
-            </TabsList>
-          </div>
-
-          <TabsContent value="buckets" className="mt-4">
+          <TabsContent value="buckets" className="mt-0">
             <BucketsTab
               growId={id}
               buckets={buckets}
@@ -468,22 +507,23 @@ export default function GrowDetailPage() {
             />
           </TabsContent>
 
-          <TabsContent value="tasks" className="mt-4">
+          <TabsContent value="tasks" className="mt-0">
             <TasksTab growId={id} />
           </TabsContent>
 
-          <TabsContent value="feeding" className="mt-4">
+          <TabsContent value="feeding" className="mt-0">
             <FeedingTab
               growId={id}
               growStage={grow.stage}
+              growStartedAt={grow.started_at}
+              milestones={grow.milestones || {}}
+              settings={grow.settings || {}}
               buckets={buckets}
-              feedingSchedules={feedingSchedules}
               onRefresh={refresh}
-              onOpenBrandDialog={() => setBrandDialog(true)}
             />
           </TabsContent>
 
-          <TabsContent value="journal" className="mt-4">
+          <TabsContent value="journal" className="mt-0">
             <JournalTab
               buckets={buckets}
               journalEntries={journalEntries}
@@ -492,20 +532,24 @@ export default function GrowDetailPage() {
             />
           </TabsContent>
 
-          <TabsContent value="harvest" className="mt-4">
+          <TabsContent value="harvest" className="mt-0">
             <HarvestTab growId={id} buckets={buckets} />
           </TabsContent>
 
-          <TabsContent value="sensors" className="mt-4">
+          <TabsContent value="sensors" className="mt-0">
             <SensorsTab buckets={buckets} />
           </TabsContent>
 
-          <TabsContent value="photos" className="mt-4">
+          <TabsContent value="photos" className="mt-0">
             <PhotosTab growId={id} buckets={buckets} />
           </TabsContent>
 
+          <TabsContent value="health" className="mt-0">
+            {grow && <HealthTab grow={grow} onRefresh={refresh} />}
+          </TabsContent>
+
           {settingsSchema.length > 0 && (
-            <TabsContent value="settings" className="mt-4">
+            <TabsContent value="settings" className="mt-0">
               <Card>
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between">
@@ -543,7 +587,6 @@ export default function GrowDetailPage() {
               </Card>
             </TabsContent>
           )}
-        </Tabs>
       </div>
 
       {/* --- SENSOR READING DIALOG --- */}
@@ -686,7 +729,7 @@ export default function GrowDetailPage() {
               <ul className="space-y-0.5 list-disc list-inside">
                 <li>Grow type: {grow.grow_type}</li>
                 <li>{buckets.length} bucket(s) with strain & volume</li>
-                <li>{feedingSchedules.length} feeding schedule(s)</li>
+                <li>Grow settings (nutrient brand, etc.)</li>
               </ul>
             </div>
           </div>
@@ -763,14 +806,7 @@ export default function GrowDetailPage() {
         </SheetContent>
       </Sheet>
 
-      {/* --- BRAND TEMPLATE DIALOG --- */}
-      <BrandTemplateDialog
-        open={brandDialog}
-        onOpenChange={setBrandDialog}
-        growCycleId={id}
-        onComplete={refresh}
-      />
-    </>
+    </Tabs>
   );
 }
 

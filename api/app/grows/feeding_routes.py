@@ -153,7 +153,14 @@ async def list_feeding_schedules(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
     grow_cycle_id: UUID | None = None,
 ):
-    q = select(FeedingSchedule)
+    from sqlalchemy import case
+
+    stage_order = case(
+        {"seedling": 0, "vegetative": 1, "flowering": 2, "ripening": 3, "drying": 4, "curing": 5},
+        value=FeedingSchedule.stage,
+        else_=99,
+    )
+    q = select(FeedingSchedule).order_by(stage_order, FeedingSchedule.name)
     if grow_cycle_id:
         q = q.where(FeedingSchedule.grow_cycle_id == grow_cycle_id)
     result = await session.execute(q)

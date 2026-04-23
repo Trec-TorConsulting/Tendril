@@ -59,6 +59,8 @@ class GrowCycle(Base):
     # Grow-type-specific settings stored as JSON
     settings: Mapped[dict | None] = mapped_column(JSON)
     auto_health_check: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    cached_feeding_advice: Mapped[dict | None] = mapped_column(JSON)
+    feeding_advice_cached_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     tent: Mapped[Tent] = relationship(back_populates="grow_cycles")

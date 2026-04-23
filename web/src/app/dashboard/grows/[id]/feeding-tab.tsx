@@ -1,25 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { getAccessToken } from "@/lib/auth";
-import { useConfirm } from "@/components/confirm-dialog";
 import {
-  createFeedingSchedule,
-  updateFeedingSchedule,
-  deleteFeedingSchedule,
-  listDoseProfiles,
-  createDoseProfile,
-  updateDoseProfile,
-  deleteDoseProfile,
-  type FeedingScheduleResponse,
+  getFeedingAdvice,
+  updateGrow,
   type BucketResponse,
-  type DoseProfileResponse,
+  type FeedingAdviceResponse,
 } from "@/lib/api";
+import { NUTRIENT_BRANDS, STANDALONE_ADDITIVES, type NutrientBrand, type FeedChartPhase, type StandaloneAdditive } from "@/lib/nutrient-brands";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -29,397 +21,676 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { FlaskConical, Plus, Trash2, Pencil, Loader2, ToggleLeft, ToggleRight } from "lucide-react";
-import { useEffect, useCallback } from "react";
+  FlaskConical,
+  Sparkles,
+  AlertTriangle,
+  ArrowRight,
+  Heart,
+  Loader2,
+  Check,
+  ChevronRight,
+  CalendarDays,
+  ArrowLeft,
+  RefreshCw,
+  Plus,
+  Droplets,
+  X,
+} from "lucide-react";
 
 const STAGES = ["seedling", "vegetative", "flowering", "ripening", "drying", "curing"];
+const STAGE_ORDER: Record<string, number> = Object.fromEntries(STAGES.map((s, i) => [s, i]));
 
 interface FeedingTabProps {
   growId: string;
   growStage: string;
+  growStartedAt: string;
+  milestones: Record<string, string>;
+  settings: Record<string, unknown>;
   buckets: BucketResponse[];
-  feedingSchedules: FeedingScheduleResponse[];
   onRefresh: () => void;
-  onOpenBrandDialog: () => void;
 }
 
-export function FeedingTab({ growId, growStage, buckets, feedingSchedules, onRefresh, onOpenBrandDialog }: FeedingTabProps) {
-  // Feeding schedule dialog (add/edit)
-  const [feedingDialog, setFeedingDialog] = useState(false);
-  const [editFeedingId, setEditFeedingId] = useState<string | null>(null);
-  const [feedingForm, setFeedingForm] = useState({ name: "", stage: "vegetative", notes: "", target_ppm: "", target_ec: "", nutrients: [{ name: "", brand: "", ml_per_gallon: "" }] });
-  const [feedingSaving, setFeedingSaving] = useState(false);
+/** Determine which feed-chart phase is current based on stage + milestones */
+function getCurrentPhaseIndex(
+  phases: FeedChartPhase[],
+  growStage: string,
+  milestones: Record<string, string>,
+  startedAt: string,
+): number {
+  const stagePhases = phases.map((p, i) => ({ ...p, idx: i })).filter((p) => p.stage === growStage);
+  if (stagePhases.length === 0) {
+    const currentOrder = STAGE_ORDER[growStage] ?? 0;
+    for (let i = phases.length - 1; i >= 0; i--) {
+      if ((STAGE_ORDER[phases[i].stage] ?? 0) <= currentOrder) return i;
+    }
+    return 0;
+  }
+  if (stagePhases.length === 1) return stagePhases[0].idx;
 
-  // Dose profiles
-  const [doseProfiles, setDoseProfiles] = useState<DoseProfileResponse[]>([]);
-  const [doseDialog, setDoseDialog] = useState(false);
-  const [editDoseId, setEditDoseId] = useState<string | null>(null);
-  const [doseForm, setDoseForm] = useState({ name: "", dose_type: "nutrient", dose_ml: "" });
-  const [doseSaving, setDoseSaving] = useState(false);
+  const milestoneDate = milestones[growStage] || startedAt;
+  const stageStart = new Date(milestoneDate);
+  const now = new Date();
+  const weeksSinceStage = Math.max(0, Math.floor((now.getTime() - stageStart.getTime()) / (7 * 24 * 60 * 60 * 1000)));
 
-  const loadDoses = useCallback(async () => {
+  const baseWeek = (() => {
+    const br = stagePhases[0].weekRange.replace(/[–—]/g, "-");
+    const bp = br.split("-").map((s) => parseInt(s.trim(), 10));
+    return (bp[0] || 1) - 1;
+  })();
+
+  for (let i = stagePhases.length - 1; i >= 0; i--) {
+    const range = stagePhases[i].weekRange.replace(/[–—]/g, "-");
+    const parts = range.split("-").map((s) => parseInt(s.trim(), 10));
+    const phaseWeekStart = (parts[0] || 1) - 1;
+    const relativePhaseStart = phaseWeekStart - baseWeek;
+    if (weeksSinceStage >= relativePhaseStart) return stagePhases[i].idx;
+  }
+  return stagePhases[0].idx;
+}
+
+export function FeedingTab({ growId, growStage, growStartedAt, milestones, settings, buckets, onRefresh }: FeedingTabProps) {
+  // Brand from grow settings
+  const brandId = settings?.nutrient_brand_id as string | undefined;
+  const productIds = (settings?.nutrient_product_ids as string[]) || [];
+  const additiveIds = (settings?.additive_ids as string[]) || [];
+
+  // Brand dialog state
+  const [brandDialog, setBrandDialog] = useState(false);
+  const [brandStep, setBrandStep] = useState<1 | 2 | 3>(1);
+  const [pendingBrand, setPendingBrand] = useState<NutrientBrand | null>(null);
+  const [pendingProducts, setPendingProducts] = useState<Set<string>>(new Set());
+  const [pendingAdditives, setPendingAdditives] = useState<Set<string>>(new Set());
+  const [brandSaving, setBrandSaving] = useState(false);
+
+  // Additive quick-add dialog
+  const [additiveDialog, setAdditiveDialog] = useState(false);
+  const [pendingQuickAdditives, setPendingQuickAdditives] = useState<Set<string>>(new Set());
+  const [additiveSaving, setAdditiveSaving] = useState(false);
+
+  // AI advice
+  const [advice, setAdvice] = useState<FeedingAdviceResponse | null>(null);
+  const [adviceLoading, setAdviceLoading] = useState(false);
+  const [adviceError, setAdviceError] = useState(false);
+
+  // Resolve brand data
+  const brand = useMemo(() => NUTRIENT_BRANDS.find((b) => b.id === brandId) || null, [brandId]);
+
+  // Filter phases to selected products only
+  const phases = useMemo(() => {
+    if (!brand) return [];
+    const pids = new Set(productIds);
+    if (pids.size === 0) return brand.feedChart;
+    return brand.feedChart.map((phase) => ({
+      ...phase,
+      products: phase.products.filter((p) => pids.has(p.productId)),
+    })).filter((phase) => phase.products.length > 0);
+  }, [brand, productIds]);
+
+  // Product name lookup
+  const productNameMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    brand?.products.forEach((p) => { map[p.id] = p.name; });
+    return map;
+  }, [brand]);
+
+  // Selected additives (user-chosen, stored in settings)
+  const selectedAdditives = useMemo(
+    () => {
+      if (additiveIds.length === 0) return [];
+      const idSet = new Set(additiveIds);
+      return STANDALONE_ADDITIVES.filter((a) => idSet.has(a.id));
+    },
+    [additiveIds],
+  );
+
+  // Current phase
+  const currentPhaseIdx = useMemo(
+    () => phases.length > 0 ? getCurrentPhaseIndex(phases, growStage, milestones, growStartedAt) : -1,
+    [phases, growStage, milestones, growStartedAt],
+  );
+  const currentPhase = currentPhaseIdx >= 0 ? phases[currentPhaseIdx] : null;
+  const nextPhase = currentPhaseIdx >= 0 && currentPhaseIdx < phases.length - 1 ? phases[currentPhaseIdx + 1] : null;
+
+  // Active buckets for dose calculations
+  const activeBuckets = useMemo(
+    () => buckets.filter((b) => b.volume_gallons && b.status === "active"),
+    [buckets],
+  );
+
+  // Load AI advice
+  const loadAdvice = useCallback(async () => {
     const token = getAccessToken();
     if (!token) return;
-    try { setDoseProfiles(await listDoseProfiles(token, growId)); } catch { /* empty */ }
+    setAdviceLoading(true);
+    setAdviceError(false);
+    try {
+      setAdvice(await getFeedingAdvice(token, growId));
+    } catch {
+      setAdviceError(true);
+    } finally {
+      setAdviceLoading(false);
+    }
   }, [growId]);
 
-  useEffect(() => { loadDoses(); }, [loadDoses]);
+  useEffect(() => {
+    if (brand) loadAdvice();
+  }, [brand, loadAdvice]);
 
-  const handleFeedingSubmit = async () => {
-    const token = getAccessToken();
-    if (!token || !feedingForm.name.trim()) return;
-    setFeedingSaving(true);
-    try {
-      const nutrients = feedingForm.nutrients
-        .filter((n) => n.name.trim())
-        .map((n) => ({ name: n.name.trim(), brand: n.brand.trim() || undefined, ml_per_gallon: n.ml_per_gallon ? parseFloat(n.ml_per_gallon) : undefined }));
-      if (editFeedingId) {
-        await updateFeedingSchedule(token, editFeedingId, {
-          name: feedingForm.name.trim(),
-          stage: feedingForm.stage,
-          nutrients,
-          target_ppm: feedingForm.target_ppm ? parseFloat(feedingForm.target_ppm) : null,
-          target_ec: feedingForm.target_ec ? parseFloat(feedingForm.target_ec) : null,
-          notes: feedingForm.notes.trim() || undefined,
-        });
-      } else {
-        await createFeedingSchedule(token, {
-          grow_cycle_id: growId,
-          name: feedingForm.name.trim(),
-          stage: feedingForm.stage,
-          nutrients,
-          target_ppm: feedingForm.target_ppm ? parseFloat(feedingForm.target_ppm) : undefined,
-          target_ec: feedingForm.target_ec ? parseFloat(feedingForm.target_ec) : undefined,
-          notes: feedingForm.notes.trim() || undefined,
-        });
-      }
-      setFeedingDialog(false);
-      setEditFeedingId(null);
-      setFeedingForm({ name: "", stage: "vegetative", notes: "", target_ppm: "", target_ec: "", nutrients: [{ name: "", brand: "", ml_per_gallon: "" }] });
-      onRefresh();
-    } catch { /* empty */ } finally { setFeedingSaving(false); }
+  // --- Brand selection handlers ---
+  const openBrandSelector = () => {
+    setBrandStep(1);
+    setPendingBrand(null);
+    setPendingProducts(new Set());
+    setPendingAdditives(new Set(additiveIds));
+    setBrandDialog(true);
   };
 
-  const confirm = useConfirm();
+  const handleBrandPick = (b: NutrientBrand) => {
+    setPendingBrand(b);
+    setPendingProducts(new Set(b.products.map((p) => p.id)));
+    setBrandStep(2);
+  };
 
-  const handleDeleteFeeding = async (schedId: string) => {
-    if (!await confirm({ title: "Delete Schedule", description: "Delete this feeding schedule?", confirmLabel: "Delete", variant: "destructive" })) return;
+  const togglePendingProduct = (pid: string) => {
+    setPendingProducts((prev) => {
+      const next = new Set(prev);
+      if (next.has(pid)) next.delete(pid); else next.add(pid);
+      return next;
+    });
+  };
+
+  const togglePendingAdditive = (aid: string) => {
+    setPendingAdditives((prev) => {
+      const next = new Set(prev);
+      if (next.has(aid)) next.delete(aid); else next.add(aid);
+      return next;
+    });
+  };
+
+  const saveBrandSelection = async () => {
+    const token = getAccessToken();
+    if (!token || !pendingBrand) return;
+    setBrandSaving(true);
+    try {
+      await updateGrow(token, growId, {
+        settings: {
+          ...(settings || {}),
+          nutrient_brand_id: pendingBrand.id,
+          nutrient_product_ids: Array.from(pendingProducts),
+          additive_ids: Array.from(pendingAdditives),
+        },
+      });
+      setBrandDialog(false);
+      onRefresh();
+    } catch { /* empty */ } finally {
+      setBrandSaving(false);
+    }
+  };
+
+  // --- Additive quick-add handlers ---
+  const openAdditiveDialog = () => {
+    setPendingQuickAdditives(new Set(additiveIds));
+    setAdditiveDialog(true);
+  };
+
+  const toggleQuickAdditive = (aid: string) => {
+    setPendingQuickAdditives((prev) => {
+      const next = new Set(prev);
+      if (next.has(aid)) next.delete(aid); else next.add(aid);
+      return next;
+    });
+  };
+
+  const saveAdditives = async () => {
     const token = getAccessToken();
     if (!token) return;
-    await deleteFeedingSchedule(token, schedId);
+    setAdditiveSaving(true);
+    try {
+      await updateGrow(token, growId, {
+        settings: {
+          ...(settings || {}),
+          additive_ids: Array.from(pendingQuickAdditives),
+        },
+      });
+      setAdditiveDialog(false);
+      onRefresh();
+    } catch { /* empty */ } finally {
+      setAdditiveSaving(false);
+    }
+  };
+
+  const removeAdditive = async (aid: string) => {
+    const token = getAccessToken();
+    if (!token) return;
+    const next = additiveIds.filter((id) => id !== aid);
+    await updateGrow(token, growId, {
+      settings: { ...(settings || {}), additive_ids: next },
+    });
     onRefresh();
   };
 
-  const handleDoseSubmit = async () => {
-    const token = getAccessToken();
-    if (!token || !doseForm.name.trim() || !doseForm.dose_ml) return;
-    setDoseSaving(true);
-    try {
-      if (editDoseId) {
-        await updateDoseProfile(token, editDoseId, {
-          name: doseForm.name.trim(),
-          dose_ml: parseFloat(doseForm.dose_ml),
-        });
-      } else {
-        await createDoseProfile(token, {
-          grow_cycle_id: growId,
-          name: doseForm.name.trim(),
-          dose_type: doseForm.dose_type,
-          dose_ml: parseFloat(doseForm.dose_ml),
-        });
-      }
-      setDoseDialog(false);
-      setEditDoseId(null);
-      setDoseForm({ name: "", dose_type: "nutrient", dose_ml: "" });
-      loadDoses();
-    } catch { /* empty */ } finally { setDoseSaving(false); }
-  };
+  // --- Phase helpers ---
+  function phaseStatus(idx: number): "past" | "current" | "future" {
+    if (idx < currentPhaseIdx) return "past";
+    if (idx === currentPhaseIdx) return "current";
+    return "future";
+  }
 
-  const handleToggleDose = async (dose: DoseProfileResponse) => {
-    const token = getAccessToken();
-    if (!token) return;
-    await updateDoseProfile(token, dose.id, { enabled: !dose.enabled });
-    loadDoses();
-  };
+  function phaseDate(phase: FeedChartPhase): string | null {
+    const ms = milestones[phase.stage];
+    if (ms) return new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    return null;
+  }
 
-  const handleDeleteDose = async (doseId: string) => {
-    if (!await confirm({ title: "Delete Dose Profile", description: "Delete this dose profile?", confirmLabel: "Delete", variant: "destructive" })) return;
-    const token = getAccessToken();
-    if (!token) return;
-    await deleteDoseProfile(token, doseId);
-    loadDoses();
-  };
+  function renderAdditiveRow(a: StandaloneAdditive, vol: number) {
+    return (
+      <span key={a.id} className="text-muted-foreground">
+        {a.name}: <span className="text-foreground font-medium">{(a.ml_per_gallon * vol).toFixed(1)} ml</span>
+      </span>
+    );
+  }
 
-  return (
-    <>
-      {/* Feeding Schedules */}
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-sm font-medium">Feeding Schedules</h3>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={onOpenBrandDialog}>
-            <FlaskConical className="mr-1 size-3" /> Use Brand Template
-          </Button>
-          <Button size="sm" onClick={() => {
-            setEditFeedingId(null);
-            setFeedingForm({ name: "", stage: growStage || "vegetative", notes: "", target_ppm: "", target_ec: "", nutrients: [{ name: "", brand: "", ml_per_gallon: "" }] });
-            setFeedingDialog(true);
-          }}>
-            <Plus className="mr-1 size-3" /> Add Custom
-          </Button>
+  function renderDosesPerBucket(phase: FeedChartPhase) {
+    if (activeBuckets.length === 0) return null;
+    return (
+      <div className="mt-3 rounded-md border bg-muted/30 p-2">
+        <p className="mb-1 text-xs font-medium text-muted-foreground">Per Bucket</p>
+        <div className="space-y-1">
+          {activeBuckets.map((b) => (
+            <div key={b.id} className="flex flex-wrap items-baseline gap-x-3 text-xs">
+              <span className="font-medium min-w-[5rem]">#{b.position} {b.label || "Unnamed"} ({b.volume_gallons}g)</span>
+              {phase.products.map((p) => (
+                <span key={p.productId} className="text-muted-foreground">
+                  {productNameMap[p.productId] || p.productId}: <span className="text-foreground font-medium">{(p.ml_per_gallon * (b.volume_gallons || 0)).toFixed(1)} ml</span>
+                </span>
+              ))}
+              {selectedAdditives.map((a) => renderAdditiveRow(a, b.volume_gallons || 0))}
+            </div>
+          ))}
         </div>
       </div>
-      {feedingSchedules.length === 0 ? (
-        <Card className="flex flex-col items-center justify-center py-12">
-          <FlaskConical className="size-10 text-muted-foreground/50" />
-          <p className="mt-3 text-sm text-muted-foreground">No feeding schedules yet</p>
-          <p className="text-xs text-muted-foreground">Add your nutrient mix for each growth stage</p>
-        </Card>
-      ) : (
-        <div className="space-y-3">
-          {feedingSchedules.map((fs) => (
-            <Card key={fs.id}>
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{fs.name}</span>
-                      <Badge variant="secondary" className="capitalize text-xs">{fs.stage}</Badge>
-                    </div>
-                    {(fs.target_ppm || fs.target_ec) && (
-                      <div className="mt-1 flex gap-3 text-sm">
-                        {fs.target_ppm && <span className="text-muted-foreground">Target PPM: <span className="font-medium text-foreground">{fs.target_ppm}</span></span>}
-                        {fs.target_ec && <span className="text-muted-foreground">Target EC: <span className="font-medium text-foreground">{fs.target_ec} mS/cm</span></span>}
-                      </div>
-                    )}
-                    {fs.nutrients.length > 0 && (
-                      <div className="mt-2 space-y-1">
-                        {fs.nutrients.map((n, i) => (
-                          <p key={i} className="text-sm text-muted-foreground">
-                            {n.name}{n.brand ? ` (${n.brand})` : ""}{n.ml_per_gallon ? ` — ${n.ml_per_gallon} ml/gal` : ""}
-                          </p>
+    );
+  }
+
+  function renderAdditiveDialog() {
+    return (
+      <Dialog open={additiveDialog} onOpenChange={(o) => !o && setAdditiveDialog(false)}>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Manage Additives</DialogTitle>
+            <DialogDescription>
+              Select the standalone additives you use alongside your nutrient line. The AI will factor these into dosing recommendations.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            {STANDALONE_ADDITIVES.map((a) => (
+              <label key={a.id} className="flex cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors hover:bg-accent has-[:checked]:border-primary has-[:checked]:bg-primary/5">
+                <input type="checkbox" className="mt-0.5 size-4 accent-primary" checked={pendingQuickAdditives.has(a.id)} onChange={() => toggleQuickAdditive(a.id)} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-sm font-medium">{a.name}</span>
+                    <span className="text-xs text-muted-foreground">({a.brand})</span>
+                    <span className="text-xs text-primary font-medium ml-auto shrink-0">{a.ml_per_gallon} ml/gal</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5">{a.description}</p>
+                  <p className="text-xs text-muted-foreground/60 mt-0.5 italic">{a.when}</p>
+                </div>
+              </label>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAdditiveDialog(false)}>Cancel</Button>
+            <Button onClick={saveAdditives} disabled={additiveSaving}>
+              {additiveSaving ? <Loader2 className="mr-1 size-4 animate-spin" /> : <Check className="mr-1 size-4" />}
+              {additiveSaving ? "Saving..." : "Save Additives"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  function renderBrandDialog() {
+    return (
+      <Dialog open={brandDialog} onOpenChange={(o) => !o && setBrandDialog(false)}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          {brandStep === 1 && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Choose Nutrient Brand</DialogTitle>
+                <DialogDescription>
+                  Select the nutrient line you are using. Your feeding calendar will be generated from their recommended chart.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {NUTRIENT_BRANDS.map((b) => (
+                  <Card key={b.id} className="cursor-pointer transition-colors hover:bg-accent" onClick={() => handleBrandPick(b)}>
+                    <CardContent className="p-4">
+                      <p className="font-semibold">{b.name}</p>
+                      <p className="text-sm text-muted-foreground">{b.line}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{b.description}</p>
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {b.products.filter((p) => p.type === "base").map((p) => (
+                          <Badge key={p.id} variant="secondary" className="text-xs">{p.name}</Badge>
                         ))}
                       </div>
-                    )}
-                    {/* Per-bucket breakdown */}
-                    {fs.nutrients.some((n) => n.ml_per_gallon) && buckets.filter((b) => b.volume_gallons && b.status === "active").length > 0 && (
-                      <div className="mt-3 rounded-md border bg-muted/30 p-2">
-                        <p className="mb-1 text-xs font-medium text-muted-foreground">Per Bucket</p>
-                        <div className="space-y-1">
-                          {buckets.filter((b) => b.volume_gallons && b.status === "active").map((b) => (
-                            <div key={b.id} className="flex flex-wrap items-baseline gap-x-3 text-xs">
-                              <span className="font-medium min-w-[5rem]">#{b.position} {b.label || "Unnamed"} ({b.volume_gallons}g)</span>
-                              {fs.nutrients.filter((n) => n.ml_per_gallon).map((n, i) => (
-                                <span key={i} className="text-muted-foreground">
-                                  {n.name}: <span className="text-foreground font-medium">{(n.ml_per_gallon! * b.volume_gallons!).toFixed(1)} ml</span>
-                                </span>
-                              ))}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {fs.notes && <p className="mt-1 text-xs text-muted-foreground italic">{fs.notes}</p>}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => {
-                      setEditFeedingId(fs.id);
-                      setFeedingForm({
-                        name: fs.name,
-                        stage: fs.stage,
-                        notes: fs.notes || "",
-                        target_ppm: fs.target_ppm?.toString() || "",
-                        target_ec: fs.target_ec?.toString() || "",
-                        nutrients: fs.nutrients.map((n) => ({ name: n.name, brand: n.brand || "", ml_per_gallon: n.ml_per_gallon?.toString() || "" })),
-                      });
-                      setFeedingDialog(true);
-                    }}>
-                      <Pencil className="size-3" />
-                    </Button>
-                    <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive hover:text-destructive" onClick={() => handleDeleteFeeding(fs.id)}>
-                      <Trash2 className="size-3" />
-                    </Button>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setBrandDialog(false)}>Cancel</Button>
+              </DialogFooter>
+            </>
+          )}
+
+          {brandStep === 2 && pendingBrand && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Select Your Products</DialogTitle>
+                <DialogDescription>
+                  Check the {pendingBrand.name} products you own. The feeding calendar will only include selected products.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Base Nutrients</p>
+                  <div className="space-y-2">
+                    {pendingBrand.products.filter((p) => p.type === "base").map((p) => (
+                      <label key={p.id} className="flex cursor-pointer items-center gap-3 rounded-md border p-3 transition-colors hover:bg-accent has-[:checked]:border-primary has-[:checked]:bg-primary/5">
+                        <input type="checkbox" className="size-4 accent-primary" checked={pendingProducts.has(p.id)} onChange={() => togglePendingProduct(p.id)} />
+                        <span className="text-sm font-medium">{p.name}</span>
+                      </label>
+                    ))}
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+                {pendingBrand.products.some((p) => p.type === "supplement") && (
+                  <div>
+                    <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Supplements (optional)</p>
+                    <div className="space-y-2">
+                      {pendingBrand.products.filter((p) => p.type === "supplement").map((p) => (
+                        <label key={p.id} className="flex cursor-pointer items-center gap-3 rounded-md border p-3 transition-colors hover:bg-accent has-[:checked]:border-primary has-[:checked]:bg-primary/5">
+                          <input type="checkbox" className="size-4 accent-primary" checked={pendingProducts.has(p.id)} onChange={() => togglePendingProduct(p.id)} />
+                          <span className="text-sm font-medium">{p.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <DialogFooter className="flex-row justify-between sm:justify-between">
+                <Button variant="outline" onClick={() => setBrandStep(1)}>
+                  <ArrowLeft className="mr-1 size-4" /> Back
+                </Button>
+                <Button onClick={() => setBrandStep(3)} disabled={pendingProducts.size === 0}>
+                  Additives <ChevronRight className="ml-1 size-4" />
+                </Button>
+              </DialogFooter>
+            </>
+          )}
 
-      {/* Dose Profiles Section */}
-      <div className="mt-8 mb-4 flex items-center justify-between">
-        <h3 className="text-sm font-medium">Dose Profiles</h3>
-        <Button size="sm" onClick={() => {
-          setEditDoseId(null);
-          setDoseForm({ name: "", dose_type: "nutrient", dose_ml: "" });
-          setDoseDialog(true);
-        }}>
-          <Plus className="mr-1 size-3" /> Add Dose
+          {brandStep === 3 && pendingBrand && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Add Standalone Additives</DialogTitle>
+                <DialogDescription>
+                  Optionally select additives you use alongside {pendingBrand.name}. The AI will factor these into your feeding plan.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-2">
+                {STANDALONE_ADDITIVES.map((a) => (
+                  <label key={a.id} className="flex cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors hover:bg-accent has-[:checked]:border-primary has-[:checked]:bg-primary/5">
+                    <input type="checkbox" className="mt-0.5 size-4 accent-primary" checked={pendingAdditives.has(a.id)} onChange={() => togglePendingAdditive(a.id)} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-sm font-medium">{a.name}</span>
+                        <span className="text-xs text-muted-foreground">({a.brand})</span>
+                        <span className="text-xs text-primary font-medium ml-auto shrink-0">{a.ml_per_gallon} ml/gal</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">{a.description}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+              <DialogFooter className="flex-row justify-between sm:justify-between">
+                <Button variant="outline" onClick={() => setBrandStep(2)}>
+                  <ArrowLeft className="mr-1 size-4" /> Back
+                </Button>
+                <Button onClick={saveBrandSelection} disabled={brandSaving}>
+                  {brandSaving ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Check className="mr-1 size-4" />}
+                  {brandSaving ? "Saving..." : "Save & Generate Calendar"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  // --- No brand selected ---
+  if (!brand) {
+    return (
+      <>
+        <Card className="flex flex-col items-center justify-center py-16">
+          <FlaskConical className="size-12 text-muted-foreground/40" />
+          <p className="mt-4 text-sm font-medium">No Nutrient Brand Selected</p>
+          <p className="mt-1 text-xs text-muted-foreground text-center max-w-sm">
+            Select your nutrient line to auto-generate a feeding calendar with correct doses for every stage of your grow.
+          </p>
+          <Button className="mt-4" onClick={openBrandSelector}>
+            <FlaskConical className="mr-2 size-4" /> Choose Nutrient Brand
+          </Button>
+        </Card>
+        {renderBrandDialog()}
+      </>
+    );
+  }
+
+  // --- Main render ---
+  return (
+    <>
+      {/* Brand info bar */}
+      <div className="mb-4 flex items-center justify-between rounded-lg border bg-card px-4 py-2.5">
+        <div className="flex items-center gap-3">
+          <FlaskConical className="size-4 text-primary" />
+          <div>
+            <p className="text-sm font-medium">{brand.name} — {brand.line}</p>
+            <p className="text-xs text-muted-foreground">
+              {productIds.length > 0
+                ? productIds.map((pid) => productNameMap[pid]).filter(Boolean).join(", ")
+                : "All products"}
+            </p>
+          </div>
+        </div>
+        <Button variant="outline" size="sm" className="h-7 text-xs" onClick={openBrandSelector}>
+          Change
         </Button>
       </div>
-      {doseProfiles.length === 0 ? (
-        <Card className="flex flex-col items-center justify-center py-8">
-          <p className="text-sm text-muted-foreground">No dose profiles yet</p>
-          <p className="text-xs text-muted-foreground">Configure dosing pumps for automated feeding</p>
-        </Card>
-      ) : (
-        <div className="space-y-2">
-          {doseProfiles.map((dp) => (
-            <Card key={dp.id}>
-              <CardContent className="flex items-center justify-between p-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-sm">{dp.name}</span>
-                    <Badge variant="outline" className="text-xs">{dp.dose_type}</Badge>
-                    <Badge variant={dp.enabled ? "default" : "secondary"} className="text-xs">{dp.enabled ? "Active" : "Disabled"}</Badge>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-0.5">{dp.dose_ml} ml per dose</p>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Button variant="ghost" size="sm" className="h-7" onClick={() => handleToggleDose(dp)}>
-                    {dp.enabled ? <ToggleRight className="size-4" /> : <ToggleLeft className="size-4" />}
-                  </Button>
-                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => {
-                    setEditDoseId(dp.id);
-                    setDoseForm({ name: dp.name, dose_type: dp.dose_type, dose_ml: dp.dose_ml.toString() });
-                    setDoseDialog(true);
-                  }}>
-                    <Pencil className="size-3" />
-                  </Button>
-                  <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive hover:text-destructive" onClick={() => handleDeleteDose(dp.id)}>
-                    <Trash2 className="size-3" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
 
-      {/* Feeding Schedule Dialog (Add/Edit) */}
-      <Dialog open={feedingDialog} onOpenChange={(open) => !open && setFeedingDialog(false)}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{editFeedingId ? "Edit" : "New"} Feeding Schedule</DialogTitle>
-            <DialogDescription>Define a nutrient mix for a specific growth stage</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Name</Label>
-                <Input placeholder="e.g. Early Veg Mix" value={feedingForm.name} onChange={(e) => setFeedingForm((p) => ({ ...p, name: e.target.value }))} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Stage</Label>
-                <Select value={feedingForm.stage} onValueChange={(v) => setFeedingForm((p) => ({ ...p, stage: v ?? "vegetative" }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {STAGES.map((s) => <SelectItem key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
+      {/* Additives bar */}
+      <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border bg-card px-4 py-2.5">
+        <Droplets className="size-4 text-muted-foreground shrink-0" />
+        <span className="text-xs font-medium text-muted-foreground mr-1">Additives:</span>
+        {selectedAdditives.length > 0 ? (
+          selectedAdditives.map((a) => (
+            <Badge key={a.id} variant="secondary" className="text-xs gap-1 pr-1">
+              {a.name} <span className="text-muted-foreground">({a.ml_per_gallon} ml/gal)</span>
+              <button
+                type="button"
+                onClick={() => removeAdditive(a.id)}
+                className="ml-0.5 rounded-sm p-0.5 hover:bg-muted-foreground/20"
+              >
+                <X className="size-3" />
+              </button>
+            </Badge>
+          ))
+        ) : (
+          <span className="text-xs text-muted-foreground italic">None selected</span>
+        )}
+        <Button variant="outline" size="sm" className="h-6 text-xs ml-auto" onClick={openAdditiveDialog}>
+          <Plus className="mr-1 size-3" /> Add
+        </Button>
+      </div>
+
+      {/* AI Adjustments */}
+      <Card className="mb-4">
+        <CardContent className="p-4">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="flex items-center gap-2 text-sm font-medium">
+              <Sparkles className="size-4 text-primary" /> AI Adjustments
+            </h3>
+            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={loadAdvice} disabled={adviceLoading}>
+              {adviceLoading ? <Loader2 className="mr-1 size-3 animate-spin" /> : <RefreshCw className="mr-1 size-3" />}
+              {adviceLoading ? "Analyzing..." : "Refresh"}
+            </Button>
+          </div>
+          {adviceLoading && <p className="text-xs text-muted-foreground">Loading cached advice...</p>}
+          {adviceError && <p className="text-xs text-muted-foreground italic">AI advice will appear after the next health check.</p>}
+          {advice && !adviceLoading && (
+            <div className="space-y-3">
+              {advice.current_stage_advice && <p className="text-sm">{advice.current_stage_advice}</p>}
+              {advice.alerts.length > 0 && (
+                <div className="space-y-1">
+                  {advice.alerts.map((a, i) => (
+                    <div key={i} className={`flex items-start gap-2 rounded-md border px-3 py-2 text-xs ${
+                      a.severity === "high" ? "border-destructive/40 bg-destructive/10 text-destructive" :
+                      a.severity === "medium" ? "border-yellow-500/40 bg-yellow-500/10 text-yellow-700 dark:text-yellow-400" :
+                      "border-muted bg-muted/30 text-muted-foreground"
+                    }`}>
+                      <AlertTriangle className="size-3 mt-0.5 shrink-0" />
+                      <span>{a.message}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {advice.adjustments.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">Recommended Adjustments</p>
+                  {advice.adjustments.map((adj, i) => (
+                    <div key={i} className="rounded-md border bg-background px-3 py-2 text-xs">
+                      <span className="font-medium">{adj.schedule_name}</span>: {adj.change}
+                      <span className="text-muted-foreground"> — {adj.reason}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {advice.health_impact && (
+                <div className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <Heart className="size-3 mt-0.5 shrink-0" />
+                  <span>{advice.health_impact}</span>
+                </div>
+              )}
             </div>
-            <div className="space-y-2">
-              <Label className="text-xs">Nutrients</Label>
-              {feedingForm.nutrients.map((n, i) => (
-                <div key={i} className="flex gap-2">
-                  <Input className="flex-1" placeholder="Nutrient name" value={n.name} onChange={(e) => {
-                    const updated = [...feedingForm.nutrients];
-                    updated[i] = { ...updated[i], name: e.target.value };
-                    setFeedingForm((p) => ({ ...p, nutrients: updated }));
-                  }} />
-                  <Input className="w-28" placeholder="Brand" value={n.brand} onChange={(e) => {
-                    const updated = [...feedingForm.nutrients];
-                    updated[i] = { ...updated[i], brand: e.target.value };
-                    setFeedingForm((p) => ({ ...p, nutrients: updated }));
-                  }} />
-                  <Input className="w-24" type="number" step="0.1" placeholder="ml/gal" value={n.ml_per_gallon} onChange={(e) => {
-                    const updated = [...feedingForm.nutrients];
-                    updated[i] = { ...updated[i], ml_per_gallon: e.target.value };
-                    setFeedingForm((p) => ({ ...p, nutrients: updated }));
-                  }} />
-                  {feedingForm.nutrients.length > 1 && (
-                    <Button type="button" variant="ghost" size="sm" className="h-8 px-2 text-destructive" onClick={() => {
-                      setFeedingForm((p) => ({ ...p, nutrients: p.nutrients.filter((_, j) => j !== i) }));
-                    }}>
-                      <Trash2 className="size-3" />
-                    </Button>
-                  )}
+          )}
+          {!advice && !adviceLoading && !adviceError && (
+            <p className="text-xs text-muted-foreground">AI adjustments are generated after each health check (every 12 hours) and cached until the next one.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Next Feeding card */}
+      {currentPhase && (
+        <Card className="mb-4 border-primary/40 ring-1 ring-primary/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <Sparkles className="size-4 text-primary" />
+              Next Feeding — {currentPhase.phase}
+              <Badge variant="default" className="capitalize text-xs ml-auto">{currentPhase.stage}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-1.5 sm:grid-cols-2">
+              {currentPhase.products.map((p) => (
+                <div key={p.productId} className="flex items-baseline justify-between rounded-md bg-muted/40 px-3 py-1.5 text-sm">
+                  <span className="font-medium">{productNameMap[p.productId] || p.productId}</span>
+                  <span className="text-muted-foreground">{p.ml_per_gallon} <span className="text-xs">ml/gal</span></span>
                 </div>
               ))}
-              <Button type="button" variant="outline" size="sm" onClick={() => setFeedingForm((p) => ({ ...p, nutrients: [...p.nutrients, { name: "", brand: "", ml_per_gallon: "" }] }))}>
-                <Plus className="mr-1 size-3" /> Add Nutrient
-              </Button>
+              {selectedAdditives.map((a) => (
+                <div key={a.id} className="flex items-baseline justify-between rounded-md bg-blue-500/10 px-3 py-1.5 text-sm">
+                  <span className="font-medium">{a.name} <span className="text-xs text-muted-foreground">({a.brand})</span></span>
+                  <span className="text-muted-foreground">{a.ml_per_gallon} <span className="text-xs">ml/gal</span></span>
+                </div>
+              ))}
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">Target PPM</Label>
-                <Input type="number" placeholder="e.g. 800" value={feedingForm.target_ppm} onChange={(e) => setFeedingForm((p) => ({ ...p, target_ppm: e.target.value }))} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Target EC (mS/cm)</Label>
-                <Input type="number" step="0.1" placeholder="e.g. 1.6" value={feedingForm.target_ec} onChange={(e) => setFeedingForm((p) => ({ ...p, target_ec: e.target.value }))} />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Notes (optional)</Label>
-              <Input placeholder="e.g. Mix A first, then B after 30 min" value={feedingForm.notes} onChange={(e) => setFeedingForm((p) => ({ ...p, notes: e.target.value }))} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" type="button" onClick={() => setFeedingDialog(false)}>Cancel</Button>
-            <Button type="button" onClick={handleFeedingSubmit} disabled={feedingSaving || !feedingForm.name.trim()}>
-              {feedingSaving && <Loader2 className="mr-2 size-4 animate-spin" />}
-              {editFeedingId ? "Update" : "Save"} Schedule
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
-      {/* Dose Profile Dialog (Add/Edit) */}
-      <Dialog open={doseDialog} onOpenChange={(open) => !open && setDoseDialog(false)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editDoseId ? "Edit" : "New"} Dose Profile</DialogTitle>
-            <DialogDescription>Configure an automated dosing profile</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <Label className="text-xs">Name</Label>
-              <Input placeholder="e.g. pH Down" value={doseForm.name} onChange={(e) => setDoseForm((p) => ({ ...p, name: e.target.value }))} />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Type</Label>
-              <Select value={doseForm.dose_type} onValueChange={(v) => setDoseForm((p) => ({ ...p, dose_type: v ?? "nutrient" }))} disabled={!!editDoseId}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="nutrient">Nutrient</SelectItem>
-                  <SelectItem value="ph_up">pH Up</SelectItem>
-                  <SelectItem value="ph_down">pH Down</SelectItem>
-                  <SelectItem value="additive">Additive</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Dose Amount (ml)</Label>
-              <Input type="number" step="0.1" placeholder="e.g. 2.5" value={doseForm.dose_ml} onChange={(e) => setDoseForm((p) => ({ ...p, dose_ml: e.target.value }))} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" type="button" onClick={() => setDoseDialog(false)}>Cancel</Button>
-            <Button type="button" onClick={handleDoseSubmit} disabled={doseSaving || !doseForm.name.trim() || !doseForm.dose_ml}>
-              {doseSaving && <Loader2 className="mr-2 size-4 animate-spin" />}
-              {editDoseId ? "Update" : "Save"} Profile
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            {currentPhase.notes && (
+              <p className="mt-2 text-xs text-muted-foreground italic">{currentPhase.notes}</p>
+            )}
+            {selectedAdditives.length > 0 && (
+              <p className="mt-1 text-xs text-blue-600 dark:text-blue-400">
+                + {selectedAdditives.map((a) => a.name).join(", ")} added every feeding
+              </p>
+            )}
+
+            {renderDosesPerBucket(currentPhase)}
+
+            {nextPhase && (
+              <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+                <ArrowRight className="size-3 shrink-0" />
+                <span>Up next: <span className="font-medium capitalize text-foreground">{nextPhase.phase}</span> ({nextPhase.stage}, Wk {nextPhase.weekRange})</span>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Feeding Calendar */}
+      <div className="mb-3 flex items-center gap-2">
+        <CalendarDays className="size-4 text-muted-foreground" />
+        <h3 className="text-sm font-medium">Feeding Calendar</h3>
+        <span className="text-xs text-muted-foreground">({phases.length} phases)</span>
+      </div>
+
+      <div className="space-y-2">
+        {phases.map((phase, idx) => {
+          const status = phaseStatus(idx);
+          const date = phaseDate(phase);
+          const isCurrent = status === "current";
+          return (
+            <Card
+              key={idx}
+              className={
+                isCurrent ? "border-primary/40 ring-1 ring-primary/20" :
+                status === "past" ? "opacity-60" : undefined
+              }
+            >
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  {status === "past" && <Check className="size-4 text-green-500" />}
+                  {isCurrent && <ChevronRight className="size-4 text-primary" />}
+                  {status === "future" && <div className="size-4 rounded-full border-2 border-muted-foreground/30" />}
+                  <span className="font-medium text-sm">{phase.phase}</span>
+                  <Badge variant={isCurrent ? "default" : "secondary"} className="capitalize text-xs">{phase.stage}</Badge>
+                  <span className="text-xs text-muted-foreground">Wk {phase.weekRange}</span>
+                  {isCurrent && <Badge variant="outline" className="text-xs text-primary border-primary/40 ml-auto">Current</Badge>}
+                  {date && !isCurrent && <span className="text-xs text-muted-foreground ml-auto">{date}</span>}
+                </div>
+
+                <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1">
+                  {phase.products.map((p) => (
+                    <span key={p.productId} className="text-xs text-muted-foreground">
+                      {productNameMap[p.productId] || p.productId}: <span className="font-medium text-foreground">{p.ml_per_gallon} ml/gal</span>
+                    </span>
+                  ))}
+                  {selectedAdditives.map((a) => (
+                    <span key={a.id} className="text-xs text-blue-600 dark:text-blue-400">
+                      {a.name}: <span className="font-medium">{a.ml_per_gallon} ml/gal</span>
+                    </span>
+                  ))}
+                </div>
+
+                {phase.notes && <p className="mt-1 text-xs text-muted-foreground italic">{phase.notes}</p>}
+                {isCurrent && renderDosesPerBucket(phase)}
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+
+      {renderBrandDialog()}
+      {renderAdditiveDialog()}
     </>
   );
 }

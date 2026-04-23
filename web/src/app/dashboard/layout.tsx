@@ -10,6 +10,7 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { MobileBottomNav } from "@/components/mobile-bottom-nav";
 import { CommandPalette } from "@/components/command-palette";
+import { ChatProvider } from "@/components/chat-provider";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -35,6 +36,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <GrowProvider>
       <ConfirmProvider>
+      <ChatProvider>
       <SidebarProvider>
         <AppSidebar user={user} onLogout={logout} />
         <SidebarInset>
@@ -45,6 +47,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <MobileBottomNav />
         <CommandPalette />
       </SidebarProvider>
+      </ChatProvider>
       </ConfirmProvider>
     </GrowProvider>
   );

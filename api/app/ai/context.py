@@ -57,10 +57,18 @@ def _fmt_bucket_list(buckets: list[dict]) -> str:
     return "\n".join(parts)
 
 
-def _fmt_feeding(schedules: list[dict], current_stage: str) -> str:
+def _fmt_feeding(schedules: list[dict], current_stage: str, started_at: str | None = None) -> str:
+    week = None
+    if started_at:
+        week = _current_grow_week({"started_at": started_at})
     parts = []
     for s in schedules:
-        marker = " ← CURRENT" if s["stage"] == current_stage else ""
+        if week is not None and _week_matches_schedule(week, s["name"]):
+            marker = " ← ACTIVE"
+        elif s["stage"] == current_stage:
+            marker = ""
+        else:
+            marker = ""
         line = f"  [{s['stage']}{marker}] {s['name']}"
         if s.get("target_ppm"):
             line += f" | Target PPM: {s['target_ppm']}"
@@ -116,19 +124,27 @@ def _fmt_trends(trends: dict) -> str:
     return "\n".join(lines)
 
 
-def _fmt_prev_eval(prev: dict) -> str:
+def _fmt_prev_eval(prev: dict, *, filter_feeding: bool = False) -> str:
     parts = [
         f"  Date: {prev.get('created_at', '?')}",
         f"  Score: {prev.get('score', '?')}/100 ({prev.get('source', 'manual')})",
     ]
     if prev.get("issues"):
-        parts.append("  Issues:")
-        for issue in prev["issues"]:
-            parts.append(f"    - {issue}")
+        issues = prev["issues"]
+        if filter_feeding:
+            issues = [i for i in issues if "schedule" not in i.lower() and "feeding" not in i.lower()]
+        if issues:
+            parts.append("  Issues:")
+            for issue in issues:
+                parts.append(f"    - {issue}")
     if prev.get("actions"):
-        parts.append("  Actions recommended:")
-        for action in prev["actions"]:
-            parts.append(f"    - {action}")
+        actions = prev["actions"]
+        if filter_feeding:
+            actions = [a for a in actions if "schedule" not in a.lower() and "feeding" not in a.lower()]
+        if actions:
+            parts.append("  Actions recommended:")
+            for action in actions:
+                parts.append(f"    - {action}")
     return "\n".join(parts)
 
 
@@ -389,7 +405,10 @@ def build_chat_context(
     if feeds:
         parts.append(
             "\n=== Feeding Schedules ===\n"
-            + _fmt_feeding(feeds, grow_data.get("stage", ""))
+            + _fmt_feeding(feeds, grow_data.get("stage", ""), grow_data.get("started_at"))
+            + "\n\nIMPORTANT: These schedules are the FULL feed chart for the entire grow cycle. "
+            "Only the schedule marked ← ACTIVE is what the grower should follow right now. "
+            "Do NOT tell the grower they are using the wrong schedule — the other entries are future/past phases, not mistakes."
         )
 
     # Dose profiles
@@ -405,7 +424,7 @@ def build_chat_context(
     # Previous health eval
     prev = grow_data.get("previous_eval")
     if prev:
-        parts.append("\n=== Last Health Evaluation ===\n" + _fmt_prev_eval(prev))
+        parts.append("\n=== Last Health Evaluation ===\n" + _fmt_prev_eval(prev, filter_feeding=True))
 
     # Weather
     weather = grow_data.get("weather")
@@ -638,7 +657,7 @@ def build_health_check_prompt(
     if feeds:
         sections.append(
             "=== Feeding Schedules ===\n"
-            + _fmt_feeding(feeds, stage)
+            + _fmt_feeding(feeds, stage, grow_data.get("started_at"))
         )
 
     # Doses
@@ -679,7 +698,7 @@ def build_health_check_prompt(
     if prev:
         sections.append(
             "=== Previous Health Evaluation ===\n"
-            + _fmt_prev_eval(prev)
+            + _fmt_prev_eval(prev, filter_feeding=True)
             + "\n\nCompare current state to this previous evaluation. "
             "Note improvements, regressions, and whether recommended actions were followed."
         )
@@ -769,4 +788,192 @@ def build_insight_prompt(
     return [
         {"role": "system", "content": system},
         {"role": "user", "content": f"Grow data:\n{data_str}"},
+    ]
+
+
+# ── Feeding advice prompt ────────────────────────────────────────────
+
+def _current_grow_week(grow_data: dict) -> int | None:
+    """Return the 1-based overall week number since the grow started."""
+    from datetime import datetime, timezone
+
+    started = grow_data.get("started_at")
+    if not started:
+        return None
+    if isinstance(started, str):
+        started = datetime.fromisoformat(started)
+    now = datetime.now(timezone.utc)
+    days = (now - started).days
+    return max(1, days // 7 + 1)
+
+
+def _week_matches_schedule(week: int, schedule_name: str) -> bool:
+    """Check if *week* falls within the (Wk …) range in a schedule name."""
+    import re
+
+    m = re.search(r"\(Wk\s+(\d+)(?:\s*[–-]\s*(\d+))?\)", schedule_name)
+    if not m:
+        return False
+    lo = int(m.group(1))
+    hi = int(m.group(2)) if m.group(2) else lo
+    return lo <= week <= hi
+
+
+def build_feeding_advice_prompt(grow_data: dict) -> list[dict]:
+    """Build messages for AI feeding advice using full grow context."""
+    import json as _json
+
+    stage = grow_data.get("stage", "unknown")
+    grow_type = grow_data.get("grow_type", "unknown")
+    current_week = _current_grow_week(grow_data)
+    profile = get_grow_type_profile(grow_type)
+    type_name = profile["name"] if profile else grow_type
+    feeding_approach = profile["feeding_approach"] if profile else ""
+    ec_range = profile.get("ec_range", {}) if profile else {}
+
+    system = (
+        f"You are a precision nutrient advisor for a {type_name} grow currently in the **{stage}** stage.\n\n"
+        f"Grow-type feeding approach: {feeding_approach}\n"
+        f"Recommended EC ranges: {_json.dumps(ec_range) if ec_range else 'not specified'}\n\n"
+        "Analyze ALL of the following data and produce a JSON response with this exact schema:\n"
+        "{\n"
+        '  "current_stage_advice": "1-2 sentence summary of what to feed right now",\n'
+        '  "adjustments": [\n'
+        '    {"schedule_name": "name of existing schedule", "change": "what to adjust", "reason": "why"}\n'
+        "  ],\n"
+        '  "alerts": [\n'
+        '    {"severity": "high|medium|low", "message": "actionable alert", "type": "nutrient|ph|ec|deficiency|toxicity|transition"}\n'
+        "  ],\n"
+        '  "next_transition": {"stage": "next stage name", "action": "what to prepare", "estimated_timing": "when based on milestones/dates"},\n'
+        '  "health_impact": "how latest health check should influence feeding (or null if no health data)"\n'
+        "}\n\n"
+        "Rules:\n"
+        "- The feeding schedules below represent the FULL feed chart for the entire grow cycle. Only the schedule marked ← ACTIVE is what the grower should be following right now.\n"
+        "- Do NOT flag other schedules in the chart as 'incorrect' — they are future/past phases, not mistakes.\n"
+        "- ADJUST the ACTIVE schedule based on sensor readings, health score, and growth progress.\n"
+        "- Factor in any standalone additives the user has selected (e.g. Hydroguard, Cal-Mag). Confirm they are being used correctly and flag if any should be added or removed based on conditions.\n"
+        "- If sensor pH/EC are drifting, recommend corrections.\n"
+        "- If health score is low or issues mention nutrient problems, flag them as high-severity alerts.\n"
+        "- Use milestone dates to estimate stage transitions and recommend pre-transition feeding changes.\n"
+        "- If data is insufficient for a field, set it to null rather than guessing.\n"
+        "- Keep advice specific and actionable. Reference actual product names and ml/gal amounts.\n"
+        "- Only state facts supported by the data."
+    )
+
+    # Build detailed user context
+    sections = []
+
+    # Grow info
+    sections.append(f"## Grow Info\n- Type: {type_name}\n- Stage: {stage}\n- Status: {grow_data.get('status')}")
+    if grow_data.get("started_at"):
+        sections.append(f"- Started: {grow_data['started_at']}")
+    if current_week is not None:
+        sections.append(f"- Current overall week: {current_week}")
+    if grow_data.get("milestones"):
+        ms_lines = [f"  - {k}: {v}" for k, v in grow_data["milestones"].items() if v]
+        if ms_lines:
+            sections.append("- Milestones:\n" + "\n".join(ms_lines))
+    if grow_data.get("settings"):
+        settings_lines = [f"  - {k}: {v}" for k, v in grow_data["settings"].items() if v]
+        if settings_lines:
+            sections.append("- Grow Settings:\n" + "\n".join(settings_lines))
+
+    # User-selected standalone additives
+    additive_ids = (grow_data.get("settings") or {}).get("additive_ids") or []
+    if additive_ids:
+        # Known additive reference (synced with client-side STANDALONE_ADDITIVES)
+        ADDITIVE_REF = {
+            "botanicare-hydroguard": ("Hydroguard", "Botanicare", 2, "Beneficial bacteria for root health. Essential when water temps > 68°F."),
+            "botanicare-calmag-plus": ("Cal-Mag Plus", "Botanicare", 5, "Calcium, magnesium, iron supplement."),
+            "gh-armor-si": ("Armor Si", "General Hydroponics", 1.5, "Potassium silicate for stronger cell walls."),
+            "gh-rapidstart": ("RapidStart", "General Hydroponics", 1, "Root enhancer for early growth."),
+            "slf100": ("SLF-100", "SLF-100", 1, "Enzymatic formula to break down dead roots and salt buildup."),
+            "mammoth-p": ("Mammoth P", "Mammoth Microbes", 0.16, "Phosphorus-liberating microbial inoculant."),
+            "recharge": ("Recharge", "Real Growers", 0.5, "Mycorrhizae and trichoderma blend for soil/coco."),
+        }
+        add_lines = []
+        for aid in additive_ids:
+            ref = ADDITIVE_REF.get(aid)
+            if ref:
+                add_lines.append(f"  - {ref[0]} ({ref[1]}) — {ref[2]} ml/gal: {ref[3]}")
+            else:
+                add_lines.append(f"  - {aid} (unknown additive)")
+        sections.append("## User-Selected Additives (used alongside brand nutrients)\n" + "\n".join(add_lines))
+
+    # Current feeding schedules (full feed chart — only one is ACTIVE)
+    if grow_data.get("feeding_schedules"):
+        feed_lines = []
+        for fs in grow_data["feeding_schedules"]:
+            if current_week is not None and _week_matches_schedule(current_week, fs["name"]):
+                current_marker = " ← ACTIVE"
+            else:
+                current_marker = ""
+            line = f"  - {fs['name']} ({fs['stage']}{current_marker})"
+            if fs.get("target_ppm"):
+                line += f" PPM:{fs['target_ppm']}"
+            if fs.get("target_ec"):
+                line += f" EC:{fs['target_ec']}"
+            if fs.get("nutrients"):
+                for n in fs["nutrients"]:
+                    line += f"\n    • {n.get('name', '?')}"
+                    if n.get("brand"):
+                        line += f" ({n['brand']})"
+                    if n.get("ml_per_gallon"):
+                        line += f" — {n['ml_per_gallon']} ml/gal"
+            if fs.get("notes"):
+                line += f"\n    Note: {fs['notes']}"
+            feed_lines.append(line)
+        sections.append("## Current Feeding Schedules\n" + "\n".join(feed_lines))
+    else:
+        sections.append("## Current Feeding Schedules\nNone configured yet.")
+
+    # Sensor readings
+    if grow_data.get("bucket_sensors"):
+        sensor_lines = []
+        for pos, readings in grow_data["bucket_sensors"].items():
+            sensor_lines.append(f"  Bucket #{pos}: " + ", ".join(f"{k}={v}" for k, v in readings.items()))
+        sections.append("## Latest Sensor Readings\n" + "\n".join(sensor_lines))
+
+    if grow_data.get("sensor_trends"):
+        trends = grow_data["sensor_trends"]
+        trend_lines = [f"  - {k}: {v}" for k, v in trends.items()]
+        sections.append("## Sensor Trends (24h)\n" + "\n".join(trend_lines))
+
+    # Tent environment
+    if grow_data.get("tent_ambient"):
+        amb = grow_data["tent_ambient"]
+        sections.append(f"## Tent Environment\n  - Temp: {amb.get('ambient_temp_f', '?')}°F, Humidity: {amb.get('ambient_humidity', '?')}%")
+
+    # Health check — include score only; full issues/actions are from a
+    # separate AI model and may contain stale schedule conclusions.
+    if grow_data.get("previous_eval"):
+        ev = grow_data["previous_eval"]
+        score_line = f"  - Score: {ev.get('score', '?')}/100"
+        # Only pass non-schedule issues (filter out stale feeding conclusions)
+        raw_issues = ev.get("issues") or []
+        filtered = [i for i in raw_issues if "schedule" not in i.lower() and "feeding" not in i.lower()]
+        issues_line = f"  - Issues: {', '.join(filtered) or 'None'}"
+        sections.append(
+            f"## Latest Health Check\n{score_line}\n{issues_line}"
+        )
+
+    # Strains
+    if grow_data.get("buckets"):
+        strain_lines = []
+        for b in grow_data["buckets"]:
+            if b.get("strain_profile"):
+                sp = b["strain_profile"]
+                strain_lines.append(
+                    f"  - #{b['position']} {sp.get('name', '?')}: "
+                    f"genetics={sp.get('genetics', '?')}, "
+                    f"flowering_days={sp.get('flowering_days', '?')}"
+                )
+        if strain_lines:
+            sections.append("## Strains\n" + "\n".join(strain_lines))
+
+    user_content = "\n\n".join(sections)
+
+    return [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user_content},
     ]

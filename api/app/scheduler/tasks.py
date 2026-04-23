@@ -145,6 +145,10 @@ class TaskRunner:
                         )
                         session.add(health_eval)
 
+                        # Invalidate cached feeding advice so next request regenerates
+                        grow.cached_feeding_advice = None
+                        grow.feeding_advice_cached_at = None
+
                         # Save camera snapshot as a grow photo for timelapse / gallery
                         if camera_image:
                             try:

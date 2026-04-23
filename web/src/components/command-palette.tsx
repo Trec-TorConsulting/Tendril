@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
+import { useChat } from "@/components/chat-provider";
 import { getAccessToken } from "@/lib/auth";
 import {
   listGrows,
@@ -58,7 +59,6 @@ const PAGES = [
   { href: "/dashboard/grow-types", label: "Grow Types", icon: FlaskConical, keywords: "hydro soil coco" },
   { href: "/dashboard/devices", label: "Devices", icon: Cpu, keywords: "sensors esp32 hardware" },
   { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3, keywords: "charts data reports" },
-  { href: "/dashboard/ai", label: "AI Chat", icon: MessageSquare, keywords: "assistant bot" },
   { href: "/dashboard/ai/health", label: "Health Check", icon: Stethoscope, keywords: "diagnosis plant health" },
   { href: "/dashboard/automation", label: "Automation", icon: Bot, keywords: "rules triggers" },
   { href: "/dashboard/schedules", label: "Schedules", icon: Clock, keywords: "timing calendar" },
@@ -136,6 +136,8 @@ export function CommandPalette() {
     });
   }, [open]);
 
+  const { openChat } = useChat();
+
   const go = useCallback(
     (href: string, label: string) => {
       addRecent(href, label);
@@ -145,6 +147,12 @@ export function CommandPalette() {
     },
     [router],
   );
+
+  const openAiChat = useCallback(() => {
+    setOpen(false);
+    setSearch("");
+    openChat();
+  }, [openChat]);
 
   const themeIcon = theme === "dark" ? Moon : theme === "light" ? Sun : Monitor;
   const ThemeIcon = themeIcon;
@@ -185,6 +193,13 @@ export function CommandPalette() {
                 </CommandItem>
               );
             })}
+            <CommandItem
+              value="AI Chat assistant bot"
+              onSelect={openAiChat}
+            >
+              <MessageSquare className="mr-2 size-4 text-muted-foreground" />
+              AI Chat
+            </CommandItem>
           </CommandGroup>
 
           {/* Grows */}
