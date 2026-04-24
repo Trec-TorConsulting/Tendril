@@ -143,6 +143,17 @@ TASK_TEMPLATES: list[tuple[str, str, str, int, str, set[str] | None, set[str] | 
     ("soil_amendment", "Apply amendments / top dress",
      "Outdoor in-ground benefits from regular organic amendments. Top dress compost, worm castings, or dry amendments monthly.", 30, "low", {"outdoor_soil"}, {"vegetative", "flowering"}),
 
+    ("soil_test", "Run soil test",
+     "Test soil pH, N-P-K, and micronutrients. Track in the Soil Health dashboard. Lab tests recommended every 4 weeks, home kits weekly.", 30, "medium", {"outdoor_soil"}, None),
+    ("pest_scout", "Field scout for pests & beneficials",
+     "Walk the garden and document any pest activity, disease signs, or beneficial insects. Log observations in the Field Scout tab with photos and grid location.", 3, "medium", {"outdoor_soil"}, {"vegetative", "flowering"}),
+    ("companion_check", "Check companion plant health",
+     "Inspect companion plants — are they deterring pests? Thriving or struggling? Replace any that have bolted or died.", 7, "low", {"outdoor_soil"}, {"vegetative", "flowering"}),
+    ("rain_gauge", "Log rain gauge reading",
+     "Check your rain gauge and log the measurement. Accurate rainfall tracking helps optimize supplemental irrigation.", 1, "low", {"outdoor_soil"}, None),
+    ("harvest_check", "Assess harvest readiness",
+     "Check trichomes with a loupe — clear (too early), cloudy (peak THC), amber (more CBN/body). Factor in weather forecast for harvest window.", 2, "high", {"outdoor_soil"}, {"flowering", "ripening"}),
+
     # ── Outdoor Container ────────────────────────────────────────
     ("weather_check", "Check weather forecast & container temps",
      "Review forecast. Containers overheat in direct sun (dark pots especially). Move to shade during heatwaves if possible.", 1, "high", {"outdoor_container"}, None),

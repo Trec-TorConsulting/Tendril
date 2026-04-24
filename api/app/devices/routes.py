@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 import secrets
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -55,7 +56,7 @@ class DeviceResponse(BaseModel):
     label: str | None
     tent_id: UUID | None
     status: str
-    last_seen: str | None
+    last_seen: datetime | None
     firmware_version: str | None
 
     model_config = {"from_attributes": True}

@@ -250,7 +250,11 @@ export default function DevicesPage() {
                       onValueChange={(val) => handleTentAssign(d.device_id, !val || val === "none" ? "" : val)}
                     >
                       <SelectTrigger className="h-7 flex-1 text-xs">
-                        <SelectValue placeholder="Assign Grow Space" />
+                        <SelectValue placeholder="Assign Grow Space">
+                          {d.tent_id
+                            ? (tents.find((t) => t.id === d.tent_id)?.name ?? "Unknown")
+                            : "Unassigned"}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">Unassigned</SelectItem>

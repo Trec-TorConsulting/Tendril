@@ -6,12 +6,14 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     Float,
     ForeignKey,
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -85,6 +87,14 @@ class Bucket(Base):
     volume_gallons: Mapped[float | None] = mapped_column(Float)
     # Grow-type-specific fields stored as JSON
     settings: Mapped[dict | None] = mapped_column(JSON)
+    # Outdoor grid placement
+    grid_row: Mapped[int | None] = mapped_column(Integer)
+    grid_col: Mapped[int | None] = mapped_column(Integer)
+    plant_spacing_in: Mapped[int | None] = mapped_column(Integer)
+    companion_plants: Mapped[list | None] = mapped_column(JSON)
+    sun_zone: Mapped[str | None] = mapped_column(String(50))
+    planting_method: Mapped[str | None] = mapped_column(String(50))  # direct_seed | transplant | clone
+    transplant_date: Mapped[datetime | None] = mapped_column(Date)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     grow_cycle: Mapped[GrowCycle] = relationship(back_populates="buckets")
@@ -361,3 +371,158 @@ class HealthEval(Base):
     raw_analysis: Mapped[str] = mapped_column(Text, nullable=False, default="")
     source: Mapped[str] = mapped_column(String(50), default="manual")  # manual | scheduled
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+# ---------- Plot Grids (outdoor soil garden layout) ----------
+
+class PlotGrid(Base):
+    __tablename__ = "plot_grids"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    grow_cycle_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("grow_cycles.id", ondelete="CASCADE"), nullable=False, unique=True)
+    rows: Mapped[int] = mapped_column(Integer, nullable=False)
+    cols: Mapped[int] = mapped_column(Integer, nullable=False)
+    cell_size_inches: Mapped[int] = mapped_column(Integer, default=12)
+    orientation: Mapped[str] = mapped_column(String(10), default="north")
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    cells: Mapped[list["PlotCell"]] = relationship(back_populates="grid", cascade="all, delete-orphan")
+
+
+class PlotCell(Base):
+    __tablename__ = "plot_cells"
+    __table_args__ = (UniqueConstraint("plot_grid_id", "row", "col", name="uq_plot_cell_position"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    plot_grid_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("plot_grids.id", ondelete="CASCADE"), nullable=False)
+    row: Mapped[int] = mapped_column(Integer, nullable=False)
+    col: Mapped[int] = mapped_column(Integer, nullable=False)
+    cell_type: Mapped[str] = mapped_column(String(50), default="empty")  # plant | companion | path | empty | sensor | irrigation
+    bucket_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("buckets.id", ondelete="SET NULL"), nullable=True)
+    companion_plant: Mapped[str | None] = mapped_column(String(100))
+    device_id: Mapped[str | None] = mapped_column(String(100))
+    irrigation_zone: Mapped[str | None] = mapped_column(String(100))
+    sun_zone: Mapped[str | None] = mapped_column(String(50))
+    notes: Mapped[str | None] = mapped_column(Text)
+
+    grid: Mapped[PlotGrid] = relationship(back_populates="cells")
+
+
+# ---------- Soil Tests ----------
+
+class SoilTest(Base):
+    __tablename__ = "soil_tests"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    grow_cycle_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("grow_cycles.id", ondelete="CASCADE"), nullable=False)
+    tested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    ph: Mapped[float | None] = mapped_column(Float)
+    nitrogen_ppm: Mapped[float | None] = mapped_column(Float)
+    phosphorus_ppm: Mapped[float | None] = mapped_column(Float)
+    potassium_ppm: Mapped[float | None] = mapped_column(Float)
+    organic_matter_pct: Mapped[float | None] = mapped_column(Float)
+    cec: Mapped[float | None] = mapped_column(Float)
+    calcium_ppm: Mapped[float | None] = mapped_column(Float)
+    magnesium_ppm: Mapped[float | None] = mapped_column(Float)
+    sulfur_ppm: Mapped[float | None] = mapped_column(Float)
+    source: Mapped[str] = mapped_column(String(50), default="home_kit")  # lab | home_kit | sensor
+    notes: Mapped[str | None] = mapped_column(Text)
+
+
+# ---------- Soil Amendments ----------
+
+class SoilAmendment(Base):
+    __tablename__ = "soil_amendments"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    grow_cycle_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("grow_cycles.id", ondelete="CASCADE"), nullable=False)
+    applied_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    amendment_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    product_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    quantity: Mapped[str | None] = mapped_column(String(255))
+    area_applied: Mapped[str | None] = mapped_column(String(255))
+    cost: Mapped[float | None] = mapped_column(Float)
+    notes: Mapped[str | None] = mapped_column(Text)
+
+
+# ---------- Pest Scout Entries ----------
+
+class PestScoutEntry(Base):
+    __tablename__ = "pest_scout_entries"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    grow_cycle_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("grow_cycles.id", ondelete="CASCADE"), nullable=False)
+    scouted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    pest_type: Mapped[str] = mapped_column(String(50), nullable=False)  # insect | disease | animal | beneficial | unknown
+    species: Mapped[str] = mapped_column(String(255), nullable=False)
+    severity: Mapped[str] = mapped_column(String(50), default="low")  # low | medium | high | critical
+    grid_row: Mapped[int | None] = mapped_column(Integer)
+    grid_col: Mapped[int | None] = mapped_column(Integer)
+    photo_url: Mapped[str | None] = mapped_column(String(1024))
+    treatment_applied: Mapped[str | None] = mapped_column(String(255))
+    treatment_type: Mapped[str | None] = mapped_column(String(50))  # organic | synthetic | biological | physical | none
+    notes: Mapped[str | None] = mapped_column(Text)
+
+
+# ---------- Harvest Yields (per-plant outdoor tracking) ----------
+
+class HarvestYield(Base):
+    __tablename__ = "harvest_yields"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    grow_cycle_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("grow_cycles.id", ondelete="CASCADE"), nullable=False)
+    bucket_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("buckets.id", ondelete="CASCADE"), nullable=False)
+    harvested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    wet_weight_oz: Mapped[float | None] = mapped_column(Float)
+    dry_weight_oz: Mapped[float | None] = mapped_column(Float)
+    trim_weight_oz: Mapped[float | None] = mapped_column(Float)
+    quality_rating: Mapped[int | None] = mapped_column(Integer)  # 1-10
+    trichome_stage: Mapped[str | None] = mapped_column(String(50))  # clear | cloudy | amber | mixed
+    notes: Mapped[str | None] = mapped_column(Text)
+
+
+# ---------- Container Profiles (outdoor container grow metadata) ----------
+
+class ContainerProfile(Base):
+    __tablename__ = "container_profiles"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    grow_cycle_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("grow_cycles.id", ondelete="CASCADE"), nullable=False)
+    bucket_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("buckets.id", ondelete="CASCADE"), nullable=False, unique=True)
+    pot_size_gallons: Mapped[float | None] = mapped_column(Float)
+    media_type: Mapped[str | None] = mapped_column(String(100))
+    pot_color: Mapped[str | None] = mapped_column(String(50))
+    pot_material: Mapped[str | None] = mapped_column(String(50))
+    has_saucer: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_mobile: Mapped[bool] = mapped_column(Boolean, default=True)
+    sun_exposure: Mapped[str | None] = mapped_column(String(50))
+    location_notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+# ---------- Runoff Readings (input vs runoff pH/EC tracking) ----------
+
+class RunoffReading(Base):
+    __tablename__ = "runoff_readings"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    grow_cycle_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("grow_cycles.id", ondelete="CASCADE"), nullable=False)
+    bucket_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("buckets.id", ondelete="CASCADE"), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    input_ph: Mapped[float | None] = mapped_column(Float)
+    input_ec: Mapped[float | None] = mapped_column(Float)
+    runoff_ph: Mapped[float | None] = mapped_column(Float)
+    runoff_ec: Mapped[float | None] = mapped_column(Float)
+    runoff_pct: Mapped[float | None] = mapped_column(Float)
+    notes: Mapped[str | None] = mapped_column(Text)

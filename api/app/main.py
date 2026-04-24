@@ -33,6 +33,14 @@ from app.commercial.task_routes import router as tasks_router
 from app.commercial.audit_routes import router as audit_router
 from app.commercial.api_key_routes import router as api_keys_router
 from app.admin.routes import router as admin_router
+from app.outdoor.plot_routes import router as plot_router
+from app.outdoor.soil_routes import router as soil_router
+from app.outdoor.pest_routes import router as pest_router
+from app.outdoor.yield_routes import router as harvest_yield_router
+from app.outdoor.companion_routes import router as companion_router
+from app.outdoor.intelligence_routes import router as intelligence_router
+from app.outdoor.container_routes import router as container_router
+from app.outdoor.runoff_routes import router as runoff_router
 
 logger = logging.getLogger("tendril")
 
@@ -101,6 +109,14 @@ def create_app() -> FastAPI:
     app.include_router(audit_router, prefix=f"{settings.api_prefix}/audit", tags=["audit"])
     app.include_router(api_keys_router, prefix=f"{settings.api_prefix}/api-keys", tags=["api-keys"])
     app.include_router(admin_router, prefix=f"{settings.api_prefix}/admin", tags=["admin"])
+    app.include_router(plot_router, prefix=f"{settings.api_prefix}/grows", tags=["outdoor-plot"])
+    app.include_router(soil_router, prefix=f"{settings.api_prefix}/grows", tags=["outdoor-soil"])
+    app.include_router(pest_router, prefix=f"{settings.api_prefix}/grows", tags=["outdoor-pest"])
+    app.include_router(harvest_yield_router, prefix=f"{settings.api_prefix}/grows", tags=["outdoor-yields"])
+    app.include_router(companion_router, prefix=f"{settings.api_prefix}/companion-plants", tags=["companion-plants"])
+    app.include_router(intelligence_router, prefix=f"{settings.api_prefix}/outdoor", tags=["outdoor-intelligence"])
+    app.include_router(container_router, prefix=f"{settings.api_prefix}/grows", tags=["outdoor-containers"])
+    app.include_router(runoff_router, prefix=f"{settings.api_prefix}/grows", tags=["outdoor-runoff"])
 
     @app.get("/health")
     async def health():

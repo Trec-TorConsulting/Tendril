@@ -260,6 +260,128 @@ export function getGrowType(token: string, id: string) {
   return apiFetch<Record<string, unknown>>(`/grow-types/${id}`, { token });
 }
 
+// Grow Type Configuration (stage-by-stage guides)
+export interface RangeTarget {
+  min: number;
+  max: number;
+  target?: number;
+}
+
+export interface StageEnvironment {
+  temp_day_f: RangeTarget;
+  temp_night_f: RangeTarget;
+  humidity_pct: RangeTarget;
+  vpd_kpa: RangeTarget | null;
+  light_hours: number;
+  light_ppfd: number | RangeTarget;
+  light_dli: number | RangeTarget;
+  notes: string;
+}
+
+export interface StageReservoir {
+  ph: RangeTarget;
+  ec: RangeTarget;
+  ppm_500: RangeTarget;
+  water_temp_f: RangeTarget;
+  dissolved_oxygen_ppm: { min: number; target: number };
+  change_interval_days: number | null;
+  hydroguard_ml_per_gal: number;
+  notes: string;
+}
+
+export interface StageSupplement {
+  name: string;
+  dose_ml_per_gal: number;
+  purpose: string;
+}
+
+export interface StageNutrients {
+  strength_pct: number;
+  approach: string;
+  flora_micro_ml_per_gal: number;
+  flora_gro_ml_per_gal: number;
+  flora_bloom_ml_per_gal: number;
+  calmag_ml_per_gal: number;
+  supplements: StageSupplement[];
+}
+
+export interface StageTask {
+  name: string;
+  description: string;
+  interval_days: number | null;
+  priority: string;
+}
+
+export interface StageProblem {
+  issue: string;
+  cause: string;
+  solution: string;
+}
+
+export interface StageTraining {
+  technique: string;
+  when: string;
+  description: string;
+}
+
+export interface GrowStageConfig {
+  id: string;
+  name: string;
+  order: number;
+  duration_days: { min: number; max: number; typical: number };
+  description: string;
+  environment: StageEnvironment;
+  reservoir: StageReservoir | null;
+  nutrients: StageNutrients | null;
+  tasks: StageTask[];
+  health_checks: string[];
+  common_problems: StageProblem[];
+  training: StageTraining[];
+  transition_signals: string[];
+  environment_variants?: {
+    [env: string]: {
+      environment_overrides?: Record<string, unknown>;
+      reservoir_overrides?: Record<string, unknown>;
+      extra_tasks?: StageTask[];
+      extra_problems?: StageProblem[];
+      notes?: string;
+    };
+  };
+}
+
+export interface EquipmentChecklistItem {
+  name: string;
+  category: string;
+  description: string;
+}
+
+export interface TroubleshootingProblem {
+  symptom: string;
+  diagnosis: string;
+  severity: string;
+  causes: string[];
+  solutions: string[];
+}
+
+export interface TroubleshootingCategory {
+  category: string;
+  problems: TroubleshootingProblem[];
+}
+
+export interface GrowTypeConfig {
+  grow_type_id: string;
+  version: string;
+  stages: GrowStageConfig[];
+  equipment: EquipmentChecklistItem[];
+  quick_reference: Record<string, unknown>;
+  troubleshooting: TroubleshootingCategory[];
+  total_grow_days: { min: number; max: number; typical_photo: number; typical_auto: number; breakdown: string };
+}
+
+export function getGrowTypeConfig(token: string, growTypeId: string) {
+  return apiFetch<GrowTypeConfig>(`/grow-types/${growTypeId}/config`, { token });
+}
+
 // Tents
 export interface EquipmentItem {
   type: string;
@@ -1156,4 +1278,342 @@ export function adminGetStats(token: string) {
   return apiFetch<{ total_tenants: number; total_users: number; plans: Record<string, number> }>("/admin/stats", { token });
 }
 
+// ── Outdoor Soil: Plot Grid ─────────────────────────────────────────
+
+export interface PlotCellResponse {
+  id: string;
+  row: number;
+  col: number;
+  cell_type: string;
+  bucket_id: string | null;
+  companion_plant: string | null;
+  device_id: string | null;
+  irrigation_zone: string | null;
+  sun_zone: string | null;
+  notes: string | null;
+}
+
+export interface PlotGridResponse {
+  id: string;
+  grow_cycle_id: string;
+  rows: number;
+  cols: number;
+  cell_size_inches: number;
+  orientation: string;
+  notes: string | null;
+  cells: PlotCellResponse[];
+  created_at: string;
+  updated_at: string;
+}
+
+export function getPlotGrid(token: string, growId: string) {
+  return apiFetch<PlotGridResponse>(`/grows/${growId}/plot`, { token });
+}
+
+export function upsertPlotGrid(token: string, growId: string, data: { rows: number; cols: number; cell_size_inches?: number; orientation?: string; notes?: string }) {
+  return apiFetch<PlotGridResponse>(`/grows/${growId}/plot`, { method: "PUT", body: JSON.stringify(data), token });
+}
+
+export function batchUpdateCells(token: string, growId: string, cells: Array<{ row: number; col: number; cell_type: string; bucket_id?: string | null; companion_plant?: string | null; device_id?: string | null; irrigation_zone?: string | null; sun_zone?: string | null; notes?: string | null }>) {
+  return apiFetch<PlotCellResponse[]>(`/grows/${growId}/plot/cells`, { method: "PATCH", body: JSON.stringify({ cells }), token });
+}
+
+export function deletePlotGrid(token: string, growId: string) {
+  return apiFetch<void>(`/grows/${growId}/plot`, { method: "DELETE", token });
+}
+
+// ── Outdoor Soil: Soil Tests ────────────────────────────────────────
+
+export interface SoilTestResponse {
+  id: string;
+  grow_cycle_id: string;
+  tested_at: string;
+  ph: number | null;
+  nitrogen_ppm: number | null;
+  phosphorus_ppm: number | null;
+  potassium_ppm: number | null;
+  organic_matter_pct: number | null;
+  cec: number | null;
+  calcium_ppm: number | null;
+  magnesium_ppm: number | null;
+  sulfur_ppm: number | null;
+  source: string;
+  notes: string | null;
+}
+
+export function listSoilTests(token: string, growId: string) {
+  return apiFetch<SoilTestResponse[]>(`/grows/${growId}/soil-tests`, { token });
+}
+
+export function createSoilTest(token: string, growId: string, data: Record<string, unknown>) {
+  return apiFetch<SoilTestResponse>(`/grows/${growId}/soil-tests`, { method: "POST", body: JSON.stringify(data), token });
+}
+
+export function getLatestSoilTest(token: string, growId: string) {
+  return apiFetch<SoilTestResponse>(`/grows/${growId}/soil-tests/latest`, { token });
+}
+
+export function deleteSoilTest(token: string, growId: string, testId: string) {
+  return apiFetch<void>(`/grows/${growId}/soil-tests/${testId}`, { method: "DELETE", token });
+}
+
+// ── Outdoor Soil: Amendments ────────────────────────────────────────
+
+export interface AmendmentResponse {
+  id: string;
+  grow_cycle_id: string;
+  applied_at: string;
+  amendment_type: string;
+  product_name: string;
+  quantity: string | null;
+  area_applied: string | null;
+  cost: number | null;
+  notes: string | null;
+}
+
+export function listAmendments(token: string, growId: string) {
+  return apiFetch<AmendmentResponse[]>(`/grows/${growId}/amendments`, { token });
+}
+
+export function createAmendment(token: string, growId: string, data: Record<string, unknown>) {
+  return apiFetch<AmendmentResponse>(`/grows/${growId}/amendments`, { method: "POST", body: JSON.stringify(data), token });
+}
+
+export function deleteAmendment(token: string, growId: string, amendmentId: string) {
+  return apiFetch<void>(`/grows/${growId}/amendments/${amendmentId}`, { method: "DELETE", token });
+}
+
+// ── Outdoor Soil: Pest Scouting ─────────────────────────────────────
+
+export interface PestScoutResponse {
+  id: string;
+  grow_cycle_id: string;
+  scouted_at: string;
+  pest_type: string;
+  species: string;
+  severity: string;
+  grid_row: number | null;
+  grid_col: number | null;
+  photo_url: string | null;
+  treatment_applied: string | null;
+  treatment_type: string | null;
+  notes: string | null;
+}
+
+export function listPestScouts(token: string, growId: string, filters?: { pest_type?: string; severity?: string }) {
+  const params = new URLSearchParams();
+  if (filters?.pest_type) params.set("pest_type", filters.pest_type);
+  if (filters?.severity) params.set("severity", filters.severity);
+  const qs = params.toString();
+  return apiFetch<PestScoutResponse[]>(`/grows/${growId}/pest-scouts${qs ? `?${qs}` : ""}`, { token });
+}
+
+export function createPestScout(token: string, growId: string, data: Record<string, unknown>) {
+  return apiFetch<PestScoutResponse>(`/grows/${growId}/pest-scouts`, { method: "POST", body: JSON.stringify(data), token });
+}
+
+export function deletePestScout(token: string, growId: string, entryId: string) {
+  return apiFetch<void>(`/grows/${growId}/pest-scouts/${entryId}`, { method: "DELETE", token });
+}
+
+// ── Outdoor Soil: Harvest Yields ────────────────────────────────────
+
+export interface HarvestYieldResponse {
+  id: string;
+  grow_cycle_id: string;
+  bucket_id: string;
+  harvested_at: string;
+  wet_weight_oz: number | null;
+  dry_weight_oz: number | null;
+  trim_weight_oz: number | null;
+  quality_rating: number | null;
+  trichome_stage: string | null;
+  notes: string | null;
+}
+
+export interface YieldSummaryResponse {
+  total_plants: number;
+  plants_harvested: number;
+  total_wet_oz: number;
+  total_dry_oz: number;
+  total_trim_oz: number;
+  avg_dry_per_plant_oz: number;
+  avg_quality: number | null;
+  yield_per_sqft_oz: number | null;
+}
+
+export function listHarvestYields(token: string, growId: string) {
+  return apiFetch<HarvestYieldResponse[]>(`/grows/${growId}/yields`, { token });
+}
+
+export function createHarvestYield(token: string, growId: string, data: Record<string, unknown>) {
+  return apiFetch<HarvestYieldResponse>(`/grows/${growId}/yields`, { method: "POST", body: JSON.stringify(data), token });
+}
+
+export function getYieldSummary(token: string, growId: string) {
+  return apiFetch<YieldSummaryResponse>(`/grows/${growId}/yields/summary`, { token });
+}
+
+export function deleteHarvestYield(token: string, growId: string, yieldId: string) {
+  return apiFetch<void>(`/grows/${growId}/yields/${yieldId}`, { method: "DELETE", token });
+}
+
+// ── Outdoor Soil: Companion Plants ──────────────────────────────────
+
+export interface CompanionPlantEntry {
+  plant: string;
+  beneficial: string[];
+  harmful: string[];
+  notes: string;
+}
+
+export interface CompanionCheckResult {
+  plant: string;
+  neighbor: string;
+  compatibility: "beneficial" | "harmful" | "neutral" | "unknown";
+  reason: string;
+}
+
+export interface CompanionSuggestion {
+  plant: string;
+  suggestions: Array<{ plant: string; notes: string }>;
+}
+
+export function listCompanionPlants(token: string) {
+  return apiFetch<CompanionPlantEntry[]>("/companion-plants", { token });
+}
+
+export function checkCompanionCompatibility(token: string, plant: string, neighbor: string) {
+  return apiFetch<CompanionCheckResult>(`/companion-plants/check?plant=${encodeURIComponent(plant)}&neighbor=${encodeURIComponent(neighbor)}`, { token });
+}
+
+export function suggestCompanions(token: string, plant: string) {
+  return apiFetch<CompanionSuggestion>(`/companion-plants/suggest?plant=${encodeURIComponent(plant)}`, { token });
+}
+
+// ── Outdoor Soil: Intelligence (GDD, Frost, Moon) ───────────────────
+
+export interface GDDResponse {
+  grow_id: string;
+  accumulated_gdd: number;
+  target_gdd: number | null;
+  progress_pct: number | null;
+  daily_log: Array<{ date: string; high_f: number; low_f: number; gdd: number; cumulative_gdd: number }>;
+}
+
+export interface FrostDatesResponse {
+  tent_id: string;
+  latitude: number;
+  longitude: number;
+  last_spring_frost: string;
+  first_fall_frost: string;
+  frost_free_days: number;
+  hardiness_zone: string;
+}
+
+export interface MoonPhaseResponse {
+  phase: string;
+  illumination_pct: number;
+  days_until_new: number;
+  days_until_full: number;
+  planting_recommendation: string;
+}
+
+export function getGDD(token: string, growId: string) {
+  return apiFetch<GDDResponse>(`/outdoor/${growId}/gdd`, { token });
+}
+
+export function getFrostDates(token: string, tentId: string) {
+  return apiFetch<FrostDatesResponse>(`/outdoor/${tentId}/frost-dates`, { token });
+}
+
+export function getMoonPhase(token: string, tentId: string) {
+  return apiFetch<MoonPhaseResponse>(`/outdoor/${tentId}/moon`, { token });
+}
+
+export function logManualWeather(token: string, tentId: string, data: Record<string, unknown>) {
+  return apiFetch<{ id: string; recorded_at: string }>(`/outdoor/${tentId}/manual`, { method: "POST", body: JSON.stringify(data), token });
+}
+
 export { apiFetch, ApiError };
+
+// ── Outdoor Container: Container Profiles ───────────────────────────
+
+export interface ContainerProfileResponse {
+  id: string;
+  grow_cycle_id: string;
+  bucket_id: string;
+  pot_size_gallons: number | null;
+  media_type: string | null;
+  pot_color: string | null;
+  pot_material: string | null;
+  has_saucer: boolean;
+  is_mobile: boolean;
+  sun_exposure: string | null;
+  location_notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export function listContainerProfiles(token: string, growId: string) {
+  return apiFetch<ContainerProfileResponse[]>(`/grows/${growId}/containers`, { token });
+}
+
+export function getContainerProfile(token: string, growId: string, bucketId: string) {
+  return apiFetch<ContainerProfileResponse>(`/grows/${growId}/containers/${bucketId}`, { token });
+}
+
+export function upsertContainerProfile(token: string, growId: string, bucketId: string, data: Record<string, unknown>) {
+  return apiFetch<ContainerProfileResponse>(`/grows/${growId}/containers/${bucketId}`, { method: "PUT", body: JSON.stringify(data), token });
+}
+
+export function deleteContainerProfile(token: string, growId: string, bucketId: string) {
+  return apiFetch<void>(`/grows/${growId}/containers/${bucketId}`, { method: "DELETE", token });
+}
+
+// ── Outdoor Container: Runoff Readings ──────────────────────────────
+
+export interface RunoffReadingResponse {
+  id: string;
+  grow_cycle_id: string;
+  bucket_id: string;
+  recorded_at: string;
+  input_ph: number | null;
+  input_ec: number | null;
+  runoff_ph: number | null;
+  runoff_ec: number | null;
+  runoff_pct: number | null;
+  notes: string | null;
+}
+
+export interface RunoffStatsResponse {
+  bucket_id: string;
+  reading_count: number;
+  avg_input_ph: number | null;
+  avg_input_ec: number | null;
+  avg_runoff_ph: number | null;
+  avg_runoff_ec: number | null;
+  avg_ph_delta: number | null;
+  avg_ec_delta: number | null;
+  latest_input_ph: number | null;
+  latest_input_ec: number | null;
+  latest_runoff_ph: number | null;
+  latest_runoff_ec: number | null;
+}
+
+export function listRunoffReadings(token: string, growId: string, bucketId?: string) {
+  const qs = bucketId ? `?bucket_id=${bucketId}` : "";
+  return apiFetch<RunoffReadingResponse[]>(`/grows/${growId}/runoff${qs}`, { token });
+}
+
+export function createRunoffReading(token: string, growId: string, data: Record<string, unknown>) {
+  return apiFetch<RunoffReadingResponse>(`/grows/${growId}/runoff`, { method: "POST", body: JSON.stringify(data), token });
+}
+
+export function getRunoffStats(token: string, growId: string) {
+  return apiFetch<RunoffStatsResponse[]>(`/grows/${growId}/runoff/stats`, { token });
+}
+
+export function deleteRunoffReading(token: string, growId: string, readingId: string) {
+  return apiFetch<void>(`/grows/${growId}/runoff/${readingId}`, { method: "DELETE", token });
+}
