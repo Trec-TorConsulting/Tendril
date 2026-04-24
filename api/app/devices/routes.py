@@ -46,6 +46,7 @@ class DevicePairRequest(BaseModel):
 class DeviceUpdateRequest(BaseModel):
     label: str | None = None
     tent_id: UUID | None = None
+    unassign_tent: bool = False
 
 
 class DeviceResponse(BaseModel):
@@ -162,6 +163,8 @@ async def update_device(
         device.label = body.label
     if body.tent_id is not None:
         device.tent_id = body.tent_id
+    elif body.unassign_tent:
+        device.tent_id = None
     await session.commit()
     await session.refresh(device)
     return device

@@ -37,6 +37,8 @@ spec:
         env:
         - name: LOG_LEVEL
           value: "INFO"
+        - name: MQTT_BROKER_PORT
+          value: "1883"
         volumeMounts:
         - name: tmp
           mountPath: /tmp

@@ -6,9 +6,15 @@ import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
-from sqlalchemy import update
+from sqlalchemy import select, update
 
 from app.database import async_session_factory
+from app.grows.models import (
+    Bucket,
+    BucketSensorReading,
+    GrowCycle,
+    TentSensorReading,
+)
 from app.tenants.models import Device
 
 logger = logging.getLogger("tendril.mqtt.handlers")
@@ -63,8 +69,116 @@ async def handle_sensor_message(
         )
         await session.commit()
 
-    # TODO: Phase 3 — write to bucket_sensor_readings table
-    # await store_sensor_reading(tenant_id, device_id_str, sensor_type, payload)
+    await store_sensor_reading(tenant_id, device_id_str, sensor_type, payload)
+
+
+# ── Allowed payload keys for each target table ──────────────────
+
+_BUCKET_SENSOR_FIELDS = {
+    "water_temp_f", "ph", "ec", "ppm", "water_level_pct",
+    "dissolved_oxygen", "flow_rate", "mist_pressure",
+    "soil_moisture", "soil_temp", "runoff_ph", "runoff_ec",
+    "ambient_temp_f", "ambient_humidity",
+}
+
+_TENT_SENSOR_FIELDS = {"ambient_temp_f", "ambient_humidity"}
+
+
+async def store_sensor_reading(
+    tenant_id: UUID, device_id_str: str, sensor_type: str, payload: dict
+) -> None:
+    """Persist an MQTT sensor payload to the appropriate readings table.
+
+    sensor_type "ambient" → tent_sensor_readings (needs device.tent_id)
+    sensor_type "readings" → bucket_sensor_readings (needs device.tent_id + payload.position)
+    """
+    async with async_session_factory() as session:
+        # Look up the device to find its tent assignment
+        device = (
+            await session.execute(
+                select(Device).where(
+                    Device.device_id == device_id_str,
+                    Device.tenant_id == tenant_id,
+                )
+            )
+        ).scalar_one_or_none()
+
+        if device is None:
+            logger.warning("store_sensor_reading: unknown device %s", device_id_str)
+            return
+
+        if device.tent_id is None:
+            logger.debug(
+                "Device %s has no tent_id assigned — skipping storage", device_id_str,
+            )
+            return
+
+        now = datetime.now(timezone.utc)
+
+        if sensor_type == "ambient":
+            # Filter payload to only known ambient columns
+            values = {
+                k: float(v) for k, v in payload.items()
+                if k in _TENT_SENSOR_FIELDS and v is not None
+            }
+            if not values:
+                return
+            reading = TentSensorReading(
+                tenant_id=tenant_id,
+                tent_id=device.tent_id,
+                device_id=device_id_str,
+                recorded_at=now,
+                **values,
+            )
+            session.add(reading)
+            await session.commit()
+            logger.debug("Stored ambient reading for tent %s", device.tent_id)
+
+        else:
+            # "readings" → bucket-level; use payload["position"] to find the bucket
+            position = payload.get("position", 1)
+
+            # Find an active grow cycle in this tent, then the bucket at the given position
+            bucket = (
+                await session.execute(
+                    select(Bucket)
+                    .join(GrowCycle, Bucket.grow_cycle_id == GrowCycle.id)
+                    .where(
+                        GrowCycle.tent_id == device.tent_id,
+                        GrowCycle.tenant_id == tenant_id,
+                        GrowCycle.status == "active",
+                        Bucket.position == position,
+                    )
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+
+            if bucket is None:
+                logger.debug(
+                    "No active bucket at position %s in tent %s — skipping",
+                    position, device.tent_id,
+                )
+                return
+
+            # Filter payload to only known bucket sensor columns
+            values = {
+                k: float(v) for k, v in payload.items()
+                if k in _BUCKET_SENSOR_FIELDS and v is not None
+            }
+            if not values:
+                return
+            reading = BucketSensorReading(
+                tenant_id=tenant_id,
+                bucket_id=bucket.id,
+                device_id=device_id_str,
+                recorded_at=now,
+                **values,
+            )
+            session.add(reading)
+            await session.commit()
+            logger.debug(
+                "Stored bucket reading for bucket %s (position %s)", bucket.id, position,
+            )
 
 
 async def handle_status_message(device_id_str: str, payload_bytes) -> None:

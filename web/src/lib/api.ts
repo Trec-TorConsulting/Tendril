@@ -218,7 +218,7 @@ export function pairDevice(token: string, data: { device_id: string; psk: string
   });
 }
 
-export function updateDevice(token: string, deviceId: string, data: { label?: string; tent_id?: string }) {
+export function updateDevice(token: string, deviceId: string, data: { label?: string; tent_id?: string; unassign_tent?: boolean }) {
   return apiFetch<DeviceResponse>(`/devices/${deviceId}`, {
     method: "PATCH",
     body: JSON.stringify(data),

@@ -33,8 +33,10 @@ import {
   deleteDevice,
   updateDevice,
   getDeviceQrUrl,
+  listTents,
   type DeviceResponse,
   type DeviceRegisterResponse,
+  type TentResponse,
 } from "@/lib/api";
 import {
   Plus,
@@ -47,7 +49,15 @@ import {
   Copy,
   Check,
   Loader2,
+  MapPin,
 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type ModalState =
   | { type: "none" }
@@ -59,6 +69,7 @@ type ModalState =
 export default function DevicesPage() {
   const confirm = useConfirm();
   const [devices, setDevices] = useState<DeviceResponse[]>([]);
+  const [tents, setTents] = useState<TentResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<ModalState>({ type: "none" });
   const [registerLabel, setRegisterLabel] = useState("");
@@ -69,8 +80,12 @@ export default function DevicesPage() {
 
   const refresh = useCallback(async () => {
     try {
-      const data = await listDevices(token);
-      setDevices(data);
+      const [devData, tentData] = await Promise.all([
+        listDevices(token),
+        listTents(token),
+      ]);
+      setDevices(devData);
+      setTents(tentData);
     } catch {
       /* ignore */
     } finally {
@@ -117,6 +132,15 @@ export default function DevicesPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function handleTentAssign(deviceId: string, tentId: string) {
+    if (tentId === "" || tentId === "none") {
+      await updateDevice(token, deviceId, { unassign_tent: true });
+    } else {
+      await updateDevice(token, deviceId, { tent_id: tentId });
+    }
+    refresh();
   }
 
   const statusVariant = (status: string) => {
@@ -217,6 +241,27 @@ export default function DevicesPage() {
                 )}
                 {d.firmware_version && (
                   <p className="text-xs text-muted-foreground">FW: {d.firmware_version}</p>
+                )}
+                {d.status !== "revoked" && tents.length > 0 && (
+                  <div className="mt-3 flex items-center gap-2">
+                    <MapPin className="size-3.5 text-muted-foreground" />
+                    <Select
+                      value={d.tent_id ?? "none"}
+                      onValueChange={(val) => handleTentAssign(d.device_id, !val || val === "none" ? "" : val)}
+                    >
+                      <SelectTrigger className="h-7 flex-1 text-xs">
+                        <SelectValue placeholder="Assign Grow Space" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Unassigned</SelectItem>
+                        {tents.map((t) => (
+                          <SelectItem key={t.id} value={t.id}>
+                            {t.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 )}
               </Card>
             ))}
