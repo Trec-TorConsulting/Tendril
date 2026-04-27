@@ -6,7 +6,8 @@
 
 ESP32 IoT sensors · FastAPI backend · Next.js PWA · AI grow assistant
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+[![Firmware: MIT](https://img.shields.io/badge/Firmware-MIT-green.svg)](esp32/LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://python.org)
 [![Next.js 16](https://img.shields.io/badge/Next.js-16-black.svg)](https://nextjs.org)
 [![PlatformIO](https://img.shields.io/badge/PlatformIO-ESP32-orange.svg)](https://platformio.org)
@@ -297,5 +298,14 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, coding guidelines
 
 ## License
 
-[MIT](LICENSE) — Tobey Rector
+This project is dual-licensed:
+
+| Component | License | File |
+|-----------|---------|------|
+| API, Web, Manifests, Scripts | [AGPL-3.0](https://www.gnu.org/licenses/agpl-3.0.html) | [LICENSE](LICENSE) |
+| ESP32 Firmware (`esp32/`) | [MIT](https://opensource.org/licenses/MIT) | [esp32/LICENSE](esp32/LICENSE) |
+
+The AGPL-3.0 ensures that anyone running a modified version of the server must share their changes. The ESP32 firmware uses MIT so you can freely flash and modify it on your own hardware without source-sharing obligations.
+
+© Tobey Rector
 ```

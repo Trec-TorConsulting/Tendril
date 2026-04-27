@@ -66,4 +66,7 @@ Open an issue with:
 
 ## License
 
-By contributing, you agree that your contributions will be licensed under the [MIT License](LICENSE).
+By contributing, you agree that your contributions will be licensed under the project's dual license:
+
+- **API, Web, and infrastructure** — [AGPL-3.0](LICENSE)
+- **ESP32 firmware** (`esp32/`) — [MIT](esp32/LICENSE)
