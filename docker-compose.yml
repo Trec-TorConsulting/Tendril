@@ -83,6 +83,7 @@ services:
       DOMAIN: "localhost"
       LOG_LEVEL: "DEBUG"
       LOG_FORMAT: "text"
+      INTEGRATION_ENCRYPTION_KEY: "QmYeqfro3qI8KO6j7SZ3Vfs9KOcddI7bbloJ087QhMs="
       OLLAMA_BASE_URL: "http://host.docker.internal:11434"
       OLLAMA_MODEL: "llama3.1:8b"
       GEMINI_API_KEY: ""
@@ -152,6 +153,7 @@ services:
       OLLAMA_MODEL: "llama3.1:8b"
       GEMINI_API_KEY: ""
       GEMINI_MODEL: "gemini-2.5-flash"
+      INTEGRATION_ENCRYPTION_KEY: "QmYeqfro3qI8KO6j7SZ3Vfs9KOcddI7bbloJ087QhMs="
       LOG_LEVEL: "DEBUG"
     depends_on:
       postgres:

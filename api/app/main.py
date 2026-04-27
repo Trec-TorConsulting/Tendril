@@ -27,6 +27,7 @@ from app.grows.photo_routes import router as photos_router
 from app.grows.strain_routes import router as strains_router
 from app.grows.tent_routes import router as tents_router
 from app.grows.yield_routes import router as yields_router
+from app.integrations.routes import router as integrations_router
 from app.logging_config import setup_logging
 from app.notifications.routes import router as notifications_router
 from app.outdoor.companion_routes import router as companion_router
@@ -125,6 +126,7 @@ def create_app() -> FastAPI:
     app.include_router(intelligence_router, prefix=f"{settings.api_prefix}/outdoor", tags=["outdoor-intelligence"])
     app.include_router(container_router, prefix=f"{settings.api_prefix}/grows", tags=["outdoor-containers"])
     app.include_router(runoff_router, prefix=f"{settings.api_prefix}/grows", tags=["outdoor-runoff"])
+    app.include_router(integrations_router, prefix=f"{settings.api_prefix}/integrations", tags=["integrations"])
 
     @app.get("/health")
     async def health():

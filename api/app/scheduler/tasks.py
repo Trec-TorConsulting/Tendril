@@ -1,22 +1,25 @@
 """Scheduler task definitions."""
+
 from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import UTC
 
 from app.config import Settings
 
 logger = logging.getLogger("tendril.scheduler.tasks")
 
 # Task intervals in seconds
-HEALTH_CHECK_INTERVAL = 12 * 3600    # 12 hours
-WEATHER_POLL_INTERVAL = 30 * 60      # 30 minutes
-ALERT_EVAL_INTERVAL = 60             # 1 minute
-RULE_EVAL_INTERVAL = 30              # 30 seconds
-RETENTION_INTERVAL = 24 * 3600       # Daily
-DAILY_REPORT_INTERVAL = 24 * 3600    # Daily
-HARVEST_CHECK_INTERVAL = 4 * 3600    # 4 hours
+HEALTH_CHECK_INTERVAL = 12 * 3600  # 12 hours
+WEATHER_POLL_INTERVAL = 30 * 60  # 30 minutes
+ALERT_EVAL_INTERVAL = 60  # 1 minute
+RULE_EVAL_INTERVAL = 30  # 30 seconds
+RETENTION_INTERVAL = 24 * 3600  # Daily
+DAILY_REPORT_INTERVAL = 24 * 3600  # Daily
+HARVEST_CHECK_INTERVAL = 4 * 3600  # 4 hours
 TASK_GENERATION_INTERVAL = 6 * 3600  # 6 hours
+INTEGRATION_POLL_INTERVAL = 60  # 1 minute (checks due integrations)
 
 
 class TaskRunner:
@@ -32,8 +35,15 @@ class TaskRunner:
             asyncio.create_task(self._loop(shutdown_event, "rule_eval", RULE_EVAL_INTERVAL, self._rule_eval)),
             asyncio.create_task(self._loop(shutdown_event, "retention", RETENTION_INTERVAL, self._data_retention)),
             asyncio.create_task(self._loop(shutdown_event, "daily_report", DAILY_REPORT_INTERVAL, self._daily_report)),
-            asyncio.create_task(self._loop(shutdown_event, "harvest_check", HARVEST_CHECK_INTERVAL, self._harvest_countdown_check)),
-            asyncio.create_task(self._loop(shutdown_event, "task_generation", TASK_GENERATION_INTERVAL, self._generate_tasks)),
+            asyncio.create_task(
+                self._loop(shutdown_event, "harvest_check", HARVEST_CHECK_INTERVAL, self._harvest_countdown_check)
+            ),
+            asyncio.create_task(
+                self._loop(shutdown_event, "task_generation", TASK_GENERATION_INTERVAL, self._generate_tasks)
+            ),
+            asyncio.create_task(
+                self._loop(shutdown_event, "integration_poll", INTEGRATION_POLL_INTERVAL, self._integration_poll)
+            ),
         ]
         await shutdown_event.wait()
         for t in tasks:
@@ -54,7 +64,7 @@ class TaskRunner:
             try:
                 await asyncio.wait_for(shutdown_event.wait(), timeout=interval)
                 break
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 pass
 
     async def _health_check(self) -> None:
@@ -62,12 +72,15 @@ class TaskRunner:
 
         Uses full grow data (sensors, trends, feeding, journal, camera) for maximum detail.
         """
-        from app.database import async_session_factory
-        from app.grows.models import GrowCycle, HealthEval
-        from app.ai.gemini import chat_completion as gemini_chat, is_configured as gemini_configured, GeminiRateLimitError
+        from sqlalchemy import desc, select
+
         from app.ai.context import build_health_check_prompt
         from app.ai.gather import gather_grow_data
-        from sqlalchemy import select, desc
+        from app.ai.gemini import GeminiRateLimitError
+        from app.ai.gemini import chat_completion as gemini_chat
+        from app.ai.gemini import is_configured as gemini_configured
+        from app.database import async_session_factory
+        from app.grows.models import GrowCycle, HealthEval
 
         if not gemini_configured():
             logger.warning("Gemini API key not configured — skipping scheduled health checks")
@@ -75,12 +88,18 @@ class TaskRunner:
 
         try:
             async with async_session_factory() as session:
-                grows = (await session.execute(
-                    select(GrowCycle).where(
-                        GrowCycle.status == "active",
-                        GrowCycle.auto_health_check.is_(True),
+                grows = (
+                    (
+                        await session.execute(
+                            select(GrowCycle).where(
+                                GrowCycle.status == "active",
+                                GrowCycle.auto_health_check.is_(True),
+                            )
+                        )
                     )
-                )).scalars().all()
+                    .scalars()
+                    .all()
+                )
 
                 if not grows:
                     logger.debug("No active grows with auto_health_check enabled")
@@ -89,23 +108,28 @@ class TaskRunner:
                 for grow in grows:
                     try:
                         # Check if last eval is recent enough (skip if < 11h to avoid drift)
-                        prev = (await session.execute(
-                            select(HealthEval)
-                            .where(HealthEval.grow_cycle_id == grow.id)
-                            .order_by(desc(HealthEval.created_at))
-                            .limit(1)
-                        )).scalar_one_or_none()
+                        prev = (
+                            await session.execute(
+                                select(HealthEval)
+                                .where(HealthEval.grow_cycle_id == grow.id)
+                                .order_by(desc(HealthEval.created_at))
+                                .limit(1)
+                            )
+                        ).scalar_one_or_none()
 
                         if prev:
-                            from datetime import datetime, timezone
-                            age_hours = (datetime.now(timezone.utc) - prev.created_at).total_seconds() / 3600
+                            from datetime import datetime
+
+                            age_hours = (datetime.now(UTC) - prev.created_at).total_seconds() / 3600
                             if age_hours < 11:
                                 logger.debug("Grow %s last eval %.1fh ago — skipping", grow.id, age_hours)
                                 continue
 
                         # Gather ALL data including camera snapshot
                         grow_data = await gather_grow_data(
-                            session, grow, include_camera=True,
+                            session,
+                            grow,
+                            include_camera=True,
                         )
 
                         observations = {"automated_check": "Scheduled 12-hour health check"}
@@ -116,6 +140,7 @@ class TaskRunner:
 
                         # Parse result
                         import json
+
                         score = None
                         issues: list[str] = []
                         actions: list[str] = []
@@ -156,16 +181,24 @@ class TaskRunner:
                                 from app.storage import upload_photo as s3_upload
 
                                 key = await asyncio.get_running_loop().run_in_executor(
-                                    None, s3_upload, camera_image, "image/jpeg",
-                                    str(grow.tenant_id), str(grow.id),
+                                    None,
+                                    s3_upload,
+                                    camera_image,
+                                    "image/jpeg",
+                                    str(grow.tenant_id),
+                                    str(grow.id),
                                 )
-                                session.add(GrowPhoto(
-                                    tenant_id=grow.tenant_id,
-                                    grow_cycle_id=grow.id,
-                                    source="health_check",
-                                    storage_key=key,
-                                    caption=f"Scheduled snapshot (score: {score})" if score else "Scheduled snapshot",
-                                ))
+                                session.add(
+                                    GrowPhoto(
+                                        tenant_id=grow.tenant_id,
+                                        grow_cycle_id=grow.id,
+                                        source="health_check",
+                                        storage_key=key,
+                                        caption=f"Scheduled snapshot (score: {score})"
+                                        if score
+                                        else "Scheduled snapshot",
+                                    )
+                                )
                             except Exception:
                                 logger.warning("Failed to save scheduled snapshot to S3 for grow %s", grow.id)
 
@@ -174,9 +207,14 @@ class TaskRunner:
                         # ── Create tasks from health eval actions ──
                         if actions:
                             from app.scheduler.task_generator import create_tasks_from_health_eval
+
                             try:
                                 task_count = await create_tasks_from_health_eval(
-                                    session, grow, score, issues, actions,
+                                    session,
+                                    grow,
+                                    score,
+                                    issues,
+                                    actions,
                                 )
                                 if task_count:
                                     logger.info("Created %d tasks from health eval for grow %s", task_count, grow.id)
@@ -196,10 +234,11 @@ class TaskRunner:
 
     async def _weather_poll(self) -> None:
         """Fetch weather for outdoor/greenhouse tents and store readings."""
+        from sqlalchemy import select
+
         from app.database import async_session_factory
         from app.grows.models import Tent, WeatherReading
         from app.weather.client import fetch_weather
-        from sqlalchemy import select
 
         try:
             async with async_session_factory() as session:
@@ -237,28 +276,38 @@ class TaskRunner:
 
     async def _alert_eval(self) -> None:
         """Evaluate weather-based alerts for outdoor/greenhouse tents."""
+        from datetime import timedelta
+
+        from sqlalchemy import desc, select
+
+        from app.automation.engine import OPERATORS, WEATHER_RULES
+        from app.automation.models import AlertHistory
         from app.database import async_session_factory
         from app.grows.models import Tent, WeatherReading
-        from app.automation.models import AlertHistory
-        from app.automation.engine import WEATHER_RULES, OPERATORS
-        from sqlalchemy import select, desc
-        from datetime import timedelta
 
         try:
             async with async_session_factory() as session:
-                tents = (await session.execute(
-                    select(Tent).where(
-                        Tent.environment_type.in_(["outdoor", "greenhouse"]),
+                tents = (
+                    (
+                        await session.execute(
+                            select(Tent).where(
+                                Tent.environment_type.in_(["outdoor", "greenhouse"]),
+                            )
+                        )
                     )
-                )).scalars().all()
+                    .scalars()
+                    .all()
+                )
 
                 for tent in tents:
-                    w = (await session.execute(
-                        select(WeatherReading)
-                        .where(WeatherReading.tent_id == tent.id)
-                        .order_by(desc(WeatherReading.recorded_at))
-                        .limit(1)
-                    )).scalar_one_or_none()
+                    w = (
+                        await session.execute(
+                            select(WeatherReading)
+                            .where(WeatherReading.tent_id == tent.id)
+                            .order_by(desc(WeatherReading.recorded_at))
+                            .limit(1)
+                        )
+                    ).scalar_one_or_none()
                     if not w:
                         continue
 
@@ -269,16 +318,18 @@ class TaskRunner:
                         op_fn = OPERATORS.get(rule["condition"])
                         if op_fn and op_fn(value, rule["threshold"]):
                             # Check if alert already fired recently (1h cooldown)
-                            from datetime import datetime, timezone
-                            cutoff = datetime.now(timezone.utc) - timedelta(hours=1)
-                            existing = (await session.execute(
-                                select(AlertHistory)
-                                .where(
-                                    AlertHistory.tenant_id == tent.tenant_id,
-                                    AlertHistory.alert_type == f"weather_{rule['type']}",
-                                    AlertHistory.created_at > cutoff,
+                            from datetime import datetime
+
+                            cutoff = datetime.now(UTC) - timedelta(hours=1)
+                            existing = (
+                                await session.execute(
+                                    select(AlertHistory).where(
+                                        AlertHistory.tenant_id == tent.tenant_id,
+                                        AlertHistory.alert_type == f"weather_{rule['type']}",
+                                        AlertHistory.created_at > cutoff,
+                                    )
                                 )
-                            )).scalar_one_or_none()
+                            ).scalar_one_or_none()
                             if existing:
                                 continue
 
@@ -292,12 +343,17 @@ class TaskRunner:
                             session.add(alert)
 
                             # Create urgent task from weather alert
-                            from app.scheduler.task_generator import create_task_from_alert
                             # Find active grow for this tent
-                            from app.grows.models import GrowCycle as GC
-                            active_grow = (await session.execute(
-                                select(GC).where(GC.tent_id == tent.id, GC.status == "active").limit(1)
-                            )).scalar_one_or_none()
+                            from app.grows.models import GrowCycle
+                            from app.scheduler.task_generator import create_task_from_alert
+
+                            active_grow = (
+                                await session.execute(
+                                    select(GrowCycle)
+                                    .where(GrowCycle.tent_id == tent.id, GrowCycle.status == "active")
+                                    .limit(1)
+                                )
+                            ).scalar_one_or_none()
                             try:
                                 await create_task_from_alert(
                                     session,
@@ -314,8 +370,11 @@ class TaskRunner:
 
                             # Dispatch notification
                             from app.notifications.service import dispatch_alert
+
                             await dispatch_alert(
-                                session, tent.tenant_id, rule["severity"],
+                                session,
+                                tent.tenant_id,
+                                rule["severity"],
                                 f"Weather Alert: {rule['type']}",
                                 rule["message"],
                             )
@@ -326,8 +385,8 @@ class TaskRunner:
 
     async def _rule_eval(self) -> None:
         """Evaluate automation rules against latest sensor readings."""
-        from app.database import async_session_factory
         from app.automation.engine import evaluate_rules
+        from app.database import async_session_factory
 
         try:
             async with async_session_factory() as session:
@@ -339,17 +398,16 @@ class TaskRunner:
 
     async def _daily_report(self) -> None:
         """Generate daily grow reports and dispatch notifications."""
+        from sqlalchemy import select
+
+        from app.ai.reports import generate_grow_report
         from app.database import async_session_factory
         from app.grows.models import GrowCycle
-        from app.ai.reports import generate_grow_report
         from app.notifications.service import dispatch_alert
-        from sqlalchemy import select
 
         try:
             async with async_session_factory() as session:
-                grows = (await session.execute(
-                    select(GrowCycle).where(GrowCycle.status == "active")
-                )).scalars().all()
+                grows = (await session.execute(select(GrowCycle).where(GrowCycle.status == "active"))).scalars().all()
 
                 for grow in grows:
                     try:
@@ -359,11 +417,13 @@ class TaskRunner:
                         logger.exception("Daily report failed for grow %s", grow.id)
 
                 # Send daily digest notification per tenant
-                tenant_ids = set(g.tenant_id for g in grows)
+                tenant_ids = {g.tenant_id for g in grows}
                 for tid in tenant_ids:
                     grow_count = sum(1 for g in grows if g.tenant_id == tid)
                     await dispatch_alert(
-                        session, tid, "info",
+                        session,
+                        tid,
+                        "info",
                         "Daily Grow Report",
                         f"Daily health reports generated for {grow_count} active grow(s).",
                     )
@@ -374,8 +434,8 @@ class TaskRunner:
 
     async def _data_retention(self) -> None:
         """Prune old sensor data per tenant retention settings."""
-        from app.database import async_session_factory
         from app.data.service import enforce_retention
+        from app.database import async_session_factory
 
         try:
             async with async_session_factory() as session:
@@ -393,13 +453,15 @@ class TaskRunner:
 
         Alerts at 7 days, 3 days, and 0 days (harvest day) before estimated harvest.
         """
-        from datetime import datetime, timezone, timedelta
-        from app.database import async_session_factory
-        from app.grows.models import Bucket, GrowCycle
-        from app.automation.models import AlertHistory
-        from app.notifications.service import dispatch_alert
+        from datetime import datetime, timedelta
+
         from sqlalchemy import select
         from sqlalchemy.orm import selectinload
+
+        from app.automation.models import AlertHistory
+        from app.database import async_session_factory
+        from app.grows.models import Bucket, GrowCycle
+        from app.notifications.service import dispatch_alert
 
         try:
             async with async_session_factory() as session:
@@ -409,7 +471,7 @@ class TaskRunner:
                     .where(GrowCycle.status == "active")
                 )
                 grows = result.scalars().all()
-                now = datetime.now(timezone.utc)
+                now = datetime.now(UTC)
 
                 for grow in grows:
                     milestones = grow.milestones or {}
@@ -419,7 +481,7 @@ class TaskRunner:
 
                     flowering_start = datetime.fromisoformat(flowering_start_str)
                     if flowering_start.tzinfo is None:
-                        flowering_start = flowering_start.replace(tzinfo=timezone.utc)
+                        flowering_start = flowering_start.replace(tzinfo=UTC)
 
                     for bucket in grow.buckets:
                         if bucket.status != "active":
@@ -439,13 +501,15 @@ class TaskRunner:
                             alert_type = f"harvest_{threshold}d_{bucket.id}"
                             # Check cooldown (24h per alert type)
                             cutoff = now - timedelta(hours=24)
-                            existing = (await session.execute(
-                                select(AlertHistory).where(
-                                    AlertHistory.tenant_id == grow.tenant_id,
-                                    AlertHistory.alert_type == alert_type,
-                                    AlertHistory.created_at > cutoff,
+                            existing = (
+                                await session.execute(
+                                    select(AlertHistory).where(
+                                        AlertHistory.tenant_id == grow.tenant_id,
+                                        AlertHistory.alert_type == alert_type,
+                                        AlertHistory.created_at > cutoff,
+                                    )
                                 )
-                            )).scalar_one_or_none()
+                            ).scalar_one_or_none()
                             if existing:
                                 continue
 
@@ -482,7 +546,13 @@ class TaskRunner:
                             )
                             session.add(alert)
                             await dispatch_alert(session, grow.tenant_id, severity, title, msg)
-                            logger.info("Harvest alert: %s for grow %s bucket %s (%dd)", title, grow.id, bucket.id, days_remaining)
+                            logger.info(
+                                "Harvest alert: %s for grow %s bucket %s (%dd)",
+                                title,
+                                grow.id,
+                                bucket.id,
+                                days_remaining,
+                            )
 
                 await session.commit()
                 logger.debug("Harvest countdown check completed for %d grows", len(grows))
@@ -503,3 +573,80 @@ class TaskRunner:
                     logger.debug("Task generation: no new tasks needed")
         except Exception:
             logger.exception("Task generation failed")
+
+    async def _integration_poll(self) -> None:
+        """Poll integrations that are due for sync based on poll_interval_s."""
+        from datetime import datetime
+
+        from sqlalchemy import select
+
+        from app.database import async_session_factory
+        from app.integrations.connectors.base import get_connector_class
+        from app.integrations.crypto import decrypt_config
+        from app.integrations.models import IntegrationConfig, IntegrationDeviceMap
+
+        try:
+            async with async_session_factory() as session:
+                now = datetime.now(UTC)
+                result = await session.execute(
+                    select(IntegrationConfig).where(
+                        IntegrationConfig.enabled.is_(True),
+                        IntegrationConfig.poll_interval_s.isnot(None),
+                    )
+                )
+                configs = result.scalars().all()
+
+                polled = 0
+                for cfg in configs:
+                    # Check if enough time has elapsed since last sync
+                    if cfg.last_synced_at:
+                        elapsed = (now - cfg.last_synced_at).total_seconds()
+                        if elapsed < cfg.poll_interval_s:
+                            continue
+
+                    connector_cls = get_connector_class(cfg.type)
+                    if connector_cls is None:
+                        continue
+
+                    # Set RLS context for this tenant
+                    from sqlalchemy import text
+
+                    await session.execute(
+                        text("SET app.current_tenant = :tid"),
+                        {"tid": str(cfg.tenant_id)},
+                    )
+
+                    dm_result = await session.execute(
+                        select(IntegrationDeviceMap).where(
+                            IntegrationDeviceMap.integration_id == cfg.id,
+                            IntegrationDeviceMap.enabled.is_(True),
+                        )
+                    )
+                    device_maps = dm_result.scalars().all()
+
+                    connector = connector_cls(
+                        config=cfg,
+                        decrypted_config=decrypt_config(cfg.config),
+                        device_maps=list(device_maps),
+                    )
+
+                    try:
+                        poll_result = await connector.poll()
+                        await connector.write_sync_log(session, poll_result)
+                        cfg.last_synced_at = now
+                        if poll_result.status == "error":
+                            cfg.error_count += 1
+                        else:
+                            cfg.error_count = 0
+                        polled += 1
+                    except Exception:
+                        logger.exception("Integration poll failed: %s (%s)", cfg.id, cfg.type)
+                        cfg.error_count += 1
+
+                if polled:
+                    await session.commit()
+                    logger.info("Polled %d integrations", polled)
+                else:
+                    logger.debug("Integration poll: none due")
+        except Exception:
+            logger.exception("Integration poll sweep failed")

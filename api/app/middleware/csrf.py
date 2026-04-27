@@ -27,6 +27,7 @@ _CSRF_EXEMPT_PATHS = {
     "/v1/auth/reset-password",
     "/v1/auth/verify-email",
     "/v1/billing/webhook",
+    "/v1/integrations/webhook/",
     "/health",
 }
 
