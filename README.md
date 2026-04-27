@@ -296,6 +296,19 @@ This project uses [OpenSpec](openspec/AGENTS.md) for spec-driven development. La
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, coding guidelines, and the PR workflow.
 
+## Documentation
+
+| Guide | Description |
+|-------|-------------|
+| [Architecture Overview](docs/architecture.md) | System design, services, data flow |
+| [Self-Hosting Guide](docs/self-hosting.md) | Deploy with Docker Compose or Kubernetes |
+| [Configuration Reference](docs/configuration.md) | All environment variables and config options |
+| [ESP32 Hardware Guide](docs/esp32-hardware.md) | BOM, wiring, calibration, flashing |
+| [API Reference](docs/api-reference.md) | Auth flows, endpoints, WebSocket chat |
+| [Developer Guide](docs/development.md) | Local setup, testing, conventions |
+| [Security Policy](SECURITY.md) | Vulnerability reporting |
+| [Changelog](CHANGELOG.md) | Version history |
+
 ## License
 
 This project is dual-licensed:

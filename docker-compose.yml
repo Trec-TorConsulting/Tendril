@@ -1,0 +1,177 @@
+version: "3.9"
+
+# ─── Tendril — Local Development Stack ──────────────────────────
+# Start everything: docker compose up -d
+# API docs:         http://localhost:8000/v1/docs
+# Web app:          http://localhost:3000
+# MinIO console:    http://localhost:9001
+
+services:
+  # ─── PostgreSQL ──────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tendril
+      POSTGRES_PASSWORD: tendril
+      POSTGRES_DB: tendril
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tendril"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ─── EMQX MQTT Broker ───────────────────────────────
+  emqx:
+    image: emqx/emqx:5-alpine
+    restart: unless-stopped
+    ports:
+      - "1883:1883"     # MQTT
+      - "8083:8083"     # MQTT WebSocket
+      - "8883:8883"     # MQTT TLS
+      - "18083:18083"   # EMQX Dashboard
+    volumes:
+      - emqx_data:/opt/emqx/data
+    environment:
+      EMQX_NAME: tendril-emqx
+      EMQX_LOADED_PLUGINS: "emqx_management,emqx_auth_http"
+    healthcheck:
+      test: ["CMD", "emqx", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── MinIO (S3-compatible object storage) ────────────
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"     # S3 API
+      - "9001:9001"     # MinIO Console
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Tendril API ─────────────────────────────────────
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://tendril:tendril@postgres:5432/tendril"
+      JWT_SECRET: "dev-secret-change-me-in-production"
+      MQTT_BROKER_HOST: "emqx"
+      MQTT_BROKER_PORT: "1883"
+      S3_ENDPOINT: "http://minio:9000"
+      S3_ACCESS_KEY: "minioadmin"
+      S3_SECRET_KEY: "minioadmin"
+      S3_BUCKET: "tendril-photos"
+      CORS_ORIGINS: "http://localhost:3000"
+      DOMAIN: "localhost"
+      LOG_LEVEL: "DEBUG"
+      OLLAMA_BASE_URL: "http://host.docker.internal:11434"
+      OLLAMA_MODEL: "llama3.1:8b"
+      GEMINI_API_KEY: ""
+      GEMINI_MODEL: "gemini-2.5-flash"
+      VAPID_PRIVATE_KEY: ""
+      VAPID_EMAIL: "mailto:dev@localhost"
+      STRIPE_SECRET_KEY: ""
+      STRIPE_WEBHOOK_SECRET: ""
+      GOOGLE_CLIENT_ID: ""
+      GOOGLE_CLIENT_SECRET: ""
+      GITHUB_CLIENT_ID: ""
+      GITHUB_CLIENT_SECRET: ""
+    depends_on:
+      postgres:
+        condition: service_healthy
+      emqx:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  # ─── Database Migrations ─────────────────────────────
+  migrate:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    command: ["python", "-m", "alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://tendril:tendril@postgres:5432/tendril"
+      JWT_SECRET: "dev-secret-change-me-in-production"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # ─── MQTT Worker ─────────────────────────────────────
+  mqtt-worker:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    command: ["python", "-m", "app.mqtt.worker"]
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://tendril:tendril@postgres:5432/tendril"
+      JWT_SECRET: "dev-secret-change-me-in-production"
+      MQTT_BROKER_HOST: "emqx"
+      MQTT_BROKER_PORT: "1883"
+      LOG_LEVEL: "DEBUG"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      emqx:
+        condition: service_healthy
+
+  # ─── Scheduler ───────────────────────────────────────
+  scheduler:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    command: ["python", "-m", "app.scheduler.main"]
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://tendril:tendril@postgres:5432/tendril"
+      JWT_SECRET: "dev-secret-change-me-in-production"
+      MQTT_BROKER_HOST: "emqx"
+      MQTT_BROKER_PORT: "1883"
+      OLLAMA_BASE_URL: "http://host.docker.internal:11434"
+      OLLAMA_MODEL: "llama3.1:8b"
+      GEMINI_API_KEY: ""
+      GEMINI_MODEL: "gemini-2.5-flash"
+      LOG_LEVEL: "DEBUG"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ─── Tendril Web ─────────────────────────────────────
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: "http://localhost:8000/v1"
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  emqx_data:
+  minio_data:
