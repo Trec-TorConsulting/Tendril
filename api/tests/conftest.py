@@ -2,6 +2,7 @@
 
 Uses testcontainers for isolated PostgreSQL instances per test session.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -15,8 +16,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 # Set test JWT secret before importing app
-os.environ["JWT_SECRET"] = "test-secret-do-not-use-in-production"
+os.environ["JWT_SECRET"] = "test-secret-do-not-use-in-production"  # noqa: S105
 os.environ["DATABASE_URL"] = "postgresql+asyncpg://tendril:tendril@localhost:5432/tendril_test"
+os.environ["INTEGRATION_ENCRYPTION_KEY"] = "m8eWk-kF4nPTdc7Y0wccVuqqEYTUvrAWdVcF5zKBuo0="
 
 
 @pytest.fixture(scope="session")
@@ -33,7 +35,7 @@ async def db_engine():
     For CI, use testcontainers. For local dev, use the test DB URL.
     """
     from app.database import Base
-    from app.tenants.models import Tenant, User, Device  # noqa: F401
+    from app.tenants.models import Device, Tenant, User  # noqa: F401
 
     engine = create_async_engine(os.environ["DATABASE_URL"], echo=False)
 
@@ -43,15 +45,19 @@ async def db_engine():
 
         # Enable RLS
         await conn.execute(text("ALTER TABLE users ENABLE ROW LEVEL SECURITY"))
-        await conn.execute(text("""
+        await conn.execute(
+            text("""
             CREATE POLICY IF NOT EXISTS tenant_isolation_users ON users
                 USING (tenant_id = current_setting('app.current_tenant')::UUID)
-        """))
+        """)
+        )
         await conn.execute(text("ALTER TABLE devices ENABLE ROW LEVEL SECURITY"))
-        await conn.execute(text("""
+        await conn.execute(
+            text("""
             CREATE POLICY IF NOT EXISTS tenant_isolation_devices ON devices
                 USING (tenant_id = current_setting('app.current_tenant')::UUID)
-        """))
+        """)
+        )
 
     yield engine
 
@@ -85,18 +91,16 @@ class TenantFactory:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def create(
-        self, name: str = "Test Org", plan: str = "free"
-    ) -> dict:
-        from app.tenants.models import Tenant, User
-        from app.auth.jwt import create_access_token
+    async def create(self, name: str = "Test Org", plan: str = "free") -> dict:
         import bcrypt
+        from app.auth.jwt import create_access_token
+        from app.tenants.models import Tenant, User
 
         tenant = Tenant(name=name, slug=f"test-{uuid4().hex[:8]}", plan=plan)
         self.session.add(tenant)
         await self.session.flush()
 
-        password = "testpass123"
+        password = "testpass123"  # noqa: S105
         user = User(
             tenant_id=tenant.id,
             email=f"user-{uuid4().hex[:8]}@test.com",
