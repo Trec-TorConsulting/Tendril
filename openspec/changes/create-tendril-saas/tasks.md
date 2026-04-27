@@ -1,0 +1,142 @@
+## Phase 1: Foundation (Auth + Multi-Tenancy + Project Scaffold)
+- [x] 1.1 Scaffold `tendril/` directory structure (api/, web/, manifests/, esp32/)
+- [x] 1.2 Initialize FastAPI project with config, database module, and Alembic migrations
+- [x] 1.3 Create PostgreSQL schema: tenants, users, devices tables with RLS policies
+- [x] 1.4 Implement auth module: email/password registration, login, JWT (access + refresh)
+- [x] 1.5 Implement email verification flow
+- [x] 1.6 Implement OAuth2 social login: Google, GitHub, Apple, Discord
+- [x] 1.7 Implement auth adapter interface for Auth0, Firebase, Supabase
+- [x] 1.8 Implement RBAC middleware (owner, member, viewer roles)
+- [x] 1.9 Implement tenant context middleware (set RLS session variable from JWT)
+- [x] 1.10 Implement TierGate middleware (plan-based feature gating + resource limits + usage quotas)
+- [x] 1.11 Initialize Next.js project with Tailwind + shadcn/ui
+- [x] 1.12 Configure PWA: next-pwa, manifest.json, service worker, icons (192/512)
+- [x] 1.13 Implement offline shell caching and add-to-homescreen prompt
+- [x] 1.14 Build auth pages: login, register, forgot password, email verification
+- [x] 1.15 Build authenticated layout with sidebar navigation
+- [x] 1.16 Set up pytest + testcontainers + conftest.py (test DB, tenant factory, auth helpers)
+- [x] 1.17 Write unit tests: auth, tenant isolation (RLS), RBAC
+- [x] 1.18 Set up Vitest + React Testing Library for frontend tests
+- [x] 1.19 Write frontend tests: auth pages, layout components
+- [x] 1.20 Set up GitHub Actions CI pipeline (lint, type-check, test, build)
+- [x] 1.21 Set up Dependabot + Snyk for dependency scanning
+- [x] 1.22 Create K8s manifests: namespace, api-deployment, mqtt-worker-deployment, scheduler-deployment, web-deployment, services, secrets
+- [x] 1.23 Build and deploy all 4 pods to K3S cluster (namespace: tendril)
+
+## Phase 2: IoT Device Layer
+- [x] 2.1 Create device registration + pairing API endpoints
+- [x] 2.2 Implement QR code generation for device pairing
+- [x] 2.3 Implement EMQX HTTP auth webhook in mqtt-worker (`auth_webhook.py`)
+- [x] 2.4 Implement EMQX HTTP ACL webhook in mqtt-worker (`auth_webhook.py`)
+- [x] 2.5 Configure EMQX TLS + webhook auth backend pointing to mqtt-worker service
+- [x] 2.6 Define MQTT topic schema: `t/{tenant_id}/d/{device_id}/sensor/#`
+- [x] 2.7 Implement MQTT subscriber in mqtt-worker (`worker.py` + `handlers.py`)
+- [x] 2.8 Build device management page in frontend (list, pair, rename, revoke)
+- [x] 2.9 Create reference ESP32 firmware (PlatformIO) with MQTT+TLS+PSK auth
+- [x] 2.10 Write integration tests: device pairing, MQTT auth/ACL webhooks, sensor ingestion
+- [x] 2.11 Write frontend tests: device management page
+
+## Phase 3: Core Grow Features (Port from grow-assistant)
+- [x] 3.1 Migrate DB schema: tents, grow_cycles, buckets + tenant_id + RLS
+- [x] 3.2 Create grow_type_profiles table and seed data for all 12 grow types (DWC, RDWC, NFT, Ebb & Flow, Drip/Top Feed, Aeroponics, Kratky, Coco Coir, Rockwool, Soil, Outdoor Soil, Outdoor Container)
+- [x] 3.3 Add grow_type column to grow_cycles table + API
+- [x] 3.4 Extend bucket_sensor_readings with additional sensor columns (dissolved_oxygen, flow_rate, soil_moisture, soil_temp, runoff_ph, runoff_ec, mist_pressure)
+- [x] 3.5 Implement grow type profiles API (list types, get profile, get relevant sensors/fields/automations)
+- [x] 3.6 Implement tent CRUD API (tenant-scoped)
+- [x] 3.7 Implement grow cycle CRUD API (tenant-scoped, grow_type required, defaults pre-filled from profile)
+- [x] 3.8 Implement bucket CRUD API with grow linkage (tenant-scoped, grow-type-aware fields)
+- [x] 3.9 Implement sensor readings API (CRUD + latest + drift, grow-type-aware thresholds)
+- [x] 3.10 Implement journal entries API (CRUD)
+- [x] 3.11 Implement bucket photos API (upload, list, delete, caption)
+- [x] 3.12 Implement dose profiles + pump control API (grow-type-aware: disable pH auto-dose for soil, disable all auto-dose for Kratky)
+- [x] 3.13 Implement feeding schedules API (grow-type-aware nutrient strength defaults)
+- [x] 3.14 Implement strains API (CRUD + leaderboard)
+- [x] 3.15 Implement yields API (CRUD)
+- [x] 3.16 Implement stage management (advance, suggestions, milestones)
+- [x] 3.17 Implement harvest workflow API (drying, curing, trim tracking, final yield)
+- [x] 3.18 Build dashboard page (camera hero, bucket strip, score, environment, coach — sensors adapt to grow type)
+- [x] 3.19 Build grows list + grow detail page with inline bucket tabs + grow type selector
+- [x] 3.20 Build bucket detail tabs (overview, sensors, diary, photos, feeding, pump — fields/sensors filtered by grow type)
+- [x] 3.21 Build harvest workflow pages (dry/cure/trim tracking)
+- [x] 3.22 Build analytics page (charts, trends, crop steering, harvest analytics)
+- [x] 3.23 Build strains page
+- [x] 3.24 Build settings page (tent config, notification prefs, device management)
+- [x] 3.25 Add environment_type (indoor/outdoor/greenhouse) and location (lat/lng) fields to tents table + API
+- [x] 3.26 Implement weather service: Open-Meteo client, fetch current + 7-day forecast, store in weather_readings table
+- [x] 3.27 Implement weather API endpoints (current, forecast, history for outdoor tents)
+- [x] 3.28 Implement scheduler weather polling task (every 30 min for outdoor/greenhouse tents)
+- [x] 3.29 Implement weather alerts (frost <4°C, heat >38°C, rain >25mm, wind >50km/h, UV >8)
+- [x] 3.30 Build weather widget + 7-day forecast card in dashboard for outdoor tents
+- [x] 3.31 Build tent creation/edit with environment type selector and location input (geolocation + manual)
+- [x] 3.32 Build grow type selector with profile-driven form adaptation (show/hide fields per type)
+- [x] 3.33 Build grow-type-aware health check observation form (type-specific questions)
+- [x] 3.34 Implement terminology adaptation: `useTerminology(growType)` hook in frontend, labels/tooltips/headings use grow type terms
+- [x] 3.35 Implement reference data module: reference_strains table, Otreeba API sync (scheduler daily), strain autocomplete API
+- [x] 3.36 Implement nutrient barcode scanning: Open Food Facts API client, barcode scan endpoint, nutrient_products table
+- [x] 3.37 Seed reference data via Alembic migration: grow media types, growth stages, terpene database, nutrient brand/lines, light types
+- [x] 3.38 Build strain autocomplete + detail panel in bucket/grow creation UI
+- [x] 3.39 Build barcode scanner component (PWA camera + Open Food Facts lookup)
+- [x] 3.40 Write integration tests for all grow feature APIs (tenant isolation + tier gating + grow type adaptation)
+- [x] 3.41 Write frontend tests: dashboard, grows, buckets, analytics, strains, settings, harvest, weather, grow type UI, terminology, barcode scan
+- [x] 3.42 Write tests: weather service, weather API, weather alerts, grow type profiles, sensor filtering, reference data sync, barcode lookup
+
+## Phase 4: AI & Automation
+- [x] 4.1 Implement AI chat WebSocket endpoint in api pod (tenant-scoped, Ollama, grow-type context injected)
+- [x] 4.2 Implement health check API in api pod (vision-based, tenant-scoped, grow-type-specific prompts and questions)
+- [x] 4.3 Implement AI coach tips API (grow-type-aware: tips match grow type's common problems and best practices)
+- [x] 4.4 Implement automation rules engine (sensor threshold → action triggers, cooldowns, tier limits, grow-type-aware available automations)
+- [x] 4.5 Implement grow-type-specific critical alerts (NFT pump failure = CRITICAL, aero nozzle clog = CRITICAL, immediate all-channel notification)
+- [x] 4.5 Implement environment control scheduling (light, fan, HVAC schedules with stage linkage)
+- [x] 4.6 Implement scheduler pod tasks: health checks (12h, active grows only), rule evaluation, sensor polling, alert eval, data retention, daily reports, weather polling (30 min, outdoor tents)
+- [x] 4.7 Inject weather context into AI health check prompts for outdoor/greenhouse grows
+- [x] 4.8 Implement scheduler leader election (prevent duplicate work)
+- [x] 4.9 Build AI chat page in frontend
+- [x] 4.10 Build health check results page
+- [x] 4.11 Build automation rules page (create/edit rules, view trigger history)
+- [x] 4.12 Build environment schedule page
+- [x] 4.13 Implement AI insights (harvest predict, nutrient advice, anomaly scan)
+- [x] 4.14 Implement PDF grow report generation (sensor trends, photos, milestones, yields)
+- [x] 4.15 Implement weather-based automation rules (frost protection, rain alerts, UV warnings for outdoor tents)
+- [x] 4.16 Write tests: AI chat, health check, automation rules, scheduler tasks, tier gating, weather-aware health checks
+- [x] 4.17 Write frontend tests: chat, health check, automation, schedules, reports, weather widgets
+
+## Phase 5: Notifications, Security & Polish
+- [x] 5.1 Implement notification channels (Discord, Slack, Email, SMS) in scheduler pod
+- [x] 5.2 Implement alert evaluation + notification dispatch (tenant-scoped)
+- [x] 5.3 Implement data retention (configurable per tenant)
+- [x] 5.4 Implement data export (CSV per bucket)
+- [x] 5.5 Build notification settings page in frontend
+- [x] 5.6 Build landing page (marketing, features, pricing with Stripe links)
+- [x] 5.7 Implement Stripe billing: Checkout Sessions, Customer Portal, webhook handlers (checkout.session.completed, subscription.updated, subscription.deleted, invoice.payment_failed)
+- [x] 5.8 Build billing settings page (current plan, upgrade/downgrade, payment history, Customer Portal link)
+- [x] 5.9 Implement rate limiting (per-tenant + per-IP)
+- [x] 5.10 OWASP Top 10 compliance audit and hardening:
+  - [x] 5.10.1 A01 Broken Access Control: verify RLS on all tables, RBAC on all endpoints
+  - [x] 5.10.2 A02 Cryptographic Failures: TLS enforcement, bcrypt cost factor, no secrets in logs/JWTs
+  - [x] 5.10.3 A03 Injection: confirm parameterized queries, no raw SQL, Pydantic on all inputs
+  - [x] 5.10.4 A04 Insecure Design: account lockout, brute-force protection, device pairing auth
+  - [x] 5.10.5 A05 Security Misconfiguration: CORS allowlist, security headers (CSP, HSTS, X-Frame-Options), K8s security contexts
+  - [x] 5.10.6 A06 Vulnerable Components: dependency scanning (Dependabot/Snyk), pin versions
+  - [x] 5.10.7 A07 Auth Failures: JWT expiry, refresh rotation, email verification enforcement
+  - [x] 5.10.8 A08 Data Integrity: signed JWTs (RS256), input validation coverage
+  - [x] 5.10.9 A09 Logging & Monitoring: structured auth event logging, failed access tracking
+  - [x] 5.10.10 A10 SSRF: camera URL allowlist validation, MQTT topic validation
+- [x] 5.11 Write security test suite: cross-tenant access, injection payloads, token tampering, RBAC bypass attempts
+- [x] 5.12 Implement Web Push notifications for PWA (sensor alerts, health check results)
+- [x] 5.13 Write E2E tests with Playwright (signup → pair device → create grow → view data → AI chat)
+- [x] 5.14 Set up HorizontalPodAutoscaler for api + web pods
+- [x] 5.15 Production deployment + DNS setup (tendril.maddscientist.com)
+
+## Phase 6: Commercial Tier Features
+- [x] 6.1 Implement custom grow types API (create, edit, delete, based on seed profile template, Pro/Commercial only)
+- [x] 6.2 Implement custom grow type submission for global registry (admin review queue)
+- [x] 6.3 Build custom grow type builder page in frontend
+- [x] 6.4 Implement task management API (create, assign, complete, recurring tasks)
+- [x] 6.5 Implement audit trail logging (user actions with before/after values)
+- [x] 6.6 Implement audit trail API (filterable, paginated, 1-year minimum retention)
+- [x] 6.7 Implement API key management (generate, revoke, scope per tenant)
+- [x] 6.8 Build task management page in frontend
+- [x] 6.9 Build audit trail viewer page
+- [x] 6.10 Build API key management page
+- [x] 6.11 Write integration tests: custom grow types, tasks, audit trail, API keys, tier enforcement
+- [x] 6.12 Write frontend tests: custom grow type builder, tasks, audit trail, API keys

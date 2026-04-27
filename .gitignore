@@ -1,0 +1,56 @@
+# ─── Python ────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+env/
+.env
+.env.*
+*.whl
+
+# ─── Node.js / Next.js ────────────────────────────────
+node_modules/
+.next/
+out/
+.turbo/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# ─── ESP32 / PlatformIO ───────────────────────────────
+esp32/.pio/
+esp32/src/config.h
+
+# ─── IDE / Editors ────────────────────────────────────
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ─── Testing / Coverage ───────────────────────────────
+htmlcov/
+.coverage
+.coverage.*
+coverage/
+*.lcov
+.pytest_cache/
+.vitest/
+
+# ─── Docker ────────────────────────────────────────────
+*.log
+
+# ─── Secrets / Local Config ───────────────────────────
+*.pem
+*.key
+secrets.yaml
+.env.local
+.env.production
+.env.staging
