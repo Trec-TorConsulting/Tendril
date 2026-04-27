@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 from pydantic import BaseModel
@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.jwt import decode_token
 from app.database import async_session_factory
 
-_bearer = HTTPBearer()
+_bearer = HTTPBearer(auto_error=False)
 
 
 class CurrentUser(BaseModel):
@@ -27,16 +27,34 @@ class CurrentUser(BaseModel):
 
 
 async def get_current_user(
-    credentials: Annotated[HTTPAuthorizationCredentials, Depends(_bearer)],
+    request: Request,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
 ) -> CurrentUser:
-    """Extract and validate JWT from Authorization header."""
+    """Extract and validate JWT from httpOnly cookie (preferred) or Authorization header (fallback)."""
+    token: str | None = None
+
+    # 1. Try httpOnly cookie first
+    cookie_token = request.cookies.get("access_token")
+    if cookie_token:
+        token = cookie_token
+    # 2. Fallback to Authorization header (for API keys, mobile clients, etc.)
+    elif credentials:
+        token = credentials.credentials
+
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     try:
-        payload = decode_token(credentials.credentials)
+        payload = decode_token(token)
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
-        )
+        ) from None
     if payload.get("type") != "access":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

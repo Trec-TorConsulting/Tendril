@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getAccessToken, clearTokens } from "@/lib/auth";
-import { getMe } from "@/lib/api";
+import { getMe, logout as apiLogout } from "@/lib/api";
 
 export interface UserData {
   id: string;
@@ -41,7 +41,8 @@ export function useUser() {
     refresh();
   }, [refresh]);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    try { await apiLogout(); } catch { /* ignore */ }
     clearTokens();
     setUser(null);
     router.push("/login");

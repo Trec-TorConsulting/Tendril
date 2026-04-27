@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { getAccessToken, clearTokens } from "@/lib/auth";
-import { getMe } from "@/lib/api";
+import { getMe, logout as apiLogout } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -139,7 +139,7 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
             <SidebarMenuItem>
               <SidebarMenuButton
                 tooltip="Log out"
-                onClick={() => { clearTokens(); router.push("/login"); }}
+                onClick={() => { apiLogout().catch(() => {}); clearTokens(); router.push("/login"); }}
                 className="text-muted-foreground hover:text-destructive"
               >
                 <LogOut className="size-4" />

@@ -1,4 +1,4 @@
-import { getRefreshToken, setTokens, clearTokens } from "@/lib/auth";
+import { getCsrfToken, setCsrfToken, clearAuth } from "@/lib/auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/v1";
 
@@ -16,6 +16,8 @@ class ApiError extends Error {
   }
 }
 
+const _UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
 async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T> {
   const { token, ...fetchOptions } = options;
 
@@ -24,8 +26,18 @@ async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T>
     ...(options.headers as Record<string, string>),
   };
 
+  // Legacy support: if an explicit token is passed, use Authorization header
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  // Attach CSRF token for unsafe methods
+  const method = (fetchOptions.method || "GET").toUpperCase();
+  if (_UNSAFE_METHODS.has(method)) {
+    const csrf = getCsrfToken();
+    if (csrf) {
+      headers["X-CSRF-Token"] = csrf;
+    }
   }
 
   const url = `${API_BASE}${path}`;
@@ -34,6 +46,7 @@ async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T>
     res = await fetch(url, {
       ...fetchOptions,
       headers,
+      credentials: "include",  // Send httpOnly cookies
     });
   } catch (networkErr) {
     console.error("[apiFetch] Network error:", url, fetchOptions.method || "GET", networkErr);
@@ -41,39 +54,51 @@ async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T>
     throw new ApiError(0, `Network error on ${fetchOptions.method || "GET"} ${path}: ${msg}`);
   }
 
-  // Auto-refresh on 401 if we have a refresh token
-  if (res.status === 401 && token) {
-    const rt = getRefreshToken();
-    if (rt) {
-      try {
-        const refreshRes = await fetch(`${API_BASE}/auth/refresh`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ refresh_token: rt }),
-        });
-        if (refreshRes.ok) {
-          const tokens = await refreshRes.json();
-          setTokens(tokens.access_token, tokens.refresh_token);
-          headers["Authorization"] = `Bearer ${tokens.access_token}`;
-          const retryRes = await fetch(`${API_BASE}${path}`, {
-            ...fetchOptions,
-            headers,
-          });
-          if (retryRes.ok) {
-            if (retryRes.status === 204) return undefined as T;
-            return retryRes.json();
-          }
-          const retryBody = await retryRes.json().catch(() => ({ detail: retryRes.statusText }));
-          throw new ApiError(retryRes.status, retryBody.detail || retryRes.statusText);
-        } else {
-          clearTokens();
-          throw new ApiError(401, "Session expired. Please log in again.");
+  // Capture CSRF token from response header (set on login/register/refresh)
+  const csrfHeader = res.headers.get("X-CSRF-Token");
+  if (csrfHeader) {
+    setCsrfToken(csrfHeader);
+  }
+
+  // Auto-refresh on 401
+  if (res.status === 401) {
+    try {
+      const refreshRes = await fetch(`${API_BASE}/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+        credentials: "include",  // Send refresh_token cookie
+      });
+      if (refreshRes.ok) {
+        // Capture new CSRF token
+        const newCsrf = refreshRes.headers.get("X-CSRF-Token");
+        if (newCsrf) setCsrfToken(newCsrf);
+
+        // Rebuild headers with new CSRF for retry
+        if (_UNSAFE_METHODS.has(method)) {
+          const csrf = getCsrfToken();
+          if (csrf) headers["X-CSRF-Token"] = csrf;
         }
-      } catch (refreshErr) {
-        if (refreshErr instanceof ApiError) throw refreshErr;
-        clearTokens();
+
+        const retryRes = await fetch(`${API_BASE}${path}`, {
+          ...fetchOptions,
+          headers,
+          credentials: "include",
+        });
+        if (retryRes.ok) {
+          if (retryRes.status === 204) return undefined as T;
+          return retryRes.json();
+        }
+        const retryBody = await retryRes.json().catch(() => ({ detail: retryRes.statusText }));
+        throw new ApiError(retryRes.status, retryBody.detail || retryRes.statusText);
+      } else {
+        clearAuth();
         throw new ApiError(401, "Session expired. Please log in again.");
       }
+    } catch (refreshErr) {
+      if (refreshErr instanceof ApiError) throw refreshErr;
+      clearAuth();
+      throw new ApiError(401, "Session expired. Please log in again.");
     }
   }
 
@@ -116,6 +141,12 @@ export function refreshToken(refresh_token: string) {
   return apiFetch<TokenResponse>("/auth/refresh", {
     method: "POST",
     body: JSON.stringify({ refresh_token }),
+  });
+}
+
+export function logout() {
+  return apiFetch<{ message: string }>("/auth/logout", {
+    method: "POST",
   });
 }
 
