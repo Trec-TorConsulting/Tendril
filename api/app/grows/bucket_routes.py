@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
 from app.grows.models import Bucket, Strain
+from app.pagination import PaginatedResponse, PaginationParams, paginate
 
 router = APIRouter()
 
@@ -84,17 +85,18 @@ async def create_bucket(
     return bucket
 
 
-@router.get("", response_model=list[BucketResponse])
+@router.get("")
 async def list_buckets(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    pagination: Annotated[PaginationParams, Depends()],
     grow_cycle_id: UUID | None = None,
 ):
     q = select(Bucket).order_by(Bucket.position)
     if grow_cycle_id:
         q = q.where(Bucket.grow_cycle_id == grow_cycle_id)
-    result = await session.execute(q)
-    return result.scalars().all()
+    items, total = await paginate(session, q, pagination)
+    return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
 
 
 @router.get("/{bucket_id}", response_model=BucketResponse)

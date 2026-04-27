@@ -1,21 +1,23 @@
 """Tent CRUD API — tenant-scoped grow spaces."""
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.audit import record_audit
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
-from app.auth.jwt import decode_token
-from app.utils.url_validation import validate_url_safe
 from app.database import async_session_factory
 from app.grows.models import Tent
+from app.pagination import PaginatedResponse, PaginationParams, paginate
+from app.utils.url_validation import validate_url_safe
 
 router = APIRouter()
 
@@ -76,13 +78,15 @@ async def create_tent(
     return tent
 
 
-@router.get("", response_model=list[TentResponse])
+@router.get("")
 async def list_tents(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    pagination: Annotated[PaginationParams, Depends()],
 ):
-    result = await session.execute(select(Tent).order_by(Tent.created_at.desc()))
-    return result.scalars().all()
+    q = select(Tent).where(Tent.deleted_at.is_(None)).order_by(Tent.created_at.desc())
+    items, total = await paginate(session, q, pagination)
+    return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
 
 
 @router.get("/{tent_id}", response_model=TentResponse)
@@ -92,7 +96,7 @@ async def get_tent(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     tent = await session.get(Tent, tent_id)
-    if tent is None:
+    if tent is None or tent.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Tent not found")
     return tent
 
@@ -105,7 +109,7 @@ async def update_tent(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     tent = await session.get(Tent, tent_id)
-    if tent is None:
+    if tent is None or tent.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Tent not found")
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(tent, field, value)
@@ -117,30 +121,29 @@ async def update_tent(
 @router.delete("/{tent_id}", status_code=204)
 async def delete_tent(
     tent_id: UUID,
+    request: Request,
     user: Annotated[CurrentUser, Depends(require_role("owner"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     tent = await session.get(Tent, tent_id)
-    if tent is None:
+    if tent is None or tent.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Tent not found")
-    await session.delete(tent)
+    await record_audit(session, user.tenant_id, user.user_id, "delete", "tent", str(tent_id), request=request)
+    tent.deleted_at = datetime.now(UTC)
     await session.commit()
 
 
 @router.get("/{tent_id}/camera-snapshot")
 async def camera_snapshot(
     tent_id: UUID,
-    token: str = Query(..., description="JWT access token"),
+    request: Request,
+    sig: str = Query(..., description="HMAC signature"),
+    exp: str = Query(..., description="Expiry timestamp"),
+    tid: str = Query(..., description="Tenant ID"),
 ):
-    """Proxy camera snapshot — accepts token as query param for <img> tags."""
-    from jose import JWTError
-    try:
-        payload = decode_token(token)
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-    if payload.get("type") != "access":
-        raise HTTPException(status_code=401, detail="Invalid token type")
-    tenant_id = payload["tid"]
+    """Proxy camera snapshot — uses HMAC-signed URLs for <img> tags."""
+    from app.auth.signed_url import verify_signed_url
+    tenant_id = verify_signed_url(request.url.path, sig, exp, tid)
 
     async with async_session_factory() as session:
         tid = str(tenant_id)

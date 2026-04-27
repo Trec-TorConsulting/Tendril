@@ -4,13 +4,16 @@ from typing import Annotated
 from uuid import UUID
 
 import bcrypt
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.audit import record_audit
 from app.auth.middleware import CurrentUser, get_current_user, require_role
+from app.auth.password import validate_password_strength
 from app.database import get_db
+from app.pagination import PaginatedResponse, PaginationParams, paginate
 from app.tenants.models import Tenant, User
 
 router = APIRouter()
@@ -77,33 +80,38 @@ async def update_my_tenant(
     return TenantResponse(id=tenant.id, name=tenant.name, slug=tenant.slug, plan=tenant.plan)
 
 
-@router.get("/members", response_model=list[TenantMemberResponse])
+@router.get("/members")
 async def list_members(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
+    pagination: Annotated[PaginationParams, Depends()],
 ):
-    result = await db.execute(
-        select(User).where(User.tenant_id == user.tenant_id).order_by(User.created_at)
+    q = select(User).where(User.tenant_id == user.tenant_id).order_by(User.created_at)
+    items, total = await paginate(db, q, pagination)
+    return PaginatedResponse(
+        items=[
+            TenantMemberResponse(
+                id=u.id, email=u.email, display_name=u.display_name, role=u.role,
+                email_verified=u.email_verified, created_at=u.created_at.isoformat(),
+            )
+            for u in items
+        ],
+        total=total, page=pagination.page, page_size=pagination.page_size,
     )
-    users = result.scalars().all()
-    return [
-        TenantMemberResponse(
-            id=u.id, email=u.email, display_name=u.display_name, role=u.role,
-            email_verified=u.email_verified, created_at=u.created_at.isoformat(),
-        )
-        for u in users
-    ]
 
 
 @router.post("/members", response_model=TenantMemberResponse, status_code=status.HTTP_201_CREATED)
 async def add_member(
     body: InviteMemberRequest,
+    request: Request,
     user: Annotated[CurrentUser, Depends(require_role("owner"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Add a new member to the tenant. Owner only."""
     if body.role not in ("member", "viewer"):
         raise HTTPException(status_code=400, detail="Can only add members or viewers")
+
+    validate_password_strength(body.password)
 
     # Check email isn't already in use
     existing = await db.execute(select(User).where(User.email == body.email))
@@ -121,6 +129,8 @@ async def add_member(
     db.add(new_user)
     await db.commit()
     await db.refresh(new_user)
+    await record_audit(db, user.tenant_id, user.user_id, "create", "member", str(new_user.id), request=request)
+    await db.commit()
     return TenantMemberResponse(
         id=new_user.id, email=new_user.email, display_name=new_user.display_name,
         role=new_user.role, email_verified=new_user.email_verified,
@@ -162,6 +172,7 @@ async def update_member_role(
 @router.delete("/members/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def remove_member(
     member_id: UUID,
+    request: Request,
     user: Annotated[CurrentUser, Depends(require_role("owner"))],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
@@ -176,5 +187,6 @@ async def remove_member(
     if member.id == user.user_id:
         raise HTTPException(status_code=400, detail="Cannot remove yourself")
 
+    await record_audit(db, user.tenant_id, user.user_id, "delete", "member", str(member_id), request=request)
     await db.delete(member)
     await db.commit()

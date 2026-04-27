@@ -31,6 +31,7 @@ from app.integrations.schemas import (
     IntegrationUpdate,
     SyncLogResponse,
 )
+from app.pagination import PaginatedResponse, PaginationParams, paginate
 
 logger = logging.getLogger("tendril.integrations")
 
@@ -97,17 +98,21 @@ async def create_integration(
     return _config_to_response(cfg)
 
 
-@router.get("", response_model=list[IntegrationResponse])
+@router.get("")
 async def list_integrations(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member", "viewer"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    pagination: Annotated[PaginationParams, Depends()],
     integration_type: str | None = Query(None, alias="type"),
 ):
     q = select(IntegrationConfig).order_by(IntegrationConfig.created_at.desc())
     if integration_type:
         q = q.where(IntegrationConfig.type == integration_type)
-    result = await session.execute(q)
-    return [_config_to_response(c) for c in result.scalars().all()]
+    items, total = await paginate(session, q, pagination)
+    return PaginatedResponse(
+        items=[_config_to_response(c) for c in items],
+        total=total, page=pagination.page, page_size=pagination.page_size,
+    )
 
 
 @router.get("/{integration_id}", response_model=IntegrationResponse)
@@ -181,17 +186,17 @@ async def create_device_map(
 
 @router.get(
     "/{integration_id}/devices",
-    response_model=list[DeviceMapResponse],
 )
 async def list_device_maps(
     integration_id: UUID,
     user: Annotated[CurrentUser, Depends(require_role("owner", "member", "viewer"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    pagination: Annotated[PaginationParams, Depends()],
 ):
     await _get_config_or_404(integration_id, session)
     q = select(IntegrationDeviceMap).where(IntegrationDeviceMap.integration_id == integration_id)
-    result = await session.execute(q)
-    return result.scalars().all()
+    items, total = await paginate(session, q, pagination)
+    return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
 
 
 @router.patch(
@@ -238,23 +243,21 @@ async def delete_device_map(
 
 @router.get(
     "/{integration_id}/logs",
-    response_model=list[SyncLogResponse],
 )
 async def list_sync_logs(
     integration_id: UUID,
     user: Annotated[CurrentUser, Depends(require_role("owner", "member", "viewer"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
-    limit: int = Query(default=50, le=500),
+    pagination: Annotated[PaginationParams, Depends()],
 ):
     await _get_config_or_404(integration_id, session)
     q = (
         select(IntegrationSyncLog)
         .where(IntegrationSyncLog.integration_id == integration_id)
         .order_by(IntegrationSyncLog.synced_at.desc())
-        .limit(limit)
     )
-    result = await session.execute(q)
-    return result.scalars().all()
+    items, total = await paginate(session, q, pagination)
+    return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
 
 
 # ---------------------------------------------------------------------------

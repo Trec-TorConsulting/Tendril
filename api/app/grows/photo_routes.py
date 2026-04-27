@@ -7,22 +7,28 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
-from sqlalchemy import select, desc, text
+from sqlalchemy import desc, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.jwt import decode_token
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
 from app.database import async_session_factory
 from app.grows.models import BucketPhoto, GrowPhoto
+from app.pagination import PaginatedResponse, PaginationParams, paginate
 from app.storage import (
-    upload_photo as s3_upload,
-    get_photo as s3_get,
-    delete_photo as s3_delete,
     ALLOWED_CONTENT_TYPES,
     MAX_FILE_SIZE,
+)
+from app.storage import (
+    delete_photo as s3_delete,
+)
+from app.storage import (
+    get_photo as s3_get,
+)
+from app.storage import (
+    upload_photo as s3_upload,
 )
 
 logger = logging.getLogger("tendril.photos")
@@ -61,17 +67,18 @@ async def create_photo(
     return photo
 
 
-@router.get("", response_model=list[PhotoResponse])
+@router.get("")
 async def list_photos(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    pagination: Annotated[PaginationParams, Depends()],
     bucket_id: UUID | None = None,
 ):
     q = select(BucketPhoto).order_by(desc(BucketPhoto.created_at))
     if bucket_id:
         q = q.where(BucketPhoto.bucket_id == bucket_id)
-    result = await session.execute(q)
-    return result.scalars().all()
+    items, total = await paginate(session, q, pagination)
+    return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
 
 
 @router.patch("/{photo_id}", response_model=PhotoResponse)
@@ -156,33 +163,31 @@ async def upload_grow_photo(
     return photo
 
 
-@router.get("/grow", response_model=list[GrowPhotoResponse])
+@router.get("/grow")
 async def list_grow_photos(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    pagination: Annotated[PaginationParams, Depends()],
     grow_cycle_id: UUID | None = None,
 ):
     q = select(GrowPhoto).order_by(desc(GrowPhoto.created_at))
     if grow_cycle_id:
         q = q.where(GrowPhoto.grow_cycle_id == grow_cycle_id)
-    result = await session.execute(q)
-    return result.scalars().all()
+    items, total = await paginate(session, q, pagination)
+    return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
 
 
 @router.get("/grow/file/{photo_id}")
 async def serve_grow_photo(
     photo_id: UUID,
-    token: str = Query(..., description="JWT access token"),
+    request: Request,
+    sig: str = Query(..., description="HMAC signature"),
+    exp: str = Query(..., description="Expiry timestamp"),
+    tid: str = Query(..., description="Tenant ID"),
 ):
-    """Serve an uploaded photo from S3 storage. Accepts token as query param for <img> tags."""
-    from jose import JWTError
-    try:
-        payload = decode_token(token)
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-    if payload.get("type") != "access":
-        raise HTTPException(status_code=401, detail="Invalid token type")
-    tenant_id = payload["tid"]
+    """Serve an uploaded photo from S3 storage. Uses HMAC-signed URLs for <img> tags."""
+    from app.auth.signed_url import verify_signed_url
+    tenant_id = verify_signed_url(request.url.path, sig, exp, tid)
 
     async with async_session_factory() as session:
         await session.execute(text(f"SET app.current_tenant = '{tenant_id}'"))
@@ -252,6 +257,7 @@ def _build_timelapse_gif(frames: list[tuple[bytes, str]]) -> bytes:
     Returns the GIF bytes.
     """
     from io import BytesIO
+
     from PIL import Image, ImageDraw, ImageFont
 
     FRAME_WIDTH = 640
@@ -294,21 +300,17 @@ def _build_timelapse_gif(frames: list[tuple[bytes, str]]) -> bytes:
 @router.get("/grow/timelapse/{grow_cycle_id}")
 async def get_timelapse(
     grow_cycle_id: UUID,
-    token: str = Query(..., description="JWT access token"),
+    request: Request,
+    sig: str = Query(..., description="HMAC signature"),
+    exp: str = Query(..., description="Expiry timestamp"),
+    tid: str = Query(..., description="Tenant ID"),
 ):
     """Generate an animated GIF timelapse from health-check snapshots.
 
-    Accepts token as query param for <img> tags.
+    Uses HMAC-signed URLs for <img> tags.
     """
-    from jose import JWTError
-
-    try:
-        payload = decode_token(token)
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-    if payload.get("type") != "access":
-        raise HTTPException(status_code=401, detail="Invalid token type")
-    tenant_id = payload["tid"]
+    from app.auth.signed_url import verify_signed_url
+    tenant_id = verify_signed_url(request.url.path, sig, exp, tid)
 
     async with async_session_factory() as session:
         await session.execute(text(f"SET app.current_tenant = '{tenant_id}'"))

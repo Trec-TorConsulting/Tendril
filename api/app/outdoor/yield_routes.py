@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
 from app.grows.models import GrowCycle, Bucket, HarvestYield, PlotGrid
+from app.pagination import PaginatedResponse, PaginationParams, paginate
 
 router = APIRouter()
 
@@ -42,6 +43,15 @@ class YieldResponse(BaseModel):
     notes: str | None
 
     model_config = {"from_attributes": True}
+
+
+class YieldUpdate(BaseModel):
+    wet_weight_oz: float | None = None
+    dry_weight_oz: float | None = None
+    trim_weight_oz: float | None = None
+    quality_rating: int | None = Field(default=None, ge=1, le=10)
+    trichome_stage: str | None = None
+    notes: str | None = None
 
 
 class YieldSummary(BaseModel):
@@ -83,19 +93,54 @@ async def create_yield(
     return entry
 
 
-@router.get("/{grow_id}/yields", response_model=list[YieldResponse])
+@router.get("/{grow_id}/yields")
 async def list_yields(
     grow_id: UUID,
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    pagination: Annotated[PaginationParams, Depends()],
 ):
     """List all harvest yields for a grow."""
-    result = await session.execute(
+    q = (
         select(HarvestYield)
         .where(HarvestYield.grow_cycle_id == grow_id)
         .order_by(desc(HarvestYield.harvested_at))
     )
-    return result.scalars().all()
+    items, total = await paginate(session, q, pagination)
+    return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
+
+
+@router.get("/{grow_id}/yields/{yield_id}", response_model=YieldResponse)
+async def get_yield(
+    grow_id: UUID,
+    yield_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Get a single yield entry by ID."""
+    entry = await session.get(HarvestYield, yield_id)
+    if entry is None or entry.grow_cycle_id != grow_id:
+        raise HTTPException(status_code=404, detail="Yield entry not found")
+    return entry
+
+
+@router.patch("/{grow_id}/yields/{yield_id}", response_model=YieldResponse)
+async def update_yield(
+    grow_id: UUID,
+    yield_id: UUID,
+    body: YieldUpdate,
+    user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Update a harvest yield entry."""
+    entry = await session.get(HarvestYield, yield_id)
+    if entry is None or entry.grow_cycle_id != grow_id:
+        raise HTTPException(status_code=404, detail="Yield entry not found")
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(entry, field, value)
+    await session.commit()
+    await session.refresh(entry)
+    return entry
 
 
 @router.get("/{grow_id}/yields/summary", response_model=YieldSummary)

@@ -5,13 +5,14 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
 from app.grows.models import DoseProfile, FeedingSchedule
+from app.pagination import PaginatedResponse, PaginationParams, paginate
 
 router = APIRouter()
 
@@ -58,17 +59,31 @@ async def create_dose_profile(
     return dose
 
 
-@router.get("/doses", response_model=list[DoseProfileResponse])
+@router.get("/doses")
 async def list_dose_profiles(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    pagination: Annotated[PaginationParams, Depends()],
     grow_cycle_id: UUID | None = None,
 ):
     q = select(DoseProfile)
     if grow_cycle_id:
         q = q.where(DoseProfile.grow_cycle_id == grow_cycle_id)
-    result = await session.execute(q)
-    return result.scalars().all()
+    items, total = await paginate(session, q, pagination)
+    return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
+
+
+@router.get("/doses/{dose_id}", response_model=DoseProfileResponse)
+async def get_dose_profile(
+    dose_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Get a single dose profile by ID."""
+    dose = await session.get(DoseProfile, dose_id)
+    if dose is None:
+        raise HTTPException(status_code=404, detail="Dose profile not found")
+    return dose
 
 
 @router.patch("/doses/{dose_id}", response_model=DoseProfileResponse)
@@ -147,10 +162,11 @@ async def create_feeding_schedule(
     return schedule
 
 
-@router.get("/feeding", response_model=list[FeedingScheduleResponse])
+@router.get("/feeding")
 async def list_feeding_schedules(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    pagination: Annotated[PaginationParams, Depends()],
     grow_cycle_id: UUID | None = None,
 ):
     from sqlalchemy import case
@@ -163,8 +179,21 @@ async def list_feeding_schedules(
     q = select(FeedingSchedule).order_by(stage_order, FeedingSchedule.name)
     if grow_cycle_id:
         q = q.where(FeedingSchedule.grow_cycle_id == grow_cycle_id)
-    result = await session.execute(q)
-    return result.scalars().all()
+    items, total = await paginate(session, q, pagination)
+    return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
+
+
+@router.get("/feeding/{schedule_id}", response_model=FeedingScheduleResponse)
+async def get_feeding_schedule(
+    schedule_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Get a single feeding schedule by ID."""
+    schedule = await session.get(FeedingSchedule, schedule_id)
+    if schedule is None:
+        raise HTTPException(status_code=404, detail="Feeding schedule not found")
+    return schedule
 
 
 @router.patch("/feeding/{schedule_id}", response_model=FeedingScheduleResponse)

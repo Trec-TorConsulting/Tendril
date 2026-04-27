@@ -1,18 +1,20 @@
 """Grow cycle CRUD API — tenant-scoped, grow-type-aware."""
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.audit import record_audit
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
 from app.grows.models import Bucket, GrowCycle
+from app.pagination import PaginatedResponse, PaginationParams, paginate
 
 router = APIRouter()
 
@@ -57,6 +59,7 @@ class GrowResponse(BaseModel):
 @router.post("", response_model=GrowResponse, status_code=201)
 async def create_grow(
     body: GrowCreate,
+    request: Request,
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
@@ -64,23 +67,26 @@ async def create_grow(
     session.add(grow)
     await session.commit()
     await session.refresh(grow)
+    await record_audit(session, user.tenant_id, user.user_id, "create", "grow", str(grow.id), request=request)
+    await session.commit()
     return grow
 
 
-@router.get("", response_model=list[GrowResponse])
+@router.get("")
 async def list_grows(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    pagination: Annotated[PaginationParams, Depends()],
     status: str | None = None,
     tent_id: UUID | None = None,
 ):
-    q = select(GrowCycle).order_by(GrowCycle.created_at.desc())
+    q = select(GrowCycle).where(GrowCycle.deleted_at.is_(None)).order_by(GrowCycle.created_at.desc())
     if status:
         q = q.where(GrowCycle.status == status)
     if tent_id:
         q = q.where(GrowCycle.tent_id == tent_id)
-    result = await session.execute(q)
-    return result.scalars().all()
+    items, total = await paginate(session, q, pagination)
+    return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
 
 
 @router.get("/{grow_id}", response_model=GrowResponse)
@@ -107,11 +113,11 @@ async def update_grow(
         raise HTTPException(status_code=404, detail="Grow cycle not found")
     updates = body.model_dump(exclude_unset=True)
     if "status" in updates and updates["status"] in ("completed", "archived"):
-        grow.ended_at = datetime.now(timezone.utc)
+        grow.ended_at = datetime.now(UTC)
     # Auto-record milestone when stage changes
     if "stage" in updates:
         ms = dict(grow.milestones or {})
-        ms[updates["stage"]] = datetime.now(timezone.utc).isoformat()
+        ms[updates["stage"]] = datetime.now(UTC).isoformat()
         updates["milestones"] = ms
     # Merge milestones if client sends partial updates
     if "milestones" in updates and updates["milestones"] is not None:
@@ -144,21 +150,16 @@ async def update_grow(
 @router.delete("/{grow_id}", status_code=204)
 async def delete_grow(
     grow_id: UUID,
+    request: Request,
     user: Annotated[CurrentUser, Depends(require_role("owner"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     grow = await session.get(GrowCycle, grow_id)
-    if grow is None:
+    if grow is None or grow.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Grow cycle not found")
-    try:
-        await session.delete(grow)
-        await session.commit()
-    except Exception:
-        await session.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail="Cannot delete grow — it still has linked records. Try archiving instead.",
-        )
+    await record_audit(session, user.tenant_id, user.user_id, "delete", "grow", str(grow_id), request=request)
+    grow.deleted_at = datetime.now(UTC)
+    await session.commit()
 
 
 class HarvestCountdownItem(BaseModel):
@@ -186,7 +187,7 @@ async def harvest_countdown(
     )
     grows = result.scalars().all()
     items: list[HarvestCountdownItem] = []
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for grow in grows:
         milestones = grow.milestones or {}
         for bucket in grow.buckets:
@@ -201,7 +202,7 @@ async def harvest_countdown(
                 continue
             flowering_start = datetime.fromisoformat(flowering_start_str)
             if flowering_start.tzinfo is None:
-                flowering_start = flowering_start.replace(tzinfo=timezone.utc)
+                flowering_start = flowering_start.replace(tzinfo=UTC)
             estimated_harvest = flowering_start + timedelta(days=strain.flowering_days)
             days_remaining = (estimated_harvest - now).days
             items.append(HarvestCountdownItem(

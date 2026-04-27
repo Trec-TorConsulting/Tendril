@@ -4,13 +4,14 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, require_platform_admin, require_support_or_admin
 from app.database import async_session_factory
+from app.pagination import PaginatedResponse, PaginationParams
 from app.tenants.models import Tenant, User
 
 router = APIRouter()
@@ -51,14 +52,21 @@ class UpdateUserFlags(BaseModel):
     role: str | None = None
 
 
+class PlatformStatsResponse(BaseModel):
+    total_tenants: int
+    total_users: int
+    plans: dict[str, int]
+
+
 # ---------- Tenant endpoints (support + admin) ----------
 
-@router.get("/tenants", response_model=list[TenantSummary])
+@router.get("/tenants", response_model=PaginatedResponse[TenantSummary])
 async def list_all_tenants(
     _user: Annotated[CurrentUser, Depends(require_support_or_admin)],
     db: Annotated[AsyncSession, Depends(_get_db)],
+    pagination: Annotated[PaginationParams, Depends()],
 ):
-    """List all tenants across the platform."""
+    """List all tenants across the platform (paginated)."""
     stmt = (
         select(
             Tenant.id, Tenant.name, Tenant.slug, Tenant.plan, Tenant.created_at,
@@ -68,14 +76,19 @@ async def list_all_tenants(
         .group_by(Tenant.id)
         .order_by(Tenant.created_at.desc())
     )
+    # Manual pagination for grouped query
+    count_stmt = select(func.count()).select_from(select(Tenant.id).subquery())
+    total = (await db.execute(count_stmt)).scalar() or 0
+    stmt = stmt.offset(pagination.offset).limit(pagination.page_size)
     rows = (await db.execute(stmt)).all()
-    return [
+    items = [
         TenantSummary(
             id=r.id, name=r.name, slug=r.slug, plan=r.plan,
             user_count=r.user_count, created_at=r.created_at.isoformat(),
         )
         for r in rows
     ]
+    return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
 
 
 @router.get("/tenants/{tenant_id}/users", response_model=list[UserSummary])
@@ -105,19 +118,24 @@ async def list_tenant_users(
 
 # ---------- User management (admin only) ----------
 
-@router.get("/users", response_model=list[UserSummary])
+@router.get("/users", response_model=PaginatedResponse[UserSummary])
 async def list_all_users(
     _user: Annotated[CurrentUser, Depends(require_support_or_admin)],
     db: Annotated[AsyncSession, Depends(_get_db)],
+    pagination: Annotated[PaginationParams, Depends()],
 ):
-    """List all users across the platform."""
+    """List all users across the platform (paginated)."""
+    count_stmt = select(func.count(User.id))
+    total = (await db.execute(count_stmt)).scalar() or 0
     stmt = (
         select(User, Tenant.name.label("tenant_name"))
         .join(Tenant, Tenant.id == User.tenant_id)
         .order_by(User.created_at.desc())
+        .offset(pagination.offset)
+        .limit(pagination.page_size)
     )
     rows = (await db.execute(stmt)).all()
-    return [
+    items = [
         UserSummary(
             id=u.id, email=u.email, display_name=u.display_name,
             role=u.role, tenant_id=u.tenant_id, tenant_name=tn,
@@ -126,6 +144,7 @@ async def list_all_users(
         )
         for u, tn in rows
     ]
+    return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
 
 
 @router.patch("/users/{user_id}", response_model=UserSummary)
@@ -173,7 +192,7 @@ async def update_user_flags(
 
 # ---------- Stats (support + admin) ----------
 
-@router.get("/stats")
+@router.get("/stats", response_model=PlatformStatsResponse)
 async def platform_stats(
     _user: Annotated[CurrentUser, Depends(require_support_or_admin)],
     db: Annotated[AsyncSession, Depends(_get_db)],
@@ -191,5 +210,5 @@ async def platform_stats(
     return {
         "total_tenants": tenant_count,
         "total_users": user_count,
-        "plans": {plan: count for plan, count in plan_counts},
+        "plans": dict(plan_counts),
     }

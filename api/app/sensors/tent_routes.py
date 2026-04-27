@@ -1,17 +1,18 @@
 """Tent sensor readings API — ambient temp & humidity at the tent level."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
 from app.grows.models import TentSensorReading
+from app.pagination import PaginatedResponse, PaginationParams, paginate
 
 router = APIRouter()
 
@@ -46,18 +47,18 @@ async def create_tent_reading(
     return reading
 
 
-@router.get("", response_model=list[TentReadingResponse])
+@router.get("")
 async def list_tent_readings(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    pagination: Annotated[PaginationParams, Depends()],
     tent_id: UUID | None = None,
-    limit: int = Query(default=50, le=500),
 ):
-    q = select(TentSensorReading).order_by(desc(TentSensorReading.recorded_at)).limit(limit)
+    q = select(TentSensorReading).order_by(desc(TentSensorReading.recorded_at))
     if tent_id:
         q = q.where(TentSensorReading.tent_id == tent_id)
-    result = await session.execute(q)
-    return result.scalars().all()
+    items, total = await paginate(session, q, pagination)
+    return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
 
 
 @router.get("/latest/{tent_id}", response_model=TentReadingResponse | None)
@@ -83,7 +84,7 @@ async def get_tent_trends(
     hours: int = Query(default=24, le=168),
 ):
     """Get ambient temp & humidity trends for a tent over the specified hours."""
-    cutoff = datetime.utcnow() - timedelta(hours=hours)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
     result = await session.execute(
         select(TentSensorReading)
         .where(TentSensorReading.tent_id == tent_id)
@@ -112,3 +113,30 @@ async def get_tent_trends(
         "ambient_temp_f": stats(temps),
         "ambient_humidity": stats(humids),
     }
+
+
+@router.get("/{reading_id}", response_model=TentReadingResponse)
+async def get_tent_reading(
+    reading_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Get a single tent sensor reading by ID."""
+    reading = await session.get(TentSensorReading, reading_id)
+    if reading is None:
+        raise HTTPException(status_code=404, detail="Tent reading not found")
+    return reading
+
+
+@router.delete("/{reading_id}", status_code=204)
+async def delete_tent_reading(
+    reading_id: UUID,
+    user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Delete a tent sensor reading."""
+    reading = await session.get(TentSensorReading, reading_id)
+    if reading is None:
+        raise HTTPException(status_code=404, detail="Tent reading not found")
+    await session.delete(reading)
+    await session.commit()

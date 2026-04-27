@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
 from app.commercial.models import Task
+from app.pagination import PaginatedResponse, PaginationParams, paginate
 
 router = APIRouter()
 
@@ -114,6 +115,7 @@ async def create_task(
 async def list_tasks(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    pagination: Annotated[PaginationParams, Depends()],
     status: str | None = Query(None),
     category: str | None = Query(None),
     grow_cycle_id: str | None = Query(None),
@@ -135,9 +137,11 @@ async def list_tasks(
     if due_to:
         query = query.where(Task.due_date <= datetime.fromisoformat(due_to))
     query = query.order_by(Task.due_date.asc().nullslast(), Task.created_at.desc())
-
-    result = await session.execute(query)
-    return [_to_response(t) for t in result.scalars().all()]
+    items, total = await paginate(session, query, pagination)
+    return PaginatedResponse(
+        items=[_to_response(t) for t in items],
+        total=total, page=pagination.page, page_size=pagination.page_size,
+    )
 
 
 @router.get("/calendar")

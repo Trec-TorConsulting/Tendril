@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
 from app.grows.models import GrowCycle, SoilTest, SoilAmendment
+from app.pagination import PaginatedResponse, PaginationParams, paginate
 
 router = APIRouter()
 
@@ -52,6 +53,16 @@ class SoilTestResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class SoilTestUpdate(BaseModel):
+    ph: float | None = None
+    nitrogen_ppm: float | None = None
+    phosphorus_ppm: float | None = None
+    potassium_ppm: float | None = None
+    organic_matter_pct: float | None = None
+    cec: float | None = None
+    notes: str | None = None
+
+
 class AmendmentCreate(BaseModel):
     applied_at: datetime | None = None
     amendment_type: str
@@ -76,6 +87,13 @@ class AmendmentResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class AmendmentUpdate(BaseModel):
+    quantity: str | None = None
+    area_applied: str | None = None
+    cost: float | None = None
+    notes: str | None = None
+
+
 # ---------- Soil Test Endpoints ----------
 
 @router.post("/{grow_id}/soil-tests", response_model=SoilTestResponse, status_code=201)
@@ -98,19 +116,54 @@ async def create_soil_test(
     return test
 
 
-@router.get("/{grow_id}/soil-tests", response_model=list[SoilTestResponse])
+@router.get("/{grow_id}/soil-tests")
 async def list_soil_tests(
     grow_id: UUID,
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    pagination: Annotated[PaginationParams, Depends()],
 ):
     """List all soil tests for a grow, newest first."""
-    result = await session.execute(
+    q = (
         select(SoilTest)
         .where(SoilTest.grow_cycle_id == grow_id)
         .order_by(desc(SoilTest.tested_at))
     )
-    return result.scalars().all()
+    items, total = await paginate(session, q, pagination)
+    return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
+
+
+@router.get("/{grow_id}/soil-tests/{test_id}", response_model=SoilTestResponse)
+async def get_soil_test(
+    grow_id: UUID,
+    test_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Get a single soil test by ID."""
+    test = await session.get(SoilTest, test_id)
+    if test is None or test.grow_cycle_id != grow_id:
+        raise HTTPException(status_code=404, detail="Soil test not found")
+    return test
+
+
+@router.patch("/{grow_id}/soil-tests/{test_id}", response_model=SoilTestResponse)
+async def update_soil_test(
+    grow_id: UUID,
+    test_id: UUID,
+    body: SoilTestUpdate,
+    user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Update a soil test."""
+    test = await session.get(SoilTest, test_id)
+    if test is None or test.grow_cycle_id != grow_id:
+        raise HTTPException(status_code=404, detail="Soil test not found")
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(test, field, value)
+    await session.commit()
+    await session.refresh(test)
+    return test
 
 
 @router.get("/{grow_id}/soil-tests/latest", response_model=SoilTestResponse)
@@ -168,19 +221,54 @@ async def create_amendment(
     return amendment
 
 
-@router.get("/{grow_id}/amendments", response_model=list[AmendmentResponse])
+@router.get("/{grow_id}/amendments")
 async def list_amendments(
     grow_id: UUID,
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    pagination: Annotated[PaginationParams, Depends()],
 ):
     """List all soil amendments for a grow, newest first."""
-    result = await session.execute(
+    q = (
         select(SoilAmendment)
         .where(SoilAmendment.grow_cycle_id == grow_id)
         .order_by(desc(SoilAmendment.applied_at))
     )
-    return result.scalars().all()
+    items, total = await paginate(session, q, pagination)
+    return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
+
+
+@router.get("/{grow_id}/amendments/{amendment_id}", response_model=AmendmentResponse)
+async def get_amendment(
+    grow_id: UUID,
+    amendment_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Get a single amendment by ID."""
+    amendment = await session.get(SoilAmendment, amendment_id)
+    if amendment is None or amendment.grow_cycle_id != grow_id:
+        raise HTTPException(status_code=404, detail="Amendment not found")
+    return amendment
+
+
+@router.patch("/{grow_id}/amendments/{amendment_id}", response_model=AmendmentResponse)
+async def update_amendment(
+    grow_id: UUID,
+    amendment_id: UUID,
+    body: AmendmentUpdate,
+    user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Update a soil amendment."""
+    amendment = await session.get(SoilAmendment, amendment_id)
+    if amendment is None or amendment.grow_cycle_id != grow_id:
+        raise HTTPException(status_code=404, detail="Amendment not found")
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(amendment, field, value)
+    await session.commit()
+    await session.refresh(amendment)
+    return amendment
 
 
 @router.delete("/{grow_id}/amendments/{amendment_id}", status_code=204)

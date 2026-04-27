@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
 from app.grows.models import GrowCycle, PestScoutEntry
+from app.pagination import PaginatedResponse, PaginationParams, paginate
 
 router = APIRouter()
 
@@ -28,6 +29,13 @@ class PestScoutCreate(BaseModel):
     photo_url: str | None = None
     treatment_applied: str | None = None
     treatment_type: str | None = None  # organic | synthetic | biological | physical | none
+    notes: str | None = None
+
+
+class PestScoutUpdate(BaseModel):
+    severity: str | None = None
+    treatment_applied: str | None = None
+    treatment_type: str | None = None
     notes: str | None = None
 
 
@@ -69,11 +77,12 @@ async def create_pest_scout(
     return entry
 
 
-@router.get("/{grow_id}/pest-scouts", response_model=list[PestScoutResponse])
+@router.get("/{grow_id}/pest-scouts")
 async def list_pest_scouts(
     grow_id: UUID,
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    pagination: Annotated[PaginationParams, Depends()],
     pest_type: str | None = Query(default=None),
     severity: str | None = Query(default=None),
 ):
@@ -84,9 +93,41 @@ async def list_pest_scouts(
     if severity:
         q = q.where(PestScoutEntry.severity == severity)
     q = q.order_by(desc(PestScoutEntry.scouted_at))
+    items, total = await paginate(session, q, pagination)
+    return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
 
-    result = await session.execute(q)
-    return result.scalars().all()
+
+@router.get("/{grow_id}/pest-scouts/{entry_id}", response_model=PestScoutResponse)
+async def get_pest_scout(
+    grow_id: UUID,
+    entry_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Get a single pest scout entry by ID."""
+    entry = await session.get(PestScoutEntry, entry_id)
+    if entry is None or entry.grow_cycle_id != grow_id:
+        raise HTTPException(status_code=404, detail="Pest scout entry not found")
+    return entry
+
+
+@router.patch("/{grow_id}/pest-scouts/{entry_id}", response_model=PestScoutResponse)
+async def update_pest_scout(
+    grow_id: UUID,
+    entry_id: UUID,
+    body: PestScoutUpdate,
+    user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Update a pest scout entry."""
+    entry = await session.get(PestScoutEntry, entry_id)
+    if entry is None or entry.grow_cycle_id != grow_id:
+        raise HTTPException(status_code=404, detail="Pest scout entry not found")
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(entry, field, value)
+    await session.commit()
+    await session.refresh(entry)
+    return entry
 
 
 @router.delete("/{grow_id}/pest-scouts/{entry_id}", status_code=204)

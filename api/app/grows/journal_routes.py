@@ -5,13 +5,14 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
 from app.grows.models import JournalEntry
+from app.pagination import PaginatedResponse, PaginationParams, paginate
 
 router = APIRouter()
 
@@ -71,17 +72,31 @@ async def create_entry(
     return entry
 
 
-@router.get("", response_model=list[JournalResponse])
+@router.get("")
 async def list_entries(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    pagination: Annotated[PaginationParams, Depends()],
     bucket_id: UUID | None = None,
 ):
     q = select(JournalEntry).order_by(desc(JournalEntry.created_at))
     if bucket_id:
         q = q.where(JournalEntry.bucket_id == bucket_id)
-    result = await session.execute(q)
-    return result.scalars().all()
+    items, total = await paginate(session, q, pagination)
+    return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
+
+
+@router.get("/{entry_id}", response_model=JournalResponse)
+async def get_entry(
+    entry_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Get a single journal entry by ID."""
+    entry = await session.get(JournalEntry, entry_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Journal entry not found")
+    return entry
 
 
 @router.patch("/{entry_id}", response_model=JournalResponse)

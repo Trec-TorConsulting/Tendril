@@ -1,9 +1,38 @@
 """Companion planting database — compatibility checks and suggestions."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Query
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
+
+from app.auth.middleware import CurrentUser, get_current_user
 
 router = APIRouter()
+
+
+class CompanionEntry(BaseModel):
+    plant: str
+    beneficial: list[str]
+    harmful: list[str]
+    notes: str
+
+
+class CompatibilityResponse(BaseModel):
+    plant: str
+    neighbor: str
+    compatibility: str
+    reason: str
+
+
+class CompanionSuggestion(BaseModel):
+    plant: str
+    notes: str
+
+
+class SuggestResponse(BaseModel):
+    plant: str
+    suggestions: list[CompanionSuggestion]
 
 # Built-in companion planting database for cannabis
 # Format: {plant: {beneficial: [...], harmful: [...], notes: str}}
@@ -96,8 +125,10 @@ COMPANION_DB: dict[str, dict] = {
 }
 
 
-@router.get("")
-async def list_companions():
+@router.get("", response_model=list[CompanionEntry])
+async def list_companions(
+    _user: Annotated[CurrentUser, Depends(get_current_user)],
+):
     """Get the full companion planting database."""
     return [
         {"plant": plant, **data}
@@ -105,8 +136,9 @@ async def list_companions():
     ]
 
 
-@router.get("/check")
+@router.get("/check", response_model=CompatibilityResponse)
 async def check_compatibility(
+    _user: Annotated[CurrentUser, Depends(get_current_user)],
     plant: str = Query(description="Primary plant"),
     neighbor: str = Query(description="Neighboring plant to check"),
 ):
@@ -126,8 +158,9 @@ async def check_compatibility(
     return {"plant": plant, "neighbor": neighbor, "compatibility": "neutral", "reason": "No known positive or negative interaction"}
 
 
-@router.get("/suggest")
+@router.get("/suggest", response_model=SuggestResponse)
 async def suggest_companions(
+    _user: Annotated[CurrentUser, Depends(get_current_user)],
     plant: str = Query(description="Plant to get suggestions for"),
 ):
     """Suggest beneficial companion plants."""

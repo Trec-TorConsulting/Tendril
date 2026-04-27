@@ -96,29 +96,9 @@ def _verify_password(password: str, hashed: str) -> bool:
 
 
 def _validate_password_strength(password: str) -> None:
-    """Enforce enterprise-grade password policy.
+    from app.auth.password import validate_password_strength
 
-    Requirements: min 12 chars, uppercase, lowercase, digit, special character.
-    Raises HTTPException on failure.
-    """
-    import re
-
-    errors: list[str] = []
-    if len(password) < 12:
-        errors.append("at least 12 characters")
-    if not re.search(r"[A-Z]", password):
-        errors.append("an uppercase letter")
-    if not re.search(r"[a-z]", password):
-        errors.append("a lowercase letter")
-    if not re.search(r"\d", password):
-        errors.append("a digit")
-    if not re.search(r"[!@#$%^&*(),.?\":{}|<>\-_=+\[\]\\;'/`~]", password):
-        errors.append("a special character")
-    if errors:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Password must contain {', '.join(errors)}",
-        )
+    validate_password_strength(password)
 
 
 def _make_slug(name: str) -> str:
@@ -470,3 +450,24 @@ async def reset_password(body: ResetPasswordRequest, db: Annotated[AsyncSession,
     user.password_hash = _hash_password(body.new_password)
     await db.commit()
     return {"message": "Password reset successfully"}
+
+
+# ---------- Signed Media URLs ----------
+
+
+class SignUrlRequest(BaseModel):
+    url: str
+
+
+class SignUrlResponse(BaseModel):
+    signed_url: str
+
+
+@router.post("/sign-url", response_model=SignUrlResponse)
+async def create_signed_url(
+    body: SignUrlRequest,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+):
+    """Generate a short-lived HMAC-signed URL for media endpoints (camera, QR, photos)."""
+    from app.auth.signed_url import sign_url
+    return SignUrlResponse(signed_url=sign_url(body.url, str(user.tenant_id)))

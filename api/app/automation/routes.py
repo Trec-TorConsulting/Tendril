@@ -5,13 +5,14 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select, desc
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
-from app.automation.models import AutomationRule, AlertHistory, EnvironmentSchedule
+from app.automation.models import AlertHistory, AutomationRule, EnvironmentSchedule
+from app.pagination import PaginatedResponse, PaginationParams, paginate
 
 router = APIRouter()
 
@@ -72,17 +73,31 @@ async def create_rule(
     return rule
 
 
-@router.get("/rules", response_model=list[RuleResponse])
+@router.get("/rules", response_model=PaginatedResponse[RuleResponse])
 async def list_rules(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    pagination: Annotated[PaginationParams, Depends()],
     grow_cycle_id: str | None = None,
 ):
     q = select(AutomationRule)
     if grow_cycle_id:
         q = q.where(AutomationRule.grow_cycle_id == UUID(grow_cycle_id))
-    result = await session.execute(q)
-    return result.scalars().all()
+    items, total = await paginate(session, q, pagination)
+    return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
+
+
+@router.get("/rules/{rule_id}", response_model=RuleResponse)
+async def get_rule(
+    rule_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Get a single automation rule by ID."""
+    rule = await session.get(AutomationRule, rule_id)
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    return rule
 
 
 @router.patch("/rules/{rule_id}", response_model=RuleResponse)
@@ -130,21 +145,34 @@ class AlertResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-@router.get("/alerts", response_model=list[AlertResponse])
+@router.get("/alerts", response_model=PaginatedResponse[AlertResponse])
 async def list_alerts(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
-    limit: int = Query(default=50, le=200),
+    pagination: Annotated[PaginationParams, Depends()],
     acknowledged: bool | None = None,
 ):
-    q = select(AlertHistory).order_by(desc(AlertHistory.created_at)).limit(limit)
+    q = select(AlertHistory).order_by(desc(AlertHistory.created_at))
     if acknowledged is not None:
         q = q.where(AlertHistory.acknowledged == acknowledged)
-    result = await session.execute(q)
-    return result.scalars().all()
+    items, total = await paginate(session, q, pagination)
+    return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
 
 
-@router.patch("/alerts/{alert_id}/acknowledge")
+@router.get("/alerts/{alert_id}", response_model=AlertResponse)
+async def get_alert(
+    alert_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Get a single alert by ID."""
+    alert = await session.get(AlertHistory, alert_id)
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+    return alert
+
+
+@router.patch("/alerts/{alert_id}/acknowledge", response_model=dict)
 async def acknowledge_alert(
     alert_id: UUID,
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
@@ -209,17 +237,31 @@ async def create_schedule(
     return schedule
 
 
-@router.get("/schedules", response_model=list[ScheduleResponse])
+@router.get("/schedules", response_model=PaginatedResponse[ScheduleResponse])
 async def list_schedules(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    pagination: Annotated[PaginationParams, Depends()],
     tent_id: str | None = None,
 ):
     q = select(EnvironmentSchedule)
     if tent_id:
         q = q.where(EnvironmentSchedule.tent_id == UUID(tent_id))
-    result = await session.execute(q)
-    return result.scalars().all()
+    items, total = await paginate(session, q, pagination)
+    return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
+
+
+@router.get("/schedules/{schedule_id}", response_model=ScheduleResponse)
+async def get_schedule(
+    schedule_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Get a single environment schedule by ID."""
+    schedule = await session.get(EnvironmentSchedule, schedule_id)
+    if not schedule:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    return schedule
 
 
 @router.patch("/schedules/{schedule_id}", response_model=ScheduleResponse)

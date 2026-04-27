@@ -1,22 +1,49 @@
 """Weather API — current conditions, forecast, history, alerts for outdoor/greenhouse tents."""
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, desc
+from pydantic import BaseModel
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session
 from app.grows.models import Tent, WeatherReading
-from app.weather.client import fetch_weather, evaluate_weather_alerts
+from app.weather.client import evaluate_weather_alerts, fetch_weather
 
 router = APIRouter()
 
 
-@router.get("/{tent_id}/current")
+class WeatherAlert(BaseModel):
+    type: str
+    message: str
+    severity: str | None = None
+
+
+class CurrentWeatherResponse(BaseModel):
+    tent_id: str
+    current: dict
+    alerts: list[WeatherAlert]
+
+
+class ForecastResponse(BaseModel):
+    tent_id: str
+    forecast: list[dict]
+
+
+class WeatherHistoryReading(BaseModel):
+    temperature_c: float | None
+    humidity_pct: float | None
+    precipitation_mm: float | None
+    wind_speed_kmh: float | None
+    uv_index: float | None
+    weather_code: int | None
+    recorded_at: str | None
+
+
+@router.get("/{tent_id}/current", response_model=CurrentWeatherResponse)
 async def get_current_weather(
     tent_id: UUID,
     user: Annotated[CurrentUser, Depends(get_current_user)],
@@ -41,7 +68,7 @@ async def get_current_weather(
     }
 
 
-@router.get("/{tent_id}/forecast")
+@router.get("/{tent_id}/forecast", response_model=ForecastResponse)
 async def get_forecast(
     tent_id: UUID,
     user: Annotated[CurrentUser, Depends(get_current_user)],
@@ -63,7 +90,7 @@ async def get_forecast(
     }
 
 
-@router.get("/{tent_id}/history")
+@router.get("/{tent_id}/history", response_model=list[WeatherHistoryReading])
 async def get_weather_history(
     tent_id: UUID,
     user: Annotated[CurrentUser, Depends(get_current_user)],

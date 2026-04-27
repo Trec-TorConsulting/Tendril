@@ -3,22 +3,23 @@ from __future__ import annotations
 
 import io
 import secrets
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
 import bcrypt
 import qrcode
 import qrcode.constants
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
-from sqlalchemy import select, text, update
+from pydantic import BaseModel
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.audit import record_audit
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
-from app.auth.jwt import decode_token
 from app.database import async_session_factory
+from app.pagination import PaginatedResponse, PaginationParams, paginate
 from app.tenants.models import Device
 
 router = APIRouter()
@@ -123,14 +124,16 @@ async def pair_device(
     return device
 
 
-@router.get("", response_model=list[DeviceResponse])
+@router.get("")
 async def list_devices(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    pagination: Annotated[PaginationParams, Depends()],
 ):
     """List all devices for the current tenant (RLS-enforced)."""
-    result = await session.execute(select(Device).order_by(Device.created_at.desc()))
-    return result.scalars().all()
+    q = select(Device).where(Device.deleted_at.is_(None)).order_by(Device.created_at.desc())
+    items, total = await paginate(session, q, pagination)
+    return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
 
 
 @router.get("/{device_id}", response_model=DeviceResponse)
@@ -191,32 +194,31 @@ async def revoke_device(
 @router.delete("/{device_id}", status_code=204)
 async def delete_device(
     device_id: str,
+    request: Request,
     user: Annotated[CurrentUser, Depends(require_role("owner"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Delete a device permanently."""
     result = await session.execute(select(Device).where(Device.device_id == device_id))
     device = result.scalar_one_or_none()
-    if device is None:
+    if device is None or device.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Device not found")
-    await session.delete(device)
+    await record_audit(session, user.tenant_id, user.user_id, "delete", "device", device_id, request=request)
+    device.deleted_at = datetime.now(UTC)
     await session.commit()
 
 
 @router.get("/{device_id}/qr", response_class=StreamingResponse)
 async def get_device_qr(
     device_id: str,
-    token: str = Query(..., description="JWT access token"),
+    request: Request,
+    sig: str = Query(..., description="HMAC signature"),
+    exp: str = Query(..., description="Expiry timestamp"),
+    tid: str = Query(..., description="Tenant ID"),
 ):
     """Generate a QR code PNG containing the device_id for pairing."""
-    from jose import JWTError
-    try:
-        payload = decode_token(token)
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-    if payload.get("type") != "access":
-        raise HTTPException(status_code=401, detail="Invalid token type")
-    tenant_id = payload["tid"]
+    from app.auth.signed_url import verify_signed_url
+    tenant_id = verify_signed_url(request.url.path, sig, exp, tid)
 
     async with async_session_factory() as session:
         await session.execute(text(f"SET app.current_tenant = '{tenant_id}'"))

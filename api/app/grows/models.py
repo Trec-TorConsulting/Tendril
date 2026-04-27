@@ -37,6 +37,7 @@ class Tent(Base):
     equipment: Mapped[list | None] = mapped_column(JSON, default=list)  # list of equipment objects
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
 
     grow_cycles: Mapped[list[GrowCycle]] = relationship(back_populates="tent", cascade="all, delete-orphan")
     ambient_readings: Mapped[list["TentSensorReading"]] = relationship(back_populates="tent", cascade="all, delete-orphan")
@@ -64,6 +65,7 @@ class GrowCycle(Base):
     cached_feeding_advice: Mapped[dict | None] = mapped_column(JSON)
     feeding_advice_cached_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
 
     tent: Mapped[Tent] = relationship(back_populates="grow_cycles")
     buckets: Mapped[list[Bucket]] = relationship(back_populates="grow_cycle", cascade="all, delete-orphan")

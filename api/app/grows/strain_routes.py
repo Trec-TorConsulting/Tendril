@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
 from app.grows.models import Strain, Yield, Bucket, GrowCycle
+from app.pagination import PaginatedResponse, PaginationParams, paginate
 
 router = APIRouter()
 
@@ -80,13 +81,18 @@ async def create_strain(
     return strain
 
 
-@router.get("", response_model=list[StrainResponse])
+@router.get("")
 async def list_strains(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    pagination: Annotated[PaginationParams, Depends()],
 ):
-    result = await session.execute(select(Strain).order_by(Strain.name))
-    return [StrainResponse.from_strain(s) for s in result.scalars().all()]
+    q = select(Strain).order_by(Strain.name)
+    items, total = await paginate(session, q, pagination)
+    return PaginatedResponse(
+        items=[StrainResponse.from_strain(s) for s in items],
+        total=total, page=pagination.page, page_size=pagination.page_size,
+    )
 
 
 @router.get("/leaderboard")
