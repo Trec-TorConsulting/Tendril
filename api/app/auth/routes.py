@@ -91,6 +91,32 @@ def _verify_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode(), hashed.encode())
 
 
+def _validate_password_strength(password: str) -> None:
+    """Enforce enterprise-grade password policy.
+
+    Requirements: min 12 chars, uppercase, lowercase, digit, special character.
+    Raises HTTPException on failure.
+    """
+    import re
+
+    errors: list[str] = []
+    if len(password) < 12:
+        errors.append("at least 12 characters")
+    if not re.search(r"[A-Z]", password):
+        errors.append("an uppercase letter")
+    if not re.search(r"[a-z]", password):
+        errors.append("a lowercase letter")
+    if not re.search(r"\d", password):
+        errors.append("a digit")
+    if not re.search(r"[!@#$%^&*(),.?\":{}|<>\-_=+\[\]\\;'/`~]", password):
+        errors.append("a special character")
+    if errors:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Password must contain {', '.join(errors)}",
+        )
+
+
 def _make_slug(name: str) -> str:
     import re
     slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
@@ -101,6 +127,7 @@ def _make_slug(name: str) -> str:
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 async def register(body: RegisterRequest, db: Annotated[AsyncSession, Depends(get_db)]):
+    _validate_password_strength(body.password)
     # Check existing email
     existing = await db.execute(select(User).where(User.email == body.email))
     if existing.scalar_one_or_none():
@@ -263,8 +290,7 @@ async def change_password(
     if not db_user.password_hash or not _verify_password(body.current_password, db_user.password_hash):
         raise HTTPException(status_code=401, detail="Current password is incorrect")
 
-    if len(body.new_password) < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    _validate_password_strength(body.new_password)
 
     db_user.password_hash = _hash_password(body.new_password)
     await db.commit()
@@ -358,6 +384,7 @@ async def reset_password(body: ResetPasswordRequest, db: Annotated[AsyncSession,
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
+    _validate_password_strength(body.new_password)
     user.password_hash = _hash_password(body.new_password)
     await db.commit()
     return {"message": "Password reset successfully"}

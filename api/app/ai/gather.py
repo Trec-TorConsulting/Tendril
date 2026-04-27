@@ -9,6 +9,8 @@ import httpx
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.utils.url_validation import validate_url_safe
+
 from app.grows.models import (
     Bucket,
     BucketSensorReading,
@@ -345,6 +347,7 @@ async def gather_grow_data(
     camera_image = None
     if include_camera and tent and tent.camera_url:
         try:
+            validate_url_safe(tent.camera_url, allow_private=True)
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.get(tent.camera_url)
                 resp.raise_for_status()

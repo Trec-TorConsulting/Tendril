@@ -13,7 +13,7 @@
 - [ ] 2.5 Add HA action selector to automation rule actions (e.g., "Turn on HA switch")
 
 ## 3. Validation
-- [ ] 3.1 Test with real HA instance at 192.168.4.20
+- [ ] 3.1 Test with real HA instance
 - [ ] 3.2 Verify sensor data flows from HA → Tendril → AI context
 - [ ] 3.3 Verify automation can trigger HA services
 - [ ] 3.4 Test entity discovery with various HA device types

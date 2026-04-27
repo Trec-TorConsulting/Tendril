@@ -97,18 +97,18 @@ class Settings:
         default_factory=lambda: os.environ.get("VAPID_PRIVATE_KEY", "")
     )
     vapid_email: str = field(
-        default_factory=lambda: os.environ.get("VAPID_EMAIL", "mailto:admin@tendril.maddscientist.com")
+        default_factory=lambda: os.environ.get("VAPID_EMAIL", "mailto:admin@tendril.example.com")
     )
 
     # App
     app_name: str = "Tendril"
     domain: str = field(
-        default_factory=lambda: os.environ.get("DOMAIN", "tendril.maddscientist.com")
+        default_factory=lambda: os.environ.get("DOMAIN", "tendril.example.com")
     )
     api_prefix: str = "/v1"
     cors_origins: list[str] = field(
         default_factory=lambda: os.environ.get(
-            "CORS_ORIGINS", "https://tendril.maddscientist.com"
+            "CORS_ORIGINS", "https://tendril.example.com"
         ).split(",")
     )
     log_level: str = field(

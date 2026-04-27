@@ -4,7 +4,7 @@
 The grow-assistant is a single-tenant, LAN-only tool built for personal use. Growing demand from other growers creates an opportunity to turn it into a multi-tenant SaaS product. Customers purchase a sensor kit (pH, EC/TDS, water temp, air temp+humidity, water level, 2x WiFi IP cameras) and the platform manages their grow data, AI insights, and device connectivity securely.
 
 ## What Changes
-- **NEW**: Greenfield project at `HomeLab-Redo/tendril/` using grow-assistant as the feature template
+- **NEW**: Greenfield project using grow-assistant as the feature template
 - **NEW**: FastAPI backend with multi-tenant data isolation (tenant_id + PostgreSQL RLS)
 - **NEW**: React/Next.js PWA frontend replacing vanilla JS SPA (installable, offline-capable, push notifications)
 - **NEW**: OWASP Top 10 compliance across all API and frontend code

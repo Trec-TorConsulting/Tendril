@@ -1,7 +1,7 @@
 # Change: Add Home Assistant Bridge
 
 ## Why
-Home Assistant (HA) is the most popular home automation platform with 2000+ device integrations. The user has HA running at 192.168.4.20. By bridging Tendril to HA, we instantly unlock data from AC Infinity controllers, TrolMaster, Tuya smart plugs, Govee, SwitchBot, and every Zigbee/Z-Wave/WiFi device HA already supports. Bi-directional: Tendril reads sensor states AND can trigger HA services (turn on fan, trigger outlet).
+Home Assistant (HA) is the most popular home automation platform with 2000+ device integrations. By bridging Tendril to HA, we instantly unlock data from AC Infinity controllers, TrolMaster, Tuya smart plugs, Govee, SwitchBot, and every Zigbee/Z-Wave/WiFi device HA already supports. Bi-directional: Tendril reads sensor states AND can trigger HA services (turn on fan, trigger outlet).
 
 ## What Changes
 - New HA connector in `tendril/api/app/integrations/connectors/home_assistant.py`
@@ -16,7 +16,7 @@ Home Assistant (HA) is the most popular home automation platform with 2000+ devi
 - No breaking changes
 
 ## Integration Details
-- **API Base**: `http://192.168.4.20:8123/api/` (local network)
+- **API Base**: `http://<HA_HOST>:8123/api/` (local network)
 - **Auth**: Long-lived access token (Bearer header)
 - **Read**: `GET /api/states` (all entities), `GET /api/states/{entity_id}` (single)
 - **Write**: `POST /api/services/{domain}/{service}` (trigger actions)

@@ -50,7 +50,11 @@ coverage/
 # ─── Secrets / Local Config ───────────────────────────
 *.pem
 *.key
+*.p12
+*.pfx
 secrets.yaml
 .env.local
 .env.production
 .env.staging
+*.secret
+*.credentials

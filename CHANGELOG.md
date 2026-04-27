@@ -19,7 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [0.1.0] — 2025
 
-Initial extraction from HomeLab-Redo mono-repo as a standalone project.
+Initial extraction as a standalone open-source project.
 
 ### Added
 

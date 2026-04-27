@@ -72,14 +72,14 @@ JWT settings (not configurable via env, set in code):
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `VAPID_PRIVATE_KEY` | No | `""` | VAPID private key for web push. Generate with `npx web-push generate-vapid-keys`. |
-| `VAPID_EMAIL` | No | `mailto:admin@tendril.maddscientist.com` | Contact email included in VAPID headers. |
+| `VAPID_EMAIL` | No | `mailto:admin@tendril.example.com` | Contact email included in VAPID headers. |
 
 ### Application
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `DOMAIN` | No | `tendril.maddscientist.com` | Application domain for generated URLs. |
-| `CORS_ORIGINS` | No | `https://tendril.maddscientist.com` | Comma-separated list of allowed CORS origins. |
+| `DOMAIN` | No | `tendril.example.com` | Application domain for generated URLs. |
+| `CORS_ORIGINS` | No | `https://tendril.example.com` | Comma-separated list of allowed CORS origins. |
 | `LOG_LEVEL` | No | `INFO` | Logging level: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. |
 
 ### Web Frontend
@@ -88,7 +88,7 @@ The Next.js app uses build-time environment variables:
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `NEXT_PUBLIC_API_URL` | Yes | `https://api.tendril.maddscientist.com/v1` | API base URL. Set at build time via Docker `--build-arg`. |
+| `NEXT_PUBLIC_API_URL` | Yes | `https://api.tendril.example.com/v1` | API base URL. Set at build time via Docker `--build-arg`. |
 
 ## ESP32 Configuration
 

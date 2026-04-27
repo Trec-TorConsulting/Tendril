@@ -125,7 +125,7 @@
 - [x] 5.12 Implement Web Push notifications for PWA (sensor alerts, health check results)
 - [x] 5.13 Write E2E tests with Playwright (signup → pair device → create grow → view data → AI chat)
 - [x] 5.14 Set up HorizontalPodAutoscaler for api + web pods
-- [x] 5.15 Production deployment + DNS setup (tendril.maddscientist.com)
+- [x] 5.15 Production deployment + DNS setup
 
 ## Phase 6: Commercial Tier Features
 - [x] 6.1 Implement custom grow types API (create, edit, delete, based on seed profile template, Pro/Commercial only)

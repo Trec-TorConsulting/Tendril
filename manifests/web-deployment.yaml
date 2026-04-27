@@ -26,12 +26,20 @@ spec:
                 - node05
       containers:
       - name: web
-        image: 192.168.4.10:30500/tendril-web:latest
+        image: your-registry:5000/tendril-web:latest  # Replace with your registry
         ports:
         - containerPort: 3000
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
         env:
         - name: NEXT_PUBLIC_API_URL
-          value: "https://api.tendril.maddscientist.com/v1"
+          value: "https://api.tendril.example.com/v1"  # Replace with your domain
         resources:
           requests:
             cpu: 50m
@@ -39,9 +47,19 @@ spec:
           limits:
             cpu: 250m
             memory: 256Mi
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: next-cache
+          mountPath: /app/.next/cache
         readinessProbe:
           httpGet:
             path: /
             port: 3000
           initialDelaySeconds: 5
           periodSeconds: 10
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: next-cache
+        emptyDir: {}

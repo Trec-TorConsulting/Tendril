@@ -1,0 +1,8 @@
+[allowlist]
+  description = "Allowlist for test fixtures and documentation examples"
+  paths = [
+    '''api/tests/''',
+    '''web/e2e/''',
+    '''web/src/__tests__/''',
+    '''docs/''',
+  ]

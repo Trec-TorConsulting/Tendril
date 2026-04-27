@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
 from app.auth.jwt import decode_token
+from app.utils.url_validation import validate_url_safe
 from app.database import async_session_factory
 from app.grows.models import Tent
 
@@ -149,6 +150,7 @@ async def camera_snapshot(
         raise HTTPException(status_code=404, detail="Tent not found")
     if not tent.camera_url:
         raise HTTPException(status_code=404, detail="No camera configured for this tent")
+    validate_url_safe(tent.camera_url, allow_private=True)  # cameras are on local network
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             resp = await client.get(tent.camera_url)

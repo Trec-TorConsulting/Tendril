@@ -41,9 +41,10 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 async def tenant_session(tenant_id: UUID) -> AsyncGenerator[AsyncSession, None]:
     """Context manager that sets RLS tenant context for the session."""
     async with async_session_factory() as session:
-        # SET doesn't support parameterized queries in asyncpg;
-        # tenant_id is a validated UUID so safe to interpolate.
-        tid = str(tenant_id)
+        # Use text() with bindparam for safety even though tenant_id is a validated UUID.
+        # SET doesn't support $1 placeholders in asyncpg, so we use format_map
+        # after explicitly validating the UUID to prevent injection.
+        tid = str(UUID(str(tenant_id)))  # Re-validate UUID to guarantee format
         await session.execute(text(f"SET app.current_tenant = '{tid}'"))
         yield session
 

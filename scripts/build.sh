@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REGISTRY="192.168.4.10:30500"
+REGISTRY="${TENDRIL_REGISTRY:-your-registry:5000}"
 API_IMAGE="${REGISTRY}/tendril-api:latest"
 WEB_IMAGE="${REGISTRY}/tendril-web:latest"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

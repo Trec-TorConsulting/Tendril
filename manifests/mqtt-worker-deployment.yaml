@@ -26,7 +26,7 @@ spec:
                 - node05
       containers:
       - name: mqtt-worker
-        image: 192.168.4.10:30500/tendril-api:latest
+        image: your-registry:5000/tendril-api:latest  # Replace with your registry
         command: ["python", "-m", "app.mqtt.worker"]
         ports:
         - containerPort: 8081

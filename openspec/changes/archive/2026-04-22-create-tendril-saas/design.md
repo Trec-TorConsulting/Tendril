@@ -585,7 +585,7 @@ Every component SHALL be built to mitigate the OWASP Top 10 (2021):
 - Future: Optional data export tool from grow-assistant → Tendril tenant import
 
 ## Open Questions
-- ~~Domain name: tendril.app? tendril.io? tendril.grow?~~ **Resolved**: `tendril.maddscientist.com` for v1; architecture is domain-agnostic (configurable via env var)
+- ~~Domain name: tendril.app? tendril.io? tendril.grow?~~ **Resolved**: domain is configurable via env var (`DOMAIN`)
 - ~~Pricing tiers and limits for free tier~~ **Resolved**: See tier gating matrix above
 - ESP32 firmware: build in-house or partner with existing sensor manufacturers?
 - Camera relay service timing (v2 or v3?)
