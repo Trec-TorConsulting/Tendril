@@ -1,6 +1,6 @@
 FROM node:20-slim AS builder
 WORKDIR /app
-ARG NEXT_PUBLIC_API_URL=https://api.tendril.maddscientist.com/v1
+ARG NEXT_PUBLIC_API_URL=https://api.tendril.example.com/v1
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 COPY package.json package-lock.json ./
 RUN npm ci
