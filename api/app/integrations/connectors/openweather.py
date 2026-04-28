@@ -245,6 +245,14 @@ class OpenWeatherConnector(BaseConnector):
 
         return list(daily.values())[:7]
 
+    # ── Persistence ─────────────────────────────────────────────
+
+    async def persist_readings(
+        self, session: AsyncSession, result: ConnectorResult,
+    ) -> int:
+        """Write polled readings to WeatherReading."""
+        return await write_openweather_readings(session, result.readings)
+
     # ── Webhook (not supported) ──────────────────────────────────
 
     async def handle_webhook(self, payload: dict[str, Any]) -> ConnectorResult:

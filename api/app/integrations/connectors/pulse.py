@@ -159,6 +159,14 @@ class PulseConnector(BaseConnector):
             if reading:
                 result.readings.append(reading)
 
+    # ── Persistence ─────────────────────────────────────────────
+
+    async def persist_readings(
+        self, session: AsyncSession, result: ConnectorResult,
+    ) -> int:
+        """Write polled readings to TentSensorReading / BucketSensorReading."""
+        return await write_pulse_readings(session, result.readings)
+
     # ── Webhook (not supported) ──────────────────────────────────
 
     async def handle_webhook(self, payload: dict[str, Any]) -> ConnectorResult:

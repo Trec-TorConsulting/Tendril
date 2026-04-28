@@ -214,6 +214,14 @@ class EcowittConnector(BaseConnector):
         self._parse_webhook_data(payload, result)
         return result
 
+    # ── Persistence ─────────────────────────────────────────────
+
+    async def persist_readings(
+        self, session: AsyncSession, result: ConnectorResult,
+    ) -> int:
+        """Write polled/webhook readings to sensor tables."""
+        return await write_ecowitt_readings(session, result.readings)
+
     # ── Discovery ────────────────────────────────────────────────
 
     async def discover_devices(self) -> list[DiscoveredDevice]:

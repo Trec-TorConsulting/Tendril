@@ -637,6 +637,21 @@ class TaskRunner:
 
                     try:
                         poll_result = await connector.poll()
+
+                        # Persist readings to sensor tables
+                        if poll_result.readings:
+                            try:
+                                written = await connector.persist_readings(session, poll_result)
+                                logger.info(
+                                    "Persisted %d readings for integration %s (%s)",
+                                    written, cfg.id, cfg.type,
+                                )
+                            except Exception:
+                                logger.exception(
+                                    "Failed to persist readings for %s (%s)", cfg.id, cfg.type,
+                                )
+                                poll_result.errors.append("Reading persistence failed")
+
                         await connector.write_sync_log(session, poll_result)
                         cfg.last_synced_at = now
                         if poll_result.status == "error":

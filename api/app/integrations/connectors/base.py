@@ -65,6 +65,18 @@ class BaseConnector(abc.ABC):
     async def handle_webhook(self, payload: dict[str, Any]) -> ConnectorResult:
         """Process an inbound webhook payload from the external platform."""
 
+    async def persist_readings(
+        self,
+        session: AsyncSession,
+        result: ConnectorResult,
+    ) -> int:
+        """Persist polled/webhook readings to sensor tables.
+
+        Override in subclasses that produce readings.
+        Returns the number of readings written.
+        """
+        return 0
+
     async def write_sync_log(
         self,
         session: AsyncSession,

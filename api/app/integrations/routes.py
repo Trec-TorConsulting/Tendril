@@ -329,6 +329,14 @@ async def receive_webhook(
     )
     result = await connector.handle_webhook(payload)
 
+    # Persist readings to sensor tables
+    if result.readings:
+        try:
+            await connector.persist_readings(session, result)
+        except Exception:
+            logger.exception("Webhook persist failed for %s (%s)", cfg.id, cfg.type)
+            result.errors.append("Reading persistence failed")
+
     await connector.write_sync_log(session, result)
     cfg.last_synced_at = datetime.now(UTC)
     if result.status == "error":
@@ -380,6 +388,15 @@ async def trigger_sync(
         device_maps=list(device_maps),
     )
     result = await connector.poll()
+
+    # Persist readings to sensor tables
+    if result.readings:
+        try:
+            written = await connector.persist_readings(session, result)
+            logger.info("Manual sync persisted %d readings for %s (%s)", written, cfg.id, cfg.type)
+        except Exception:
+            logger.exception("Manual sync persist failed for %s (%s)", cfg.id, cfg.type)
+            result.errors.append("Reading persistence failed")
 
     await connector.write_sync_log(session, result)
     cfg.last_synced_at = datetime.now(UTC)
