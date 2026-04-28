@@ -27,6 +27,7 @@ from app.integrations.schemas import (
     DeviceMapCreate,
     DeviceMapResponse,
     DeviceMapUpdate,
+    DiscoveredDeviceResponse,
     IntegrationCreate,
     IntegrationResponse,
     IntegrationUpdate,
@@ -109,13 +110,19 @@ async def list_integrations(
     integration_type: str | None = Query(None, alias="type"),
 ):
     """List all integrations for the current tenant."""
-    q = select(IntegrationConfig).where(IntegrationConfig.tenant_id == user.tenant_id).order_by(IntegrationConfig.created_at.desc())
+    q = (
+        select(IntegrationConfig)
+        .where(IntegrationConfig.tenant_id == user.tenant_id)
+        .order_by(IntegrationConfig.created_at.desc())
+    )
     if integration_type:
         q = q.where(IntegrationConfig.type == integration_type)
     items, total = await paginate(session, q, pagination)
     return PaginatedResponse(
         items=[_config_to_response(c) for c in items],
-        total=total, page=pagination.page, page_size=pagination.page_size,
+        total=total,
+        page=pagination.page,
+        page_size=pagination.page_size,
     )
 
 
@@ -387,3 +394,64 @@ async def trigger_sync(
         "readings_count": result.readings_count,
         "error_message": result.error_message,
     }
+
+
+# ---------------------------------------------------------------------------
+# Device Discovery
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/{integration_id}/discover",
+    response_model=list[DiscoveredDeviceResponse],
+)
+async def discover_devices(
+    integration_id: UUID,
+    user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Discover available devices from an external platform.
+
+    Calls the connector's ``discover_devices()`` method to fetch available
+    devices/sensors that can be mapped to tents or buckets.
+    """
+    cfg = await _get_config_or_404(integration_id, session)
+    if not cfg.enabled:
+        raise HTTPException(status_code=409, detail="Integration is disabled")
+
+    connector_cls = get_connector_class(cfg.type)
+    if connector_cls is None:
+        raise HTTPException(status_code=501, detail=f"Connector '{cfg.type}' not implemented")
+
+    device_maps_result = await session.execute(
+        select(IntegrationDeviceMap).where(
+            IntegrationDeviceMap.integration_id == integration_id,
+            IntegrationDeviceMap.enabled.is_(True),
+        )
+    )
+    device_maps = device_maps_result.scalars().all()
+
+    connector = connector_cls(
+        config=cfg,
+        decrypted_config=decrypt_config(cfg.config),
+        device_maps=list(device_maps),
+    )
+
+    if not hasattr(connector, "discover_devices"):
+        raise HTTPException(status_code=501, detail="This connector does not support device discovery")
+
+    try:
+        devices = await connector.discover_devices()
+    except Exception as exc:
+        logger.exception("Discovery failed for integration %s", integration_id)
+        raise HTTPException(status_code=502, detail=f"Discovery failed: {exc}") from exc
+
+    return [
+        DiscoveredDeviceResponse(
+            external_id=d.external_id,
+            name=d.name,
+            device_type=d.device_type,
+            latest_reading=d.latest_reading,
+        )
+        for d in devices
+    ]

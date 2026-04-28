@@ -93,3 +93,15 @@ class SyncLogResponse(BaseModel):
     synced_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# ---------------------------------------------------------------------------
+# Discovery
+# ---------------------------------------------------------------------------
+
+
+class DiscoveredDeviceResponse(BaseModel):
+    external_id: str
+    name: str
+    device_type: str
+    latest_reading: dict | None = None

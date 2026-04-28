@@ -1,9 +1,10 @@
 """MQTT message handlers — parse sensor payloads and store readings."""
+
 from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import select, update
@@ -41,9 +42,7 @@ async def handle_message(message) -> None:
         logger.debug("Unhandled topic: %s", topic_str)
 
 
-async def handle_sensor_message(
-    tenant_id: UUID, device_id_str: str, sensor_type: str, payload_bytes
-) -> None:
+async def handle_sensor_message(tenant_id: UUID, device_id_str: str, sensor_type: str, payload_bytes) -> None:
     """Parse sensor payload and store reading.
 
     sensor_type "ambient" → tent_sensor_readings (tent-level)
@@ -57,15 +56,16 @@ async def handle_sensor_message(
 
     logger.debug(
         "Sensor reading: tenant=%s device=%s type=%s payload=%s",
-        tenant_id, device_id_str, sensor_type, payload,
+        tenant_id,
+        device_id_str,
+        sensor_type,
+        payload,
     )
 
     # Update last_seen on any sensor message
     async with async_session_factory() as session:
         await session.execute(
-            update(Device)
-            .where(Device.device_id == device_id_str)
-            .values(last_seen=datetime.now(timezone.utc))
+            update(Device).where(Device.device_id == device_id_str).values(last_seen=datetime.now(UTC))
         )
         await session.commit()
 
@@ -75,18 +75,36 @@ async def handle_sensor_message(
 # ── Allowed payload keys for each target table ──────────────────
 
 _BUCKET_SENSOR_FIELDS = {
-    "water_temp_f", "ph", "ec", "ppm", "water_level_pct",
-    "dissolved_oxygen", "flow_rate", "mist_pressure",
-    "soil_moisture", "soil_temp", "runoff_ph", "runoff_ec",
-    "ambient_temp_f", "ambient_humidity",
+    "water_temp_f",
+    "ph",
+    "ec",
+    "ppm",
+    "water_level_pct",
+    "dissolved_oxygen",
+    "flow_rate",
+    "mist_pressure",
+    "soil_moisture",
+    "soil_temp",
+    "runoff_ph",
+    "runoff_ec",
+    "ambient_temp_f",
+    "ambient_humidity",
 }
 
-_TENT_SENSOR_FIELDS = {"ambient_temp_f", "ambient_humidity"}
+_TENT_SENSOR_FIELDS = {
+    "ambient_temp_f",
+    "ambient_humidity",
+    "vpd",
+    "co2",
+    "lux",
+    "dew_point_f",
+    "par_ppfd",
+    "air_pressure",
+    "voc",
+}
 
 
-async def store_sensor_reading(
-    tenant_id: UUID, device_id_str: str, sensor_type: str, payload: dict
-) -> None:
+async def store_sensor_reading(tenant_id: UUID, device_id_str: str, sensor_type: str, payload: dict) -> None:
     """Persist an MQTT sensor payload to the appropriate readings table.
 
     sensor_type "ambient" → tent_sensor_readings (needs device.tent_id)
@@ -109,18 +127,16 @@ async def store_sensor_reading(
 
         if device.tent_id is None:
             logger.debug(
-                "Device %s has no tent_id assigned — skipping storage", device_id_str,
+                "Device %s has no tent_id assigned — skipping storage",
+                device_id_str,
             )
             return
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         if sensor_type == "ambient":
             # Filter payload to only known ambient columns
-            values = {
-                k: float(v) for k, v in payload.items()
-                if k in _TENT_SENSOR_FIELDS and v is not None
-            }
+            values = {k: float(v) for k, v in payload.items() if k in _TENT_SENSOR_FIELDS and v is not None}
             if not values:
                 return
             reading = TentSensorReading(
@@ -156,15 +172,13 @@ async def store_sensor_reading(
             if bucket is None:
                 logger.debug(
                     "No active bucket at position %s in tent %s — skipping",
-                    position, device.tent_id,
+                    position,
+                    device.tent_id,
                 )
                 return
 
             # Filter payload to only known bucket sensor columns
-            values = {
-                k: float(v) for k, v in payload.items()
-                if k in _BUCKET_SENSOR_FIELDS and v is not None
-            }
+            values = {k: float(v) for k, v in payload.items() if k in _BUCKET_SENSOR_FIELDS and v is not None}
             if not values:
                 return
             reading = BucketSensorReading(
@@ -177,7 +191,9 @@ async def store_sensor_reading(
             session.add(reading)
             await session.commit()
             logger.debug(
-                "Stored bucket reading for bucket %s (position %s)", bucket.id, position,
+                "Stored bucket reading for bucket %s (position %s)",
+                bucket.id,
+                position,
             )
 
 
@@ -197,7 +213,7 @@ async def handle_status_message(device_id_str: str, payload_bytes) -> None:
         await session.execute(
             update(Device)
             .where(Device.device_id == device_id_str)
-            .values(status=new_status, last_seen=datetime.now(timezone.utc))
+            .values(status=new_status, last_seen=datetime.now(UTC))
         )
         await session.commit()
 

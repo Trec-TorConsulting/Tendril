@@ -1,15 +1,30 @@
-## 1. Connector
-- [ ] 1.1 Create `tendril/api/app/integrations/connectors/pulse.py` implementing base connector
-- [ ] 1.2 Implement `discover_devices()` — fetch device list from Pulse API
-- [ ] 1.3 Implement `poll()` — fetch latest readings and map to sensor tables
-- [ ] 1.4 Map Pulse fields: temperature→ambient_temp_f, humidity→ambient_humidity, lux→light data
+## 1. Schema Extension
+- [ ] 1.1 Add `vpd`, `co2`, `lux`, `dew_point_f`, `par_ppfd`, `air_pressure`, `voc` columns to `TentSensorReading` model
+- [ ] 1.2 Create Alembic migration `0021_extend_tent_sensor_readings.py` with RLS-safe ALTER TABLE
+- [ ] 1.3 Update `_TENT_SENSOR_FIELDS` allowlist in `api/app/mqtt/handlers.py`
+- [ ] 1.4 Run migration and verify columns exist
 
-## 2. Frontend
-- [ ] 2.1 Add Pulse Grow option to integration type selector
-- [ ] 2.2 Create Pulse-specific config form (API key input, link to Pulse API key docs)
-- [ ] 2.3 Add auto-discover button that fetches devices and lets user map to tents
+## 2. Connector Implementation
+- [ ] 2.1 Create `api/app/integrations/connectors/pulse.py` with `PulseConnector(BaseConnector)`
+- [ ] 2.2 Implement `PulseConfig` Pydantic schema for config validation (api_key, base_url)
+- [ ] 2.3 Implement `poll()` — calls `GET /all-devices`, maps to `TentSensorReading` per device
+- [ ] 2.4 Implement Hub sensor polling — calls `GET /sensors/{id}/recent-data`, maps to `BucketSensorReading`
+- [ ] 2.5 Implement `handle_webhook()` — returns not-supported (Pulse is poll-only)
+- [ ] 2.6 Implement `discover_devices()` — fetches device + sensor lists for auto-discovery
+- [ ] 2.7 Register connector with `@register_connector` decorator
+- [ ] 2.8 Import connector in `__init__.py` for auto-registration
 
-## 3. Validation
-- [ ] 3.1 Test with real Pulse API key
-- [ ] 3.2 Verify data appears in tent ambient readings
-- [ ] 3.3 Verify AI context includes Pulse-sourced data
+## 3. Auto-Discovery API
+- [ ] 3.1 Add `discover_devices()` optional method to `BaseConnector`
+- [ ] 3.2 Add `POST /v1/integrations/{id}/discover` route in `api/app/integrations/routes.py`
+- [ ] 3.3 Return structured device list with external_id, name, type, latest reading preview
+
+## 4. Validation & Tests
+- [ ] 4.1 Unit tests for `PulseConnector.poll()` with mocked API responses (success, partial, error)
+- [ ] 4.2 Unit tests for Hub sensor polling with mocked responses
+- [ ] 4.3 Unit tests for `discover_devices()` with mocked responses
+- [ ] 4.4 Unit tests for `PulseConfig` validation (valid, missing key, invalid URL)
+- [ ] 4.5 Unit tests for rate limit / error handling (401, 429, 500, timeout)
+- [ ] 4.6 Integration test: full poll cycle writes correct sensor readings to DB
+- [ ] 4.7 Verify extended `_TENT_SENSOR_FIELDS` allowlist works with MQTT handler
+- [ ] 4.8 Run full test suite — all existing tests still pass
