@@ -45,6 +45,7 @@ async def create_entry(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Create a new journal entry for a bucket."""
     entry = JournalEntry(tenant_id=user.tenant_id, **body.model_dump())
     session.add(entry)
     await session.commit()
@@ -79,7 +80,8 @@ async def list_entries(
     pagination: Annotated[PaginationParams, Depends()],
     bucket_id: UUID | None = None,
 ):
-    q = select(JournalEntry).order_by(desc(JournalEntry.created_at))
+    """List journal entries with optional bucket filtering."""
+    q = select(JournalEntry).where(JournalEntry.tenant_id == user.tenant_id).order_by(desc(JournalEntry.created_at))
     if bucket_id:
         q = q.where(JournalEntry.bucket_id == bucket_id)
     items, total = await paginate(session, q, pagination)
@@ -106,6 +108,7 @@ async def update_entry(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Update a journal entry."""
     entry = await session.get(JournalEntry, entry_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="Journal entry not found")
@@ -122,6 +125,7 @@ async def delete_entry(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Delete a journal entry by ID."""
     entry = await session.get(JournalEntry, entry_id)
     if entry is None:
         raise HTTPException(status_code=404, detail="Journal entry not found")

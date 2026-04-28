@@ -71,6 +71,7 @@ async def create_tent(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Create a new grow tent."""
     tent = Tent(tenant_id=user.tenant_id, **body.model_dump())
     session.add(tent)
     await session.commit()
@@ -84,6 +85,7 @@ async def list_tents(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
     pagination: Annotated[PaginationParams, Depends()],
 ):
+    """List all tents for the current tenant."""
     q = select(Tent).where(Tent.deleted_at.is_(None), Tent.tenant_id == user.tenant_id).order_by(Tent.created_at.desc())
     items, total = await paginate(session, q, pagination)
     return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
@@ -95,6 +97,7 @@ async def get_tent(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Get a tent by ID."""
     tent = await session.get(Tent, tent_id)
     if tent is None or tent.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Tent not found")
@@ -108,6 +111,7 @@ async def update_tent(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Update a tent's configuration."""
     tent = await session.get(Tent, tent_id)
     if tent is None or tent.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Tent not found")
@@ -125,6 +129,7 @@ async def delete_tent(
     user: Annotated[CurrentUser, Depends(require_role("owner"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Delete a tent by ID."""
     tent = await session.get(Tent, tent_id)
     if tent is None or tent.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Tent not found")

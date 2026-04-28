@@ -55,6 +55,7 @@ async def billing_status(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Get the current tenant's billing status and plan details."""
     tenant = await session.get(Tenant, user.tenant_id)
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
@@ -89,6 +90,7 @@ async def create_checkout(
     user: Annotated[CurrentUser, Depends(require_role("owner"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Create a Stripe checkout session for plan upgrade."""
     if body.plan not in PRICE_IDS or not PRICE_IDS[body.plan]:
         raise HTTPException(status_code=400, detail="Invalid plan")
 
@@ -126,6 +128,7 @@ async def create_portal(
     user: Annotated[CurrentUser, Depends(require_role("owner"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Create a Stripe customer portal session for billing management."""
     settings = get_settings()
     stripe.api_key = settings.stripe_secret_key
 

@@ -62,6 +62,7 @@ async def create_rule(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Create a new automation rule for threshold-based alerts."""
     rule = AutomationRule(
         tenant_id=user.tenant_id,
         grow_cycle_id=UUID(body.grow_cycle_id) if body.grow_cycle_id else None,
@@ -80,6 +81,7 @@ async def list_rules(
     pagination: Annotated[PaginationParams, Depends()],
     grow_cycle_id: str | None = None,
 ):
+    """List all automation rules for the current tenant."""
     q = select(AutomationRule).where(AutomationRule.tenant_id == user.tenant_id)
     if grow_cycle_id:
         q = q.where(AutomationRule.grow_cycle_id == UUID(grow_cycle_id))
@@ -107,6 +109,7 @@ async def update_rule(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Update an existing automation rule."""
     rule = await session.get(AutomationRule, rule_id)
     if not rule:
         raise HTTPException(status_code=404, detail="Rule not found")
@@ -123,6 +126,7 @@ async def delete_rule(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Delete an automation rule by ID."""
     rule = await session.get(AutomationRule, rule_id)
     if not rule:
         raise HTTPException(status_code=404, detail="Rule not found")
@@ -152,6 +156,7 @@ async def list_alerts(
     pagination: Annotated[PaginationParams, Depends()],
     acknowledged: bool | None = None,
 ):
+    """List triggered alerts with optional status filtering."""
     q = select(AlertHistory).order_by(desc(AlertHistory.created_at))
     if acknowledged is not None:
         q = q.where(AlertHistory.acknowledged == acknowledged)
@@ -178,6 +183,7 @@ async def acknowledge_alert(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Acknowledge a triggered alert."""
     alert = await session.get(AlertHistory, alert_id)
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
@@ -226,6 +232,7 @@ async def create_schedule(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Create a scheduled automation action."""
     schedule = EnvironmentSchedule(
         tenant_id=user.tenant_id,
         tent_id=UUID(body.tent_id),
@@ -244,6 +251,7 @@ async def list_schedules(
     pagination: Annotated[PaginationParams, Depends()],
     tent_id: str | None = None,
 ):
+    """List all automation schedules for the current tenant."""
     q = select(EnvironmentSchedule)
     if tent_id:
         q = q.where(EnvironmentSchedule.tent_id == UUID(tent_id))
@@ -271,6 +279,7 @@ async def update_schedule(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Update an existing automation schedule."""
     schedule = await session.get(EnvironmentSchedule, schedule_id)
     if not schedule:
         raise HTTPException(status_code=404, detail="Schedule not found")
@@ -287,6 +296,7 @@ async def delete_schedule(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Delete an automation schedule by ID."""
     schedule = await session.get(EnvironmentSchedule, schedule_id)
     if not schedule:
         raise HTTPException(status_code=404, detail="Schedule not found")

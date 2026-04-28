@@ -63,6 +63,7 @@ async def create_grow(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Create a new grow cycle."""
     grow = GrowCycle(tenant_id=user.tenant_id, **body.model_dump())
     session.add(grow)
     await session.commit()
@@ -80,6 +81,7 @@ async def list_grows(
     status: str | None = None,
     tent_id: UUID | None = None,
 ):
+    """List all grow cycles for the current tenant."""
     q = select(GrowCycle).where(GrowCycle.deleted_at.is_(None), GrowCycle.tenant_id == user.tenant_id).order_by(GrowCycle.created_at.desc())
     if status:
         q = q.where(GrowCycle.status == status)
@@ -95,6 +97,7 @@ async def get_grow(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Get a grow cycle by ID."""
     grow = await session.get(GrowCycle, grow_id)
     if grow is None:
         raise HTTPException(status_code=404, detail="Grow cycle not found")
@@ -108,6 +111,7 @@ async def update_grow(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Update a grow cycle's details."""
     grow = await session.get(GrowCycle, grow_id)
     if grow is None:
         raise HTTPException(status_code=404, detail="Grow cycle not found")
@@ -154,6 +158,7 @@ async def delete_grow(
     user: Annotated[CurrentUser, Depends(require_role("owner"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Soft-delete a grow cycle."""
     grow = await session.get(GrowCycle, grow_id)
     if grow is None or grow.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Grow cycle not found")

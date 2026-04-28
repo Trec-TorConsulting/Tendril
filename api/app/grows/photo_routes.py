@@ -60,6 +60,7 @@ async def create_photo(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Upload a bucket photo to S3 storage."""
     photo = BucketPhoto(tenant_id=user.tenant_id, **body.model_dump())
     session.add(photo)
     await session.commit()
@@ -74,7 +75,8 @@ async def list_photos(
     pagination: Annotated[PaginationParams, Depends()],
     bucket_id: UUID | None = None,
 ):
-    q = select(BucketPhoto).order_by(desc(BucketPhoto.created_at))
+    """List bucket photos with optional bucket filtering."""
+    q = select(BucketPhoto).where(BucketPhoto.tenant_id == user.tenant_id).order_by(desc(BucketPhoto.created_at))
     if bucket_id:
         q = q.where(BucketPhoto.bucket_id == bucket_id)
     items, total = await paginate(session, q, pagination)
@@ -88,6 +90,7 @@ async def update_photo(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Update a photo's caption."""
     photo = await session.get(BucketPhoto, photo_id)
     if photo is None:
         raise HTTPException(status_code=404, detail="Photo not found")
@@ -104,6 +107,7 @@ async def delete_photo(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Delete a bucket photo and its S3 object."""
     photo = await session.get(BucketPhoto, photo_id)
     if photo is None:
         raise HTTPException(status_code=404, detail="Photo not found")
@@ -170,7 +174,8 @@ async def list_grow_photos(
     pagination: Annotated[PaginationParams, Depends()],
     grow_cycle_id: UUID | None = None,
 ):
-    q = select(GrowPhoto).order_by(desc(GrowPhoto.created_at))
+    """List grow-level photos with optional grow cycle filtering."""
+    q = select(GrowPhoto).where(GrowPhoto.tenant_id == user.tenant_id).order_by(desc(GrowPhoto.created_at))
     if grow_cycle_id:
         q = q.where(GrowPhoto.grow_cycle_id == grow_cycle_id)
     items, total = await paginate(session, q, pagination)
@@ -217,6 +222,7 @@ async def update_grow_photo(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Update a grow photo's caption."""
     photo = await session.get(GrowPhoto, photo_id)
     if photo is None:
         raise HTTPException(status_code=404, detail="Photo not found")
@@ -233,6 +239,7 @@ async def delete_grow_photo(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Delete a grow photo and its S3 object."""
     photo = await session.get(GrowPhoto, photo_id)
     if photo is None:
         raise HTTPException(status_code=404, detail="Photo not found")

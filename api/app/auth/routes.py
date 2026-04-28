@@ -162,6 +162,7 @@ def _clear_auth_cookies(response: Response) -> None:
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 async def register(body: RegisterRequest, response: Response, db: Annotated[AsyncSession, Depends(get_db)]):
+    """Register a new user and create their tenant."""
     _validate_password_strength(body.password)
     # Check existing email
     existing = await db.execute(select(User).where(User.email == body.email))
@@ -209,6 +210,7 @@ async def register(body: RegisterRequest, response: Response, db: Annotated[Asyn
 
 @router.post("/login", response_model=TokenResponse)
 async def login(body: LoginRequest, response: Response, db: Annotated[AsyncSession, Depends(get_db)]):
+    """Authenticate with email and password, returning JWT tokens."""
     result = await db.execute(select(User).where(User.email == body.email))
     user = result.scalar_one_or_none()
     if not user or not user.password_hash or not _verify_password(body.password, user.password_hash):
@@ -234,6 +236,7 @@ async def login(body: LoginRequest, response: Response, db: Annotated[AsyncSessi
 async def refresh(
     request: Request, response: Response, body: RefreshRequest, db: Annotated[AsyncSession, Depends(get_db)]
 ):
+    """Refresh an expired access token using a valid refresh token."""
     from jose import JWTError
 
     # Accept refresh token from body OR from httpOnly cookie
@@ -283,6 +286,7 @@ async def me(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
+    """Get the current authenticated user's profile."""
     result = await db.execute(select(User).where(User.id == user.user_id))
     db_user = result.scalar_one_or_none()
     if not db_user:

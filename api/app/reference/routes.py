@@ -61,6 +61,7 @@ async def get_reference_strain(
     strain_id: UUID,
     user: Annotated[CurrentUser, Depends(get_current_user)],
 ):
+    """Get a reference strain from the global database by ID."""
     async with async_session_factory() as session:
         strain = await session.get(ReferenceStrain, strain_id)
         if strain is None:

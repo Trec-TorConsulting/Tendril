@@ -71,6 +71,7 @@ async def create_yield(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Record a harvest yield for a bucket."""
     y = Yield(tenant_id=user.tenant_id, **body.model_dump())
     session.add(y)
     await session.commit()
@@ -84,7 +85,8 @@ async def list_yields(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
     bucket_id: UUID | None = None,
 ):
-    q = select(Yield).order_by(desc(Yield.created_at))
+    """List yields with optional bucket filtering."""
+    q = select(Yield).where(Yield.tenant_id == user.tenant_id).order_by(desc(Yield.created_at))
     if bucket_id:
         q = q.where(Yield.bucket_id == bucket_id)
     result = await session.execute(q)
@@ -97,6 +99,7 @@ async def get_yield(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Get a yield record by ID."""
     y = await session.get(Yield, yield_id)
     if y is None:
         raise HTTPException(status_code=404, detail="Yield not found")
@@ -110,6 +113,7 @@ async def update_yield(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Update a yield record."""
     y = await session.get(Yield, yield_id)
     if y is None:
         raise HTTPException(status_code=404, detail="Yield not found")
@@ -126,6 +130,7 @@ async def delete_yield(
     user: Annotated[CurrentUser, Depends(require_role("owner"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Delete a yield record by ID."""
     y = await session.get(Yield, yield_id)
     if y is None:
         raise HTTPException(status_code=404, detail="Yield not found")

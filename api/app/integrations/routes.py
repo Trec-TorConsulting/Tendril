@@ -84,6 +84,7 @@ async def create_integration(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Create a new third-party integration (Home Assistant, MQTT, etc.)."""
     cfg = IntegrationConfig(
         tenant_id=user.tenant_id,
         type=body.type,
@@ -107,6 +108,7 @@ async def list_integrations(
     pagination: Annotated[PaginationParams, Depends()],
     integration_type: str | None = Query(None, alias="type"),
 ):
+    """List all integrations for the current tenant."""
     q = select(IntegrationConfig).where(IntegrationConfig.tenant_id == user.tenant_id).order_by(IntegrationConfig.created_at.desc())
     if integration_type:
         q = q.where(IntegrationConfig.type == integration_type)
@@ -123,6 +125,7 @@ async def get_integration(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member", "viewer"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Get an integration by ID."""
     cfg = await _get_config_or_404(integration_id, session, tenant_id=user.tenant_id)
     return _config_to_response(cfg)
 
@@ -134,6 +137,7 @@ async def update_integration(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Update an integration's configuration."""
     cfg = await _get_config_or_404(integration_id, session)
     updates = body.model_dump(exclude_unset=True)
     if "config" in updates and updates["config"] is not None:
@@ -152,6 +156,7 @@ async def delete_integration(
     user: Annotated[CurrentUser, Depends(require_role("owner"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Delete an integration by ID."""
     cfg = await _get_config_or_404(integration_id, session)
     await session.delete(cfg)
     await session.commit()
@@ -174,6 +179,7 @@ async def create_device_map(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Create a device mapping between an integration and a local device."""
     await _get_config_or_404(integration_id, session)
     dm = IntegrationDeviceMap(
         tenant_id=user.tenant_id,
@@ -196,6 +202,7 @@ async def list_device_maps(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
     pagination: Annotated[PaginationParams, Depends()],
 ):
+    """List device mappings for an integration."""
     await _get_config_or_404(integration_id, session)
     q = select(IntegrationDeviceMap).where(IntegrationDeviceMap.integration_id == integration_id)
     items, total = await paginate(session, q, pagination)
@@ -213,6 +220,7 @@ async def update_device_map(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Update a device mapping."""
     await _get_config_or_404(integration_id, session)
     dm = await session.get(IntegrationDeviceMap, device_id)
     if dm is None or dm.integration_id != integration_id:
@@ -231,6 +239,7 @@ async def delete_device_map(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Delete a device mapping by ID."""
     await _get_config_or_404(integration_id, session)
     dm = await session.get(IntegrationDeviceMap, device_id)
     if dm is None or dm.integration_id != integration_id:
@@ -254,6 +263,7 @@ async def list_sync_logs(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
     pagination: Annotated[PaginationParams, Depends()],
 ):
+    """List synchronization logs for an integration."""
     await _get_config_or_404(integration_id, session)
     q = (
         select(IntegrationSyncLog)

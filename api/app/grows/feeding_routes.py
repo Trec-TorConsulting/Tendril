@@ -52,6 +52,7 @@ async def create_dose_profile(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Create a nutrient dose profile for a grow cycle."""
     dose = DoseProfile(tenant_id=user.tenant_id, **body.model_dump())
     session.add(dose)
     await session.commit()
@@ -66,7 +67,8 @@ async def list_dose_profiles(
     pagination: Annotated[PaginationParams, Depends()],
     grow_cycle_id: UUID | None = None,
 ):
-    q = select(DoseProfile)
+    """List dose profiles with optional grow cycle filtering."""
+    q = select(DoseProfile).where(DoseProfile.tenant_id == user.tenant_id)
     if grow_cycle_id:
         q = q.where(DoseProfile.grow_cycle_id == grow_cycle_id)
     items, total = await paginate(session, q, pagination)
@@ -93,6 +95,7 @@ async def update_dose_profile(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Update a dose profile."""
     dose = await session.get(DoseProfile, dose_id)
     if dose is None:
         raise HTTPException(status_code=404, detail="Dose profile not found")
@@ -109,6 +112,7 @@ async def delete_dose_profile(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Delete a dose profile by ID."""
     dose = await session.get(DoseProfile, dose_id)
     if dose is None:
         raise HTTPException(status_code=404, detail="Dose profile not found")
@@ -155,6 +159,7 @@ async def create_feeding_schedule(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Create a feeding schedule for a grow stage."""
     schedule = FeedingSchedule(tenant_id=user.tenant_id, **body.model_dump())
     session.add(schedule)
     await session.commit()
@@ -169,6 +174,7 @@ async def list_feeding_schedules(
     pagination: Annotated[PaginationParams, Depends()],
     grow_cycle_id: UUID | None = None,
 ):
+    """List feeding schedules with optional grow cycle filtering."""
     from sqlalchemy import case
 
     stage_order = case(
@@ -176,7 +182,7 @@ async def list_feeding_schedules(
         value=FeedingSchedule.stage,
         else_=99,
     )
-    q = select(FeedingSchedule).order_by(stage_order, FeedingSchedule.name)
+    q = select(FeedingSchedule).where(FeedingSchedule.tenant_id == user.tenant_id).order_by(stage_order, FeedingSchedule.name)
     if grow_cycle_id:
         q = q.where(FeedingSchedule.grow_cycle_id == grow_cycle_id)
     items, total = await paginate(session, q, pagination)
@@ -203,6 +209,7 @@ async def update_feeding_schedule(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Update a feeding schedule."""
     schedule = await session.get(FeedingSchedule, schedule_id)
     if schedule is None:
         raise HTTPException(status_code=404, detail="Feeding schedule not found")
@@ -219,6 +226,7 @@ async def delete_feeding_schedule(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Delete a feeding schedule by ID."""
     schedule = await session.get(FeedingSchedule, schedule_id)
     if schedule is None:
         raise HTTPException(status_code=404, detail="Feeding schedule not found")

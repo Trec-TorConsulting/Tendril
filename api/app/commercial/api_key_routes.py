@@ -63,6 +63,7 @@ async def create_api_key(
     user: Annotated[CurrentUser, Depends(require_role("owner"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Generate a new API key (commercial plan required)."""
     await _require_commercial(user, session)
 
     # Validate scopes
@@ -101,6 +102,7 @@ async def list_api_keys(
     user: Annotated[CurrentUser, Depends(require_role("owner"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """List all active API keys for the current tenant."""
     await _require_commercial(user, session)
     result = await session.execute(
         select(ApiKey).where(
@@ -117,6 +119,7 @@ async def revoke_api_key(
     user: Annotated[CurrentUser, Depends(require_role("owner"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Revoke an API key by ID."""
     api_key = await session.get(ApiKey, UUID(key_id))
     if not api_key or api_key.tenant_id != user.tenant_id:
         raise HTTPException(status_code=404, detail="API key not found")

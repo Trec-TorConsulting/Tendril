@@ -82,6 +82,7 @@ async def create_custom_grow_type(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Create a custom grow type with stage definitions."""
     await _require_pro_or_commercial(user, session)
 
     # Check slug uniqueness within tenant
@@ -130,6 +131,7 @@ async def list_custom_grow_types(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """List all custom grow types for the current tenant."""
     result = await session.execute(
         select(CustomGrowType).where(CustomGrowType.tenant_id == user.tenant_id)
         .order_by(CustomGrowType.name)
@@ -143,6 +145,7 @@ async def get_custom_grow_type(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Get a custom grow type by ID."""
     gt = await session.get(CustomGrowType, UUID(type_id))
     if not gt or gt.tenant_id != user.tenant_id:
         raise HTTPException(status_code=404, detail="Custom grow type not found")
@@ -156,6 +159,7 @@ async def update_custom_grow_type(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Update a custom grow type's configuration."""
     gt = await session.get(CustomGrowType, UUID(type_id))
     if not gt or gt.tenant_id != user.tenant_id:
         raise HTTPException(status_code=404, detail="Custom grow type not found")
@@ -181,6 +185,7 @@ async def delete_custom_grow_type(
     user: Annotated[CurrentUser, Depends(require_role("owner"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Delete a custom grow type by ID."""
     gt = await session.get(CustomGrowType, UUID(type_id))
     if not gt or gt.tenant_id != user.tenant_id:
         raise HTTPException(status_code=404, detail="Custom grow type not found")

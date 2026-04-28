@@ -91,6 +91,7 @@ async def create_task(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Create a new task (commercial plan required)."""
     tenant = await session.get(Tenant, user.tenant_id)
     if not tenant or tenant.plan != "commercial":
         raise HTTPException(status_code=403, detail="Task management requires Commercial plan")
@@ -127,7 +128,8 @@ async def list_tasks(
     due_from: str | None = Query(None),
     due_to: str | None = Query(None),
 ):
-    query = select(Task)
+    """List tasks with optional status, category, and date filtering."""
+    query = select(Task).where(Task.tenant_id == user.tenant_id)
     if status:
         query = query.where(Task.status == status)
     if category:
@@ -165,7 +167,7 @@ async def calendar_tasks(
 
     result = await session.execute(
         select(Task)
-        .where(Task.due_date >= start_dt, Task.due_date <= end_dt)
+        .where(Task.tenant_id == user.tenant_id, Task.due_date >= start_dt, Task.due_date <= end_dt)
         .order_by(Task.due_date.asc())
     )
     return [_to_response(t) for t in result.scalars().all()]
@@ -177,6 +179,7 @@ async def get_task(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Get a task by ID."""
     task = await session.get(Task, UUID(task_id))
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -190,6 +193,7 @@ async def update_task(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Update a task's details."""
     task = await session.get(Task, UUID(task_id))
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -222,6 +226,7 @@ async def delete_task(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Soft-delete a task."""
     task = await session.get(Task, UUID(task_id))
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")

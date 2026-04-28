@@ -74,6 +74,7 @@ async def create_strain(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Create a new plant strain."""
     strain = Strain(tenant_id=user.tenant_id, **body.model_dump())
     session.add(strain)
     await session.commit()
@@ -87,7 +88,8 @@ async def list_strains(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
     pagination: Annotated[PaginationParams, Depends()],
 ):
-    q = select(Strain).order_by(Strain.name)
+    """List all strains accessible to the current tenant."""
+    q = select(Strain).where((Strain.tenant_id == user.tenant_id) | (Strain.tenant_id.is_(None))).order_by(Strain.name)
     items, total = await paginate(session, q, pagination)
     return PaginatedResponse(
         items=[StrainResponse.from_strain(s) for s in items],
@@ -109,6 +111,7 @@ async def strain_leaderboard(
             func.avg(Yield.quality_rating).label("avg_quality"),
         )
         .join(Yield, Yield.bucket_id == Bucket.id)
+        .where(Bucket.tenant_id == user.tenant_id)
         .where(Bucket.strain_name.isnot(None))
         .where(Yield.dry_weight_g.isnot(None))
         .group_by(Bucket.strain_name)
@@ -166,7 +169,8 @@ async def strain_comparison(
         .join(GrowCycle, GrowCycle.id == Bucket.grow_cycle_id)
         .outerjoin(Yield, Yield.bucket_id == Bucket.id)
         .where(
-            (Bucket.strain_id == strain_id) | (func.lower(Bucket.strain_name) == func.lower(strain.name))
+            Bucket.tenant_id == user.tenant_id,
+            (Bucket.strain_id == strain_id) | (func.lower(Bucket.strain_name) == func.lower(strain.name)),
         )
         .group_by(GrowCycle.id, GrowCycle.name, GrowCycle.grow_type, GrowCycle.started_at, GrowCycle.ended_at)
         .order_by(desc(GrowCycle.started_at))
@@ -198,6 +202,7 @@ async def get_strain(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Get a strain by ID."""
     strain = await session.get(Strain, strain_id)
     if strain is None:
         raise HTTPException(status_code=404, detail="Strain not found")
@@ -211,6 +216,7 @@ async def update_strain(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Update a strain's details."""
     strain = await session.get(Strain, strain_id)
     if strain is None:
         raise HTTPException(status_code=404, detail="Strain not found")
@@ -229,6 +235,7 @@ async def delete_strain(
     user: Annotated[CurrentUser, Depends(require_role("owner"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Delete a strain by ID."""
     strain = await session.get(Strain, strain_id)
     if strain is None:
         raise HTTPException(status_code=404, detail="Strain not found")

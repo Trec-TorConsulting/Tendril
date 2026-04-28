@@ -70,6 +70,7 @@ async def create_channel(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Create a new notification channel (email, SMS, push, or webhook)."""
     if body.channel_type not in ("discord", "slack", "email", "sms"):
         raise HTTPException(status_code=422, detail="Invalid channel type")
 
@@ -94,6 +95,7 @@ async def list_channels(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
     pagination: Annotated[PaginationParams, Depends()],
 ):
+    """List all notification channels for the current tenant."""
     q = select(NotificationChannel).where(NotificationChannel.tenant_id == user.tenant_id)
     items, total = await paginate(session, q, pagination)
     return PaginatedResponse(
@@ -131,6 +133,7 @@ async def update_channel(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Update a notification channel's configuration."""
     channel = await session.get(NotificationChannel, UUID(channel_id))
     if not channel or channel.tenant_id != user.tenant_id:
         raise HTTPException(status_code=404, detail="Channel not found")
@@ -156,6 +159,7 @@ async def delete_channel(
     user: Annotated[CurrentUser, Depends(require_role("owner"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Delete a notification channel by ID."""
     channel = await session.get(NotificationChannel, UUID(channel_id))
     if not channel or channel.tenant_id != user.tenant_id:
         raise HTTPException(status_code=404, detail="Channel not found")
@@ -171,6 +175,7 @@ async def test_channel(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Send a test notification through a channel to verify configuration."""
     from app.notifications.service import dispatch_alert
 
     channel = await session.get(NotificationChannel, UUID(channel_id))
@@ -195,7 +200,9 @@ async def list_preferences(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
     pagination: Annotated[PaginationParams, Depends()],
 ):
+    """List notification preferences for the current user."""
     q = select(NotificationPreference).where(
+        NotificationPreference.tenant_id == user.tenant_id,
         NotificationPreference.user_id == user.user_id,
     )
     items, total = await paginate(session, q, pagination)
@@ -218,6 +225,7 @@ async def create_preference(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Create a notification preference linking a channel to event types."""
     pref = NotificationPreference(
         tenant_id=user.tenant_id,
         user_id=user.user_id,
@@ -284,6 +292,7 @@ async def delete_preference(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Delete a notification preference by ID."""
     pref = await session.get(NotificationPreference, UUID(pref_id))
     if not pref or pref.user_id != user.user_id:
         raise HTTPException(status_code=404, detail="Preference not found")
@@ -299,6 +308,7 @@ async def push_subscribe(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Subscribe a device for web push notifications."""
     # Upsert: remove old subscriptions for same endpoint
     existing = (await session.execute(
         select(PushSubscription).where(
@@ -327,6 +337,7 @@ async def push_unsubscribe(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Unsubscribe a device from web push notifications."""
     subs = (await session.execute(
         select(PushSubscription).where(PushSubscription.user_id == user.user_id)
     )).scalars().all()

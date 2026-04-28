@@ -40,6 +40,7 @@ async def create_tent_reading(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Record a new tent-level sensor reading (temp, humidity, CO2, etc.)."""
     reading = TentSensorReading(tenant_id=user.tenant_id, **body.model_dump())
     session.add(reading)
     await session.commit()
@@ -54,7 +55,8 @@ async def list_tent_readings(
     pagination: Annotated[PaginationParams, Depends()],
     tent_id: UUID | None = None,
 ):
-    q = select(TentSensorReading).order_by(desc(TentSensorReading.recorded_at))
+    """List tent sensor readings with optional tent filtering."""
+    q = select(TentSensorReading).where(TentSensorReading.tenant_id == user.tenant_id).order_by(desc(TentSensorReading.recorded_at))
     if tent_id:
         q = q.where(TentSensorReading.tent_id == tent_id)
     items, total = await paginate(session, q, pagination)
@@ -67,8 +69,10 @@ async def get_latest_tent_reading(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Get the most recent sensor reading for a tent."""
     result = await session.execute(
         select(TentSensorReading)
+        .where(TentSensorReading.tenant_id == user.tenant_id)
         .where(TentSensorReading.tent_id == tent_id)
         .order_by(desc(TentSensorReading.recorded_at))
         .limit(1)
@@ -87,6 +91,7 @@ async def get_tent_trends(
     cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
     result = await session.execute(
         select(TentSensorReading)
+        .where(TentSensorReading.tenant_id == user.tenant_id)
         .where(TentSensorReading.tent_id == tent_id)
         .where(TentSensorReading.recorded_at >= cutoff)
         .order_by(TentSensorReading.recorded_at)

@@ -72,6 +72,7 @@ async def create_bucket(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Create a new bucket (plant site) in a grow cycle."""
     data = body.model_dump()
     # Auto-populate strain_name from strain if strain_id provided
     if data.get("strain_id") and not data.get("strain_name"):
@@ -92,7 +93,8 @@ async def list_buckets(
     pagination: Annotated[PaginationParams, Depends()],
     grow_cycle_id: UUID | None = None,
 ):
-    q = select(Bucket).order_by(Bucket.position)
+    """List buckets with optional grow cycle filtering."""
+    q = select(Bucket).where(Bucket.tenant_id == user.tenant_id).order_by(Bucket.position)
     if grow_cycle_id:
         q = q.where(Bucket.grow_cycle_id == grow_cycle_id)
     items, total = await paginate(session, q, pagination)
@@ -105,6 +107,7 @@ async def get_bucket(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Get a bucket by ID."""
     bucket = await session.get(Bucket, bucket_id)
     if bucket is None:
         raise HTTPException(status_code=404, detail="Bucket not found")
@@ -118,6 +121,7 @@ async def update_bucket(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Update a bucket's details."""
     bucket = await session.get(Bucket, bucket_id)
     if bucket is None:
         raise HTTPException(status_code=404, detail="Bucket not found")
@@ -140,6 +144,7 @@ async def delete_bucket(
     user: Annotated[CurrentUser, Depends(require_role("owner"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Soft-delete a bucket."""
     bucket = await session.get(Bucket, bucket_id)
     if bucket is None:
         raise HTTPException(status_code=404, detail="Bucket not found")

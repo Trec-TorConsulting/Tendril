@@ -55,6 +55,7 @@ async def get_my_tenant(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
+    """Get the current user's tenant details."""
     result = await db.execute(select(Tenant).where(Tenant.id == user.tenant_id))
     tenant = result.scalar_one_or_none()
     if not tenant:
@@ -86,6 +87,7 @@ async def list_members(
     db: Annotated[AsyncSession, Depends(get_db)],
     pagination: Annotated[PaginationParams, Depends()],
 ):
+    """List all members of the current tenant."""
     q = select(User).where(User.tenant_id == user.tenant_id).order_by(User.created_at)
     items, total = await paginate(db, q, pagination)
     return PaginatedResponse(

@@ -64,6 +64,7 @@ async def create_reading(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Record a new bucket sensor reading (pH, EC, temperature, etc.)."""
     reading = BucketSensorReading(tenant_id=user.tenant_id, **body.model_dump())
     session.add(reading)
     await session.commit()
@@ -78,7 +79,8 @@ async def list_readings(
     pagination: Annotated[PaginationParams, Depends()],
     bucket_id: UUID | None = None,
 ):
-    q = select(BucketSensorReading).order_by(desc(BucketSensorReading.recorded_at))
+    """List bucket sensor readings with optional bucket filtering."""
+    q = select(BucketSensorReading).where(BucketSensorReading.tenant_id == user.tenant_id).order_by(desc(BucketSensorReading.recorded_at))
     if bucket_id:
         q = q.where(BucketSensorReading.bucket_id == bucket_id)
     items, total = await paginate(session, q, pagination)
@@ -91,8 +93,10 @@ async def get_latest_reading(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    """Get the most recent sensor reading for a bucket."""
     result = await session.execute(
         select(BucketSensorReading)
+        .where(BucketSensorReading.tenant_id == user.tenant_id)
         .where(BucketSensorReading.bucket_id == bucket_id)
         .order_by(desc(BucketSensorReading.recorded_at))
         .limit(1)
@@ -111,6 +115,7 @@ async def get_drift(
     cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
     result = await session.execute(
         select(BucketSensorReading)
+        .where(BucketSensorReading.tenant_id == user.tenant_id)
         .where(BucketSensorReading.bucket_id == bucket_id)
         .where(BucketSensorReading.recorded_at >= cutoff)
         .order_by(BucketSensorReading.recorded_at)
