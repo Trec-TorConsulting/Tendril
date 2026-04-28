@@ -264,6 +264,11 @@ class TaskRunner:
                             wind_speed_kmh=current.get("wind_speed_kmh"),
                             uv_index=current.get("uv_index"),
                             weather_code=current.get("weather_code"),
+                            dew_point_c=current.get("dew_point_c"),
+                            pressure_hpa=current.get("pressure_hpa"),
+                            soil_temp_c=current.get("soil_temp_c"),
+                            forecast=data.get("forecast"),
+                            source="open_meteo",
                         )
                         session.add(reading)
                     except Exception:

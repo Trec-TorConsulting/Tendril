@@ -1,4 +1,9 @@
-"""Open-Meteo weather client — fetch current + forecast data."""
+"""Open-Meteo weather client — fetch current + forecast data.
+
+Retrieves air temperature, humidity, precipitation, wind, UV, pressure,
+dew point and soil temperature at 6 cm depth — everything an outdoor or
+greenhouse grow needs for alerting, GDD tracking, and AI health analysis.
+"""
 from __future__ import annotations
 
 import logging
@@ -10,14 +15,37 @@ logger = logging.getLogger("tendril.weather")
 
 OPEN_METEO_BASE = "https://api.open-meteo.com/v1/forecast"
 
+# Current weather variables requested from Open-Meteo
+_CURRENT_VARS = ",".join([
+    "temperature_2m",
+    "relative_humidity_2m",
+    "precipitation",
+    "wind_speed_10m",
+    "uv_index",
+    "weather_code",
+    "dew_point_2m",
+    "surface_pressure",
+    "soil_temperature_6cm",
+])
+
+# Daily forecast variables requested from Open-Meteo
+_DAILY_VARS = ",".join([
+    "temperature_2m_max",
+    "temperature_2m_min",
+    "precipitation_sum",
+    "wind_speed_10m_max",
+    "uv_index_max",
+    "weather_code",
+])
+
 
 async def fetch_weather(latitude: float, longitude: float) -> dict[str, Any]:
     """Fetch current weather + 7-day forecast from Open-Meteo API."""
     params = {
         "latitude": latitude,
         "longitude": longitude,
-        "current": "temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m,uv_index,weather_code",
-        "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum,wind_speed_10m_max,uv_index_max,weather_code",
+        "current": _CURRENT_VARS,
+        "daily": _DAILY_VARS,
         "timezone": "auto",
         "forecast_days": 7,
     }
@@ -38,6 +66,9 @@ async def fetch_weather(latitude: float, longitude: float) -> dict[str, Any]:
             "wind_speed_kmh": current.get("wind_speed_10m"),
             "uv_index": current.get("uv_index"),
             "weather_code": current.get("weather_code"),
+            "dew_point_c": current.get("dew_point_2m"),
+            "pressure_hpa": current.get("surface_pressure"),
+            "soil_temp_c": current.get("soil_temperature_6cm"),
         },
         "forecast": [
             {

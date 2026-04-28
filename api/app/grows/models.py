@@ -353,6 +353,10 @@ class WeatherReading(Base):
     uv_index: Mapped[float | None] = mapped_column(Float)
     weather_code: Mapped[int | None] = mapped_column(Integer)
     forecast: Mapped[dict | None] = mapped_column(JSON)  # 7-day forecast data
+    dew_point_c: Mapped[float | None] = mapped_column(Float)
+    pressure_hpa: Mapped[float | None] = mapped_column(Float)
+    soil_temp_c: Mapped[float | None] = mapped_column(Float)
+    source: Mapped[str | None] = mapped_column(String(50))  # "open_meteo", "openweather", "ecowitt", "manual"
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
 

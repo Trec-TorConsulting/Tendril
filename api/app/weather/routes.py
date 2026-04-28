@@ -40,6 +40,10 @@ class WeatherHistoryReading(BaseModel):
     wind_speed_kmh: float | None
     uv_index: float | None
     weather_code: int | None
+    dew_point_c: float | None
+    pressure_hpa: float | None
+    soil_temp_c: float | None
+    source: str | None
     recorded_at: str | None
 
 
@@ -113,6 +117,10 @@ async def get_weather_history(
             "wind_speed_kmh": r.wind_speed_kmh,
             "uv_index": r.uv_index,
             "weather_code": r.weather_code,
+            "dew_point_c": r.dew_point_c,
+            "pressure_hpa": r.pressure_hpa,
+            "soil_temp_c": r.soil_temp_c,
+            "source": r.source,
             "recorded_at": r.recorded_at.isoformat() if r.recorded_at else None,
         }
         for r in readings
