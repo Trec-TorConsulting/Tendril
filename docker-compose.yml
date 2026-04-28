@@ -25,7 +25,7 @@ services:
 
   # ─── EMQX MQTT Broker ───────────────────────────────
   emqx:
-    image: emqx/emqx:5-alpine
+    image: emqx/emqx:latest
     restart: unless-stopped
     ports:
       - "1883:1883"     # MQTT
@@ -49,7 +49,7 @@ services:
     restart: unless-stopped
     command: server /data --console-address ":9001"
     ports:
-      - "9000:9000"     # S3 API
+      - "9002:9000"     # S3 API (remapped from 9000 — SSH tunnel conflict)
       - "9001:9001"     # MinIO Console
     environment:
       MINIO_ROOT_USER: minioadmin

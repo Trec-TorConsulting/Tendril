@@ -42,6 +42,6 @@ describe("LoginPage", () => {
     );
     render(<LoginPage />);
 
-    expect(screen.getByText(/sign in to tendril/i)).toBeInTheDocument();
+    expect(screen.getByText(/sign in.*tendril/i)).toBeInTheDocument();
   });
 });

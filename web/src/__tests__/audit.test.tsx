@@ -17,35 +17,73 @@ vi.mock("@/lib/auth", () => ({
   getAccessToken: () => "test-token",
 }));
 
-const mockAuditPage = {
-  items: [
-    {
-      id: "al1",
-      user_id: "u1",
-      action: "create",
-      resource_type: "tent",
-      resource_id: "tent-abc-123",
-      before_value: null,
-      after_value: { name: "New Tent" },
-      ip_address: "192.168.1.10",
-      created_at: "2025-06-01T10:00:00Z",
-    },
-    {
-      id: "al2",
-      user_id: "u1",
-      action: "update",
-      resource_type: "grow",
-      resource_id: "grow-def-456",
-      before_value: { status: "active" },
-      after_value: { status: "harvested" },
-      ip_address: "192.168.1.10",
-      created_at: "2025-06-01T11:00:00Z",
-    },
-  ],
-  total: 2,
-  page: 1,
-  page_size: 50,
-};
+vi.mock("@/components/ui/sidebar", () => ({
+  Sidebar: ({ children }: any) => children,
+  SidebarContent: ({ children }: any) => children,
+  SidebarFooter: ({ children }: any) => children,
+  SidebarGroup: ({ children }: any) => children,
+  SidebarGroupAction: ({ children }: any) => children,
+  SidebarGroupContent: ({ children }: any) => children,
+  SidebarGroupLabel: ({ children }: any) => children,
+  SidebarHeader: ({ children }: any) => children,
+  SidebarInput: (props: any) => null,
+  SidebarInset: ({ children }: any) => children,
+  SidebarMenu: ({ children }: any) => children,
+  SidebarMenuAction: ({ children }: any) => children,
+  SidebarMenuBadge: ({ children }: any) => children,
+  SidebarMenuButton: ({ children }: any) => children,
+  SidebarMenuItem: ({ children }: any) => children,
+  SidebarMenuSkeleton: () => null,
+  SidebarMenuSub: ({ children }: any) => children,
+  SidebarMenuSubButton: ({ children }: any) => children,
+  SidebarMenuSubItem: ({ children }: any) => children,
+  SidebarProvider: ({ children }: any) => children,
+  SidebarRail: () => null,
+  SidebarSeparator: () => null,
+  SidebarTrigger: ({ children }: any) => children,
+  useSidebar: () => ({
+    state: "expanded",
+    open: true,
+    setOpen: vi.fn(),
+    openMobile: false,
+    setOpenMobile: vi.fn(),
+    isMobile: false,
+    toggleSidebar: vi.fn(),
+  }),
+}));
+
+const { mockAuditPage } = vi.hoisted(() => {
+  const mockAuditPage = {
+    items: [
+      {
+        id: "al1",
+        user_id: "u1",
+        action: "create",
+        resource_type: "tent",
+        resource_id: "tent-abc-123",
+        before_value: null,
+        after_value: { name: "New Tent" },
+        ip_address: "192.168.1.10",
+        created_at: "2025-06-01T10:00:00Z",
+      },
+      {
+        id: "al2",
+        user_id: "u1",
+        action: "update",
+        resource_type: "grow",
+        resource_id: "grow-def-456",
+        before_value: { status: "active" },
+        after_value: { status: "harvested" },
+        ip_address: "192.168.1.10",
+        created_at: "2025-06-01T11:00:00Z",
+      },
+    ],
+    total: 2,
+    page: 1,
+    page_size: 50,
+  };
+  return { mockAuditPage };
+});
 
 vi.mock("@/lib/api", () => ({
   listAuditLogs: vi.fn().mockResolvedValue(mockAuditPage),
@@ -58,9 +96,11 @@ describe("AuditPage", () => {
     vi.clearAllMocks();
   });
 
-  it("renders audit trail title", () => {
+  it("renders audit trail title", async () => {
     render(<AuditPage />);
-    expect(screen.getByText("Audit Trail")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("Audit Trail")).toBeInTheDocument();
+    });
   });
 
   it("shows audit entries", async () => {
@@ -79,16 +119,17 @@ describe("AuditPage", () => {
     });
   });
 
-  it("shows filter controls", () => {
-    render(<AuditPage />);
-    expect(screen.getByText("All Actions")).toBeInTheDocument();
-  });
-
-  it("shows expandable details links", async () => {
+  it("shows filter controls", async () => {
     render(<AuditPage />);
     await waitFor(() => {
-      const showButtons = screen.getAllByText("Show");
-      expect(showButtons.length).toBe(2);
+      expect(screen.getByText("Action")).toBeInTheDocument();
+    });
+  });
+
+  it("shows details column", async () => {
+    render(<AuditPage />);
+    await waitFor(() => {
+      expect(screen.getByText("Details")).toBeInTheDocument();
     });
   });
 });

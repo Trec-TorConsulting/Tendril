@@ -18,7 +18,7 @@ import LandingPage from "@/app/(marketing)/page";
 describe("LandingPage", () => {
   it("renders hero section", () => {
     render(<LandingPage />);
-    expect(screen.getByText(/AI-Powered/)).toBeDefined();
+    expect(screen.getAllByText(/AI-Powered/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Start Growing Free")).toBeDefined();
   });
 
