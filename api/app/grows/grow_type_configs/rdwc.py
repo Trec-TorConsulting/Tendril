@@ -1750,6 +1750,70 @@ RDWC_STAGES: list[dict] = [
             },
         },
     },
+
+    # ── 13. STORAGE ──────────────────────────────────────────────────────
+    {
+        "id": "storage",
+        "name": "Long-Term Storage",
+        "order": 13,
+        "duration_days": {"min": 30, "max": 365, "typical": 180},
+        "description": "Post-cure long-term storage for commercial and home operations. RDWC produces heavy yields — plan storage capacity accordingly. A 4-site RDWC system can produce 2-4+ lbs per cycle. Proper storage preserves potency and terpenes for 6-12+ months. THC degrades to CBN at ~5%/year under ideal conditions, much faster with heat, light, or oxygen exposure.",
+        "environment": {
+            "temp_day_f": {"min": 55, "max": 65, "target": 60},
+            "temp_night_f": {"min": 55, "max": 65, "target": 60},
+            "humidity_pct": {"min": 55, "max": 62, "target": 58},
+            "vpd_kpa": None,
+            "light_hours": 0, "light_ppfd": 0, "light_dli": 0,
+            "notes": "DARK. Cool. Stable. Zero light — UV destroys cannabinoids and terpenes. Commercial vaults: 58-62°F, 55-60% RH, complete darkness, nitrogen atmosphere.",
+        },
+        "reservoir": None,
+        "nutrients": {"strength_pct": 0, "approach": "None.", "flora_micro_ml_per_gal": 0, "flora_gro_ml_per_gal": 0, "flora_bloom_ml_per_gal": 0, "calmag_ml_per_gal": 0, "supplements": []},
+        "tasks": [
+            {"name": "Transfer to long-term containers", "description": "Home: mason jars with Boveda 58-62% packs. Commercial: nitrogen-sealed grove bags, CVault containers, or nitrogen-flushed drums. RDWC yields are high — plan container volume accordingly.", "interval_days": None, "priority": "high"},
+            {"name": "Label and track batches", "description": "Strain, harvest date, storage date, weight, batch number. Commercial: seed-to-sale tracking, FIFO rotation.", "interval_days": None, "priority": "high"},
+            {"name": "Monthly quality checks", "description": "Inspect for mold, off odors. Check humidity packs. Commercial: potency/terpene testing at 30/90/180 days.", "interval_days": 30, "priority": "high"},
+            {"name": "Maintain environment", "description": "Monitor vault temp/humidity. No light leaks. Commercial: automated environmental monitoring with alerts.", "interval_days": 1, "priority": "high"},
+            {"name": "Rotate stock (FIFO)", "description": "First in, first out. Flag batches approaching 12 months for priority sale or extraction.", "interval_days": 30, "priority": "medium"},
+            {"name": "Compliance testing holds", "description": "Commercial: retain testing samples per regulations. Track chain of custody.", "interval_days": None, "priority": "medium"},
+        ],
+        "health_checks": ["Temp 55-65°F?", "Humidity 55-62%?", "Complete darkness?", "No mold/off odors?", "Humidity packs active?", "FIFO maintained?"],
+        "common_problems": [
+            {"issue": "THC degrading to CBN", "cause": "Heat, light, oxygen, or time", "solution": "Darkness, cool temps (60°F), minimal oxygen. ~5%/year baseline."},
+            {"issue": "Terpene loss", "cause": "Temps above 70°F, oxygen exposure, frequent opening", "solution": "Keep below 65°F. Nitrogen-sealed containers. Minimize opening."},
+            {"issue": "Mold in storage", "cause": "Humidity above 65% or improper dry/cure", "solution": "Verify 58-62% RH before sealing. Remove affected material immediately."},
+            {"issue": "Weight loss", "cause": "Normal moisture equilibration (1-3% first month)", "solution": "Boveda/Integra packs minimize loss. Sealed containers essential."},
+        ],
+        "training": [],
+        "transition_signals": ["N/A — terminal stage"],
+        "environment_variants": {
+            "outdoor": {"environment_overrides": {"notes": "Storage is always indoor."}, "extra_tasks": [], "extra_problems": [], "notes": "Indoor controlled environment."},
+            "greenhouse": {"environment_overrides": {"notes": "Do NOT store in greenhouse."}, "extra_tasks": [], "extra_problems": [], "notes": "Climate-controlled indoor space only."},
+        },
+        "commercial_scale": {
+            "container_progression": {
+                "home_small": "Mason jars with Boveda packs",
+                "home_large": "Grove bags or CVault containers",
+                "commercial_small": "Nitrogen-sealed grove bags (1 lb units)",
+                "commercial_medium": "Turkey bags in sealed bins, nitrogen-flushed",
+                "commercial_large": "Nitrogen-flushed drums (5-50 lb) in vault",
+                "industrial": "Climate-controlled vault, nitrogen generators, automated monitoring",
+            },
+            "degradation_timeline": {
+                "0_3_months": "Peak quality. Minimal degradation.",
+                "3_6_months": "Slight terpene reduction (~10-15%). Potency stable.",
+                "6_12_months": "Noticeable terpene loss (~20-30%). THC down ~5%.",
+                "12_18_months": "Significant decline. Process into extracts.",
+                "18_plus_months": "Convert to extracts, edibles, or topicals.",
+            },
+            "testing_schedule": {
+                "initial": "Full panel at harvest",
+                "30_days": "Potency + terpenes (post-cure baseline)",
+                "90_days": "Potency + terpenes + microbials",
+                "180_days": "Full panel retest",
+                "360_days": "Full panel — sell, process, or destroy decision",
+            },
+        },
+    },
 ]
 
 
