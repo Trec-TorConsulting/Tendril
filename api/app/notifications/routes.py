@@ -88,7 +88,7 @@ async def create_channel(
     )
 
 
-@router.get("/channels")
+@router.get("/channels", response_model=PaginatedResponse[ChannelResponse])
 async def list_channels(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
@@ -189,7 +189,7 @@ async def test_channel(
 
 # ---------- Preferences ----------
 
-@router.get("/preferences")
+@router.get("/preferences", response_model=PaginatedResponse[PreferenceResponse])
 async def list_preferences(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],

@@ -32,6 +32,8 @@ class PaginatedResponse(BaseModel, Generic[T]):
     page: int
     page_size: int
 
+    model_config = {"from_attributes": True}
+
 
 async def paginate(
     session: AsyncSession,

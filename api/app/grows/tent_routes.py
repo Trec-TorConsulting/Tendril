@@ -8,7 +8,7 @@ from uuid import UUID
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,8 +31,8 @@ class EquipmentItem(BaseModel):
 
 
 class TentCreate(BaseModel):
-    name: str
-    environment_type: str = "indoor"
+    name: str = Field(max_length=255)
+    environment_type: str = Field(default="indoor", max_length=255)
     size: str | None = None
     latitude: float | None = None
     longitude: float | None = None
@@ -78,13 +78,13 @@ async def create_tent(
     return tent
 
 
-@router.get("")
+@router.get("", response_model=PaginatedResponse[TentResponse])
 async def list_tents(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
     pagination: Annotated[PaginationParams, Depends()],
 ):
-    q = select(Tent).where(Tent.deleted_at.is_(None)).order_by(Tent.created_at.desc())
+    q = select(Tent).where(Tent.deleted_at.is_(None), Tent.tenant_id == user.tenant_id).order_by(Tent.created_at.desc())
     items, total = await paginate(session, q, pagination)
     return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
 

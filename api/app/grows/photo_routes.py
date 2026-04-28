@@ -67,7 +67,7 @@ async def create_photo(
     return photo
 
 
-@router.get("")
+@router.get("", response_model=PaginatedResponse[PhotoResponse])
 async def list_photos(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
@@ -163,7 +163,7 @@ async def upload_grow_photo(
     return photo
 
 
-@router.get("/grow")
+@router.get("/grow", response_model=PaginatedResponse[GrowPhotoResponse])
 async def list_grow_photos(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],

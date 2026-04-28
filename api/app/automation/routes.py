@@ -80,7 +80,7 @@ async def list_rules(
     pagination: Annotated[PaginationParams, Depends()],
     grow_cycle_id: str | None = None,
 ):
-    q = select(AutomationRule)
+    q = select(AutomationRule).where(AutomationRule.tenant_id == user.tenant_id)
     if grow_cycle_id:
         q = q.where(AutomationRule.grow_cycle_id == UUID(grow_cycle_id))
     items, total = await paginate(session, q, pagination)

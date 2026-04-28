@@ -8,7 +8,7 @@ import pytest
 import pytest_asyncio
 from tests.conftest import TenantFactory
 
-pytestmark = pytest.mark.asyncio
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 @pytest_asyncio.fixture
@@ -88,7 +88,7 @@ class TestIntegrationConfigCRUD:
         )
         resp = await client.get("/v1/integrations", headers=tenant["headers"])
         assert resp.status_code == 200
-        assert len(resp.json()) >= 2
+        assert len(resp.json()["items"]) >= 2
 
     async def test_list_integrations_filter_type(self, client, tenant):
         await client.post(
@@ -103,7 +103,7 @@ class TestIntegrationConfigCRUD:
         )
         resp = await client.get("/v1/integrations?type=ha", headers=tenant["headers"])
         assert resp.status_code == 200
-        assert all(i["type"] == "ha" for i in resp.json())
+        assert all(i["type"] == "ha" for i in resp.json()["items"])
 
     async def test_get_integration(self, client, tenant):
         r = await client.post(
@@ -179,7 +179,7 @@ class TestIntegrationIsolation:
         )
         resp = await client.get("/v1/integrations", headers=tenant_b["headers"])
         assert resp.status_code == 200
-        assert not any(i["name"] == "A's HA" for i in resp.json())
+        assert not any(i["name"] == "A's HA" for i in resp.json()["items"])
 
     async def test_tenant_b_cannot_access_tenant_a_integration(self, client, tenant, tenant_b):
         r = await client.post(
@@ -234,7 +234,7 @@ class TestDeviceMapCRUD:
         )
         resp = await client.get(f"/v1/integrations/{iid}/devices", headers=tenant["headers"])
         assert resp.status_code == 200
-        assert len(resp.json()) >= 2
+        assert len(resp.json()["items"]) >= 2
 
     async def test_update_device_map(self, client, tenant):
         iid = await self._create_integration(client, tenant)
@@ -287,7 +287,7 @@ class TestSyncLogs:
         iid = r.json()["id"]
         resp = await client.get(f"/v1/integrations/{iid}/logs", headers=tenant["headers"])
         assert resp.status_code == 200
-        assert resp.json() == []
+        assert resp.json()["items"] == []
 
 
 # ---------- Webhook ----------

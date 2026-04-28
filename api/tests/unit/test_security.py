@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from tests.conftest import TenantFactory
 
-pytestmark = pytest.mark.asyncio
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 @pytest_asyncio.fixture
@@ -30,7 +30,7 @@ class TestTenantIsolation:
         await client.post("/v1/tents", json={"name": "A's Tent"}, headers=tenant_a["headers"])
         resp = await client.get("/v1/tents", headers=tenant_b["headers"])
         assert resp.status_code == 200
-        tents = resp.json()
+        tents = resp.json()["items"]
         assert not any(t["name"] == "A's Tent" for t in tents)
 
     async def test_cannot_read_other_tenant_grows(self, client, tenant_a, tenant_b):
@@ -43,7 +43,7 @@ class TestTenantIsolation:
         )
         resp = await client.get("/v1/grows", headers=tenant_b["headers"])
         assert resp.status_code == 200
-        grows = resp.json()
+        grows = resp.json()["items"]
         assert not any(g["name"] == "A's Grow" for g in grows)
 
     async def test_cannot_read_other_tenant_rules(self, client, tenant_a, tenant_b):
@@ -55,7 +55,7 @@ class TestTenantIsolation:
         )
         resp = await client.get("/v1/automation/rules", headers=tenant_b["headers"])
         assert resp.status_code == 200
-        assert not any(r["name"] == "A's Rule" for r in resp.json())
+        assert not any(r["name"] == "A's Rule" for r in resp.json()["items"])
 
     async def test_cannot_read_other_tenant_channels(self, client, tenant_a, tenant_b):
         """Tenant B cannot see Tenant A's notification channels."""
@@ -66,7 +66,7 @@ class TestTenantIsolation:
         )
         resp = await client.get("/v1/notifications/channels", headers=tenant_b["headers"])
         assert resp.status_code == 200
-        assert not any(c["name"] == "A's Discord" for c in resp.json())
+        assert not any(c["name"] == "A's Discord" for c in resp.json()["items"])
 
 
 # ---------- Auth / Token Tampering ----------

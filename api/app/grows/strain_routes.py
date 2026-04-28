@@ -81,7 +81,7 @@ async def create_strain(
     return strain
 
 
-@router.get("")
+@router.get("", response_model=PaginatedResponse[StrainResponse])
 async def list_strains(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],

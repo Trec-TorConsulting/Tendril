@@ -6,7 +6,7 @@ import pytest
 import pytest_asyncio
 from tests.conftest import TenantFactory
 
-pytestmark = pytest.mark.asyncio
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 @pytest_asyncio.fixture
@@ -60,7 +60,7 @@ class TestOutdoorYields:
         )
         resp = await client.get(f"/v1/grows/{grow_id}/yields", headers=tenant["headers"])
         assert resp.status_code == 200
-        assert len(resp.json()) >= 1
+        assert len(resp.json()["items"]) >= 1
 
     async def test_yield_summary(self, client, tenant):
         _, grow_id, bucket_id = await _setup_grow(client, tenant)
@@ -109,7 +109,7 @@ class TestSoilTests:
         )
         resp = await client.get(f"/v1/grows/{grow_id}/soil-tests", headers=tenant["headers"])
         assert resp.status_code == 200
-        assert len(resp.json()) >= 1
+        assert len(resp.json()["items"]) >= 1
 
     async def test_latest_soil_test(self, client, tenant):
         _, grow_id, _ = await _setup_grow(client, tenant)
@@ -165,7 +165,7 @@ class TestSoilAmendments:
         )
         resp = await client.get(f"/v1/grows/{grow_id}/amendments", headers=tenant["headers"])
         assert resp.status_code == 200
-        assert len(resp.json()) >= 1
+        assert len(resp.json()["items"]) >= 1
 
     async def test_delete_amendment(self, client, tenant):
         _, grow_id, _ = await _setup_grow(client, tenant)
@@ -261,7 +261,7 @@ class TestPestScouts:
         )
         resp = await client.get(f"/v1/grows/{grow_id}/pest-scouts", headers=tenant["headers"])
         assert resp.status_code == 200
-        assert len(resp.json()) >= 1
+        assert len(resp.json()["items"]) >= 1
 
     async def test_list_pest_scouts_filter(self, client, tenant):
         _, grow_id, _ = await _setup_grow(client, tenant)
@@ -280,7 +280,7 @@ class TestPestScouts:
             headers=tenant["headers"],
         )
         assert resp.status_code == 200
-        assert all(p["pest_type"] == "insect" for p in resp.json())
+        assert all(p["pest_type"] == "insect" for p in resp.json()["items"])
 
     async def test_delete_pest_scout(self, client, tenant):
         _, grow_id, _ = await _setup_grow(client, tenant)
@@ -381,7 +381,7 @@ class TestRunoffReadings:
         )
         resp = await client.get(f"/v1/grows/{grow_id}/runoff", headers=tenant["headers"])
         assert resp.status_code == 200
-        assert len(resp.json()) >= 1
+        assert len(resp.json()["items"]) >= 1
 
     async def test_runoff_stats(self, client, tenant):
         _, grow_id, bucket_id = await _setup_grow(client, tenant)
@@ -416,19 +416,19 @@ class TestRunoffReadings:
 
 
 class TestCompanionPlants:
-    async def test_list_companions(self, client):
-        resp = await client.get("/v1/companion-plants")
+    async def test_list_companions(self, client, tenant):
+        resp = await client.get("/v1/companion-plants", headers=tenant["headers"])
         assert resp.status_code == 200
         assert isinstance(resp.json(), list)
 
-    async def test_check_compatibility(self, client):
-        resp = await client.get("/v1/companion-plants/check?plant=tomato&neighbor=basil")
+    async def test_check_compatibility(self, client, tenant):
+        resp = await client.get("/v1/companion-plants/check?plant=tomato&neighbor=basil", headers=tenant["headers"])
         assert resp.status_code == 200
         data = resp.json()
         assert "compatibility" in data
 
-    async def test_suggest_companions(self, client):
-        resp = await client.get("/v1/companion-plants/suggest?plant=tomato")
+    async def test_suggest_companions(self, client, tenant):
+        resp = await client.get("/v1/companion-plants/suggest?plant=tomato", headers=tenant["headers"])
         assert resp.status_code == 200
         data = resp.json()
         assert "suggestions" in data

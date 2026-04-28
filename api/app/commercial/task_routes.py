@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
 from app.commercial.models import Task
 from app.pagination import PaginatedResponse, PaginationParams, paginate
+from app.tenants.models import Tenant
 
 router = APIRouter()
 
@@ -90,6 +91,9 @@ async def create_task(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
+    tenant = await session.get(Tenant, user.tenant_id)
+    if not tenant or tenant.plan != "commercial":
+        raise HTTPException(status_code=403, detail="Task management requires Commercial plan")
     task = Task(
         tenant_id=user.tenant_id,
         title=body.title,
@@ -111,7 +115,7 @@ async def create_task(
     return _to_response(task)
 
 
-@router.get("")
+@router.get("", response_model=PaginatedResponse[TaskResponse])
 async def list_tasks(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],

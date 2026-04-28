@@ -7,7 +7,7 @@ import pytest_asyncio
 from app.auth.jwt import create_access_token
 from tests.conftest import TenantFactory
 
-pytestmark = pytest.mark.asyncio
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 @pytest_asyncio.fixture
@@ -28,7 +28,7 @@ async def admin_tenant(db_session):
         data["user"].role,
         is_platform_admin=True,
     )
-    data["admin_headers"] = {"Authorization": f"Bearer {admin_token}"}
+    data["admin_headers"] = {"Authorization": f"Bearer {admin_token}", "X-CSRF-Token": "test-csrf-token"}
     return data
 
 
@@ -51,7 +51,7 @@ class TestAdminTenants:
     async def test_list_tenants_as_admin(self, client, admin_tenant):
         resp = await client.get("/v1/admin/tenants", headers=admin_tenant["admin_headers"])
         assert resp.status_code == 200
-        assert isinstance(resp.json(), list)
+        assert isinstance(resp.json()["items"], list)
 
     async def test_list_tenants_as_support(self, client, support_tenant):
         resp = await client.get("/v1/admin/tenants", headers=support_tenant["support_headers"])
@@ -78,7 +78,7 @@ class TestAdminUsers:
     async def test_list_all_users(self, client, admin_tenant):
         resp = await client.get("/v1/admin/users", headers=admin_tenant["admin_headers"])
         assert resp.status_code == 200
-        assert isinstance(resp.json(), list)
+        assert isinstance(resp.json()["items"], list)
 
     async def test_update_user_flags(self, client, admin_tenant, tenant):
         user_id = str(tenant["user"].id)

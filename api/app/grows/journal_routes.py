@@ -72,7 +72,7 @@ async def create_entry(
     return entry
 
 
-@router.get("")
+@router.get("", response_model=PaginatedResponse[JournalResponse])
 async def list_entries(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],

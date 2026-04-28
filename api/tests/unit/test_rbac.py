@@ -5,8 +5,9 @@ import pytest
 from app.auth.jwt import create_access_token
 from uuid import uuid4
 
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
-@pytest.mark.asyncio
+
 async def test_viewer_cannot_access_owner_endpoint(client):
     """Viewer role should be blocked from owner-only actions."""
     # Create a token with viewer role
@@ -22,7 +23,6 @@ async def test_viewer_cannot_access_owner_endpoint(client):
     assert resp.status_code in (200, 404)
 
 
-@pytest.mark.asyncio
 async def test_invalid_token_rejected(client):
     """Malformed JWT should return 401."""
     resp = await client.get(
@@ -32,7 +32,6 @@ async def test_invalid_token_rejected(client):
     assert resp.status_code == 401
 
 
-@pytest.mark.asyncio
 async def test_expired_token_rejected(client):
     """Expired JWT should return 401."""
     from jose import jwt

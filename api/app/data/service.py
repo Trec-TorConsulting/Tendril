@@ -63,24 +63,20 @@ async def export_bucket_csv(session: AsyncSession, bucket_id: UUID) -> str:
 
     # Header
     columns = [
-        "recorded_at", "ph", "ec", "water_temp_f", "air_temp_f", "humidity",
-        "co2_ppm", "vpd", "light_par", "dissolved_oxygen", "flow_rate",
-        "soil_moisture", "soil_temp", "runoff_ph", "runoff_ec", "mist_pressure",
+        "recorded_at", "ph", "ec", "ppm", "water_temp_f", "water_level_pct",
+        "dissolved_oxygen", "flow_rate", "mist_pressure",
+        "soil_moisture", "soil_temp", "runoff_ph", "runoff_ec",
+        "ambient_temp_f", "ambient_humidity",
     ]
     writer.writerow(columns)
 
     for r in readings:
         writer.writerow([
             r.recorded_at.isoformat() if r.recorded_at else "",
-            r.ph, r.ec, r.water_temp_f, r.air_temp_f, r.humidity,
-            r.co2_ppm, r.vpd, r.light_par,
-            getattr(r, "dissolved_oxygen", None),
-            getattr(r, "flow_rate", None),
-            getattr(r, "soil_moisture", None),
-            getattr(r, "soil_temp", None),
-            getattr(r, "runoff_ph", None),
-            getattr(r, "runoff_ec", None),
-            getattr(r, "mist_pressure", None),
+            r.ph, r.ec, r.ppm, r.water_temp_f, r.water_level_pct,
+            r.dissolved_oxygen, r.flow_rate, r.mist_pressure,
+            r.soil_moisture, r.soil_temp, r.runoff_ph, r.runoff_ec,
+            r.ambient_temp_f, r.ambient_humidity,
         ])
 
     return output.getvalue()

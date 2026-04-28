@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from tests.conftest import TenantFactory
 
-pytestmark = pytest.mark.asyncio
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 @pytest_asyncio.fixture
@@ -43,7 +43,7 @@ class TestNotificationChannels:
         )
         resp = await client.get("/v1/notifications/channels", headers=tenant["headers"])
         assert resp.status_code == 200
-        assert len(resp.json()) >= 1
+        assert len(resp.json()["items"]) >= 1
 
     async def test_update_channel(self, client, tenant):
         create = await client.post(
@@ -130,15 +130,15 @@ class TestDataExport:
             headers=tenant["headers"],
         )
         bucket = await client.post(
-            f"/v1/grows/{grow.json()['id']}/buckets",
-            json={"position": 1, "label": "B1"},
+            "/v1/buckets",
+            json={"grow_cycle_id": grow.json()["id"], "position": 1, "label": "B1"},
             headers=tenant["headers"],
         )
         bucket_id = bucket.json()["id"]
 
         await client.post(
-            f"/v1/buckets/{bucket_id}/sensors",
-            json={"ph": 6.0, "ec": 1.2},
+            "/v1/sensors",
+            json={"bucket_id": bucket_id, "ph": 6.0, "ec": 1.2},
             headers=tenant["headers"],
         )
 

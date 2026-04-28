@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from tests.conftest import TenantFactory
 
-pytestmark = pytest.mark.asyncio
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 @pytest_asyncio.fixture
@@ -35,7 +35,7 @@ class TestTentCRUD:
         await client.post("/v1/tents", json={"name": "T2"}, headers=tenant["headers"])
         resp = await client.get("/v1/tents", headers=tenant["headers"])
         assert resp.status_code == 200
-        assert len(resp.json()) >= 2
+        assert len(resp.json()["items"]) >= 2
 
     async def test_update_tent(self, client, tenant):
         r = await client.post("/v1/tents", json={"name": "Old"}, headers=tenant["headers"])
@@ -78,7 +78,7 @@ class TestGrowCRUD:
         await client.post("/v1/grows", json={"tent_id": tid, "name": "G1", "grow_type": "dwc"}, headers=tenant["headers"])
         resp = await client.get("/v1/grows?status=active", headers=tenant["headers"])
         assert resp.status_code == 200
-        assert all(g["status"] == "active" for g in resp.json())
+        assert all(g["status"] == "active" for g in resp.json()["items"])
 
     async def test_complete_grow_sets_ended_at(self, client, tenant):
         t = await client.post("/v1/tents", json={"name": "T"}, headers=tenant["headers"])
@@ -119,7 +119,7 @@ class TestBucketCRUD:
         await client.post("/v1/buckets", json={"grow_cycle_id": gid, "label": "B2"}, headers=tenant["headers"])
         resp = await client.get(f"/v1/buckets?grow_cycle_id={gid}", headers=tenant["headers"])
         assert resp.status_code == 200
-        assert len(resp.json()) >= 2
+        assert len(resp.json()["items"]) >= 2
 
 
 # ---------- Sensor Readings ----------
@@ -183,7 +183,7 @@ class TestStrainCRUD:
         await client.post("/v1/strains", json={"name": "S2"}, headers=tenant["headers"])
         resp = await client.get("/v1/strains", headers=tenant["headers"])
         assert resp.status_code == 200
-        assert len(resp.json()) >= 2
+        assert len(resp.json()["items"]) >= 2
 
     async def test_delete_strain(self, client, tenant):
         r = await client.post("/v1/strains", json={"name": "ToDelete"}, headers=tenant["headers"])
@@ -218,7 +218,7 @@ class TestGrowTypes:
         types = resp.json()
         assert len(types) == 12
         names = [t["name"] for t in types]
-        assert "Deep Water Culture (DWC)" in names
+        assert "DWC (Deep Water Culture)" in names
 
     async def test_get_grow_type_detail(self, client, tenant):
         resp = await client.get("/v1/grow-types/dwc", headers=tenant["headers"])

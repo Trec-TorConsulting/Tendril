@@ -59,7 +59,7 @@ async def create_dose_profile(
     return dose
 
 
-@router.get("/doses")
+@router.get("/doses", response_model=PaginatedResponse[DoseProfileResponse])
 async def list_dose_profiles(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
@@ -162,7 +162,7 @@ async def create_feeding_schedule(
     return schedule
 
 
-@router.get("/feeding")
+@router.get("/feeding", response_model=PaginatedResponse[FeedingScheduleResponse])
 async def list_feeding_schedules(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],

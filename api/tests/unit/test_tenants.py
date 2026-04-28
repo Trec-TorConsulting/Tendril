@@ -8,7 +8,7 @@ import pytest
 import pytest_asyncio
 from tests.conftest import TenantFactory
 
-pytestmark = pytest.mark.asyncio
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 @pytest_asyncio.fixture
@@ -77,7 +77,7 @@ class TestTenantMembers:
     async def test_list_members(self, client, tenant):
         resp = await client.get("/v1/tenants/members", headers=tenant["headers"])
         assert resp.status_code == 200
-        members = resp.json()
+        members = resp.json()["items"]
         assert len(members) >= 1  # At least the owner
 
     async def test_invite_member(self, client, tenant):

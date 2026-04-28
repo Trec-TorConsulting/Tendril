@@ -72,7 +72,7 @@ async def create_grow(
     return grow
 
 
-@router.get("")
+@router.get("", response_model=PaginatedResponse[GrowResponse])
 async def list_grows(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
@@ -80,7 +80,7 @@ async def list_grows(
     status: str | None = None,
     tent_id: UUID | None = None,
 ):
-    q = select(GrowCycle).where(GrowCycle.deleted_at.is_(None)).order_by(GrowCycle.created_at.desc())
+    q = select(GrowCycle).where(GrowCycle.deleted_at.is_(None), GrowCycle.tenant_id == user.tenant_id).order_by(GrowCycle.created_at.desc())
     if status:
         q = q.where(GrowCycle.status == status)
     if tent_id:

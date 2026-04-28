@@ -95,7 +95,7 @@ async def create_runoff_reading(
     return reading
 
 
-@router.get("/{grow_id}/runoff")
+@router.get("/{grow_id}/runoff", response_model=PaginatedResponse[RunoffResponse])
 async def list_runoff_readings(
     grow_id: UUID,
     user: Annotated[CurrentUser, Depends(get_current_user)],
@@ -110,39 +110,6 @@ async def list_runoff_readings(
     q = q.order_by(desc(RunoffReading.recorded_at))
     items, total = await paginate(session, q, pagination)
     return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
-
-
-@router.get("/{grow_id}/runoff/{reading_id}", response_model=RunoffResponse)
-async def get_runoff_reading(
-    grow_id: UUID,
-    reading_id: UUID,
-    user: Annotated[CurrentUser, Depends(get_current_user)],
-    session: Annotated[AsyncSession, Depends(get_tenant_session)],
-):
-    """Get a single runoff reading by ID."""
-    reading = await session.get(RunoffReading, reading_id)
-    if reading is None or reading.grow_cycle_id != grow_id:
-        raise HTTPException(status_code=404, detail="Runoff reading not found")
-    return reading
-
-
-@router.patch("/{grow_id}/runoff/{reading_id}", response_model=RunoffResponse)
-async def update_runoff_reading(
-    grow_id: UUID,
-    reading_id: UUID,
-    body: RunoffUpdate,
-    user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
-    session: Annotated[AsyncSession, Depends(get_tenant_session)],
-):
-    """Update a runoff reading."""
-    reading = await session.get(RunoffReading, reading_id)
-    if reading is None or reading.grow_cycle_id != grow_id:
-        raise HTTPException(status_code=404, detail="Runoff reading not found")
-    for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(reading, field, value)
-    await session.commit()
-    await session.refresh(reading)
-    return reading
 
 
 @router.get("/{grow_id}/runoff/stats", response_model=list[RunoffStatsResponse])
@@ -204,6 +171,39 @@ async def get_runoff_stats(
         ))
 
     return stats
+
+
+@router.get("/{grow_id}/runoff/{reading_id}", response_model=RunoffResponse)
+async def get_runoff_reading(
+    grow_id: UUID,
+    reading_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Get a single runoff reading by ID."""
+    reading = await session.get(RunoffReading, reading_id)
+    if reading is None or reading.grow_cycle_id != grow_id:
+        raise HTTPException(status_code=404, detail="Runoff reading not found")
+    return reading
+
+
+@router.patch("/{grow_id}/runoff/{reading_id}", response_model=RunoffResponse)
+async def update_runoff_reading(
+    grow_id: UUID,
+    reading_id: UUID,
+    body: RunoffUpdate,
+    user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Update a runoff reading."""
+    reading = await session.get(RunoffReading, reading_id)
+    if reading is None or reading.grow_cycle_id != grow_id:
+        raise HTTPException(status_code=404, detail="Runoff reading not found")
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(reading, field, value)
+    await session.commit()
+    await session.refresh(reading)
+    return reading
 
 
 @router.delete("/{grow_id}/runoff/{reading_id}", status_code=204)

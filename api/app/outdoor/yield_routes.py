@@ -93,7 +93,7 @@ async def create_yield(
     return entry
 
 
-@router.get("/{grow_id}/yields")
+@router.get("/{grow_id}/yields", response_model=PaginatedResponse[YieldResponse])
 async def list_yields(
     grow_id: UUID,
     user: Annotated[CurrentUser, Depends(get_current_user)],
@@ -108,39 +108,6 @@ async def list_yields(
     )
     items, total = await paginate(session, q, pagination)
     return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
-
-
-@router.get("/{grow_id}/yields/{yield_id}", response_model=YieldResponse)
-async def get_yield(
-    grow_id: UUID,
-    yield_id: UUID,
-    user: Annotated[CurrentUser, Depends(get_current_user)],
-    session: Annotated[AsyncSession, Depends(get_tenant_session)],
-):
-    """Get a single yield entry by ID."""
-    entry = await session.get(HarvestYield, yield_id)
-    if entry is None or entry.grow_cycle_id != grow_id:
-        raise HTTPException(status_code=404, detail="Yield entry not found")
-    return entry
-
-
-@router.patch("/{grow_id}/yields/{yield_id}", response_model=YieldResponse)
-async def update_yield(
-    grow_id: UUID,
-    yield_id: UUID,
-    body: YieldUpdate,
-    user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
-    session: Annotated[AsyncSession, Depends(get_tenant_session)],
-):
-    """Update a harvest yield entry."""
-    entry = await session.get(HarvestYield, yield_id)
-    if entry is None or entry.grow_cycle_id != grow_id:
-        raise HTTPException(status_code=404, detail="Yield entry not found")
-    for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(entry, field, value)
-    await session.commit()
-    await session.refresh(entry)
-    return entry
 
 
 @router.get("/{grow_id}/yields/summary", response_model=YieldSummary)
@@ -191,6 +158,39 @@ async def get_yield_summary(
         avg_quality=round(avg_quality, 1) if avg_quality else None,
         yield_per_sqft_oz=yield_per_sqft,
     )
+
+
+@router.get("/{grow_id}/yields/{yield_id}", response_model=YieldResponse)
+async def get_yield(
+    grow_id: UUID,
+    yield_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Get a single yield entry by ID."""
+    entry = await session.get(HarvestYield, yield_id)
+    if entry is None or entry.grow_cycle_id != grow_id:
+        raise HTTPException(status_code=404, detail="Yield entry not found")
+    return entry
+
+
+@router.patch("/{grow_id}/yields/{yield_id}", response_model=YieldResponse)
+async def update_yield(
+    grow_id: UUID,
+    yield_id: UUID,
+    body: YieldUpdate,
+    user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Update a harvest yield entry."""
+    entry = await session.get(HarvestYield, yield_id)
+    if entry is None or entry.grow_cycle_id != grow_id:
+        raise HTTPException(status_code=404, detail="Yield entry not found")
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(entry, field, value)
+    await session.commit()
+    await session.refresh(entry)
+    return entry
 
 
 @router.delete("/{grow_id}/yields/{yield_id}", status_code=204)

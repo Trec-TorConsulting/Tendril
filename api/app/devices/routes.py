@@ -124,14 +124,14 @@ async def pair_device(
     return device
 
 
-@router.get("")
+@router.get("", response_model=PaginatedResponse[DeviceResponse])
 async def list_devices(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
     pagination: Annotated[PaginationParams, Depends()],
 ):
     """List all devices for the current tenant (RLS-enforced)."""
-    q = select(Device).where(Device.deleted_at.is_(None)).order_by(Device.created_at.desc())
+    q = select(Device).where(Device.deleted_at.is_(None), Device.tenant_id == user.tenant_id).order_by(Device.created_at.desc())
     items, total = await paginate(session, q, pagination)
     return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
 
@@ -145,7 +145,7 @@ async def get_device(
     """Get a specific device by device_id."""
     result = await session.execute(select(Device).where(Device.device_id == device_id))
     device = result.scalar_one_or_none()
-    if device is None:
+    if device is None or device.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Device not found")
     return device
 

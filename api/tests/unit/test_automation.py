@@ -6,7 +6,7 @@ import pytest_asyncio
 
 from tests.conftest import TenantFactory
 
-pytestmark = pytest.mark.asyncio
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 @pytest_asyncio.fixture
@@ -60,7 +60,7 @@ class TestAutomationRules:
         )
         resp = await client.get("/v1/automation/rules", headers=tenant["headers"])
         assert resp.status_code == 200
-        assert len(resp.json()) >= 2
+        assert len(resp.json()["items"]) >= 2
 
     async def test_update_rule(self, client, tenant):
         create = await client.post(
@@ -102,7 +102,7 @@ class TestAlertHistory:
     async def test_list_alerts_empty(self, client, tenant):
         resp = await client.get("/v1/automation/alerts", headers=tenant["headers"])
         assert resp.status_code == 200
-        assert resp.json() == []
+        assert resp.json()["items"] == []
 
     async def test_alerts_no_auth(self, client):
         resp = await client.get("/v1/automation/alerts")
@@ -138,7 +138,7 @@ class TestEnvironmentSchedules:
         )
         resp = await client.get("/v1/automation/schedules", headers=tenant["headers"])
         assert resp.status_code == 200
-        assert len(resp.json()) >= 1
+        assert len(resp.json()["items"]) >= 1
 
     async def test_filter_schedules_by_tent(self, client, tenant, tent_id):
         await client.post(
@@ -148,7 +148,7 @@ class TestEnvironmentSchedules:
         )
         resp = await client.get(f"/v1/automation/schedules?tent_id={tent_id}", headers=tenant["headers"])
         assert resp.status_code == 200
-        data = resp.json()
+        data = resp.json()["items"]
         assert all(s["tent_id"] == tent_id for s in data)
 
     async def test_update_schedule(self, client, tenant, tent_id):

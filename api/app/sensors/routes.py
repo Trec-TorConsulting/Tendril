@@ -71,7 +71,7 @@ async def create_reading(
     return reading
 
 
-@router.get("")
+@router.get("", response_model=PaginatedResponse[SensorReadingResponse])
 async def list_readings(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],

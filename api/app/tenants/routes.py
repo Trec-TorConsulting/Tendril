@@ -80,7 +80,7 @@ async def update_my_tenant(
     return TenantResponse(id=tenant.id, name=tenant.name, slug=tenant.slug, plan=tenant.plan)
 
 
-@router.get("/members")
+@router.get("/members", response_model=PaginatedResponse[TenantMemberResponse])
 async def list_members(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],

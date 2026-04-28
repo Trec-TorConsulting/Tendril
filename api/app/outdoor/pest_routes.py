@@ -77,7 +77,7 @@ async def create_pest_scout(
     return entry
 
 
-@router.get("/{grow_id}/pest-scouts")
+@router.get("/{grow_id}/pest-scouts", response_model=PaginatedResponse[PestScoutResponse])
 async def list_pest_scouts(
     grow_id: UUID,
     user: Annotated[CurrentUser, Depends(get_current_user)],

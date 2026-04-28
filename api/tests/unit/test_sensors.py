@@ -6,7 +6,7 @@ import pytest
 import pytest_asyncio
 from tests.conftest import TenantFactory
 
-pytestmark = pytest.mark.asyncio
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 @pytest_asyncio.fixture
@@ -63,7 +63,7 @@ class TestBucketSensorCRUD:
         )
         resp = await client.get(f"/v1/sensors?bucket_id={bucket_id}", headers=tenant["headers"])
         assert resp.status_code == 200
-        assert len(resp.json()) >= 2
+        assert len(resp.json()["items"]) >= 2
 
     async def test_list_sensor_readings_limit(self, client, tenant):
         _, bucket_id = await _setup_bucket(client, tenant)
@@ -73,9 +73,9 @@ class TestBucketSensorCRUD:
                 json={"bucket_id": bucket_id, "ph": 6.0 + i * 0.1},
                 headers=tenant["headers"],
             )
-        resp = await client.get(f"/v1/sensors?bucket_id={bucket_id}&limit=2", headers=tenant["headers"])
+        resp = await client.get(f"/v1/sensors?bucket_id={bucket_id}&page_size=2", headers=tenant["headers"])
         assert resp.status_code == 200
-        assert len(resp.json()) == 2
+        assert len(resp.json()["items"]) == 2
 
     async def test_latest_sensor_reading(self, client, tenant):
         _, bucket_id = await _setup_bucket(client, tenant)
@@ -137,7 +137,7 @@ class TestTentSensorCRUD:
         )
         resp = await client.get(f"/v1/tent-sensors?tent_id={tent_id}", headers=tenant["headers"])
         assert resp.status_code == 200
-        assert len(resp.json()) >= 2
+        assert len(resp.json()["items"]) >= 2
 
     async def test_latest_tent_reading(self, client, tenant):
         t = await client.post("/v1/tents", json={"name": "Tent"}, headers=tenant["headers"])

@@ -1,11 +1,7 @@
-"""Pytest configuration — fixtures for test DB, tenant factory, and auth helpers.
-
-Uses testcontainers for isolated PostgreSQL instances per test session.
-"""
+"""Pytest configuration — fixtures for test DB, tenant factory, and auth helpers."""
 
 from __future__ import annotations
 
-import asyncio
 import os
 from uuid import uuid4
 
@@ -15,27 +11,33 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-# Set test JWT secret before importing app
+# Set test env vars before importing app
 os.environ["JWT_SECRET"] = "test-secret-do-not-use-in-production"  # noqa: S105
 os.environ["DATABASE_URL"] = "postgresql+asyncpg://tendril:tendril@localhost:5432/tendril_test"
 os.environ["INTEGRATION_ENCRYPTION_KEY"] = "m8eWk-kF4nPTdc7Y0wccVuqqEYTUvrAWdVcF5zKBuo0="
 
 
-@pytest.fixture(scope="session")
-def event_loop():
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
-
-
-@pytest_asyncio.fixture(scope="session")
-async def db_engine():
-    """Create a test database engine.
-
-    For CI, use testcontainers. For local dev, use the test DB URL.
-    """
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
+async def _setup_db():
+    """One-time DB schema setup. Creates all tables at session start, drops at end."""
     from app.database import Base
+
+    # Import ALL models so metadata.create_all picks them up
     from app.tenants.models import Device, Tenant, User  # noqa: F401
+    from app.grows.models import (  # noqa: F401
+        Tent, GrowCycle, Bucket, BucketSensorReading, JournalEntry,
+        BucketPhoto, GrowPhoto, DoseProfile, FeedingSchedule, Strain, Yield,
+        WeatherReading, TentSensorReading, GrowTypeProfile, ReferenceStrain,
+        NutrientProduct, HealthEval, PlotGrid, PlotCell, SoilTest,
+        SoilAmendment, PestScoutEntry, HarvestYield, ContainerProfile,
+        RunoffReading,
+    )
+    from app.automation.models import AutomationRule, AlertHistory, EnvironmentSchedule  # noqa: F401
+    from app.notifications.models import (  # noqa: F401
+        NotificationChannel, NotificationPreference, PushSubscription, NotificationLog,
+    )
+    from app.integrations.models import IntegrationConfig, IntegrationDeviceMap, IntegrationSyncLog  # noqa: F401
+    from app.commercial.models import CustomGrowType, Task, AuditLog, ApiKey  # noqa: F401
 
     engine = create_async_engine(os.environ["DATABASE_URL"], echo=False)
 
@@ -43,21 +45,16 @@ async def db_engine():
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
 
-        # Enable RLS
         await conn.execute(text("ALTER TABLE users ENABLE ROW LEVEL SECURITY"))
-        await conn.execute(
-            text("""
-            CREATE POLICY IF NOT EXISTS tenant_isolation_users ON users
-                USING (tenant_id = current_setting('app.current_tenant')::UUID)
-        """)
-        )
+        await conn.execute(text(
+            "CREATE POLICY tenant_isolation_users ON users "
+            "USING (tenant_id = current_setting('app.current_tenant')::UUID)"
+        ))
         await conn.execute(text("ALTER TABLE devices ENABLE ROW LEVEL SECURITY"))
-        await conn.execute(
-            text("""
-            CREATE POLICY IF NOT EXISTS tenant_isolation_devices ON devices
-                USING (tenant_id = current_setting('app.current_tenant')::UUID)
-        """)
-        )
+        await conn.execute(text(
+            "CREATE POLICY tenant_isolation_devices ON devices "
+            "USING (tenant_id = current_setting('app.current_tenant')::UUID)"
+        ))
 
     yield engine
 
@@ -67,21 +64,42 @@ async def db_engine():
 
 
 @pytest_asyncio.fixture
-async def db_session(db_engine):
-    """Yield a clean session per test with rollback."""
-    session_factory = async_sessionmaker(db_engine, expire_on_commit=False)
-    async with session_factory() as session:
+async def db_session(_setup_db):
+    """Yield a DB session per test. Uses the app's session factory."""
+    from app.database import async_session_factory
+
+    async with async_session_factory() as session:
         yield session
         await session.rollback()
 
 
+@pytest_asyncio.fixture(autouse=True)
+async def _clean_tables(_setup_db):
+    """Truncate all tables after each test for isolation."""
+    yield
+    from app.database import async_session_factory
+
+    async with async_session_factory() as session:
+        await session.execute(text(
+            "DO $$ DECLARE r RECORD; BEGIN "
+            "FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP "
+            "EXECUTE 'TRUNCATE TABLE ' || quote_ident(r.tablename) || ' CASCADE'; "
+            "END LOOP; END $$;"
+        ))
+        await session.commit()
+
+
 @pytest_asyncio.fixture
-async def client():
+async def client(_setup_db):
     """Async test client for the FastAPI app."""
     from app.main import app
 
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        cookies={"csrf_token": "test-csrf-token"},
+    ) as ac:
         yield ac
 
 
@@ -120,7 +138,10 @@ class TenantFactory:
             "user": user,
             "token": token,
             "password": password,
-            "headers": {"Authorization": f"Bearer {token}"},
+            "headers": {
+                "Authorization": f"Bearer {token}",
+                "X-CSRF-Token": "test-csrf-token",
+            },
         }
 
 

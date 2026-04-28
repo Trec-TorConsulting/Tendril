@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.auth.middleware import CurrentUser, get_tenant_session, require_role
+from app.database import get_db
 from app.integrations.connectors.base import get_connector_class
 from app.integrations.crypto import decrypt_config, encrypt_config, redact_config
 from app.integrations.models import (
@@ -64,9 +65,10 @@ def _config_to_response(cfg: IntegrationConfig) -> IntegrationResponse:
 async def _get_config_or_404(
     integration_id: UUID,
     session: AsyncSession,
+    tenant_id: UUID | None = None,
 ) -> IntegrationConfig:
     cfg = await session.get(IntegrationConfig, integration_id)
-    if cfg is None:
+    if cfg is None or (tenant_id and cfg.tenant_id != tenant_id):
         raise HTTPException(status_code=404, detail="Integration not found")
     return cfg
 
@@ -98,14 +100,14 @@ async def create_integration(
     return _config_to_response(cfg)
 
 
-@router.get("")
+@router.get("", response_model=PaginatedResponse[IntegrationResponse])
 async def list_integrations(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member", "viewer"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
     pagination: Annotated[PaginationParams, Depends()],
     integration_type: str | None = Query(None, alias="type"),
 ):
-    q = select(IntegrationConfig).order_by(IntegrationConfig.created_at.desc())
+    q = select(IntegrationConfig).where(IntegrationConfig.tenant_id == user.tenant_id).order_by(IntegrationConfig.created_at.desc())
     if integration_type:
         q = q.where(IntegrationConfig.type == integration_type)
     items, total = await paginate(session, q, pagination)
@@ -121,7 +123,7 @@ async def get_integration(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member", "viewer"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
-    cfg = await _get_config_or_404(integration_id, session)
+    cfg = await _get_config_or_404(integration_id, session, tenant_id=user.tenant_id)
     return _config_to_response(cfg)
 
 
@@ -186,6 +188,7 @@ async def create_device_map(
 
 @router.get(
     "/{integration_id}/devices",
+    response_model=PaginatedResponse[DeviceMapResponse],
 )
 async def list_device_maps(
     integration_id: UUID,
@@ -243,6 +246,7 @@ async def delete_device_map(
 
 @router.get(
     "/{integration_id}/logs",
+    response_model=PaginatedResponse[SyncLogResponse],
 )
 async def list_sync_logs(
     integration_id: UUID,
@@ -269,7 +273,7 @@ async def list_sync_logs(
 async def receive_webhook(
     integration_id: UUID,
     request: Request,
-    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    session: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Receive inbound data from an external platform.
 

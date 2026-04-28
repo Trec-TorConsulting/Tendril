@@ -6,7 +6,7 @@ import pytest_asyncio
 
 from tests.conftest import TenantFactory
 
-pytestmark = pytest.mark.asyncio
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 @pytest_asyncio.fixture
@@ -136,7 +136,7 @@ class TestTasks:
         await client.post("/v1/tasks", json={"title": "Task 1"}, headers=commercial_tenant["headers"])
         resp = await client.get("/v1/tasks", headers=commercial_tenant["headers"])
         assert resp.status_code == 200
-        assert len(resp.json()) >= 1
+        assert len(resp.json()["items"]) >= 1
 
     async def test_complete_task(self, client, commercial_tenant):
         create = await client.post("/v1/tasks", json={"title": "Complete me"}, headers=commercial_tenant["headers"])
@@ -156,7 +156,7 @@ class TestTasks:
         await client.post(f"/v1/tasks/{task_id}/complete", headers=commercial_tenant["headers"])
 
         resp = await client.get("/v1/tasks?status=pending", headers=commercial_tenant["headers"])
-        pending = resp.json()
+        pending = resp.json()["items"]
         assert any(t["title"] == "Recurring" for t in pending)
 
     async def test_delete_task(self, client, commercial_tenant):
@@ -169,7 +169,7 @@ class TestTasks:
         await client.post("/v1/tasks", json={"title": "A"}, headers=commercial_tenant["headers"])
         resp = await client.get("/v1/tasks?status=pending", headers=commercial_tenant["headers"])
         assert resp.status_code == 200
-        assert all(t["status"] == "pending" for t in resp.json())
+        assert all(t["status"] == "pending" for t in resp.json()["items"])
 
     async def test_non_commercial_rejected(self, client, pro_tenant):
         resp = await client.post("/v1/tasks", json={"title": "Nope"}, headers=pro_tenant["headers"])

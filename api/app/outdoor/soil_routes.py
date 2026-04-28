@@ -116,7 +116,7 @@ async def create_soil_test(
     return test
 
 
-@router.get("/{grow_id}/soil-tests")
+@router.get("/{grow_id}/soil-tests", response_model=PaginatedResponse[SoilTestResponse])
 async def list_soil_tests(
     grow_id: UUID,
     user: Annotated[CurrentUser, Depends(get_current_user)],
@@ -131,6 +131,25 @@ async def list_soil_tests(
     )
     items, total = await paginate(session, q, pagination)
     return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
+
+
+@router.get("/{grow_id}/soil-tests/latest", response_model=SoilTestResponse)
+async def get_latest_soil_test(
+    grow_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Get the most recent soil test."""
+    result = await session.execute(
+        select(SoilTest)
+        .where(SoilTest.grow_cycle_id == grow_id)
+        .order_by(desc(SoilTest.tested_at))
+        .limit(1)
+    )
+    test = result.scalar_one_or_none()
+    if test is None:
+        raise HTTPException(status_code=404, detail="No soil tests found")
+    return test
 
 
 @router.get("/{grow_id}/soil-tests/{test_id}", response_model=SoilTestResponse)
@@ -163,25 +182,6 @@ async def update_soil_test(
         setattr(test, field, value)
     await session.commit()
     await session.refresh(test)
-    return test
-
-
-@router.get("/{grow_id}/soil-tests/latest", response_model=SoilTestResponse)
-async def get_latest_soil_test(
-    grow_id: UUID,
-    user: Annotated[CurrentUser, Depends(get_current_user)],
-    session: Annotated[AsyncSession, Depends(get_tenant_session)],
-):
-    """Get the most recent soil test."""
-    result = await session.execute(
-        select(SoilTest)
-        .where(SoilTest.grow_cycle_id == grow_id)
-        .order_by(desc(SoilTest.tested_at))
-        .limit(1)
-    )
-    test = result.scalar_one_or_none()
-    if test is None:
-        raise HTTPException(status_code=404, detail="No soil tests found")
     return test
 
 
@@ -221,7 +221,7 @@ async def create_amendment(
     return amendment
 
 
-@router.get("/{grow_id}/amendments")
+@router.get("/{grow_id}/amendments", response_model=PaginatedResponse[AmendmentResponse])
 async def list_amendments(
     grow_id: UUID,
     user: Annotated[CurrentUser, Depends(get_current_user)],

@@ -6,6 +6,8 @@ from httpx import ASGITransport, AsyncClient
 
 from tests.conftest import TenantFactory
 
+pytestmark = pytest.mark.asyncio(loop_scope="session")
+
 
 @pytest.fixture
 async def tenant(db_session):
@@ -143,10 +145,20 @@ class TestDeviceCRUD:
         assert res.status_code == 404
 
     async def test_get_qr_code(self, client: AsyncClient, tenant):
+        from app.auth.signed_url import sign_url
+
         reg = await client.post("/v1/devices/register", json={}, headers=tenant["headers"])
         device_id = reg.json()["device_id"]
+        tid = str(tenant["tenant"].id)
 
-        res = await client.get(f"/v1/devices/{device_id}/qr", headers=tenant["headers"])
+        signed = sign_url(f"http://test/v1/devices/{device_id}/qr", tid)
+        # Extract query params from signed URL
+        from urllib.parse import urlparse, parse_qs
+        parsed = urlparse(signed)
+        res = await client.get(
+            f"/v1/devices/{device_id}/qr?{parsed.query}",
+            headers=tenant["headers"],
+        )
         assert res.status_code == 200
         assert res.headers["content-type"] == "image/png"
 
@@ -225,6 +237,7 @@ class TestMQTTACLWebhook:
     @pytest.fixture
     def webhook_client(self):
         from app.mqtt.auth_webhook import webhook_app
+
         transport = ASGITransport(app=webhook_app)
         return AsyncClient(transport=transport, base_url="http://test")
 
