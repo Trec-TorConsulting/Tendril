@@ -13,6 +13,7 @@ export interface UserData {
   tenant_id: string;
   is_platform_admin: boolean;
   is_support: boolean;
+  layout_mode: string;
 }
 
 export function useUser() {

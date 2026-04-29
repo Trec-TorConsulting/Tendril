@@ -151,7 +151,7 @@ export function logout() {
 }
 
 export function getMe(token: string) {
-  return apiFetch<{ id: string; email: string; display_name: string | null; role: string; tenant_id: string; is_platform_admin: boolean; is_support: boolean }>(
+  return apiFetch<{ id: string; email: string; display_name: string | null; role: string; tenant_id: string; is_platform_admin: boolean; is_support: boolean; layout_mode: string }>(
     "/auth/me",
     { token },
   );
@@ -199,8 +199,8 @@ export function removeTenantMember(token: string, memberId: string) {
 }
 
 // Profile
-export function updateProfile(token: string, data: { display_name?: string; email?: string }) {
-  return apiFetch<{ id: string; email: string; display_name: string | null; role: string; tenant_id: string; is_platform_admin: boolean; is_support: boolean }>(
+export function updateProfile(token: string, data: { display_name?: string; email?: string; layout_mode?: string }) {
+  return apiFetch<{ id: string; email: string; display_name: string | null; role: string; tenant_id: string; is_platform_admin: boolean; is_support: boolean; layout_mode: string }>(
     "/auth/profile",
     { method: "PATCH", body: JSON.stringify(data), token },
   );
@@ -452,6 +452,39 @@ export function updateTent(token: string, id: string, data: Partial<{ name: stri
 
 export function deleteTent(token: string, id: string) {
   return apiFetch<void>(`/tents/${id}`, { method: "DELETE", token });
+}
+
+// Tent Cameras
+export interface CameraResponse {
+  id: string;
+  tent_id: string;
+  label: string;
+  camera_type: string;
+  url: string;
+  sort_order: number;
+  is_primary: boolean;
+  created_at: string;
+}
+
+export function listTentCameras(token: string, tentId: string) {
+  return apiFetch<CameraResponse[]>(`/tents/${tentId}/cameras`, { token });
+}
+
+export function createTentCamera(token: string, tentId: string, data: { label: string; camera_type?: string; url: string; is_primary?: boolean }) {
+  return apiFetch<CameraResponse>(`/tents/${tentId}/cameras`, { method: "POST", body: JSON.stringify(data), token });
+}
+
+export function updateTentCamera(token: string, tentId: string, cameraId: string, data: Partial<{ label: string; url: string; camera_type: string; is_primary: boolean }>) {
+  return apiFetch<CameraResponse>(`/tents/${tentId}/cameras/${cameraId}`, { method: "PATCH", body: JSON.stringify(data), token });
+}
+
+export function deleteTentCamera(token: string, tentId: string, cameraId: string) {
+  return apiFetch<void>(`/tents/${tentId}/cameras/${cameraId}`, { method: "DELETE", token });
+}
+
+export function getCameraSnapshot(token: string, tentId: string, cameraId?: string) {
+  const q = cameraId ? `?camera_id=${cameraId}` : "";
+  return apiFetch<{ image_base64: string; timestamp: string }>(`/tents/${tentId}/camera-snapshot${q}`, { token });
 }
 
 // Grows
@@ -1647,4 +1680,59 @@ export function getRunoffStats(token: string, growId: string) {
 
 export function deleteRunoffReading(token: string, growId: string, readingId: string) {
   return apiFetch<void>(`/grows/${growId}/runoff/${readingId}`, { method: "DELETE", token });
+}
+
+// Quick-Log
+export interface NutrientDose {
+  product_id?: string;
+  name: string;
+  amount_ml: number;
+}
+
+export interface FeedingLogPayload {
+  bucket_ids: string[];
+  ph?: number;
+  ec?: number;
+  ppm?: number;
+  water_temp_f?: number;
+  volume_gal?: number;
+  nutrients?: NutrientDose[];
+  notes?: string;
+  recorded_at?: string;
+}
+
+export interface ManualReadingPayload {
+  tent_id: string;
+  temp_f?: number;
+  humidity?: number;
+  vpd?: number;
+}
+
+export interface QuickNotePayload {
+  bucket_id?: string;
+  grow_cycle_id?: string;
+  tags?: string[];
+  content: string;
+}
+
+export interface BatchAction {
+  type: "feeding" | "reading" | "note";
+  data: Record<string, unknown>;
+  client_timestamp: string;
+}
+
+export function quickLogFeeding(token: string, data: FeedingLogPayload) {
+  return apiFetch<{ created: number; bucket_ids: string[] }>("/quick-log/feeding", { method: "POST", body: JSON.stringify(data), token });
+}
+
+export function quickLogReading(token: string, data: ManualReadingPayload) {
+  return apiFetch<{ id: string }>("/quick-log/reading", { method: "POST", body: JSON.stringify(data), token });
+}
+
+export function quickLogNote(token: string, data: QuickNotePayload) {
+  return apiFetch<{ id: string }>("/quick-log/note", { method: "POST", body: JSON.stringify(data), token });
+}
+
+export function quickLogBatch(token: string, actions: BatchAction[]) {
+  return apiFetch<{ processed: number; succeeded: number; failed: number }>("/quick-log/batch", { method: "POST", body: JSON.stringify({ actions }), token });
 }

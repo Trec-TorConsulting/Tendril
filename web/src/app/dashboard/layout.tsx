@@ -6,11 +6,10 @@ import { getAccessToken } from "@/lib/auth";
 import { useUser } from "@/hooks/use-user";
 import { GrowProvider } from "@/hooks/use-grow";
 import { ConfirmProvider } from "@/components/confirm-dialog";
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
-import { AppSidebar } from "@/components/app-sidebar";
-import { MobileBottomNav } from "@/components/mobile-bottom-nav";
-import { CommandPalette } from "@/components/command-palette";
+import { LayoutProvider } from "@/hooks/use-layout-mode";
+import { LayoutShell } from "@/components/layout-shell";
 import { ChatProvider } from "@/components/chat-provider";
+import { OnboardingGate } from "@/components/onboarding-gate";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -37,16 +36,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <GrowProvider>
       <ConfirmProvider>
       <ChatProvider>
-      <SidebarProvider>
-        <AppSidebar user={user} onLogout={logout} />
-        <SidebarInset>
-          <main className="flex flex-1 flex-col pb-16 md:pb-0">
+      <LayoutProvider>
+        <LayoutShell user={user} onLogout={logout}>
+          <OnboardingGate>
             {children}
-          </main>
-        </SidebarInset>
-        <MobileBottomNav />
-        <CommandPalette />
-      </SidebarProvider>
+          </OnboardingGate>
+        </LayoutShell>
+      </LayoutProvider>
       </ChatProvider>
       </ConfirmProvider>
     </GrowProvider>

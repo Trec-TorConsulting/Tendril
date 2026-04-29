@@ -33,6 +33,8 @@ import {
 import { cn } from "@/lib/utils";
 import { useTheme } from "next-themes";
 import { useChat } from "@/components/chat-provider";
+import { useLayoutMode } from "@/hooks/use-layout-mode";
+import type { TabConfig } from "@/lib/layout-config";
 
 /* ── FAB quick actions ── */
 const FAB_ACTIONS = [
@@ -59,12 +61,7 @@ const MORE_ITEMS = [
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
-/* ── Bottom tabs (2 left + FAB + 2 right) ── */
-const LEFT_TABS = [
-  { href: "/dashboard", label: "Home", icon: LayoutDashboard },
-  { href: "/dashboard/grows", label: "Grows", icon: Sprout },
-];
-const RIGHT_TABS: { href: string; label: string; icon: React.ComponentType<{ className?: string }> }[] = [];
+/* ── Tabs are now driven by layout config ── */
 
 export function MobileBottomNav() {
   const pathname = usePathname();
@@ -72,22 +69,23 @@ export function MobileBottomNav() {
   const [fabOpen, setFabOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const { theme, setTheme } = useTheme();
+  const { config } = useLayoutMode();
+
+  const tabs = config.tabs.filter((t) => t.id !== "more");
+  const hasMore = config.tabs.some((t) => t.id === "more");
 
   const isTabActive = (href: string) =>
     href === "/dashboard"
       ? pathname === "/dashboard"
       : pathname.startsWith(href);
 
-  const isMoreActive =
-    !isTabActive("/dashboard") &&
-    !isTabActive("/dashboard/grows") &&
-    pathname !== "/dashboard";
+  const isMoreActive = !tabs.some((t) => isTabActive(t.href));
 
   return (
     <>
       {/* FAB overlay */}
       <AnimatePresence>
-        {fabOpen && (
+        {fabOpen && config.showFab && (
           <motion.div
             className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm md:hidden"
             initial={{ opacity: 0 }}
@@ -184,65 +182,64 @@ export function MobileBottomNav() {
         )}
       </AnimatePresence>
 
-      {/* Bottom nav bar */}
+      {/* Bottom nav bar — driven by layout mode config */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card/95 backdrop-blur-lg supports-[backdrop-filter]:bg-card/80 md:hidden safe-area-pb">
         <div className="flex items-center justify-around px-2">
-          {/* Left tabs */}
-          {LEFT_TABS.map((tab) => (
-            <TabButton key={tab.href} tab={tab} active={isTabActive(tab.href)} />
-          ))}
+          {tabs.map((tab) => {
+            if (tab.href === "/dashboard/quick-log") {
+              // Quick-log gets special "Log" button treatment
+              return (
+                <button
+                  key={tab.id}
+                  className="flex flex-col items-center gap-0.5 px-3 py-2 text-[10px] font-medium text-primary"
+                  onClick={() => router.push(tab.href)}
+                >
+                  <tab.icon className="size-5" />
+                  {tab.label}
+                </button>
+              );
+            }
+            return (
+              <TabButton key={tab.id} tab={tab} active={isTabActive(tab.href)} />
+            );
+          })}
 
-          {/* Center FAB */}
-          <button
-            className="relative -mt-5 flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 active:scale-95 transition-transform"
-            onClick={() => { setMoreOpen(false); setFabOpen(!fabOpen); }}
-            aria-label="Quick actions"
-          >
-            <motion.div
-              animate={{ rotate: fabOpen ? 45 : 0 }}
-              transition={{ type: "spring", stiffness: 300, damping: 20 }}
+          {/* FAB for modes that support it */}
+          {config.showFab && (
+            <button
+              className="relative -mt-5 flex size-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg shadow-primary/30 active:scale-95 transition-transform"
+              onClick={() => { setMoreOpen(false); setFabOpen(!fabOpen); }}
+              aria-label="Quick actions"
             >
-              {fabOpen ? <X className="size-6" /> : <Plus className="size-6" />}
-            </motion.div>
-          </button>
-
-          {/* AI Chat toggle */}
-          <ChatTabButton />
+              <motion.div
+                animate={{ rotate: fabOpen ? 45 : 0 }}
+                transition={{ type: "spring", stiffness: 300, damping: 20 }}
+              >
+                {fabOpen ? <X className="size-6" /> : <Plus className="size-6" />}
+              </motion.div>
+            </button>
+          )}
 
           {/* More */}
-          <button
-            className={cn(
-              "flex flex-col items-center gap-0.5 px-3 py-2 text-[10px] font-medium transition-colors",
-              isMoreActive || moreOpen ? "text-primary" : "text-muted-foreground"
-            )}
-            onClick={() => { setFabOpen(false); setMoreOpen(!moreOpen); }}
-          >
-            <svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <line x1="4" y1="6" x2="20" y2="6" />
-              <line x1="4" y1="12" x2="20" y2="12" />
-              <line x1="4" y1="18" x2="20" y2="18" />
-            </svg>
-            More
-          </button>
+          {hasMore && (
+            <button
+              className={cn(
+                "flex flex-col items-center gap-0.5 px-3 py-2 text-[10px] font-medium transition-colors",
+                isMoreActive || moreOpen ? "text-primary" : "text-muted-foreground"
+              )}
+              onClick={() => { setFabOpen(false); setMoreOpen(!moreOpen); }}
+            >
+              <svg className="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <line x1="4" y1="6" x2="20" y2="6" />
+                <line x1="4" y1="12" x2="20" y2="12" />
+                <line x1="4" y1="18" x2="20" y2="18" />
+              </svg>
+              More
+            </button>
+          )}
         </div>
       </nav>
     </>
-  );
-}
-
-function ChatTabButton() {
-  const { open, toggle } = useChat();
-  return (
-    <button
-      onClick={toggle}
-      className={cn(
-        "flex flex-col items-center gap-0.5 px-3 py-2 text-[10px] font-medium transition-colors",
-        open ? "text-primary" : "text-muted-foreground"
-      )}
-    >
-      <MessageSquare className="size-5" />
-      AI
-    </button>
   );
 }
 
@@ -250,7 +247,7 @@ function TabButton({
   tab,
   active,
 }: {
-  tab: { href: string; label: string; icon: React.ComponentType<{ className?: string }> };
+  tab: TabConfig;
   active: boolean;
 }) {
   return (
