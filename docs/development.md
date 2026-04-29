@@ -243,14 +243,22 @@ The firmware doesn't have automated tests. Verify by:
 3. **Create routes** in `routes.py`:
    ```python
    from fastapi import APIRouter, Depends
-   from app.auth.middleware import get_current_user, CurrentUser
+   from app.auth.middleware import get_current_user, require_permission, CurrentUser
+   from app.auth.permissions import MYFEATURE_READ, MYFEATURE_CREATE
 
    router = APIRouter()
 
    @router.get("/")
-   async def list_items(user: CurrentUser = Depends(get_current_user)):
+   async def list_items(user: CurrentUser = Depends(require_permission(MYFEATURE_READ))):
+       ...
+
+   @router.post("/")
+   async def create_item(user: CurrentUser = Depends(require_permission(MYFEATURE_CREATE))):
        ...
    ```
+
+   Use `require_permission()` for fine-grained guards. The permission system resolves
+   effective permissions from the user's platform role + tenant role combination.
 
 4. **Register the router** in `api/app/main.py`:
    ```python

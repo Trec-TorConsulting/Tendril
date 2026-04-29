@@ -9,6 +9,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Enterprise RBAC** — Full role-based access control overhaul with three-tier model:
+  - **Platform roles**: `super_admin`, `support`, `readonly_admin`, `user` — controls SaaS-wide access
+  - **Tenant roles**: `admin`, `member`, `viewer` — per-organization permissions via `tenant_memberships` table
+  - **Account roles**: `owner`, `billing_admin` — billing ownership via `account_members` table
+  - ~30 granular permissions across 12 domains (e.g., `grow:create`, `billing:manage`, `platform:users:manage`)
+  - Permission-based route guards (`require_permission()`) replace direct role checks
+  - Grow-scoped access control via `membership_grow_access` for restricting users to specific grows
+  - Account → Tenant hierarchy separating billing from data access
+  - Tenant-switching endpoint (`POST /v1/auth/switch-tenant`) for multi-tenant users
+  - Tenant-agnostic refresh tokens; per-tenant access tokens with `pr`, `tid`, `tr`, `gs`, `aid` claims
+  - Stripe billing fields moved from Tenant to Account model
+  - Migration 0024 with full data backfill and downgrade support
 - **Pulse Grow connector** — Polls `api.pulsegrow.com` for Pulse One/Pro/Hub devices. Maps ambient readings (temp, humidity, VPD, CO2, lux, dew point, PAR, pressure, VOC) to TentSensorReading and Hub sensors (soil moisture, pH, EC) to BucketSensorReading. Auto-discovery via `/v1/integrations/{id}/discover`. 26 unit tests.
 - **OpenWeather connector** — Polls OpenWeather API (free 2.5 + One Call 3.0) for weather data. Maps current conditions + 7-day forecast to WeatherReading. Dew point calculation via Magnus formula. 20 unit tests.
 - **Ecowitt connector** — Dual-mode: webhook push from gateway + cloud API polling. Maps weather station → WeatherReading, soil channels (1–16) → BucketSensorReading, temp/humidity channels → TentSensorReading, leaf wetness → BucketSensorReading. Full imperial-to-metric conversion. Device discovery from cloud API. 23 unit tests.

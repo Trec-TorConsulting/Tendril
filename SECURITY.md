@@ -40,11 +40,20 @@ Tendril implements the following security controls:
 - Password hashing with bcrypt
 - Brute-force protection on login endpoints
 - OAuth2 support (Google, GitHub)
+- Enterprise RBAC with granular permission system (~30 permissions across 12 domains)
+- **Platform roles**: Super Admin, Support, Read-Only Admin, User
+- **Tenant roles**: Admin, Member, Viewer
+- **Account roles**: Owner, Billing Admin
+- Permission-based route guards (`require_permission()`) instead of direct role checks
+- Grow-scoped access control for restricting tenant users to specific grow cycles
+- Tenant-switching with per-tenant JWT claims
 
 ### Data Isolation
 - PostgreSQL Row-Level Security (RLS) for tenant isolation
 - All tenant data is scoped via session-level `app.current_tenant` variable
 - No cross-tenant data access is possible at the database level
+- Account → Tenant hierarchy separates billing from data access
+- Tenant memberships are explicit (join table), not implicit via user fields
 
 ### API Security
 - Rate limiting middleware

@@ -33,7 +33,12 @@ Tendril is an open-source, multi-tenant SaaS platform for grow monitoring and au
 
 ### Architecture Patterns
 - Multi-service monorepo: `api/`, `web/`, `esp32/`, `manifests/`
-- Multi-tenant with `TENANT_ID` scoping across all data
+- Multi-tenant with Account → Tenant hierarchy and explicit `tenant_memberships` join table
+- Enterprise RBAC: Platform roles (`super_admin`, `support`, `readonly_admin`, `user`), Tenant roles (`admin`, `member`, `viewer`), Account roles (`owner`, `billing_admin`)
+- ~30 granular permissions across 12 domains; route guards use `require_permission()` not direct role checks
+- Grow-scoped access via `membership_grow_access` for restricting tenant users
+- JWT claims: `pr` (platform role), `tid` (tenant ID), `tr` (tenant role), `gs` (grow scope), `aid` (account ID)
+- Stripe billing fields live on `accounts` table, not `tenants`
 - PostgreSQL Row-Level Security (RLS) for tenant isolation
 - MQTT for device → API sensor ingestion
 - Background workers: `mqtt-worker`, `scheduler` (leader election via pg advisory locks)
@@ -56,7 +61,7 @@ Tendril is an open-source, multi-tenant SaaS platform for grow monitoring and au
 
 All code must be written with OWASP Top 10 2021 compliance as a baseline:
 
-1. **A01 Broken Access Control**: RLS on all tenant data; JWT auth required on all endpoints except auth routes; RBAC role checks
+1. **A01 Broken Access Control**: RLS on all tenant data; JWT auth required on all endpoints except auth routes; enterprise RBAC with platform/tenant/account roles; permission-based route guards (`require_permission()`); grow-scoped access control
 2. **A02 Cryptographic Failures**: bcrypt for passwords; JWT HS256 with mandatory `JWT_SECRET`; TLS enforced via HSTS; no secrets in code
 3. **A03 Injection**: SQLAlchemy parameterized queries only; no raw SQL; React auto-escaping for XSS
 4. **A04 Insecure Design**: Threat modeling via OpenSpec proposals; security review for auth/data changes

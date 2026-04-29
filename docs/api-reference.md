@@ -13,6 +13,16 @@ https://your-domain.com/v1   # Production
 
 ## Authentication
 
+Tendril uses an enterprise RBAC model with three role tiers:
+
+| Tier | Roles | Purpose |
+|------|-------|---------|
+| **Platform** | `super_admin`, `support`, `readonly_admin`, `user` | SaaS-wide access control |
+| **Tenant** | `admin`, `member`, `viewer` | Per-organization permissions |
+| **Account** | `owner`, `billing_admin` | Billing and ownership |
+
+Permissions are resolved from the combination of platform role + tenant role. Route guards check permissions (e.g., `grow:create`, `billing:manage`), not roles directly.
+
 ### Register
 
 ```http
@@ -27,7 +37,7 @@ Content-Type: application/json
 }
 ```
 
-Creates a new user and tenant. The first user in a tenant is assigned the `owner` role.
+Creates a new Account → Tenant → User chain. The registering user becomes the Account Owner and Tenant Admin.
 
 ### Login
 
@@ -49,6 +59,8 @@ Content-Type: application/json
   "token_type": "bearer"
 }
 ```
+
+The access token JWT contains claims: `sub` (user ID), `pr` (platform role), `tid` (tenant ID), `tr` (tenant role), `gs` (grow scope, if restricted), `aid` (account ID).
 
 ### Using Tokens
 
@@ -72,6 +84,24 @@ Content-Type: application/json
 }
 ```
 
+Refresh tokens are tenant-agnostic. On refresh, the API resolves the user's most recent tenant context.
+
+### Switch Tenant
+
+Users who belong to multiple tenants can switch their active tenant context:
+
+```http
+POST /v1/auth/switch-tenant
+Content-Type: application/json
+Authorization: Bearer eyJ...
+
+{
+  "tenant_id": "uuid-of-target-tenant"
+}
+```
+
+Returns a new access token scoped to the target tenant. Super Admins can switch to any tenant.
+
 ### OAuth2 Login
 
 Google and GitHub OAuth2 are supported when configured. The flow:
@@ -85,7 +115,9 @@ Google and GitHub OAuth2 are supported when configured. The flow:
 
 ### Tenant Isolation
 
-All data endpoints are tenant-scoped. The tenant is determined from the authenticated user's JWT. You never need to pass a tenant ID in requests — it's automatic.
+All data endpoints are tenant-scoped. The active tenant is determined from the authenticated user's JWT `tid` claim (set during login or via `switch-tenant`). You never need to pass a tenant ID in requests — it's automatic.
+
+Users can belong to multiple tenants with different roles in each. Use `POST /v1/auth/switch-tenant` to change context.
 
 ### Response Format
 
@@ -328,18 +360,35 @@ Credentials are encrypted at rest via Fernet and redacted in API responses.
 
 ## Billing
 
+Stripe billing fields (customer ID, subscription ID) are stored on the **Account** model, not the Tenant. One Account can own multiple Tenants.
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/v1/billing/checkout` | Create a Stripe checkout session |
-| `POST` | `/v1/billing/portal` | Create a Stripe billing portal session |
+| `GET` | `/v1/billing/status` | Get billing status and plan for current tenant's account |
+| `POST` | `/v1/billing/checkout` | Create a Stripe checkout session (Account Owner only) |
+| `POST` | `/v1/billing/portal` | Create a Stripe billing portal session (Account Owner only) |
 | `POST` | `/v1/billing/webhook` | Stripe webhook handler (called by Stripe) |
 
 ## Admin
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/v1/admin/tenants` | List all tenants (platform admin only) |
-| `GET` | `/v1/admin/stats` | Platform statistics |
+Platform administration endpoints. Access varies by platform role.
+
+| Method | Endpoint | Required Role | Description |
+|--------|----------|---------------|-------------|
+| `GET` | `/v1/admin/tenants` | `super_admin`, `support`, `readonly_admin` | List all tenants with member counts |
+| `GET` | `/v1/admin/tenants/{id}/users` | `super_admin`, `support`, `readonly_admin` | List users in a specific tenant |
+| `GET` | `/v1/admin/users` | `super_admin`, `support`, `readonly_admin` | List all users platform-wide |
+| `PATCH` | `/v1/admin/users/{id}/flags` | `super_admin` only | Update a user's platform role |
+| `GET` | `/v1/admin/stats` | `super_admin`, `support`, `readonly_admin` | Platform statistics |
+
+### Platform Roles
+
+| Role | Capabilities |
+|------|--------------|
+| `super_admin` | Full platform access. Can manage all tenants, users, and settings. Can switch to any tenant. |
+| `support` | Read-only platform access + can manage user accounts (reset, unlock). Cannot make platform config changes. |
+| `readonly_admin` | Read-only access to all platform data. Cannot modify anything. |
+| `user` | Standard user. No platform-level permissions. |
 
 ## Commercial
 

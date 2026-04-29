@@ -206,8 +206,12 @@ All tenant-scoped tables have RLS policies that filter by this variable. The `te
 
 | Table | Purpose | Scope |
 |-------|---------|-------|
-| `tenants` | Organizations | Global |
-| `users` | User accounts, roles | Global |
+| `accounts` | Billing accounts (Stripe customer/subscription) | Global |
+| `account_members` | Account ownership (owner, billing_admin) | Global |
+| `tenants` | Organizations, linked to an account | Global |
+| `tenant_memberships` | User → Tenant role assignments (admin, member, viewer) | Tenant |
+| `membership_grow_access` | Grow-scoped access for restricted tenant users | Tenant |
+| `users` | User accounts with platform role | Global |
 | `devices` | Registered ESP32 devices | Tenant |
 | `grow_cycles` | Tracked grow cycles | Tenant |
 | `tents` | Grow rooms/tents with equipment | Tenant |
@@ -234,6 +238,16 @@ Alembic manages schema migrations in `api/migrations/versions/`. Migrations run 
 - JWT-based with short-lived access tokens (15min) and long-lived refresh tokens (7 days)
 - OAuth2 support for Google and GitHub
 - Passwords hashed with bcrypt
+- Enterprise RBAC with three role tiers:
+  - **Platform roles** (`platform_role` on User): `super_admin`, `support`, `readonly_admin`, `user`
+  - **Tenant roles** (via `tenant_memberships`): `admin`, `member`, `viewer`
+  - **Account roles** (via `account_members`): `owner`, `billing_admin`
+- ~30 granular permissions across 12 domains (e.g., `grow:create`, `billing:manage`, `platform:users:manage`)
+- Permission-based route guards: `require_permission()` checks effective permissions from platform + tenant roles
+- Grow-scoped access: tenant users can be restricted to specific grow cycles via `membership_grow_access`
+- JWT claims: `pr` (platform role), `tid` (tenant ID), `tr` (tenant role), `gs` (grow scope), `aid` (account ID)
+- Tenant-switching via `POST /v1/auth/switch-tenant` issues a new token for the target tenant
+- Refresh tokens are tenant-agnostic (only carry `sub` and `type`)
 
 ### Middleware Stack
 
