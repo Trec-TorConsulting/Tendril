@@ -7,7 +7,9 @@ from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from app.database import Base
-from app.tenants.models import Tenant, User, Device  # noqa: F401 — register models
+from app.tenants.models import (  # noqa: F401 — register models
+    Account, AccountMember, Device, MembershipGrowAccess, Tenant, TenantMembership, User,
+)
 from app.commercial.models import CustomGrowType, Task, AuditLog, ApiKey  # noqa: F401
 
 config = context.config

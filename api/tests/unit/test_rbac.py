@@ -11,7 +11,7 @@ pytestmark = pytest.mark.asyncio(loop_scope="session")
 async def test_viewer_cannot_access_owner_endpoint(client):
     """Viewer role should be blocked from owner-only actions."""
     # Create a token with viewer role
-    token = create_access_token(uuid4(), uuid4(), "viewer")
+    token = create_access_token(uuid4(), platform_role="user", tenant_id=uuid4(), tenant_role="viewer")
 
     # Tenant members endpoint doesn't restrict by role currently,
     # but this test validates the RBAC middleware pattern
@@ -39,8 +39,9 @@ async def test_expired_token_rejected(client):
 
     payload = {
         "sub": str(uuid4()),
+        "pr": "user",
         "tid": str(uuid4()),
-        "role": "owner",
+        "tr": "admin",
         "exp": datetime.now(timezone.utc) - timedelta(hours=1),
         "type": "access",
     }

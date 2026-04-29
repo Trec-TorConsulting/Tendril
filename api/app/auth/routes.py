@@ -20,7 +20,17 @@ from app.auth.jwt import (
 from app.auth.middleware import CurrentUser, get_current_user
 from app.database import get_db
 from app.middleware.csrf import generate_csrf_token
-from app.tenants.models import Tenant, User
+from app.tenants.models import (
+    Account,
+    AccountMember,
+    AccountRole,
+    MembershipGrowAccess,
+    PlatformRole,
+    Tenant,
+    TenantMembership,
+    TenantRole,
+    User,
+)
 
 router = APIRouter()
 
@@ -55,10 +65,13 @@ class UserResponse(BaseModel):
     email: str
     display_name: str | None
     role: str
-    tenant_id: UUID
+    tenant_id: UUID | None
     email_verified: bool
     is_platform_admin: bool = False
     is_support: bool = False
+    platform_role: str = "user"
+    tenant_role: str | None = None
+    account_id: UUID | None = None
 
 
 class VerifyEmailRequest(BaseModel):
@@ -82,6 +95,10 @@ class ForgotPasswordRequest(BaseModel):
 class ResetPasswordRequest(BaseModel):
     token: str
     new_password: str
+
+
+class SwitchTenantRequest(BaseModel):
+    tenant_id: UUID
 
 
 # ---------- Helpers ----------
@@ -162,44 +179,70 @@ def _clear_auth_cookies(response: Response) -> None:
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 async def register(body: RegisterRequest, response: Response, db: Annotated[AsyncSession, Depends(get_db)]):
-    """Register a new user and create their tenant."""
+    """Register a new user and create their account, tenant, and memberships."""
     _validate_password_strength(body.password)
     # Check existing email
     existing = await db.execute(select(User).where(User.email == body.email))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Email already registered")
 
-    # Create tenant
+    # Create account (billing umbrella)
+    account = Account(name=body.tenant_name, billing_email=body.email)
+    db.add(account)
+    await db.flush()
+
+    # Create tenant under account
     tenant = Tenant(
         name=body.tenant_name,
         slug=_make_slug(body.tenant_name),
+        account_id=account.id,
     )
     db.add(tenant)
     await db.flush()
 
     # Create user
     user = User(
-        tenant_id=tenant.id,
         email=body.email,
         password_hash=_hash_password(body.password),
         display_name=body.display_name,
-        role="owner",
+        platform_role=PlatformRole.user,
         auth_provider="local",
     )
     db.add(user)
+    await db.flush()
+
+    # Account membership (owner)
+    account_member = AccountMember(
+        account_id=account.id,
+        user_id=user.id,
+        role=AccountRole.owner,
+    )
+    db.add(account_member)
+
+    # Tenant membership (admin)
+    membership = TenantMembership(
+        tenant_id=tenant.id,
+        user_id=user.id,
+        role=TenantRole.admin,
+    )
+    db.add(membership)
     await db.commit()
     await db.refresh(user)
 
     # Generate email verification token
     verify_token = create_email_verification_token(user.id)
-    # TODO: Send verification email with link containing verify_token
-    # For now, log it (in production, send via email service)
     import logging
 
     logging.getLogger("tendril.auth").info("Email verification token for %s: %s", user.email, verify_token)
 
-    access = create_access_token(user.id, tenant.id, user.role)
-    refresh = create_refresh_token(user.id, tenant.id)
+    access = create_access_token(
+        user.id,
+        platform_role=user.platform_role.value,
+        tenant_id=tenant.id,
+        tenant_role=TenantRole.admin.value,
+        account_id=account.id,
+    )
+    refresh = create_refresh_token(user.id)
     _set_auth_cookies(response, access, refresh)
 
     return TokenResponse(
@@ -216,14 +259,43 @@ async def login(body: LoginRequest, response: Response, db: Annotated[AsyncSessi
     if not user or not user.password_hash or not _verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
+    # Resolve the user's default/active tenant (first membership)
+    membership_result = await db.execute(
+        select(TenantMembership)
+        .where(TenantMembership.user_id == user.id)
+        .order_by(TenantMembership.created_at)
+        .limit(1)
+    )
+    membership = membership_result.scalar_one_or_none()
+
+    # Resolve account
+    account_result = await db.execute(
+        select(AccountMember.account_id)
+        .where(AccountMember.user_id == user.id)
+        .limit(1)
+    )
+    account_id = account_result.scalar_one_or_none()
+
+    # Build grow scope if applicable
+    grow_scope: list[UUID] | None = None
+    if membership:
+        scope_result = await db.execute(
+            select(MembershipGrowAccess.grow_cycle_id)
+            .where(MembershipGrowAccess.membership_id == membership.id)
+        )
+        scope_rows = scope_result.scalars().all()
+        if scope_rows:
+            grow_scope = list(scope_rows)
+
     access = create_access_token(
         user.id,
-        user.tenant_id,
-        user.role,
-        is_platform_admin=user.is_platform_admin,
-        is_support=user.is_support,
+        platform_role=user.platform_role.value,
+        tenant_id=membership.tenant_id if membership else None,
+        tenant_role=membership.role.value if membership else None,
+        grow_scope=grow_scope,
+        account_id=account_id,
     )
-    refresh = create_refresh_token(user.id, user.tenant_id)
+    refresh = create_refresh_token(user.id)
     _set_auth_cookies(response, access, refresh)
 
     return TokenResponse(
@@ -258,14 +330,62 @@ async def refresh(
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
 
+    # Resolve membership (use tenant from previous access token if present in cookie)
+    prev_tid: UUID | None = None
+    prev_access = request.cookies.get("access_token")
+    if prev_access:
+        try:
+            prev_payload = decode_token(prev_access)
+            if prev_payload.get("tid"):
+                prev_tid = UUID(prev_payload["tid"])
+        except (JWTError, ValueError, KeyError):
+            pass
+
+    # Find membership for the previous tenant, or fall back to first
+    membership = None
+    if prev_tid:
+        mem_result = await db.execute(
+            select(TenantMembership)
+            .where(TenantMembership.user_id == user.id, TenantMembership.tenant_id == prev_tid)
+        )
+        membership = mem_result.scalar_one_or_none()
+    if not membership:
+        mem_result = await db.execute(
+            select(TenantMembership)
+            .where(TenantMembership.user_id == user.id)
+            .order_by(TenantMembership.created_at)
+            .limit(1)
+        )
+        membership = mem_result.scalar_one_or_none()
+
+    # Resolve account
+    account_result = await db.execute(
+        select(AccountMember.account_id)
+        .where(AccountMember.user_id == user.id)
+        .limit(1)
+    )
+    account_id = account_result.scalar_one_or_none()
+
+    # Build grow scope
+    grow_scope: list[UUID] | None = None
+    if membership:
+        scope_result = await db.execute(
+            select(MembershipGrowAccess.grow_cycle_id)
+            .where(MembershipGrowAccess.membership_id == membership.id)
+        )
+        scope_rows = scope_result.scalars().all()
+        if scope_rows:
+            grow_scope = list(scope_rows)
+
     access = create_access_token(
         user.id,
-        user.tenant_id,
-        user.role,
-        is_platform_admin=user.is_platform_admin,
-        is_support=user.is_support,
+        platform_role=user.platform_role.value,
+        tenant_id=membership.tenant_id if membership else None,
+        tenant_role=membership.role.value if membership else None,
+        grow_scope=grow_scope,
+        account_id=account_id,
     )
-    new_refresh = create_refresh_token(user.id, user.tenant_id)
+    new_refresh = create_refresh_token(user.id)
     _set_auth_cookies(response, access, new_refresh)
 
     return TokenResponse(
@@ -295,11 +415,14 @@ async def me(
         id=db_user.id,
         email=db_user.email,
         display_name=db_user.display_name,
-        role=db_user.role,
-        tenant_id=db_user.tenant_id,
+        role=user.role,
+        tenant_id=user.tenant_id,
         email_verified=db_user.email_verified,
-        is_platform_admin=db_user.is_platform_admin,
-        is_support=db_user.is_support,
+        is_platform_admin=user.is_platform_admin,
+        is_support=user.is_support,
+        platform_role=db_user.platform_role.value,
+        tenant_role=user.tenant_role.value if user.tenant_role else None,
+        account_id=user.account_id,
     )
 
 
@@ -332,11 +455,14 @@ async def update_profile(
         id=db_user.id,
         email=db_user.email,
         display_name=db_user.display_name,
-        role=db_user.role,
-        tenant_id=db_user.tenant_id,
+        role=user.role,
+        tenant_id=user.tenant_id,
         email_verified=db_user.email_verified,
-        is_platform_admin=db_user.is_platform_admin,
-        is_support=db_user.is_support,
+        is_platform_admin=user.is_platform_admin,
+        is_support=user.is_support,
+        platform_role=db_user.platform_role.value,
+        tenant_role=user.tenant_role.value if user.tenant_role else None,
+        account_id=user.account_id,
     )
 
 
@@ -475,3 +601,78 @@ async def create_signed_url(
     """Generate a short-lived HMAC-signed URL for media endpoints (camera, QR, photos)."""
     from app.auth.signed_url import sign_url
     return SignUrlResponse(signed_url=sign_url(body.url, str(user.tenant_id)))
+
+
+@router.post("/switch-tenant", response_model=TokenResponse)
+async def switch_tenant(
+    body: SwitchTenantRequest,
+    response: Response,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Switch the active tenant context. Issues a new access token scoped to the target tenant."""
+    target_tid = body.tenant_id
+
+    # Platform super_admins can switch to any tenant
+    if user.platform_role == PlatformRole.super_admin:
+        # Verify tenant exists
+        tenant_result = await db.execute(select(Tenant).where(Tenant.id == target_tid))
+        if not tenant_result.scalar_one_or_none():
+            raise HTTPException(status_code=404, detail="Tenant not found")
+
+        # Check if they have a real membership (for role), otherwise use admin
+        mem_result = await db.execute(
+            select(TenantMembership)
+            .where(TenantMembership.user_id == user.user_id, TenantMembership.tenant_id == target_tid)
+        )
+        membership = mem_result.scalar_one_or_none()
+        tenant_role = membership.role.value if membership else TenantRole.admin.value
+        grow_scope = None
+    else:
+        # Regular user: must have membership
+        mem_result = await db.execute(
+            select(TenantMembership)
+            .where(TenantMembership.user_id == user.user_id, TenantMembership.tenant_id == target_tid)
+        )
+        membership = mem_result.scalar_one_or_none()
+        if not membership:
+            raise HTTPException(status_code=403, detail="No membership in target tenant")
+        tenant_role = membership.role.value
+
+        # Build grow scope
+        grow_scope = None
+        scope_result = await db.execute(
+            select(MembershipGrowAccess.grow_cycle_id)
+            .where(MembershipGrowAccess.membership_id == membership.id)
+        )
+        scope_rows = scope_result.scalars().all()
+        if scope_rows:
+            grow_scope = list(scope_rows)
+
+    # Resolve account
+    account_result = await db.execute(
+        select(AccountMember.account_id)
+        .where(AccountMember.user_id == user.user_id)
+        .limit(1)
+    )
+    account_id = account_result.scalar_one_or_none()
+
+    # Fetch user record for platform_role
+    user_result = await db.execute(select(User).where(User.id == user.user_id))
+    db_user = user_result.scalar_one()
+
+    access = create_access_token(
+        user.user_id,
+        platform_role=db_user.platform_role.value,
+        tenant_id=target_tid,
+        tenant_role=tenant_role,
+        grow_scope=grow_scope,
+        account_id=account_id,
+    )
+    refresh = create_refresh_token(user.user_id)
+    _set_auth_cookies(response, access, refresh)
+
+    return TokenResponse(
+        access_token=access,
+        refresh_token=refresh,
+    )

@@ -21,12 +21,13 @@ async def admin_tenant(db_session):
     """Tenant with a platform admin user."""
     factory = TenantFactory(db_session)
     data = await factory.create(name="Admin Org")
-    # Create admin token with platform_admin flag
+    # Create admin token with super_admin platform role
     admin_token = create_access_token(
         data["user"].id,
-        data["tenant"].id,
-        data["user"].role,
-        is_platform_admin=True,
+        platform_role="super_admin",
+        tenant_id=data["tenant"].id,
+        tenant_role="admin",
+        account_id=data["account"].id,
     )
     data["admin_headers"] = {"Authorization": f"Bearer {admin_token}", "X-CSRF-Token": "test-csrf-token"}
     return data
@@ -39,9 +40,10 @@ async def support_tenant(db_session):
     data = await factory.create(name="Support Org")
     support_token = create_access_token(
         data["user"].id,
-        data["tenant"].id,
-        data["user"].role,
-        is_support=True,
+        platform_role="support",
+        tenant_id=data["tenant"].id,
+        tenant_role="admin",
+        account_id=data["account"].id,
     )
     data["support_headers"] = {"Authorization": f"Bearer {support_token}"}
     return data
@@ -84,18 +86,18 @@ class TestAdminUsers:
         user_id = str(tenant["user"].id)
         resp = await client.patch(
             f"/v1/admin/users/{user_id}",
-            json={"is_support": True},
+            json={"platform_role": "support"},
             headers=admin_tenant["admin_headers"],
         )
         assert resp.status_code == 200
-        assert resp.json()["is_support"] is True
+        assert resp.json()["platform_role"] == "support"
 
     async def test_update_user_flags_requires_admin(self, client, support_tenant, tenant):
         """Support users cannot update user flags — only platform admins can."""
         user_id = str(tenant["user"].id)
         resp = await client.patch(
             f"/v1/admin/users/{user_id}",
-            json={"is_support": True},
+            json={"platform_role": "support"},
             headers=support_tenant["support_headers"],
         )
         assert resp.status_code == 403

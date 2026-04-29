@@ -23,7 +23,9 @@ async def _setup_db():
     from app.database import Base
 
     # Import ALL models so metadata.create_all picks them up
-    from app.tenants.models import Device, Tenant, User  # noqa: F401
+    from app.tenants.models import (  # noqa: F401
+        Account, AccountMember, Device, MembershipGrowAccess, Tenant, TenantMembership, User,
+    )
     from app.grows.models import (  # noqa: F401
         Tent, GrowCycle, Bucket, BucketSensorReading, JournalEntry,
         BucketPhoto, GrowPhoto, DoseProfile, FeedingSchedule, Strain, Yield,
@@ -45,14 +47,14 @@ async def _setup_db():
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
 
-        await conn.execute(text("ALTER TABLE users ENABLE ROW LEVEL SECURITY"))
-        await conn.execute(text(
-            "CREATE POLICY tenant_isolation_users ON users "
-            "USING (tenant_id = current_setting('app.current_tenant')::UUID)"
-        ))
         await conn.execute(text("ALTER TABLE devices ENABLE ROW LEVEL SECURITY"))
         await conn.execute(text(
             "CREATE POLICY tenant_isolation_devices ON devices "
+            "USING (tenant_id = current_setting('app.current_tenant')::UUID)"
+        ))
+        await conn.execute(text("ALTER TABLE tenant_memberships ENABLE ROW LEVEL SECURITY"))
+        await conn.execute(text(
+            "CREATE POLICY tenant_isolation_memberships ON tenant_memberships "
             "USING (tenant_id = current_setting('app.current_tenant')::UUID)"
         ))
 
@@ -112,30 +114,65 @@ class TenantFactory:
     async def create(self, name: str = "Test Org", plan: str = "free") -> dict:
         import bcrypt
         from app.auth.jwt import create_access_token
-        from app.tenants.models import Tenant, User
+        from app.tenants.models import (
+            Account,
+            AccountMember,
+            AccountRole,
+            PlatformRole,
+            Tenant,
+            TenantMembership,
+            TenantRole,
+            User,
+        )
 
-        tenant = Tenant(name=name, slug=f"test-{uuid4().hex[:8]}", plan=plan)
+        # Create account
+        account = Account(name=name, billing_email=f"billing-{uuid4().hex[:8]}@test.com")
+        self.session.add(account)
+        await self.session.flush()
+
+        # Create tenant
+        tenant = Tenant(name=name, slug=f"test-{uuid4().hex[:8]}", plan=plan, account_id=account.id)
         self.session.add(tenant)
         await self.session.flush()
 
+        # Create user
         password = "testpass123"  # noqa: S105
         user = User(
-            tenant_id=tenant.id,
             email=f"user-{uuid4().hex[:8]}@test.com",
             password_hash=bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode(),
             display_name="Test User",
-            role="owner",
+            platform_role=PlatformRole.user,
         )
         self.session.add(user)
+        await self.session.flush()
+
+        # Account membership
+        account_member = AccountMember(
+            account_id=account.id, user_id=user.id, role=AccountRole.owner,
+        )
+        self.session.add(account_member)
+
+        # Tenant membership
+        membership = TenantMembership(
+            tenant_id=tenant.id, user_id=user.id, role=TenantRole.admin,
+        )
+        self.session.add(membership)
         await self.session.commit()
         await self.session.refresh(tenant)
         await self.session.refresh(user)
 
-        token = create_access_token(user.id, tenant.id, user.role)
+        token = create_access_token(
+            user.id,
+            platform_role=user.platform_role.value,
+            tenant_id=tenant.id,
+            tenant_role=TenantRole.admin.value,
+            account_id=account.id,
+        )
 
         return {
             "tenant": tenant,
             "user": user,
+            "account": account,
             "token": token,
             "password": password,
             "headers": {

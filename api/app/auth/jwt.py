@@ -10,32 +10,50 @@ from app.config import get_settings
 
 def create_access_token(
     user_id: UUID,
-    tenant_id: UUID,
-    role: str,
     *,
-    is_platform_admin: bool = False,
-    is_support: bool = False,
+    platform_role: str = "user",
+    tenant_id: UUID | None = None,
+    tenant_role: str | None = None,
+    grow_scope: list[UUID] | None = None,
+    account_id: UUID | None = None,
 ) -> str:
+    """Create a new-format access token with enterprise RBAC claims.
+
+    Claims:
+      sub  - user ID
+      pr   - platform role (super_admin|support|readonly_admin|user)
+      tid  - active tenant ID (optional)
+      tr   - tenant role for active tenant (admin|member|viewer)
+      gs   - grow scope (list of grow UUIDs, or null for unrestricted)
+      aid  - account ID owning active tenant
+      type - "access"
+      exp  - expiration
+    """
     settings = get_settings()
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
-    payload = {
+    payload: dict = {
         "sub": str(user_id),
-        "tid": str(tenant_id),
-        "role": role,
-        "pa": is_platform_admin,
-        "sup": is_support,
-        "exp": expire,
+        "pr": platform_role,
         "type": "access",
+        "exp": expire,
     }
+    if tenant_id is not None:
+        payload["tid"] = str(tenant_id)
+    if tenant_role is not None:
+        payload["tr"] = tenant_role
+    if grow_scope is not None:
+        payload["gs"] = [str(g) for g in grow_scope]
+    if account_id is not None:
+        payload["aid"] = str(account_id)
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
-def create_refresh_token(user_id: UUID, tenant_id: UUID) -> str:
+def create_refresh_token(user_id: UUID) -> str:
+    """Create a refresh token (tenant-agnostic)."""
     settings = get_settings()
     expire = datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days)
     payload = {
         "sub": str(user_id),
-        "tid": str(tenant_id),
         "exp": expire,
         "type": "refresh",
     }

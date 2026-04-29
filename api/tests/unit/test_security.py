@@ -101,7 +101,7 @@ class TestAuthSecurity:
     async def test_refresh_token_as_access_rejected(self, client, tenant_a):
         """Refresh tokens cannot be used as access tokens."""
         from app.auth.jwt import create_refresh_token
-        refresh = create_refresh_token(tenant_a["user"].id, tenant_a["tenant"].id)
+        refresh = create_refresh_token(tenant_a["user"].id)
         resp = await client.get("/v1/tents", headers={"Authorization": f"Bearer {refresh}"})
         assert resp.status_code in (401, 403)
 
@@ -135,47 +135,61 @@ class TestAuthSecurity:
 class TestRBACBypass:
     async def test_viewer_cannot_create_tent(self, client, db_session):
         """Viewer role cannot create resources."""
-        from app.tenants.models import Tenant, User
+        from app.tenants.models import Account, PlatformRole, Tenant, TenantMembership, TenantRole, User
         from app.auth.jwt import create_access_token
         import bcrypt
 
-        tenant = Tenant(name="RBAC Test", slug=f"rbac-{uuid4().hex[:8]}", plan="free")
+        account = Account(name="RBAC Test")
+        db_session.add(account)
+        await db_session.flush()
+
+        tenant = Tenant(name="RBAC Test", slug=f"rbac-{uuid4().hex[:8]}", plan="free", account_id=account.id)
         db_session.add(tenant)
         await db_session.flush()
 
         viewer = User(
-            tenant_id=tenant.id,
             email=f"viewer-{uuid4().hex[:8]}@test.com",
             password_hash=bcrypt.hashpw(b"test", bcrypt.gensalt()).decode(),
-            role="viewer",
+            platform_role=PlatformRole.user,
         )
         db_session.add(viewer)
+        await db_session.flush()
+
+        membership = TenantMembership(tenant_id=tenant.id, user_id=viewer.id, role=TenantRole.viewer)
+        db_session.add(membership)
         await db_session.commit()
 
-        token = create_access_token(viewer.id, tenant.id, "viewer")
+        token = create_access_token(viewer.id, platform_role="user", tenant_id=tenant.id, tenant_role="viewer")
         resp = await client.post("/v1/tents", json={"name": "Blocked"}, headers={"Authorization": f"Bearer {token}"})
         assert resp.status_code == 403
 
     async def test_member_cannot_delete_channel(self, client, db_session):
         """Member role cannot delete notification channels (owner-only)."""
-        from app.tenants.models import Tenant, User
+        from app.tenants.models import Account, PlatformRole, Tenant, TenantMembership, TenantRole, User
         from app.auth.jwt import create_access_token
         import bcrypt
 
-        tenant = Tenant(name="RBAC Del", slug=f"rbac-del-{uuid4().hex[:8]}", plan="free")
+        account = Account(name="RBAC Del")
+        db_session.add(account)
+        await db_session.flush()
+
+        tenant = Tenant(name="RBAC Del", slug=f"rbac-del-{uuid4().hex[:8]}", plan="free", account_id=account.id)
         db_session.add(tenant)
         await db_session.flush()
 
         member = User(
-            tenant_id=tenant.id,
             email=f"member-{uuid4().hex[:8]}@test.com",
             password_hash=bcrypt.hashpw(b"test", bcrypt.gensalt()).decode(),
-            role="member",
+            platform_role=PlatformRole.user,
         )
         db_session.add(member)
+        await db_session.flush()
+
+        membership = TenantMembership(tenant_id=tenant.id, user_id=member.id, role=TenantRole.member)
+        db_session.add(membership)
         await db_session.commit()
 
-        token = create_access_token(member.id, tenant.id, "member")
+        token = create_access_token(member.id, platform_role="user", tenant_id=tenant.id, tenant_role="member")
         resp = await client.delete(
             f"/v1/notifications/channels/{uuid4()}",
             headers={"Authorization": f"Bearer {token}"},

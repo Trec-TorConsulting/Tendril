@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
 from app.config import get_settings
 from app.database import async_session_factory
-from app.tenants.models import Tenant
+from app.tenants.models import Account, Tenant
 
 router = APIRouter()
 logger = logging.getLogger("tendril.billing")
@@ -48,6 +48,16 @@ class BillingStatusResponse(BaseModel):
     portal_url: str | None
 
 
+# ---------- Helpers ----------
+
+async def _get_account_for_tenant(session: AsyncSession, tenant_id: UUID) -> Account | None:
+    """Get the Account that owns the given tenant."""
+    tenant = await session.get(Tenant, tenant_id)
+    if not tenant or not tenant.account_id:
+        return None
+    return await session.get(Account, tenant.account_id)
+
+
 # ---------- Billing Status ----------
 
 @router.get("/status")
@@ -60,13 +70,15 @@ async def billing_status(
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
 
+    account = await _get_account_for_tenant(session, user.tenant_id)
+
     portal_url = None
-    if tenant.stripe_customer_id:
+    if account and account.stripe_customer_id:
         settings = get_settings()
         stripe.api_key = settings.stripe_secret_key
         try:
             portal = stripe.billing_portal.Session.create(
-                customer=tenant.stripe_customer_id,
+                customer=account.stripe_customer_id,
                 return_url=f"https://{settings.domain}/dashboard/settings",
             )
             portal_url = portal.url
@@ -76,8 +88,8 @@ async def billing_status(
     return BillingStatusResponse(
         plan=tenant.plan,
         plan_name=PLAN_NAMES.get(tenant.plan, tenant.plan),
-        stripe_customer_id=tenant.stripe_customer_id,
-        stripe_subscription_id=tenant.stripe_subscription_id,
+        stripe_customer_id=account.stripe_customer_id if account else None,
+        stripe_subscription_id=account.stripe_subscription_id if account else None,
         portal_url=portal_url,
     )
 
@@ -101,16 +113,20 @@ async def create_checkout(
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
 
+    account = await _get_account_for_tenant(session, user.tenant_id)
+    if not account:
+        raise HTTPException(status_code=400, detail="No billing account")
+
     # Get or create Stripe customer
-    if not tenant.stripe_customer_id:
+    if not account.stripe_customer_id:
         customer = stripe.Customer.create(
-            metadata={"tenant_id": str(tenant.id)},
+            metadata={"account_id": str(account.id), "tenant_id": str(tenant.id)},
         )
-        tenant.stripe_customer_id = customer.id
+        account.stripe_customer_id = customer.id
         await session.commit()
 
     checkout = stripe.checkout.Session.create(
-        customer=tenant.stripe_customer_id,
+        customer=account.stripe_customer_id,
         mode="subscription",
         line_items=[{"price": PRICE_IDS[body.plan], "quantity": 1}],
         success_url=f"https://{settings.domain}/dashboard/settings?billing=success",
@@ -132,12 +148,12 @@ async def create_portal(
     settings = get_settings()
     stripe.api_key = settings.stripe_secret_key
 
-    tenant = await session.get(Tenant, user.tenant_id)
-    if not tenant or not tenant.stripe_customer_id:
+    account = await _get_account_for_tenant(session, user.tenant_id)
+    if not account or not account.stripe_customer_id:
         raise HTTPException(status_code=400, detail="No billing account")
 
     portal = stripe.billing_portal.Session.create(
-        customer=tenant.stripe_customer_id,
+        customer=account.stripe_customer_id,
         return_url=f"https://{settings.domain}/dashboard/settings",
     )
     return {"portal_url": portal.url}
@@ -198,7 +214,13 @@ async def _handle_checkout_completed(session: AsyncSession, data: dict) -> None:
         return
 
     tenant.plan = plan or tenant.plan
-    tenant.stripe_subscription_id = subscription_id
+
+    # Store subscription on account
+    if tenant.account_id:
+        account = await session.get(Account, tenant.account_id)
+        if account:
+            account.stripe_subscription_id = subscription_id
+
     await session.commit()
     logger.info("Tenant %s upgraded to plan %s", tenant_id, plan)
 
@@ -208,24 +230,29 @@ async def _handle_subscription_updated(session: AsyncSession, data: dict) -> Non
     if not customer_id:
         return
 
-    tenant = (await session.execute(
-        select(Tenant).where(Tenant.stripe_customer_id == customer_id)
+    account = (await session.execute(
+        select(Account).where(Account.stripe_customer_id == customer_id)
     )).scalar_one_or_none()
-    if not tenant:
+    if not account:
         return
+
+    # Find the primary tenant for this account to update plan
+    tenant = (await session.execute(
+        select(Tenant).where(Tenant.account_id == account.id).limit(1)
+    )).scalar_one_or_none()
 
     # Map Stripe price ID back to plan name
     items = data.get("items", {}).get("data", [])
-    if items:
+    if items and tenant:
         price_id = items[0].get("price", {}).get("id")
         for plan, pid in PRICE_IDS.items():
             if pid == price_id:
                 tenant.plan = plan
                 break
 
-    tenant.stripe_subscription_id = data.get("id")
+    account.stripe_subscription_id = data.get("id")
     await session.commit()
-    logger.info("Subscription updated for tenant %s", tenant.id)
+    logger.info("Subscription updated for account %s", account.id)
 
 
 async def _handle_subscription_deleted(session: AsyncSession, data: dict) -> None:
@@ -233,16 +260,22 @@ async def _handle_subscription_deleted(session: AsyncSession, data: dict) -> Non
     if not customer_id:
         return
 
-    tenant = (await session.execute(
-        select(Tenant).where(Tenant.stripe_customer_id == customer_id)
+    account = (await session.execute(
+        select(Account).where(Account.stripe_customer_id == customer_id)
     )).scalar_one_or_none()
-    if not tenant:
+    if not account:
         return
 
-    tenant.plan = "free"
-    tenant.stripe_subscription_id = None
+    # Revert all tenants in this account to free
+    tenants = (await session.execute(
+        select(Tenant).where(Tenant.account_id == account.id)
+    )).scalars().all()
+    for tenant in tenants:
+        tenant.plan = "free"
+
+    account.stripe_subscription_id = None
     await session.commit()
-    logger.info("Subscription cancelled for tenant %s, reverted to free", tenant.id)
+    logger.info("Subscription cancelled for account %s, reverted to free", account.id)
 
 
 async def _handle_payment_failed(session: AsyncSession, data: dict) -> None:

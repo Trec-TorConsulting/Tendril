@@ -22,21 +22,32 @@ async def viewer_tenant(db_session):
     """Tenant with a viewer-role user for RBAC testing."""
     import bcrypt
     from app.auth.jwt import create_access_token
-    from app.tenants.models import User
+    from app.tenants.models import PlatformRole, TenantMembership, TenantRole, User
 
     factory = TenantFactory(db_session)
     data = await factory.create(name="Viewer Org")
     viewer = User(
-        tenant_id=data["tenant"].id,
         email=f"viewer-{uuid4().hex[:8]}@test.com",
         password_hash=bcrypt.hashpw(b"viewerpass", bcrypt.gensalt()).decode(),
         display_name="Viewer User",
-        role="viewer",
+        platform_role=PlatformRole.user,
     )
     db_session.add(viewer)
+    await db_session.flush()
+    membership = TenantMembership(
+        tenant_id=data["tenant"].id,
+        user_id=viewer.id,
+        role=TenantRole.viewer,
+    )
+    db_session.add(membership)
     await db_session.commit()
     await db_session.refresh(viewer)
-    token = create_access_token(viewer.id, data["tenant"].id, "viewer")
+    token = create_access_token(
+        viewer.id,
+        platform_role="user",
+        tenant_id=data["tenant"].id,
+        tenant_role="viewer",
+    )
     data["viewer_headers"] = {"Authorization": f"Bearer {token}"}
     data["viewer_user"] = viewer
     return data

@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.commercial.models import Task
 from app.grows.models import Bucket, FeedingSchedule, GrowCycle, Strain
-from app.tenants.models import User
+from app.tenants.models import TenantMembership, TenantRole, User
 
 logger = logging.getLogger("tendril.tasks.autogen")
 
@@ -175,9 +175,11 @@ TASK_TEMPLATES: list[tuple[str, str, str, int, str, set[str] | None, set[str] | 
 
 
 async def _get_tenant_owner(session: AsyncSession, tenant_id: UUID) -> UUID | None:
-    """Find the owner user for a tenant."""
+    """Find the owner (admin) user for a tenant."""
     result = await session.execute(
-        select(User.id).where(User.tenant_id == tenant_id, User.role == "owner").limit(1)
+        select(TenantMembership.user_id)
+        .where(TenantMembership.tenant_id == tenant_id, TenantMembership.role == TenantRole.admin)
+        .limit(1)
     )
     row = result.scalar_one_or_none()
     return row

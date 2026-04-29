@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.middleware import CurrentUser, require_platform_admin, require_support_or_admin
 from app.database import async_session_factory
 from app.pagination import PaginatedResponse, PaginationParams
-from app.tenants.models import Tenant, User
+from app.tenants.models import PlatformRole, Tenant, TenantMembership, User
 
 router = APIRouter()
 
@@ -37,19 +37,20 @@ class UserSummary(BaseModel):
     id: UUID
     email: str
     display_name: str | None
-    role: str
-    tenant_id: UUID
-    tenant_name: str
-    is_platform_admin: bool
-    is_support: bool
+    platform_role: str
+    tenant_id: UUID | None = None
+    tenant_name: str | None = None
+    tenant_role: str | None = None
     email_verified: bool
     created_at: str
+    # Backward compat
+    role: str | None = None
+    is_platform_admin: bool = False
+    is_support: bool = False
 
 
 class UpdateUserFlags(BaseModel):
-    is_platform_admin: bool | None = None
-    is_support: bool | None = None
-    role: str | None = None
+    platform_role: str | None = None
 
 
 class PlatformStatsResponse(BaseModel):
@@ -70,9 +71,9 @@ async def list_all_tenants(
     stmt = (
         select(
             Tenant.id, Tenant.name, Tenant.slug, Tenant.plan, Tenant.created_at,
-            func.count(User.id).label("user_count"),
+            func.count(TenantMembership.id).label("user_count"),
         )
-        .outerjoin(User, User.tenant_id == Tenant.id)
+        .outerjoin(TenantMembership, TenantMembership.tenant_id == Tenant.id)
         .group_by(Tenant.id)
         .order_by(Tenant.created_at.desc())
     )
@@ -99,20 +100,24 @@ async def list_tenant_users(
 ):
     """List all users in a specific tenant."""
     stmt = (
-        select(User, Tenant.name.label("tenant_name"))
-        .join(Tenant, Tenant.id == User.tenant_id)
-        .where(User.tenant_id == tenant_id)
+        select(User, TenantMembership.role, Tenant.name.label("tenant_name"))
+        .join(TenantMembership, TenantMembership.user_id == User.id)
+        .join(Tenant, Tenant.id == TenantMembership.tenant_id)
+        .where(TenantMembership.tenant_id == tenant_id)
         .order_by(User.created_at)
     )
     rows = (await db.execute(stmt)).all()
     return [
         UserSummary(
             id=u.id, email=u.email, display_name=u.display_name,
-            role=u.role, tenant_id=u.tenant_id, tenant_name=tn,
-            is_platform_admin=u.is_platform_admin, is_support=u.is_support,
+            platform_role=u.platform_role.value,
+            tenant_id=tenant_id, tenant_name=tn, tenant_role=tr.value,
             email_verified=u.email_verified, created_at=u.created_at.isoformat(),
+            role=tr.value,
+            is_platform_admin=u.platform_role == PlatformRole.super_admin,
+            is_support=u.platform_role == PlatformRole.support,
         )
-        for u, tn in rows
+        for u, tr, tn in rows
     ]
 
 
@@ -128,21 +133,21 @@ async def list_all_users(
     count_stmt = select(func.count(User.id))
     total = (await db.execute(count_stmt)).scalar() or 0
     stmt = (
-        select(User, Tenant.name.label("tenant_name"))
-        .join(Tenant, Tenant.id == User.tenant_id)
+        select(User)
         .order_by(User.created_at.desc())
         .offset(pagination.offset)
         .limit(pagination.page_size)
     )
-    rows = (await db.execute(stmt)).all()
+    users = (await db.execute(stmt)).scalars().all()
     items = [
         UserSummary(
             id=u.id, email=u.email, display_name=u.display_name,
-            role=u.role, tenant_id=u.tenant_id, tenant_name=tn,
-            is_platform_admin=u.is_platform_admin, is_support=u.is_support,
+            platform_role=u.platform_role.value,
             email_verified=u.email_verified, created_at=u.created_at.isoformat(),
+            is_platform_admin=u.platform_role == PlatformRole.super_admin,
+            is_support=u.platform_role == PlatformRole.support,
         )
-        for u, tn in rows
+        for u in users
     ]
     return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
 
@@ -154,39 +159,37 @@ async def update_user_flags(
     admin: Annotated[CurrentUser, Depends(require_platform_admin)],
     db: Annotated[AsyncSession, Depends(_get_db)],
 ):
-    """Update user platform flags (admin only). Cannot demote yourself."""
-    stmt = (
-        select(User, Tenant.name.label("tenant_name"))
-        .join(Tenant, Tenant.id == User.tenant_id)
-        .where(User.id == user_id)
-    )
-    row = (await db.execute(stmt)).first()
-    if not row:
+    """Update user platform role (admin only). Cannot demote yourself."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    user, tenant_name = row
+    if body.platform_role is not None:
+        # Validate enum value
+        try:
+            new_role = PlatformRole(body.platform_role)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid platform_role. Must be one of: {[r.value for r in PlatformRole]}",
+            )
 
-    # Prevent self-demotion
-    if user.id == admin.user_id and body.is_platform_admin is False:
-        raise HTTPException(status_code=400, detail="Cannot remove your own admin access")
+        # Prevent self-demotion from super_admin
+        if user.id == admin.user_id and new_role != PlatformRole.super_admin:
+            raise HTTPException(status_code=400, detail="Cannot remove your own admin access")
 
-    if body.is_platform_admin is not None:
-        user.is_platform_admin = body.is_platform_admin
-    if body.is_support is not None:
-        user.is_support = body.is_support
-    if body.role is not None:
-        if body.role not in ("owner", "member", "viewer"):
-            raise HTTPException(status_code=400, detail="Invalid role")
-        user.role = body.role
+        user.platform_role = new_role
 
     await db.commit()
     await db.refresh(user)
 
     return UserSummary(
         id=user.id, email=user.email, display_name=user.display_name,
-        role=user.role, tenant_id=user.tenant_id, tenant_name=tenant_name,
-        is_platform_admin=user.is_platform_admin, is_support=user.is_support,
+        platform_role=user.platform_role.value,
         email_verified=user.email_verified, created_at=user.created_at.isoformat(),
+        is_platform_admin=user.platform_role == PlatformRole.super_admin,
+        is_support=user.platform_role == PlatformRole.support,
     )
 
 

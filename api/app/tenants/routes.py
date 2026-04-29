@@ -14,7 +14,7 @@ from app.auth.middleware import CurrentUser, get_current_user, require_role
 from app.auth.password import validate_password_strength
 from app.database import get_db
 from app.pagination import PaginatedResponse, PaginationParams, paginate
-from app.tenants.models import Tenant, User
+from app.tenants.models import PlatformRole, Tenant, TenantMembership, TenantRole, User
 
 router = APIRouter()
 
@@ -88,18 +88,48 @@ async def list_members(
     pagination: Annotated[PaginationParams, Depends()],
 ):
     """List all members of the current tenant."""
-    q = select(User).where(User.tenant_id == user.tenant_id).order_by(User.created_at)
-    items, total = await paginate(db, q, pagination)
+    q = (
+        select(User, TenantMembership.role)
+        .join(TenantMembership, TenantMembership.user_id == User.id)
+        .where(TenantMembership.tenant_id == user.tenant_id)
+        .order_by(User.created_at)
+    )
+    # Manual pagination (can't use paginate helper directly with joined query)
+    from sqlalchemy import func
+
+    count_stmt = select(func.count(TenantMembership.id)).where(TenantMembership.tenant_id == user.tenant_id)
+    total = (await db.execute(count_stmt)).scalar() or 0
+    stmt = q.offset(pagination.offset).limit(pagination.page_size)
+    rows = (await db.execute(stmt)).all()
     return PaginatedResponse(
         items=[
             TenantMemberResponse(
-                id=u.id, email=u.email, display_name=u.display_name, role=u.role,
+                id=u.id, email=u.email, display_name=u.display_name,
+                role=_tenant_role_to_legacy(tr),
                 email_verified=u.email_verified, created_at=u.created_at.isoformat(),
             )
-            for u in items
+            for u, tr in rows
         ],
         total=total, page=pagination.page, page_size=pagination.page_size,
     )
+
+
+def _tenant_role_to_legacy(tr: TenantRole) -> str:
+    """Convert TenantRole enum to legacy role string for API compat."""
+    if tr == TenantRole.admin:
+        return "owner"
+    return tr.value
+
+
+def _legacy_to_tenant_role(role: str) -> TenantRole:
+    """Convert legacy role string to TenantRole enum."""
+    if role == "owner":
+        return TenantRole.admin
+    if role == "member":
+        return TenantRole.member
+    if role == "viewer":
+        return TenantRole.viewer
+    raise ValueError(f"Invalid role: {role}")
 
 
 @router.post("/members", response_model=TenantMemberResponse, status_code=status.HTTP_201_CREATED)
@@ -120,22 +150,31 @@ async def add_member(
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Email already registered")
 
+    # Create user record
     new_user = User(
-        tenant_id=user.tenant_id,
         email=body.email,
         password_hash=bcrypt.hashpw(body.password.encode(), bcrypt.gensalt()).decode(),
         display_name=body.display_name,
-        role=body.role,
+        platform_role=PlatformRole.user,
         auth_provider="local",
     )
     db.add(new_user)
+    await db.flush()
+
+    # Create tenant membership
+    membership = TenantMembership(
+        tenant_id=user.tenant_id,
+        user_id=new_user.id,
+        role=_legacy_to_tenant_role(body.role),
+    )
+    db.add(membership)
     await db.commit()
     await db.refresh(new_user)
     await record_audit(db, user.tenant_id, user.user_id, "create", "member", str(new_user.id), request=request)
     await db.commit()
     return TenantMemberResponse(
         id=new_user.id, email=new_user.email, display_name=new_user.display_name,
-        role=new_user.role, email_verified=new_user.email_verified,
+        role=body.role, email_verified=new_user.email_verified,
         created_at=new_user.created_at.isoformat(),
     )
 
@@ -151,22 +190,27 @@ async def update_member_role(
     if body.role not in ("owner", "member", "viewer"):
         raise HTTPException(status_code=400, detail="Invalid role")
 
+    # Find the membership
     result = await db.execute(
-        select(User).where(User.id == member_id, User.tenant_id == user.tenant_id)
+        select(TenantMembership)
+        .where(TenantMembership.user_id == member_id, TenantMembership.tenant_id == user.tenant_id)
     )
-    member = result.scalar_one_or_none()
-    if not member:
+    membership = result.scalar_one_or_none()
+    if not membership:
         raise HTTPException(status_code=404, detail="Member not found")
 
-    if member.id == user.user_id:
+    if membership.user_id == user.user_id:
         raise HTTPException(status_code=400, detail="Cannot change your own role")
 
-    member.role = body.role
+    membership.role = _legacy_to_tenant_role(body.role)
     await db.commit()
-    await db.refresh(member)
+
+    # Get user for response
+    user_result = await db.execute(select(User).where(User.id == member_id))
+    member = user_result.scalar_one()
     return TenantMemberResponse(
         id=member.id, email=member.email, display_name=member.display_name,
-        role=member.role, email_verified=member.email_verified,
+        role=body.role, email_verified=member.email_verified,
         created_at=member.created_at.isoformat(),
     )
 
@@ -180,15 +224,16 @@ async def remove_member(
 ):
     """Remove a member from the tenant. Owner only. Cannot remove yourself."""
     result = await db.execute(
-        select(User).where(User.id == member_id, User.tenant_id == user.tenant_id)
+        select(TenantMembership)
+        .where(TenantMembership.user_id == member_id, TenantMembership.tenant_id == user.tenant_id)
     )
-    member = result.scalar_one_or_none()
-    if not member:
+    membership = result.scalar_one_or_none()
+    if not membership:
         raise HTTPException(status_code=404, detail="Member not found")
 
-    if member.id == user.user_id:
+    if membership.user_id == user.user_id:
         raise HTTPException(status_code=400, detail="Cannot remove yourself")
 
     await record_audit(db, user.tenant_id, user.user_id, "delete", "member", str(member_id), request=request)
-    await db.delete(member)
+    await db.delete(membership)
     await db.commit()
