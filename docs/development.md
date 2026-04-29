@@ -81,6 +81,7 @@ tendril/
 │   │   ├── mqtt/                 # MQTT client, message handlers, auth webhook
 │   │   ├── scheduler/            # Background tasks with leader election
 │   │   ├── outdoor/              # Outdoor grow features
+│   │   ├── integrations/         # Third-party connectors (Pulse, OpenWeather, Ecowitt)
 │   │   ├── billing/              # Stripe integration
 │   │   ├── notifications/        # Web push
 │   │   ├── automation/           # Rules engine

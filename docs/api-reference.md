@@ -296,6 +296,36 @@ The AI assistant has access to:
 | `POST` | `/v1/grows/{id}/runoff` | Log a runoff reading |
 | `GET` | `/v1/outdoor/intelligence` | Get outdoor grow recommendations |
 
+## Integrations
+
+Third-party device and service connectors. Built-in connectors: Pulse Grow, OpenWeather, Ecowitt.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/v1/integrations` | List all integrations for tenant |
+| `POST` | `/v1/integrations` | Create integration config |
+| `GET` | `/v1/integrations/{id}` | Get single integration |
+| `PATCH` | `/v1/integrations/{id}` | Update integration config |
+| `DELETE` | `/v1/integrations/{id}` | Delete integration + mappings |
+| `POST` | `/v1/integrations/{id}/devices` | Create device mapping |
+| `GET` | `/v1/integrations/{id}/devices` | List device mappings |
+| `PATCH` | `/v1/integrations/{id}/devices/{device_id}` | Update device mapping |
+| `DELETE` | `/v1/integrations/{id}/devices/{device_id}` | Remove device mapping |
+| `POST` | `/v1/integrations/webhook/{integration_id}` | Inbound webhook receiver |
+| `GET` | `/v1/integrations/{id}/logs` | Sync history |
+| `POST` | `/v1/integrations/{id}/sync` | Trigger manual sync |
+| `POST` | `/v1/integrations/{id}/discover` | Discover available external devices |
+
+### Integration Types
+
+| Type | Mode | Config Fields |
+|------|------|---------------|
+| `pulse` | Polling | `api_key` (required), `base_url` (optional) |
+| `openweather` | Polling | `api_key` (required), `use_onecall_30` (optional flag), `base_url` (optional) |
+| `ecowitt` | Webhook + Polling | `mode` (`webhook`/`cloud`), `application_key`, `api_key`, `mac`, `base_url` |
+
+Credentials are encrypted at rest via Fernet and redacted in API responses.
+
 ## Billing
 
 | Method | Endpoint | Description |

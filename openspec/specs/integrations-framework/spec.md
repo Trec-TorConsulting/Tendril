@@ -5,11 +5,24 @@ The integrations framework provides a unified system for connecting third-party 
 ## Architecture
 
 - **IntegrationConfig** table stores per-tenant integration credentials and device mappings
+- **IntegrationDeviceMap** table maps external devices/sensors to Tendril tents and buckets
 - **IntegrationSyncLog** table tracks sync history and errors
 - Webhook receiver endpoint accepts push-style data from external platforms
 - Polling workers pull data from cloud APIs on configurable intervals
-- All sensor data flows into existing `BucketSensorReading` and `TentAmbientReading` tables
+- **BaseConnector** ABC with registry pattern: `poll()`, `handle_webhook()`, `persist_readings()`, `discover_devices()`
+- Connector auto-registration via `@register_connector` decorator
+- All sensor data flows into existing `BucketSensorReading`, `TentSensorReading`, and `WeatherReading` tables
 - Multi-tenant isolation via RLS on all integration tables
+- Fernet symmetric encryption for credentials at rest
+
+## Implemented Connectors
+
+| Connector | Type | Mode | Sensor Tables |
+|-----------|------|------|---------------|
+| **Pulse Grow** | `pulse` | Polling | TentSensorReading (ambient), BucketSensorReading (Hub sensors) |
+| **OpenWeather** | `openweather` | Polling | WeatherReading (current + forecast) |
+| **Ecowitt** | `ecowitt` | Webhook + Polling | WeatherReading, BucketSensorReading (soil), TentSensorReading (temp/humidity) |
+| **Open-Meteo** | Built-in (scheduler) | Polling | WeatherReading (free baseline, no integration config needed) |
 
 ### Requirement: Integration Configuration Management
 The system SHALL allow tenants to create, update, list, and delete integration configurations via REST API.
@@ -47,7 +60,7 @@ The system SHALL run background polling tasks for cloud-API-based integrations o
 
 #### Scenario: Scheduled poll executes
 - **WHEN** a polling interval elapses for an enabled integration
-- **THEN** the system fetches latest data from the external API and inserts sensor readings
+- **THEN** the system fetches latest data from the external API, persists sensor readings to the appropriate tables via `connector.persist_readings()`, and logs the sync in IntegrationSyncLog
 
 #### Scenario: Poll failure handling
 - **WHEN** a poll fails due to network or API error

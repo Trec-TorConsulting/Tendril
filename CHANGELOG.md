@@ -9,6 +9,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Pulse Grow connector** — Polls `api.pulsegrow.com` for Pulse One/Pro/Hub devices. Maps ambient readings (temp, humidity, VPD, CO2, lux, dew point, PAR, pressure, VOC) to TentSensorReading and Hub sensors (soil moisture, pH, EC) to BucketSensorReading. Auto-discovery via `/v1/integrations/{id}/discover`. 26 unit tests.
+- **OpenWeather connector** — Polls OpenWeather API (free 2.5 + One Call 3.0) for weather data. Maps current conditions + 7-day forecast to WeatherReading. Dew point calculation via Magnus formula. 20 unit tests.
+- **Ecowitt connector** — Dual-mode: webhook push from gateway + cloud API polling. Maps weather station → WeatherReading, soil channels (1–16) → BucketSensorReading, temp/humidity channels → TentSensorReading, leaf wetness → BucketSensorReading. Full imperial-to-metric conversion. Device discovery from cloud API. 23 unit tests.
+- **Enhanced Open-Meteo** — Added soil temperature (6cm), dew point, and barometric pressure to weather polling. Forecasts now persisted in WeatherReading. Source tracking (`open_meteo`, `openweather`, `ecowitt`, `manual`).
+- **Scheduler reading persistence** — Integration poll loop, webhook receiver, and manual sync now persist readings to sensor tables via `BaseConnector.persist_readings()`. Previously data was polled but only logged, never written to sensor tables. 7 unit tests.
+- **Integration device discovery** — `POST /v1/integrations/{id}/discover` endpoint for auto-detecting external devices/sensors.
+- **Integration manual sync** — `POST /v1/integrations/{id}/sync` endpoint for triggering immediate polls.
+- **Migration 0022** — Extended `tent_sensor_readings` with `vpd`, `co2`, `lux`, `dew_point_f`, `par_ppfd`, `air_pressure`, `voc` columns.
+- **Migration 0023** — Extended `weather_readings` with `dew_point_c`, `pressure_hpa`, `soil_temp_c`, `source` columns.
 - Comprehensive documentation suite (`docs/`)
 - Docker Compose for full local development stack
 - SECURITY.md and CODE_OF_CONDUCT.md

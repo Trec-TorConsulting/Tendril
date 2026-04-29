@@ -65,6 +65,7 @@ The primary HTTP API and WebSocket server. Handles all client requests.
 | Notifications | `notifications` | `/v1/notifications` |
 | Billing | `billing` | `/v1/billing` |
 | Outdoor | `plots`, `soil`, `pests`, `yields`, `companions`, `intelligence`, `containers`, `runoff` | `/v1/grows/*`, `/v1/outdoor/*` |
+| Integrations | `integrations` | `/v1/integrations` |
 | Commercial | `custom-grow-types`, `tasks`, `audit`, `api-keys` | `/v1/custom-grow-types`, etc. |
 | Admin | `admin` | `/v1/admin` |
 
@@ -109,7 +110,8 @@ A background task runner using PostgreSQL advisory locks for leader election. On
 | Health checks | AI-powered grow health evaluations (every 12h) |
 | Alerts | Sensor threshold monitoring |
 | Data retention | Cleanup of old readings |
-| Weather | Polling for outdoor grows (every 30min) |
+| Weather | Open-Meteo polling for outdoor grows (every 30min) |
+| Integration polling | Polls enabled integrations (Pulse, OpenWeather, Ecowitt) on configurable intervals, persists readings to sensor tables |
 | Reports | Daily/weekly grow summaries |
 
 ### ESP32 Firmware
@@ -215,6 +217,10 @@ All tenant-scoped tables have RLS policies that filter by this variable. The `te
 | `journal_entries` | Grow journal with photos | Tenant |
 | `feeding_logs` | Nutrient feeding records | Tenant |
 | `strains` | Strain database | Tenant |
+| `weather_readings` | Weather data from Open-Meteo, OpenWeather, Ecowitt | Tenant |
+| `integration_configs` | Third-party integration credentials and settings | Tenant |
+| `integration_device_maps` | Maps external devices to tents/buckets | Tenant |
+| `integration_sync_logs` | Sync history and error tracking | Tenant |
 | `automations` | Automation rules and triggers | Tenant |
 
 ### Migrations
@@ -271,4 +277,6 @@ Both `api/Dockerfile` and `web/Dockerfile` produce optimized production images:
 | Ollama | Optional | Local AI models |
 | Google Gemini | Optional | Cloud AI for health checks |
 | Stripe | Optional | Subscription billing |
-| OpenWeather | Optional | Weather data for outdoor grows |
+| OpenWeather API | Optional | Enhanced weather data (free 2.5 + One Call 3.0) |
+| Ecowitt API/Gateway | Optional | Weather stations, soil probes (webhook + cloud API) |
+| Pulse Grow API | Optional | Pulse One/Pro/Hub environmental monitors |

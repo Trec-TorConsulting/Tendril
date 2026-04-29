@@ -37,7 +37,8 @@ Tendril is an open-source, multi-tenant SaaS platform for grow monitoring and au
 - PostgreSQL Row-Level Security (RLS) for tenant isolation
 - MQTT for device → API sensor ingestion
 - Background workers: `mqtt-worker`, `scheduler` (leader election via pg advisory locks)
-- FastAPI routers organized by domain (`grows/`, `devices/`, `ai/`, `billing/`, etc.)
+- FastAPI routers organized by domain (`grows/`, `devices/`, `ai/`, `billing/`, `integrations/`, etc.)
+- Integration connectors follow BaseConnector ABC pattern with registry, poll/webhook/persist/discover lifecycle
 - Security middleware stack: CSP, HSTS, rate limiting, brute-force protection, CORS
 
 ### Testing Strategy
@@ -90,5 +91,7 @@ All code must be written with OWASP Top 10 2021 compliance as a baseline:
 - EMQX or compatible MQTT broker
 - Google Gemini API (optional, for AI features)
 - Stripe (optional, for SaaS billing)
-- OpenWeather API (optional, for weather integration)
+- OpenWeather API (optional, for enhanced weather data via OpenWeather connector)
+- Ecowitt cloud API / gateway webhook (optional, for weather stations and soil probes)
+- Pulse Grow API (optional, for Pulse One/Pro/Hub environmental monitors)
 - MinIO or S3-compatible storage (optional, for photo uploads)

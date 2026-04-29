@@ -29,7 +29,8 @@ Tendril is a self-hostable, multi-tenant platform for monitoring and automating 
 - **Automation workflows** — Configurable rules and scheduled tasks for alerts and actions
 - **Mobile-first PWA** — Installable, offline-capable, with pull-to-refresh and swipe gestures
 - **Barcode scanning** — Scan nutrients and products directly from your phone
-- **Weather integration** — Local weather data alongside your sensor readings
+- **Weather integration** — Open-Meteo (free baseline with soil temp, dew point, pressure, forecasts), OpenWeather (optional upgrade, free 2.5 + One Call 3.0), Ecowitt (dual-mode webhook + cloud API for weather stations and soil probes)
+- **Third-party integrations** — Unified connector framework with encrypted credentials, device mapping, polling workers, webhook receiver, sync logging, and auto-discovery. Built-in connectors: Pulse Grow, OpenWeather, Ecowitt
 - **Notifications** — Web push alerts for sensor thresholds and health checks
 - **Commercial features** — API keys, audit logs, custom grow types, Stripe billing
 - **Kubernetes-ready** — Full manifest set with HPA autoscaling, ingress, and DB migrations
@@ -69,7 +70,7 @@ Tendril is a self-hostable, multi-tenant platform for monitoring and automating 
 | **tendril-api** | REST API, WebSocket AI chat, auth, billing | Python 3.12, FastAPI, SQLAlchemy, Alembic |
 | **tendril-web** | Dashboard, grow management, mobile PWA | TypeScript, Next.js 16, React 19, Tailwind, shadcn/ui |
 | **tendril-mqtt-worker** | Ingests sensor data from MQTT broker | Python, aiomqtt |
-| **tendril-scheduler** | Background tasks: health checks, alerts, data retention | Python |
+| **tendril-scheduler** | Background tasks: health checks, alerts, data retention, integration polling | Python |
 | **esp32 firmware** | Reads sensors, publishes to MQTT | C++, Arduino, PlatformIO |
 
 ## Project Structure
@@ -89,6 +90,7 @@ tendril/
 │   │   ├── mqtt/           # MQTT client, handlers, auth webhook
 │   │   ├── notifications/  # Web push alerts
 │   │   ├── outdoor/        # Plots, soil tests, pests, companions, runoff
+│   │   ├── integrations/   # Third-party connectors (Pulse, OpenWeather, Ecowitt)
 │   │   ├── scheduler/      # Background task runner
 │   │   ├── sensors/        # Sensor data routes
 │   │   ├── tenants/        # Multi-tenant management
@@ -220,8 +222,9 @@ The API exposes 30+ route groups. Key areas:
 | `/v1/ai` | Chat, reports | AI grow assistant (WebSocket) |
 | `/v1/devices` | Register, provision | ESP32 device management |
 | `/v1/automation` | Rules, triggers | Automation workflows |
-| `/v1/weather` | Current, forecast | Weather integration |
+| `/v1/weather` | Current, forecast | Weather integration (Open-Meteo + third-party) |
 | `/v1/outdoor` | Plots, soil, pests | Outdoor grow management |
+| `/v1/integrations` | CRUD, webhooks, sync | Third-party device connectors (Pulse, OpenWeather, Ecowitt) |
 | `/v1/billing` | Stripe webhooks | Subscription management |
 | `/v1/admin` | Tenant management | Admin panel |
 
@@ -291,6 +294,15 @@ This project uses [OpenSpec](openspec/AGENTS.md) for spec-driven development. La
 | `environment-monitoring` | Temperature, humidity, CO2, VPD tracking |
 | `grow-assistant-core` | AI assistant capabilities and tool framework |
 | `integrations-framework` | Plugin architecture for third-party devices and services |
+
+### Implemented Connectors
+
+| Connector | Mode | Data |
+|-----------|------|------|
+| **Pulse Grow** | Polling | Ambient (temp, humidity, VPD, CO2, lux, PAR, dew point, pressure, VOC) + Hub sensors (soil moisture, pH, EC) |
+| **OpenWeather** | Polling | Current conditions + 7-day forecast (temp, humidity, wind, UV, precipitation, pressure, dew point) |
+| **Ecowitt** | Webhook + Polling | Weather station + up to 16 soil channels + 8 temp/humidity channels + 8 leaf wetness channels |
+| **Open-Meteo** | Polling (built-in) | Free baseline weather with soil temp, dew point, pressure, and 7-day forecast persistence |
 
 ## Contributing
 

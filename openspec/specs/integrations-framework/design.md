@@ -10,7 +10,9 @@ Tendril needs a unified integration framework to connect third-party grow equipm
 - **Fernet encryption for credentials**: Symmetric encryption using a server-side key. Simple, no external KMS dependency. Key stored in environment variable.
 - **Webhook secret per integration**: Each integration config gets a unique webhook_secret for inbound authentication. External platforms include this in their POST.
 - **Polling via APScheduler**: The existing Tendril scheduler pod already runs APScheduler. Add polling jobs dynamically when integrations are created.
-- **Data flows into existing tables**: No new sensor tables. External data maps to BucketSensorReading and TentAmbientReading columns. AI context builder requires zero changes.
+- **Data flows into existing tables**: No new sensor tables. External data maps to BucketSensorReading, TentSensorReading, and WeatherReading columns. AI context builder requires zero changes.
+- **BaseConnector lifecycle**: Each connector implements `poll()`, `handle_webhook()`, `persist_readings()`, and optionally `discover_devices()`. The scheduler calls poll → persist_readings → write_sync_log.
+- **Connector registry**: `@register_connector` decorator auto-registers connectors by `integration_type` string. Lookup via `get_connector_class()`.
 
 ## Data Model
 
@@ -69,7 +71,18 @@ POST   /v1/integrations/webhook/{integration_id}  -- Inbound webhook (no auth he
 
 GET    /v1/integrations/{id}/logs        -- Sync history
 POST   /v1/integrations/{id}/sync        -- Trigger manual sync
+POST   /v1/integrations/{id}/discover     -- Discover external devices/sensors
 ```
+
+## Implemented Connectors
+
+| Connector | File | Registration |
+|-----------|------|--------------|
+| Pulse Grow | `connectors/pulse.py` | `@register_connector` as `"pulse"` |
+| OpenWeather | `connectors/openweather.py` | `@register_connector` as `"openweather"` |
+| Ecowitt | `connectors/ecowitt.py` | `@register_connector` as `"ecowitt"` |
+
+All connectors are imported in `connectors/__init__.py` for auto-registration at startup.
 
 ## Risks / Trade-offs
 - **JSON config flexibility vs type safety**: We lose schema validation at DB level. Mitigated by Pydantic validation per integration type in the API layer.
@@ -77,9 +90,11 @@ POST   /v1/integrations/{id}/sync        -- Trigger manual sync
 - **Credential encryption key rotation**: Fernet key is static. Future enhancement: support key rotation without re-encryption downtime.
 
 ## Migration Plan
-1. Alembic migration `0018_integrations_framework.py` creates all three tables with RLS
-2. No data migration needed — additive only
-3. Rollback: drop tables (no existing data affected)
+1. Alembic migration `0020_integrations_framework.py` creates all three tables with RLS
+2. Alembic migration `0022_extend_tent_sensor_readings.py` adds VPD, CO2, lux, dew point, PAR, pressure, VOC columns
+3. Alembic migration `0023_extend_weather_readings.py` adds dew_point_c, pressure_hpa, soil_temp_c, source columns
+4. No data migration needed — additive only
+5. Rollback: drop tables (no existing data affected)
 
 ## Open Questions
 - None — framework is intentionally generic. Integration-specific logic lives in each connector proposal.
