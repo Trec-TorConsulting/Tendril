@@ -21,6 +21,7 @@ from app.grows.models import (
     JournalEntry,
     Strain,
     Tent,
+    TentCamera,
     TentSensorReading,
     WeatherReading,
 )
@@ -271,7 +272,18 @@ async def gather_grow_data(
     data["environment_type"] = tent.environment_type if tent else None
     data["tent_equipment"] = tent.equipment if tent else []
     data["tent_notes"] = tent.notes if tent else None
-    data["camera_url"] = tent.camera_url if tent else None
+    data["camera_url"] = None
+    if tent:
+        # Get primary camera from tent_cameras table
+        primary_cam = (await session.execute(
+            select(TentCamera).where(
+                TentCamera.tent_id == tent.id, TentCamera.is_primary.is_(True)
+            ).limit(1)
+        )).scalar_one_or_none()
+        if primary_cam:
+            data["camera_url"] = primary_cam.url
+        elif tent.camera_url:
+            data["camera_url"] = tent.camera_url  # Legacy fallback
 
     weather = None
     if tent and tent.environment_type in ("outdoor", "greenhouse"):
@@ -345,15 +357,28 @@ async def gather_grow_data(
 
     # ── Camera image ─────────────────────────────────────────────
     camera_image = None
-    if include_camera and tent and tent.camera_url:
-        try:
-            validate_url_safe(tent.camera_url, allow_private=True)
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(tent.camera_url)
-                resp.raise_for_status()
-                camera_image = resp.content
-        except Exception:
-            logger.warning("Failed to fetch camera snapshot from %s", tent.camera_url)
+    if include_camera and tent:
+        # Resolve camera URL from tent_cameras or legacy field
+        cam_url = None
+        primary_cam = (await session.execute(
+            select(TentCamera).where(
+                TentCamera.tent_id == tent.id, TentCamera.is_primary.is_(True)
+            ).limit(1)
+        )).scalar_one_or_none()
+        if primary_cam:
+            cam_url = primary_cam.url
+        elif tent.camera_url:
+            cam_url = tent.camera_url
+
+        if cam_url:
+            try:
+                validate_url_safe(cam_url, allow_private=True)
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    resp = await client.get(cam_url)
+                    resp.raise_for_status()
+                    camera_image = resp.content
+            except Exception:
+                logger.warning("Failed to fetch camera snapshot from %s", cam_url)
     data["camera_image"] = camera_image
 
     return data

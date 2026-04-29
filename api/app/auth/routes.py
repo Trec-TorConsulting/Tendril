@@ -72,6 +72,7 @@ class UserResponse(BaseModel):
     platform_role: str = "user"
     tenant_role: str | None = None
     account_id: UUID | None = None
+    layout_mode: str = "standard"
 
 
 class VerifyEmailRequest(BaseModel):
@@ -81,6 +82,7 @@ class VerifyEmailRequest(BaseModel):
 class UpdateProfileRequest(BaseModel):
     display_name: str | None = None
     email: EmailStr | None = None
+    layout_mode: str | None = None
 
 
 class ChangePasswordRequest(BaseModel):
@@ -423,6 +425,7 @@ async def me(
         platform_role=db_user.platform_role.value,
         tenant_role=user.tenant_role.value if user.tenant_role else None,
         account_id=user.account_id,
+        layout_mode=db_user.layout_mode,
     )
 
 
@@ -432,7 +435,7 @@ async def update_profile(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-    """Update current user's profile (display name, email)."""
+    """Update current user's profile (display name, email, layout mode)."""
     result = await db.execute(select(User).where(User.id == user.user_id))
     db_user = result.scalar_one_or_none()
     if not db_user:
@@ -449,6 +452,12 @@ async def update_profile(
         db_user.email = body.email
         db_user.email_verified = False  # Re-verify new email
 
+    if body.layout_mode is not None:
+        valid_modes = {"beginner", "home", "standard", "pro", "commercial"}
+        if body.layout_mode not in valid_modes:
+            raise HTTPException(status_code=422, detail=f"Invalid layout_mode. Must be one of: {valid_modes}")
+        db_user.layout_mode = body.layout_mode
+
     await db.commit()
     await db.refresh(db_user)
     return UserResponse(
@@ -463,6 +472,7 @@ async def update_profile(
         platform_role=db_user.platform_role.value,
         tenant_role=user.tenant_role.value if user.tenant_role else None,
         account_id=user.account_id,
+        layout_mode=db_user.layout_mode,
     )
 
 

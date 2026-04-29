@@ -27,7 +27,7 @@ async def _setup_db():
         Account, AccountMember, Device, MembershipGrowAccess, Tenant, TenantMembership, User,
     )
     from app.grows.models import (  # noqa: F401
-        Tent, GrowCycle, Bucket, BucketSensorReading, JournalEntry,
+        Tent, TentCamera, GrowCycle, Bucket, BucketSensorReading, JournalEntry,
         BucketPhoto, GrowPhoto, DoseProfile, FeedingSchedule, Strain, Yield,
         WeatherReading, TentSensorReading, GrowTypeProfile, ReferenceStrain,
         NutrientProduct, HealthEval, PlotGrid, PlotCell, SoilTest,

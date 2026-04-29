@@ -185,6 +185,7 @@ class User(Base):
     auth_provider: Mapped[str] = mapped_column(String(50), default="local")
     auth_provider_id: Mapped[str | None] = mapped_column(String(255))
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    layout_mode: Mapped[str] = mapped_column(String(20), default="standard", nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )

@@ -26,6 +26,7 @@ from app.grows.journal_routes import router as journal_router
 from app.grows.photo_routes import router as photos_router
 from app.grows.strain_routes import router as strains_router
 from app.grows.tent_routes import router as tents_router
+from app.grows.quick_log_routes import router as quick_log_router
 from app.grows.yield_routes import router as yields_router
 from app.integrations.routes import router as integrations_router
 from app.logging_config import setup_logging
@@ -95,6 +96,7 @@ def create_app() -> FastAPI:
     app.include_router(devices_router, prefix=f"{settings.api_prefix}/devices", tags=["devices"])
     app.include_router(grow_types_router, prefix=f"{settings.api_prefix}/grow-types", tags=["grow-types"])
     app.include_router(tents_router, prefix=f"{settings.api_prefix}/tents", tags=["tents"])
+    app.include_router(quick_log_router, prefix=f"{settings.api_prefix}/quick-log", tags=["quick-log"])
     app.include_router(grows_router, prefix=f"{settings.api_prefix}/grows", tags=["grows"])
     app.include_router(buckets_router, prefix=f"{settings.api_prefix}/buckets", tags=["buckets"])
     app.include_router(sensors_router, prefix=f"{settings.api_prefix}/sensors", tags=["sensors"])

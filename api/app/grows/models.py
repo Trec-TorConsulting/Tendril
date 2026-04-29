@@ -36,7 +36,7 @@ class Tent(Base):
     size: Mapped[str | None] = mapped_column(String(50))  # e.g. "4x4", "3x3", "5x5x8"
     latitude: Mapped[float | None] = mapped_column(Float)
     longitude: Mapped[float | None] = mapped_column(Float)
-    camera_url: Mapped[str | None] = mapped_column(String(1024))
+    camera_url: Mapped[str | None] = mapped_column(String(1024))  # DEPRECATED: use tent_cameras table
     equipment: Mapped[list | None] = mapped_column(JSON, default=list)  # list of equipment objects
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
@@ -46,6 +46,26 @@ class Tent(Base):
     ambient_readings: Mapped[list[TentSensorReading]] = relationship(
         back_populates="tent", cascade="all, delete-orphan"
     )
+    cameras: Mapped[list[TentCamera]] = relationship(
+        back_populates="tent", cascade="all, delete-orphan", order_by="TentCamera.sort_order"
+    )
+
+
+class TentCamera(Base):
+    __tablename__ = "tent_cameras"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tent_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tents.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    label: Mapped[str] = mapped_column(String(100), nullable=False, default="Camera")
+    camera_type: Mapped[str] = mapped_column(String(20), nullable=False, default="http_snapshot")
+    url: Mapped[str] = mapped_column(String(1024), nullable=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+    tent: Mapped[Tent] = relationship(back_populates="cameras")
 
 
 # ---------- Grow Cycles ----------
