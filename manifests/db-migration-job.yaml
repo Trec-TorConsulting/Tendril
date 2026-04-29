@@ -17,7 +17,7 @@ spec:
                 - node05
       containers:
       - name: migrate
-        image: your-registry:5000/tendril-api:latest  # Replace with your registry
+        image: 192.168.4.10:30500/tendril-api:latest  # Replace with your registry
         command: ["alembic", "upgrade", "head"]
         env:
         - name: PYTHONPATH

@@ -26,7 +26,7 @@ spec:
                 - node05
       containers:
       - name: web
-        image: your-registry:5000/tendril-web:latest  # Replace with your registry
+        image: 192.168.4.10:30500/tendril-web:latest  # Replace with your registry
         ports:
         - containerPort: 3000
         securityContext:

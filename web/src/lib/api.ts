@@ -111,6 +111,14 @@ async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T>
   return res.json();
 }
 
+// Paginated response envelope from the API
+interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
 // Auth
 export interface TokenResponse {
   access_token: string;
@@ -225,8 +233,9 @@ export interface DeviceRegisterResponse extends DeviceResponse {
   psk: string;
 }
 
-export function listDevices(token: string) {
-  return apiFetch<DeviceResponse[]>("/devices", { token });
+export async function listDevices(token: string) {
+  const res = await apiFetch<PaginatedResponse<DeviceResponse>>("/devices", { token });
+  return res.items;
 }
 
 export function getDevice(token: string, deviceId: string) {
@@ -434,8 +443,9 @@ export interface TentResponse {
   notes: string | null;
 }
 
-export function listTents(token: string) {
-  return apiFetch<TentResponse[]>("/tents", { token });
+export async function listTents(token: string) {
+  const res = await apiFetch<PaginatedResponse<TentResponse>>("/tents", { token });
+  return res.items;
 }
 
 export function getTent(token: string, id: string) {
@@ -503,12 +513,13 @@ export interface GrowResponse {
   auto_health_check: boolean;
 }
 
-export function listGrows(token: string, params?: { status?: string; tent_id?: string }) {
+export async function listGrows(token: string, params?: { status?: string; tent_id?: string }) {
   const qs = new URLSearchParams();
   if (params?.status) qs.set("status", params.status);
   if (params?.tent_id) qs.set("tent_id", params.tent_id);
   const q = qs.toString();
-  return apiFetch<GrowResponse[]>(`/grows${q ? `?${q}` : ""}`, { token });
+  const res = await apiFetch<PaginatedResponse<GrowResponse>>(`/grows${q ? `?${q}` : ""}`, { token });
+  return res.items;
 }
 
 export function createGrow(token: string, data: { tent_id: string; name: string; grow_type: string; stage?: string }) {
@@ -553,9 +564,10 @@ export interface BucketResponse {
   settings: Record<string, unknown> | null;
 }
 
-export function listBuckets(token: string, growCycleId?: string) {
+export async function listBuckets(token: string, growCycleId?: string) {
   const q = growCycleId ? `?grow_cycle_id=${growCycleId}` : "";
-  return apiFetch<BucketResponse[]>(`/buckets${q}`, { token });
+  const res = await apiFetch<PaginatedResponse<BucketResponse>>(`/buckets${q}`, { token });
+  return res.items;
 }
 
 export function createBucket(token: string, data: { grow_cycle_id: string; label?: string; strain_name?: string; strain_id?: string; position?: number; volume_gallons?: number }) {
@@ -592,12 +604,13 @@ export interface SensorReadingResponse {
   recorded_at: string;
 }
 
-export function listSensorReadings(token: string, bucketId?: string, limit?: number) {
+export async function listSensorReadings(token: string, bucketId?: string, limit?: number) {
   const qs = new URLSearchParams();
   if (bucketId) qs.set("bucket_id", bucketId);
   if (limit) qs.set("limit", String(limit));
   const q = qs.toString();
-  return apiFetch<SensorReadingResponse[]>(`/sensors${q ? `?${q}` : ""}`, { token });
+  const res = await apiFetch<PaginatedResponse<SensorReadingResponse>>(`/sensors${q ? `?${q}` : ""}`, { token });
+  return res.items;
 }
 
 export function getLatestReading(token: string, bucketId: string) {
@@ -637,12 +650,13 @@ export interface TentReadingResponse {
   recorded_at: string;
 }
 
-export function listTentReadings(token: string, tentId?: string, limit?: number) {
+export async function listTentReadings(token: string, tentId?: string, limit?: number) {
   const qs = new URLSearchParams();
   if (tentId) qs.set("tent_id", tentId);
   if (limit) qs.set("limit", String(limit));
   const q = qs.toString();
-  return apiFetch<TentReadingResponse[]>(`/tent-sensors${q ? `?${q}` : ""}`, { token });
+  const res = await apiFetch<PaginatedResponse<TentReadingResponse>>(`/tent-sensors${q ? `?${q}` : ""}`, { token });
+  return res.items;
 }
 
 export function getLatestTentReading(token: string, tentId: string) {
@@ -669,8 +683,9 @@ export interface FeedingScheduleResponse {
   notes: string | null;
 }
 
-export function listFeedingSchedules(token: string, growCycleId: string) {
-  return apiFetch<FeedingScheduleResponse[]>(`/feeding/feeding?grow_cycle_id=${growCycleId}`, { token });
+export async function listFeedingSchedules(token: string, growCycleId: string) {
+  const res = await apiFetch<PaginatedResponse<FeedingScheduleResponse>>(`/feeding/feeding?grow_cycle_id=${growCycleId}`, { token });
+  return res.items;
 }
 
 export function createFeedingSchedule(token: string, data: { grow_cycle_id: string; name: string; stage: string; nutrients: object[]; target_ppm?: number; target_ec?: number; notes?: string }) {
@@ -708,9 +723,10 @@ export interface JournalEntryResponse {
   created_at: string;
 }
 
-export function listJournalEntries(token: string, bucketId?: string) {
+export async function listJournalEntries(token: string, bucketId?: string) {
   const q = bucketId ? `?bucket_id=${bucketId}` : "";
-  return apiFetch<JournalEntryResponse[]>(`/journal${q}`, { token });
+  const res = await apiFetch<PaginatedResponse<JournalEntryResponse>>(`/journal${q}`, { token });
+  return res.items;
 }
 
 export function createJournalEntry(token: string, data: { bucket_id: string; event_type: string; content?: string; payload?: object }) {
@@ -739,8 +755,9 @@ export interface StrainResponse {
   is_global: boolean;
 }
 
-export function listStrains(token: string) {
-  return apiFetch<StrainResponse[]>("/strains", { token });
+export async function listStrains(token: string) {
+  const res = await apiFetch<PaginatedResponse<StrainResponse>>("/strains", { token });
+  return res.items;
 }
 
 export function createStrain(token: string, data: { name: string; breeder?: string; genetics?: string; flowering_days?: number }) {
@@ -822,9 +839,10 @@ export interface YieldResponse {
   notes: string | null;
 }
 
-export function listYields(token: string, bucketId?: string) {
+export async function listYields(token: string, bucketId?: string) {
   const q = bucketId ? `?bucket_id=${bucketId}` : "";
-  return apiFetch<YieldResponse[]>(`/yields${q}`, { token });
+  const res = await apiFetch<PaginatedResponse<YieldResponse>>(`/yields${q}`, { token });
+  return res.items;
 }
 
 export function createYield(token: string, data: {
@@ -873,8 +891,9 @@ export interface PhotoResponse {
   created_at: string;
 }
 
-export function listPhotos(token: string, bucketId: string) {
-  return apiFetch<PhotoResponse[]>(`/photos?bucket_id=${bucketId}`, { token });
+export async function listPhotos(token: string, bucketId: string) {
+  const res = await apiFetch<PaginatedResponse<PhotoResponse>>(`/photos?bucket_id=${bucketId}`, { token });
+  return res.items;
 }
 
 export function createPhoto(token: string, data: { bucket_id: string; url: string; caption?: string }) {
@@ -899,8 +918,9 @@ export interface GrowPhotoResponse {
   created_at: string;
 }
 
-export function listGrowPhotos(token: string, growCycleId: string) {
-  return apiFetch<GrowPhotoResponse[]>(`/photos/grow?grow_cycle_id=${growCycleId}`, { token });
+export async function listGrowPhotos(token: string, growCycleId: string) {
+  const res = await apiFetch<PaginatedResponse<GrowPhotoResponse>>(`/photos/grow?grow_cycle_id=${growCycleId}`, { token });
+  return res.items;
 }
 
 export async function uploadGrowPhoto(
@@ -958,8 +978,9 @@ export interface DoseProfileResponse {
   settings: Record<string, unknown> | null;
 }
 
-export function listDoseProfiles(token: string, growCycleId: string) {
-  return apiFetch<DoseProfileResponse[]>(`/feeding/doses?grow_cycle_id=${growCycleId}`, { token });
+export async function listDoseProfiles(token: string, growCycleId: string) {
+  const res = await apiFetch<PaginatedResponse<DoseProfileResponse>>(`/feeding/doses?grow_cycle_id=${growCycleId}`, { token });
+  return res.items;
 }
 
 export function createDoseProfile(token: string, data: { grow_cycle_id: string; name: string; dose_type: string; dose_ml: number; enabled?: boolean }) {
@@ -1083,9 +1104,10 @@ export interface AutomationRuleResponse {
   last_triggered: string | null;
 }
 
-export function listAutomationRules(token: string, growCycleId?: string) {
+export async function listAutomationRules(token: string, growCycleId?: string) {
   const q = growCycleId ? `?grow_cycle_id=${growCycleId}` : "";
-  return apiFetch<AutomationRuleResponse[]>(`/automation/rules${q}`, { token });
+  const res = await apiFetch<PaginatedResponse<AutomationRuleResponse>>(`/automation/rules${q}`, { token });
+  return res.items;
 }
 
 export function createAutomationRule(token: string, data: { name: string; sensor: string; condition: string; threshold: number; action: string; grow_cycle_id?: string; severity?: string }) {
@@ -1110,9 +1132,10 @@ export interface AlertResponse {
   created_at: string;
 }
 
-export function listAlerts(token: string, limit?: number) {
+export async function listAlerts(token: string, limit?: number) {
   const q = limit ? `?limit=${limit}` : "";
-  return apiFetch<AlertResponse[]>(`/automation/alerts${q}`, { token });
+  const res = await apiFetch<PaginatedResponse<AlertResponse>>(`/automation/alerts${q}`, { token });
+  return res.items;
 }
 
 export function acknowledgeAlert(token: string, id: string) {
@@ -1132,9 +1155,10 @@ export interface ScheduleResponse {
   enabled: boolean;
 }
 
-export function listSchedules(token: string, tentId?: string) {
+export async function listSchedules(token: string, tentId?: string) {
   const q = tentId ? `?tent_id=${tentId}` : "";
-  return apiFetch<ScheduleResponse[]>(`/automation/schedules${q}`, { token });
+  const res = await apiFetch<PaginatedResponse<ScheduleResponse>>(`/automation/schedules${q}`, { token });
+  return res.items;
 }
 
 export function createSchedule(token: string, data: { tent_id: string; name: string; schedule_type: string; on_time: string; off_time: string; stage?: string }) {
@@ -1158,8 +1182,9 @@ export interface ChannelResponse {
   enabled: boolean;
 }
 
-export function listChannels(token: string) {
-  return apiFetch<ChannelResponse[]>("/notifications/channels", { token });
+export async function listChannels(token: string) {
+  const res = await apiFetch<PaginatedResponse<ChannelResponse>>("/notifications/channels", { token });
+  return res.items;
 }
 
 export function createChannel(token: string, data: { channel_type: string; name: string; config: Record<string, string> }) {
@@ -1405,8 +1430,9 @@ export interface SoilTestResponse {
   notes: string | null;
 }
 
-export function listSoilTests(token: string, growId: string) {
-  return apiFetch<SoilTestResponse[]>(`/grows/${growId}/soil-tests`, { token });
+export async function listSoilTests(token: string, growId: string) {
+  const res = await apiFetch<PaginatedResponse<SoilTestResponse>>(`/grows/${growId}/soil-tests`, { token });
+  return res.items;
 }
 
 export function createSoilTest(token: string, growId: string, data: Record<string, unknown>) {
@@ -1435,8 +1461,9 @@ export interface AmendmentResponse {
   notes: string | null;
 }
 
-export function listAmendments(token: string, growId: string) {
-  return apiFetch<AmendmentResponse[]>(`/grows/${growId}/amendments`, { token });
+export async function listAmendments(token: string, growId: string) {
+  const res = await apiFetch<PaginatedResponse<AmendmentResponse>>(`/grows/${growId}/amendments`, { token });
+  return res.items;
 }
 
 export function createAmendment(token: string, growId: string, data: Record<string, unknown>) {
@@ -1464,12 +1491,13 @@ export interface PestScoutResponse {
   notes: string | null;
 }
 
-export function listPestScouts(token: string, growId: string, filters?: { pest_type?: string; severity?: string }) {
+export async function listPestScouts(token: string, growId: string, filters?: { pest_type?: string; severity?: string }) {
   const params = new URLSearchParams();
   if (filters?.pest_type) params.set("pest_type", filters.pest_type);
   if (filters?.severity) params.set("severity", filters.severity);
   const qs = params.toString();
-  return apiFetch<PestScoutResponse[]>(`/grows/${growId}/pest-scouts${qs ? `?${qs}` : ""}`, { token });
+  const res = await apiFetch<PaginatedResponse<PestScoutResponse>>(`/grows/${growId}/pest-scouts${qs ? `?${qs}` : ""}`, { token });
+  return res.items;
 }
 
 export function createPestScout(token: string, growId: string, data: Record<string, unknown>) {
@@ -1506,8 +1534,9 @@ export interface YieldSummaryResponse {
   yield_per_sqft_oz: number | null;
 }
 
-export function listHarvestYields(token: string, growId: string) {
-  return apiFetch<HarvestYieldResponse[]>(`/grows/${growId}/yields`, { token });
+export async function listHarvestYields(token: string, growId: string) {
+  const res = await apiFetch<PaginatedResponse<HarvestYieldResponse>>(`/grows/${growId}/yields`, { token });
+  return res.items;
 }
 
 export function createHarvestYield(token: string, growId: string, data: Record<string, unknown>) {
@@ -1619,8 +1648,9 @@ export interface ContainerProfileResponse {
   updated_at: string;
 }
 
-export function listContainerProfiles(token: string, growId: string) {
-  return apiFetch<ContainerProfileResponse[]>(`/grows/${growId}/containers`, { token });
+export async function listContainerProfiles(token: string, growId: string) {
+  const res = await apiFetch<PaginatedResponse<ContainerProfileResponse>>(`/grows/${growId}/containers`, { token });
+  return res.items;
 }
 
 export function getContainerProfile(token: string, growId: string, bucketId: string) {
@@ -1665,9 +1695,10 @@ export interface RunoffStatsResponse {
   latest_runoff_ec: number | null;
 }
 
-export function listRunoffReadings(token: string, growId: string, bucketId?: string) {
+export async function listRunoffReadings(token: string, growId: string, bucketId?: string) {
   const qs = bucketId ? `?bucket_id=${bucketId}` : "";
-  return apiFetch<RunoffReadingResponse[]>(`/grows/${growId}/runoff${qs}`, { token });
+  const res = await apiFetch<PaginatedResponse<RunoffReadingResponse>>(`/grows/${growId}/runoff${qs}`, { token });
+  return res.items;
 }
 
 export function createRunoffReading(token: string, growId: string, data: Record<string, unknown>) {

@@ -129,13 +129,29 @@ def _make_slug(name: str) -> str:
 
 def _is_secure() -> bool:
     """Check if we should use Secure cookie flag (production vs local dev)."""
-    return os.environ.get("DOMAIN", "").strip() not in ("", "localhost", "tendril.example.com")
+    return os.environ.get("DOMAIN", "").strip() not in ("", "localhost")
+
+
+def _cookie_domain() -> str | None:
+    """Return a parent domain for cross-subdomain cookie sharing, or None for local dev."""
+    domain = os.environ.get("DOMAIN", "").strip()
+    if not domain or domain == "localhost":
+        return None
+    # e.g. "tendril.maddscientist.com" → ".maddscientist.com"
+    parts = domain.split(".")
+    if len(parts) >= 3:
+        return "." + ".".join(parts[-2:])
+    # e.g. "maddscientist.com" → ".maddscientist.com"
+    if len(parts) == 2:
+        return "." + domain
+    return None
 
 
 def _set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
     """Set httpOnly auth cookies and a JS-readable CSRF cookie."""
     secure = _is_secure()
-    same_site = "strict" if secure else "lax"
+    same_site: str = "lax"
+    cookie_domain = _cookie_domain()
 
     response.set_cookie(
         key="access_token",
@@ -145,6 +161,7 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_token: str)
         samesite=same_site,
         max_age=15 * 60,  # 15 minutes
         path="/",
+        domain=cookie_domain,
     )
     response.set_cookie(
         key="refresh_token",
@@ -154,6 +171,7 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_token: str)
         samesite=same_site,
         max_age=7 * 24 * 60 * 60,  # 7 days
         path="/v1/auth",  # Only sent to auth endpoints
+        domain=cookie_domain,
     )
     # CSRF token — readable by JS (NOT httpOnly) for double-submit pattern
     csrf = generate_csrf_token()
@@ -165,14 +183,16 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_token: str)
         samesite=same_site,
         max_age=15 * 60,
         path="/",
+        domain=cookie_domain,
     )
     response.headers["X-CSRF-Token"] = csrf
 
 
 def _clear_auth_cookies(response: Response) -> None:
     """Clear all auth cookies."""
+    cookie_domain = _cookie_domain()
     for key in ("access_token", "refresh_token", "csrf_token"):
-        response.delete_cookie(key=key, path="/")
+        response.delete_cookie(key=key, path="/", domain=cookie_domain)
     response.delete_cookie(key="refresh_token", path="/v1/auth")
 
 
@@ -271,19 +291,14 @@ async def login(body: LoginRequest, response: Response, db: Annotated[AsyncSessi
     membership = membership_result.scalar_one_or_none()
 
     # Resolve account
-    account_result = await db.execute(
-        select(AccountMember.account_id)
-        .where(AccountMember.user_id == user.id)
-        .limit(1)
-    )
+    account_result = await db.execute(select(AccountMember.account_id).where(AccountMember.user_id == user.id).limit(1))
     account_id = account_result.scalar_one_or_none()
 
     # Build grow scope if applicable
     grow_scope: list[UUID] | None = None
     if membership:
         scope_result = await db.execute(
-            select(MembershipGrowAccess.grow_cycle_id)
-            .where(MembershipGrowAccess.membership_id == membership.id)
+            select(MembershipGrowAccess.grow_cycle_id).where(MembershipGrowAccess.membership_id == membership.id)
         )
         scope_rows = scope_result.scalars().all()
         if scope_rows:
@@ -347,8 +362,7 @@ async def refresh(
     membership = None
     if prev_tid:
         mem_result = await db.execute(
-            select(TenantMembership)
-            .where(TenantMembership.user_id == user.id, TenantMembership.tenant_id == prev_tid)
+            select(TenantMembership).where(TenantMembership.user_id == user.id, TenantMembership.tenant_id == prev_tid)
         )
         membership = mem_result.scalar_one_or_none()
     if not membership:
@@ -361,19 +375,14 @@ async def refresh(
         membership = mem_result.scalar_one_or_none()
 
     # Resolve account
-    account_result = await db.execute(
-        select(AccountMember.account_id)
-        .where(AccountMember.user_id == user.id)
-        .limit(1)
-    )
+    account_result = await db.execute(select(AccountMember.account_id).where(AccountMember.user_id == user.id).limit(1))
     account_id = account_result.scalar_one_or_none()
 
     # Build grow scope
     grow_scope: list[UUID] | None = None
     if membership:
         scope_result = await db.execute(
-            select(MembershipGrowAccess.grow_cycle_id)
-            .where(MembershipGrowAccess.membership_id == membership.id)
+            select(MembershipGrowAccess.grow_cycle_id).where(MembershipGrowAccess.membership_id == membership.id)
         )
         scope_rows = scope_result.scalars().all()
         if scope_rows:
@@ -610,6 +619,7 @@ async def create_signed_url(
 ):
     """Generate a short-lived HMAC-signed URL for media endpoints (camera, QR, photos)."""
     from app.auth.signed_url import sign_url
+
     return SignUrlResponse(signed_url=sign_url(body.url, str(user.tenant_id)))
 
 
@@ -632,8 +642,9 @@ async def switch_tenant(
 
         # Check if they have a real membership (for role), otherwise use admin
         mem_result = await db.execute(
-            select(TenantMembership)
-            .where(TenantMembership.user_id == user.user_id, TenantMembership.tenant_id == target_tid)
+            select(TenantMembership).where(
+                TenantMembership.user_id == user.user_id, TenantMembership.tenant_id == target_tid
+            )
         )
         membership = mem_result.scalar_one_or_none()
         tenant_role = membership.role.value if membership else TenantRole.admin.value
@@ -641,8 +652,9 @@ async def switch_tenant(
     else:
         # Regular user: must have membership
         mem_result = await db.execute(
-            select(TenantMembership)
-            .where(TenantMembership.user_id == user.user_id, TenantMembership.tenant_id == target_tid)
+            select(TenantMembership).where(
+                TenantMembership.user_id == user.user_id, TenantMembership.tenant_id == target_tid
+            )
         )
         membership = mem_result.scalar_one_or_none()
         if not membership:
@@ -652,8 +664,7 @@ async def switch_tenant(
         # Build grow scope
         grow_scope = None
         scope_result = await db.execute(
-            select(MembershipGrowAccess.grow_cycle_id)
-            .where(MembershipGrowAccess.membership_id == membership.id)
+            select(MembershipGrowAccess.grow_cycle_id).where(MembershipGrowAccess.membership_id == membership.id)
         )
         scope_rows = scope_result.scalars().all()
         if scope_rows:
@@ -661,9 +672,7 @@ async def switch_tenant(
 
     # Resolve account
     account_result = await db.execute(
-        select(AccountMember.account_id)
-        .where(AccountMember.user_id == user.user_id)
-        .limit(1)
+        select(AccountMember.account_id).where(AccountMember.user_id == user.user_id).limit(1)
     )
     account_id = account_result.scalar_one_or_none()
 

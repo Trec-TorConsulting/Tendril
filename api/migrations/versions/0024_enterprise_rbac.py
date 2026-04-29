@@ -3,8 +3,9 @@
 Revision ID: 0024
 Revises: 0023
 """
-from alembic import op
+
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects.postgresql import UUID
 
 revision = "0024"
@@ -14,18 +15,28 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # ─── Create enum types ─────────────────────────────────────────────────────
-    platform_role_enum = sa.Enum(
-        "super_admin", "support", "readonly_admin", "user",
-        name="platform_role",
-    )
-    platform_role_enum.create(op.get_bind(), checkfirst=True)
-
-    tenant_role_enum = sa.Enum("admin", "member", "viewer", name="tenant_role")
-    tenant_role_enum.create(op.get_bind(), checkfirst=True)
-
-    account_role_enum = sa.Enum("owner", "billing_admin", name="account_role")
-    account_role_enum.create(op.get_bind(), checkfirst=True)
+    # ─── Create enum types (raw SQL — sa.Enum broken with asyncpg greenlet) ───
+    op.execute("""
+        DO $$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'platform_role') THEN
+                CREATE TYPE platform_role AS ENUM ('super_admin', 'support', 'readonly_admin', 'user');
+            END IF;
+        END $$;
+    """)
+    op.execute("""
+        DO $$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'tenant_role') THEN
+                CREATE TYPE tenant_role AS ENUM ('admin', 'member', 'viewer');
+            END IF;
+        END $$;
+    """)
+    op.execute("""
+        DO $$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'account_role') THEN
+                CREATE TYPE account_role AS ENUM ('owner', 'billing_admin');
+            END IF;
+        END $$;
+    """)
 
     # ─── Create accounts table ─────────────────────────────────────────────────
     op.create_table(
@@ -38,22 +49,26 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
     )
 
-    # ─── Create account_members table ──────────────────────────────────────────
+    # ─── Create account_members table (enum col via raw SQL to avoid sa.Enum) ─
     op.create_table(
         "account_members",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
         sa.Column("account_id", UUID(as_uuid=True), sa.ForeignKey("accounts.id", ondelete="CASCADE"), nullable=False),
         sa.Column("user_id", UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("role", account_role_enum, nullable=False, server_default="owner"),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
         sa.UniqueConstraint("account_id", "user_id"),
     )
+    op.execute("ALTER TABLE account_members ADD COLUMN role account_role NOT NULL DEFAULT 'owner'")
 
     # ─── Add account_id to tenants ────────────────────────────────────────────
     op.add_column("tenants", sa.Column("account_id", UUID(as_uuid=True), nullable=True))
     op.create_foreign_key(
-        "fk_tenants_account_id", "tenants", "accounts",
-        ["account_id"], ["id"], ondelete="SET NULL",
+        "fk_tenants_account_id",
+        "tenants",
+        "accounts",
+        ["account_id"],
+        ["id"],
+        ondelete="SET NULL",
     )
 
     # ─── Create tenant_memberships table ───────────────────────────────────────
@@ -62,28 +77,27 @@ def upgrade() -> None:
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
         sa.Column("tenant_id", UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
         sa.Column("user_id", UUID(as_uuid=True), sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("role", tenant_role_enum, nullable=False, server_default="member"),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
         sa.UniqueConstraint("tenant_id", "user_id"),
     )
+    op.execute("ALTER TABLE tenant_memberships ADD COLUMN role tenant_role NOT NULL DEFAULT 'member'")
 
     # ─── Create membership_grow_access table ───────────────────────────────────
     op.create_table(
         "membership_grow_access",
         sa.Column("id", UUID(as_uuid=True), primary_key=True),
         sa.Column(
-            "membership_id", UUID(as_uuid=True),
-            sa.ForeignKey("tenant_memberships.id", ondelete="CASCADE"), nullable=False,
+            "membership_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("tenant_memberships.id", ondelete="CASCADE"),
+            nullable=False,
         ),
         sa.Column("grow_cycle_id", UUID(as_uuid=True), nullable=False),
         sa.UniqueConstraint("membership_id", "grow_cycle_id"),
     )
 
-    # ─── Add platform_role column to users ─────────────────────────────────────
-    op.add_column(
-        "users",
-        sa.Column("platform_role", platform_role_enum, nullable=False, server_default="user"),
-    )
+    # ─── Add platform_role column to users (via raw SQL) ──────────────────────
+    op.execute("ALTER TABLE users ADD COLUMN platform_role platform_role NOT NULL DEFAULT 'user'")
 
     # ─── Data migration: backfill platform_role from boolean flags ─────────────
     op.execute("""
@@ -146,6 +160,9 @@ def upgrade() -> None:
     """)
 
     # ─── Drop old columns from users ──────────────────────────────────────────
+    # Must drop RLS policy first — it references tenant_id
+    op.execute("DROP POLICY IF EXISTS tenant_isolation_users ON users")
+    op.execute("ALTER TABLE users DISABLE ROW LEVEL SECURITY")
     op.drop_constraint("users_tenant_id_fkey", "users", type_="foreignkey")
     op.drop_column("users", "tenant_id")
     op.drop_column("users", "role")
@@ -204,8 +221,12 @@ def downgrade() -> None:
 
     # ─── Re-add FK constraint ──────────────────────────────────────────────────
     op.create_foreign_key(
-        "users_tenant_id_fkey", "users", "tenants",
-        ["tenant_id"], ["id"], ondelete="CASCADE",
+        "users_tenant_id_fkey",
+        "users",
+        "tenants",
+        ["tenant_id"],
+        ["id"],
+        ondelete="CASCADE",
     )
 
     # ─── Drop new tables ──────────────────────────────────────────────────────
@@ -218,6 +239,6 @@ def downgrade() -> None:
 
     # ─── Drop platform_role column and enum types ──────────────────────────────
     op.drop_column("users", "platform_role")
-    sa.Enum(name="platform_role").drop(op.get_bind(), checkfirst=True)
-    sa.Enum(name="tenant_role").drop(op.get_bind(), checkfirst=True)
-    sa.Enum(name="account_role").drop(op.get_bind(), checkfirst=True)
+    op.execute("DROP TYPE IF EXISTS platform_role")
+    op.execute("DROP TYPE IF EXISTS tenant_role")
+    op.execute("DROP TYPE IF EXISTS account_role")

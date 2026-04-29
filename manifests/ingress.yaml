@@ -15,7 +15,7 @@ metadata:
       Strict-Transport-Security: max-age=31536000; includeSubDomains
 spec:
   rules:
-  - host: tendril.example.com  # Replace with your domain
+  - host: tendril.maddscientist.com  # Replace with your domain
     http:
       paths:
       - path: /
@@ -25,7 +25,7 @@ spec:
             name: tendril-web
             port:
               number: 3000
-  - host: api.tendril.example.com  # Replace with your domain
+  - host: api.tendril.maddscientist.com  # Replace with your domain
     http:
       paths:
       - path: /

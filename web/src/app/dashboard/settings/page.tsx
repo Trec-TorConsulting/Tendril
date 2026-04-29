@@ -13,7 +13,9 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Loader2, Pencil, X, Download, Trash2 } from "lucide-react";
+import { Loader2, Pencil, X, Download, Trash2, Check } from "lucide-react";
+import { useLayoutMode } from "@/hooks/use-layout-mode";
+import { LAYOUT_CONFIGS, type LayoutMode } from "@/lib/layout-config";
 
 export default function ProfilePage() {
   const [user, setUser] = useState<{
@@ -207,6 +209,17 @@ export default function ProfilePage() {
             </CardContent>
           </Card>
 
+          {/* Layout Mode */}
+          <Card className="lg:col-span-2">
+            <CardHeader>
+              <CardTitle>UI Layout Mode</CardTitle>
+              <CardDescription>Choose how the interface is organized based on your experience level.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <LayoutModeSelector />
+            </CardContent>
+          </Card>
+
           {/* Data & Privacy */}
           <Card>
             <CardHeader>
@@ -229,5 +242,53 @@ export default function ProfilePage() {
         </div>
       </div>
     </>
+  );
+}
+
+function LayoutModeSelector() {
+  const { mode: currentMode, setMode } = useLayoutMode();
+  const [switching, setSwitching] = useState<LayoutMode | null>(null);
+
+  const handleSelect = async (mode: LayoutMode) => {
+    if (mode === currentMode) return;
+    setSwitching(mode);
+    try {
+      await setMode(mode);
+    } finally {
+      setSwitching(null);
+    }
+  };
+
+  const modes = Object.values(LAYOUT_CONFIGS);
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      {modes.map((cfg) => (
+        <button
+          key={cfg.mode}
+          onClick={() => handleSelect(cfg.mode)}
+          disabled={switching !== null}
+          className={`relative rounded-lg border p-4 text-left transition-colors hover:bg-accent/50 ${
+            currentMode === cfg.mode
+              ? "border-primary bg-primary/5"
+              : "border-border"
+          }`}
+        >
+          {currentMode === cfg.mode && (
+            <div className="absolute right-2 top-2">
+              <Check className="size-4 text-primary" />
+            </div>
+          )}
+          <p className="font-medium text-sm">{cfg.label}</p>
+          <p className="mt-1 text-xs text-muted-foreground">{cfg.description}</p>
+          <Badge variant="outline" className="mt-2 text-[10px]">
+            {cfg.density}
+          </Badge>
+          {switching === cfg.mode && (
+            <Loader2 className="absolute right-2 top-2 size-4 animate-spin" />
+          )}
+        </button>
+      ))}
+    </div>
   );
 }
