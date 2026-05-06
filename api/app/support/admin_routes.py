@@ -344,12 +344,30 @@ async def ticket_metrics(
         )
     ).all()
 
+    # Avg first response time (hours)
+    avg_first_response = (
+        await session.execute(
+            select(
+                func.avg(func.extract("epoch", SupportTicket.first_response_at - SupportTicket.created_at) / 3600)
+            ).where(SupportTicket.first_response_at.isnot(None))
+        )
+    ).scalar()
+
+    # Avg resolution time (hours)
+    avg_resolution = (
+        await session.execute(
+            select(func.avg(func.extract("epoch", SupportTicket.resolved_at - SupportTicket.created_at) / 3600)).where(
+                SupportTicket.resolved_at.isnot(None)
+            )
+        )
+    ).scalar()
+
     return TicketMetricsResponse(
         total_tickets=total,
         open_tickets=open_count,
         overdue_tickets=overdue_count,
-        avg_first_response_hours=None,  # TODO: compute from timestamps
-        avg_resolution_hours=None,
+        avg_first_response_hours=round(float(avg_first_response), 1) if avg_first_response else None,
+        avg_resolution_hours=round(float(avg_resolution), 1) if avg_resolution else None,
         avg_satisfaction=float(avg_sat) if avg_sat else None,
         tickets_by_status={row[0]: row[1] for row in status_counts},
         tickets_by_priority={row[0]: row[1] for row in priority_counts},

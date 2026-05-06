@@ -102,6 +102,9 @@ async def create_integration(
         poll_interval_s=body.poll_interval_s,
     )
     session.add(cfg)
+    from app.billing.metering import record_usage
+
+    await record_usage(session, user.tenant_id, "integrations")
     await session.commit()
     await session.refresh(cfg)
     logger.info("Integration created: %s (%s) for tenant %s", cfg.id, cfg.type, user.tenant_id)

@@ -58,6 +58,9 @@ async def create_entry(
     """Create a new journal entry for a bucket."""
     entry = JournalEntry(tenant_id=user.tenant_id, **body.model_dump())
     session.add(entry)
+    from app.billing.metering import record_usage
+
+    await record_usage(session, user.tenant_id, "journal_entries")
     await session.commit()
     await session.refresh(entry)
 

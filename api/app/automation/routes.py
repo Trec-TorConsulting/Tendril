@@ -77,6 +77,9 @@ async def create_rule(
         **body.model_dump(exclude={"grow_cycle_id"}),
     )
     session.add(rule)
+    from app.billing.metering import record_usage
+
+    await record_usage(session, user.tenant_id, "automations")
     await session.commit()
     await session.refresh(rule)
     return rule

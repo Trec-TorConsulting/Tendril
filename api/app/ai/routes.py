@@ -27,6 +27,7 @@ from app.ai.ollama import chat_completion, chat_completion_stream, chat_with_too
 from app.ai.tools import CHAT_TOOLS, execute_tool
 from app.auth.jwt import decode_token
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
+from app.billing.metering import record_usage
 from app.billing.tier_gate import require_usage_limit
 
 logger = logging.getLogger("tendril.ai")
@@ -357,6 +358,9 @@ async def run_health_check(
     await session.commit()
     await session.refresh(health_eval)
 
+    await record_usage(session, user.tenant_id, "ai_analyses")
+    await session.commit()
+
     return HealthCheckResponse(
         id=str(health_eval.id),
         score=score,
@@ -462,6 +466,9 @@ async def get_coach_tip(
         except Exception:
             raise HTTPException(status_code=503, detail="AI service unavailable") from None
 
+    await record_usage(session, user.tenant_id, "ai_analyses")
+    await session.commit()
+
     return CoachTipResponse(tip=tip.strip())
 
 
@@ -561,6 +568,9 @@ async def get_insight(
                 result = raw
         else:
             result = raw
+
+    await record_usage(session, user.tenant_id, "ai_analyses")
+    await session.commit()
 
     return InsightResponse(insight_type=body.insight_type, result=result)
 
@@ -886,6 +896,9 @@ async def diagnose_plant_photo(
         except Exception:
             logger.exception("Failed to save diagnosis photo to S3")
 
+    await record_usage(session, user.tenant_id, "ai_analyses")
+    await session.commit()
+
     return DiagnoseResponse(
         overall_score=parsed.get("overall_score", 0),
         summary=parsed.get("summary", ""),
@@ -922,6 +935,7 @@ class IdentifyResponse(BaseModel):
 async def identify_plant(
     body: IdentifyRequest,
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Identify a plant from a photo using Gemini Vision.
 
@@ -1005,11 +1019,16 @@ async def identify_plant(
         parsed = json.loads(cleaned)
     except json.JSONDecodeError:
         logger.warning("Gemini identify returned non-JSON: %s", raw[:300])
+        await record_usage(session, user.tenant_id, "ai_analyses")
+        await session.commit()
         return IdentifyResponse(
             plant_type="Unknown",
             confidence=0.0,
             notes="Unable to parse AI response. Please try again.",
         )
+
+    await record_usage(session, user.tenant_id, "ai_analyses")
+    await session.commit()
 
     return IdentifyResponse(
         plant_type=parsed.get("plant_type", "Unknown"),

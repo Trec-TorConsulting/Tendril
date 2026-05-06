@@ -93,6 +93,9 @@ async def register_device(
         status="unpaired",
     )
     session.add(device)
+    from app.billing.metering import record_usage
+
+    await record_usage(session, user.tenant_id, "devices")
     await session.commit()
     await session.refresh(device)
 

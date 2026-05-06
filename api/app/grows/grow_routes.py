@@ -14,6 +14,7 @@ from sqlalchemy.orm import selectinload
 
 from app.audit import record_audit
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
+from app.billing.metering import record_usage
 from app.billing.tier_gate import require_usage_limit
 from app.grows.models import Bucket, GrowCycle
 from app.pagination import PaginatedResponse, PaginationParams, paginate
@@ -68,6 +69,7 @@ async def create_grow(
     """Create a new grow cycle."""
     grow = GrowCycle(tenant_id=user.tenant_id, **body.model_dump())
     session.add(grow)
+    await record_usage(session, user.tenant_id, "grows")
     await session.commit()
     await session.refresh(grow)
     await record_audit(session, user.tenant_id, user.user_id, "create", "grow", str(grow.id), request=request)
