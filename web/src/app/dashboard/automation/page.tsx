@@ -41,6 +41,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { PageHeader } from "@/components/page-header";
 import { PageSkeleton } from "@/components/page-skeleton";
 import { cn, formatDateTime } from "@/lib/utils";
+import { toast } from "sonner";
+import { useConfirm } from "@/components/confirm-dialog";
 import {
   Plus,
   MoreHorizontal,
@@ -54,6 +56,7 @@ import {
 } from "lucide-react";
 
 export default function AutomationPage() {
+  const confirm = useConfirm();
   const [rules, setRules] = useState<AutomationRuleResponse[]>([]);
   const [alerts, setAlerts] = useState<AlertResponse[]>([]);
   const [showCreate, setShowCreate] = useState(false);
@@ -62,13 +65,18 @@ export default function AutomationPage() {
   const refresh = useCallback(async () => {
     const token = getAccessToken();
     if (!token) return;
-    const [r, a] = await Promise.all([
-      listAutomationRules(token),
-      listAlerts(token, 50),
-    ]);
-    setRules(r);
-    setAlerts(a);
-    setLoading(false);
+    try {
+      const [r, a] = await Promise.all([
+        listAutomationRules(token),
+        listAlerts(token, 50),
+      ]);
+      setRules(r);
+      setAlerts(a);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load automation data");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -78,22 +86,33 @@ export default function AutomationPage() {
   const handleToggle = async (rule: AutomationRuleResponse) => {
     const token = getAccessToken();
     if (!token) return;
-    await updateAutomationRule(token, rule.id, { enabled: !rule.enabled });
-    refresh();
+    try {
+      await updateAutomationRule(token, rule.id, { enabled: !rule.enabled });
+      toast.success(rule.enabled ? "Rule disabled" : "Rule enabled");
+      refresh();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to toggle rule"); }
   };
 
   const handleDelete = async (id: string) => {
+    const ok = await confirm({ title: "Delete Rule", description: "This automation rule will be permanently deleted.", confirmText: "Delete", variant: "destructive" });
+    if (!ok) return;
     const token = getAccessToken();
     if (!token) return;
-    await deleteAutomationRule(token, id);
-    refresh();
+    try {
+      await deleteAutomationRule(token, id);
+      toast.success("Rule deleted");
+      refresh();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to delete rule"); }
   };
 
   const handleAcknowledge = async (id: string) => {
     const token = getAccessToken();
     if (!token) return;
-    await acknowledgeAlert(token, id);
-    refresh();
+    try {
+      await acknowledgeAlert(token, id);
+      toast.success("Alert acknowledged");
+      refresh();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to acknowledge alert"); }
   };
 
   const severityVariant = (severity: string) => {
@@ -276,7 +295,10 @@ function CreateRuleDialog({
         action,
         severity,
       });
+      toast.success("Rule created");
       onCreated();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to create rule");
     } finally {
       setSubmitting(false);
     }

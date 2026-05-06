@@ -1,4 +1,5 @@
 """Tent CRUD API — tenant-scoped grow spaces."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -23,7 +24,7 @@ router = APIRouter()
 
 
 class EquipmentItem(BaseModel):
-    type: str  # grow_light, exhaust_fan, inline_fan, oscillating_fan, air_pump, water_pump, water_chiller, carbon_filter, humidifier, dehumidifier, heater, ac_unit, co2_system, controller, custom
+    type: str  # e.g. grow_light, exhaust_fan, humidifier, etc.
     brand: str | None = None
     model: str | None = None
     specs: str | None = None  # e.g. "402 CFM", "16 inch"
@@ -149,6 +150,7 @@ async def camera_snapshot(
 ):
     """Proxy camera snapshot — uses HMAC-signed URLs for <img> tags."""
     from app.auth.signed_url import verify_signed_url
+
     tenant_id = verify_signed_url(request.url.path, sig, exp, tid)
 
     async with async_session_factory() as session:
@@ -167,9 +169,7 @@ async def camera_snapshot(
         else:
             # Get primary camera from tent_cameras
             result = await session.execute(
-                select(TentCamera).where(
-                    TentCamera.tent_id == tent_id, TentCamera.is_primary.is_(True)
-                ).limit(1)
+                select(TentCamera).where(TentCamera.tent_id == tent_id, TentCamera.is_primary.is_(True)).limit(1)
             )
             cam = result.scalar_one_or_none()
             if cam:
@@ -185,9 +185,51 @@ async def camera_snapshot(
             resp = await client.get(camera_url)
             resp.raise_for_status()
     except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"Camera fetch failed: {exc}")
+        raise HTTPException(status_code=502, detail=f"Camera fetch failed: {exc}") from exc
     content_type = resp.headers.get("content-type", "image/jpeg")
     return Response(content=resp.content, media_type=content_type, headers={"Cache-Control": "no-store"})
+
+
+@router.get("/{tent_id}/camera-snapshot-b64")
+async def camera_snapshot_b64(
+    tent_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    camera_id: UUID | None = Query(None, description="Specific camera ID (default: primary)"),
+):
+    """Proxy camera snapshot — JWT-authenticated, returns base64 JSON for the frontend."""
+    import base64
+
+    tent = await session.get(Tent, tent_id)
+    if tent is None or tent.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Tent not found")
+
+    camera_url = None
+    if camera_id:
+        cam = await session.get(TentCamera, camera_id)
+        if cam and cam.tent_id == tent_id:
+            camera_url = cam.url
+    else:
+        result = await session.execute(
+            select(TentCamera).where(TentCamera.tent_id == tent_id, TentCamera.is_primary.is_(True)).limit(1)
+        )
+        cam = result.scalar_one_or_none()
+        if cam:
+            camera_url = cam.url
+        elif tent.camera_url:
+            camera_url = tent.camera_url
+
+    if not camera_url:
+        raise HTTPException(status_code=404, detail="No camera configured for this tent")
+    validate_url_safe(camera_url, allow_private=True)
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(camera_url)
+            resp.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"Camera fetch failed: {exc}") from exc
+    image_b64 = base64.b64encode(resp.content).decode("ascii")
+    return {"image_base64": image_b64, "timestamp": datetime.now(UTC).isoformat()}
 
 
 # ---------- Camera CRUD ----------
@@ -255,9 +297,7 @@ async def create_camera(
     validate_url_safe(body.url, allow_private=True)
 
     # If first camera for tent, make it primary
-    existing = await session.execute(
-        select(TentCamera).where(TentCamera.tent_id == tent_id).limit(1)
-    )
+    existing = await session.execute(select(TentCamera).where(TentCamera.tent_id == tent_id).limit(1))
     is_first = existing.scalar_one_or_none() is None
 
     camera = TentCamera(
@@ -272,14 +312,11 @@ async def create_camera(
 
     # If this camera is primary, demote others
     if camera.is_primary and not is_first:
-        await session.execute(
-            select(TentCamera).where(TentCamera.tent_id == tent_id, TentCamera.is_primary.is_(True))
-        )
+        await session.execute(select(TentCamera).where(TentCamera.tent_id == tent_id, TentCamera.is_primary.is_(True)))
         from sqlalchemy import update
+
         await session.execute(
-            update(TentCamera).where(
-                TentCamera.tent_id == tent_id, TentCamera.id != camera.id
-            ).values(is_primary=False)
+            update(TentCamera).where(TentCamera.tent_id == tent_id, TentCamera.id != camera.id).values(is_primary=False)
         )
 
     await session.commit()
@@ -312,10 +349,9 @@ async def update_camera(
     # If promoting to primary, demote others
     if data.get("is_primary"):
         from sqlalchemy import update
+
         await session.execute(
-            update(TentCamera).where(
-                TentCamera.tent_id == tent_id, TentCamera.id != camera_id
-            ).values(is_primary=False)
+            update(TentCamera).where(TentCamera.tent_id == tent_id, TentCamera.id != camera_id).values(is_primary=False)
         )
 
     await session.commit()

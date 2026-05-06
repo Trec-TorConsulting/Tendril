@@ -11,12 +11,15 @@ import {
   listYields,
   getLatestReading,
   getLatestTentReading,
+  getTentSensorTrends,
   type BucketResponse,
   type SensorReadingResponse,
   type TentReadingResponse,
   type YieldResponse,
 } from "@/lib/api";
 import { useGrow } from "@/hooks/use-grow";
+import { usePreferences } from "@/hooks/use-preferences";
+import { formatTemp, tempUnitLabel } from "@/lib/units";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -104,6 +107,7 @@ interface EnvSnapshot {
 
 export default function AnalyticsPage() {
   const { grows, selectedGrow } = useGrow();
+  const { prefs } = usePreferences();
   const [buckets, setBuckets] = useState<BucketResponse[]>([]);
   const [selectedBucketId, setSelectedBucketId] = useState<string>("");
   const [sensorData, setSensorData] = useState<SensorReadingResponse[]>([]);
@@ -112,6 +116,7 @@ export default function AnalyticsPage() {
   const [allYields, setAllYields] = useState<YieldResponse[]>([]);
   const [envSnapshots, setEnvSnapshots] = useState<EnvSnapshot[]>([]);
   const [tentAmbient, setTentAmbient] = useState<TentReadingResponse | null>(null);
+  const [tentTrends, setTentTrends] = useState<{ timestamps: string[]; temps: (number | null)[]; humidities: (number | null)[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [sensorLoading, setSensorLoading] = useState(false);
 
@@ -146,7 +151,14 @@ export default function AnalyticsPage() {
     const token = getAccessToken();
     if (!token) return;
     (async () => {
-      const bkts = await listBuckets(token, selectedGrow.id);
+      let bkts: Awaited<ReturnType<typeof listBuckets>>;
+      try {
+        bkts = await listBuckets(token, selectedGrow.id);
+      } catch {
+        setBuckets([]);
+        setSelectedBucketId("");
+        return;
+      }
       setBuckets(bkts);
       const activeBuckets = bkts.filter((b) => b.status === "active");
       if (activeBuckets.length > 0) {
@@ -158,25 +170,31 @@ export default function AnalyticsPage() {
       }
       // Load tent ambient reading (shared for all buckets)
       try {
-        const ambient = await getLatestTentReading(token, selectedGrow.tent_id);
+        const [ambient, trends] = await Promise.all([
+          getLatestTentReading(token, selectedGrow.tent_id),
+          getTentSensorTrends(token, selectedGrow.tent_id).catch(() => null),
+        ]);
         setTentAmbient(ambient);
-      } catch { setTentAmbient(null); }
+        setTentTrends(trends);
+      } catch { setTentAmbient(null); setTentTrends(null); }
       // Load environment snapshots for all active buckets (bucket-level sensors only)
-      const snapshots: EnvSnapshot[] = [];
-      for (const b of activeBuckets.slice(0, 10)) {
-        try {
-          const latest = await getLatestReading(token, b.id);
-          if (latest) {
-            snapshots.push({
-              bucketLabel: `#${b.position} ${b.label || b.strain_name || ""}`.trim(),
-              water_temp_f: latest.water_temp_f,
-              ph: latest.ph,
-              ec: latest.ec,
-            });
-          }
-        } catch { /* skip */ }
-      }
-      setEnvSnapshots(snapshots);
+      const snapshotResults = await Promise.all(
+        activeBuckets.slice(0, 10).map(async (b) => {
+          try {
+            const latest = await getLatestReading(token, b.id);
+            if (latest) {
+              return {
+                bucketLabel: `#${b.position} ${b.label || b.strain_name || ""}`.trim(),
+                water_temp_f: latest.water_temp_f,
+                ph: latest.ph,
+                ec: latest.ec,
+              };
+            }
+          } catch { /* skip */ }
+          return null;
+        })
+      );
+      setEnvSnapshots(snapshotResults.filter((s): s is EnvSnapshot => s !== null));
     })();
   }, [selectedGrow?.id]);
 
@@ -242,12 +260,13 @@ export default function AnalyticsPage() {
   ];
 
   // Chart data formatting
+  const waterTempKey = `Water ${tempUnitLabel(prefs.temp_unit)}`;
   const chartData = sensorData.map((r) => ({
     time: formatShortDateTime(r.recorded_at),
     pH: r.ph,
     EC: r.ec,
     PPM: r.ppm,
-    "Water °F": r.water_temp_f,
+    [waterTempKey]: r.water_temp_f != null ? Number(formatTemp(r.water_temp_f, "f", prefs.temp_unit, 1).replace(/[^\d.-]/g, "")) : null,
   }));
 
   return (
@@ -338,7 +357,7 @@ export default function AnalyticsPage() {
                       <YAxis tick={{ fontSize: 10 }} />
                       <Tooltip contentStyle={{ fontSize: 12 }} />
                       <Legend iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-                      <Area type="monotone" dataKey="Water °F" stroke="#ef4444" fill="#ef444420" strokeWidth={2} dot={false} connectNulls />
+                      <Area type="monotone" dataKey={waterTempKey} stroke="#ef4444" fill="#ef444420" strokeWidth={2} dot={false} connectNulls />
                       <Area type="monotone" dataKey="Temp °F" stroke="#f97316" fill="#f9731620" strokeWidth={2} dot={false} connectNulls />
                       <Area type="monotone" dataKey="Humidity %" stroke="#06b6d4" fill="#06b6d420" strokeWidth={2} dot={false} connectNulls />
                     </AreaChart>
@@ -414,7 +433,7 @@ export default function AnalyticsPage() {
                     <div className="flex items-center justify-between rounded-md border bg-muted/30 px-3 py-2 text-sm">
                       <span className="font-medium min-w-[6rem]">Tent Ambient</span>
                       <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-                        {tentAmbient.ambient_temp_f != null && <span>🌡 {tentAmbient.ambient_temp_f.toFixed(1)}°F</span>}
+                        {tentAmbient.ambient_temp_f != null && <span>🌡 {formatTemp(tentAmbient.ambient_temp_f, "f", prefs.temp_unit)}</span>}
                         {tentAmbient.ambient_humidity != null && <span>💧 {tentAmbient.ambient_humidity.toFixed(0)}%</span>}
                       </div>
                     </div>
@@ -423,7 +442,7 @@ export default function AnalyticsPage() {
                     <div key={i} className="flex items-center justify-between rounded-md border px-3 py-2 text-sm">
                       <span className="font-medium min-w-[6rem]">{s.bucketLabel}</span>
                       <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-                        {s.water_temp_f != null && <span>🌊 {s.water_temp_f.toFixed(1)}°F</span>}
+                        {s.water_temp_f != null && <span>🌊 {formatTemp(s.water_temp_f, "f", prefs.temp_unit)}</span>}
                         {s.ph != null && <span>pH {s.ph.toFixed(1)}</span>}
                         {s.ec != null && <span>EC {s.ec.toFixed(2)}</span>}
                       </div>
@@ -433,6 +452,35 @@ export default function AnalyticsPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Tent Sensor Trends */}
+          {tentTrends && tentTrends.timestamps.length > 0 && (
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <Activity className="size-4" /> Tent Environment Trends
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ResponsiveContainer width="100%" height={250}>
+                  <AreaChart data={tentTrends.timestamps.map((ts, i) => ({
+                    time: formatShortDateTime(ts),
+                    temp: tentTrends.temps[i],
+                    humidity: tentTrends.humidities[i],
+                  }))}>
+                    <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                    <XAxis dataKey="time" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+                    <YAxis yAxisId="temp" tick={{ fontSize: 10 }} domain={["auto", "auto"]} />
+                    <YAxis yAxisId="humidity" orientation="right" tick={{ fontSize: 10 }} domain={[0, 100]} />
+                    <Tooltip contentStyle={{ fontSize: 12 }} />
+                    <Legend />
+                    <Area yAxisId="temp" type="monotone" dataKey="temp" stroke="#ef4444" fill="#ef444420" strokeWidth={2} name={`Temp (${tempUnitLabel(prefs.temp_unit)})`} />
+                    <Area yAxisId="humidity" type="monotone" dataKey="humidity" stroke="#3b82f6" fill="#3b82f620" strokeWidth={2} name="Humidity (%)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Grow Timeline */}

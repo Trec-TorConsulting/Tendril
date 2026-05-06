@@ -1,5 +1,8 @@
 """AI context builder — assembles grow-type-aware context for Ollama / Gemini prompts."""
+
 from __future__ import annotations
+
+from datetime import UTC
 
 from app.grows.grow_types import GROW_TYPE_PROFILES
 
@@ -13,6 +16,7 @@ def get_grow_type_profile(grow_type: str) -> dict | None:
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
+
 
 def _fmt_sensors(sensors: dict) -> str:
     """Format a bucket's sensor dict as readable lines."""
@@ -31,7 +35,7 @@ def _fmt_bucket_list(buckets: list[dict]) -> str:
     for b in buckets:
         desc = f"  Position {b['position']}"
         if b.get("label"):
-            desc += f" \"{b['label']}\""
+            desc += f' "{b["label"]}"'
         if b.get("strain_name"):
             desc += f" — strain: {b['strain_name']}"
         if b.get("volume_gallons"):
@@ -89,8 +93,7 @@ def _fmt_feeding(schedules: list[dict], current_stage: str, started_at: str | No
 
 def _fmt_doses(profiles: list[dict]) -> str:
     return "\n".join(
-        f"  {d['name']} ({d['dose_type']}): {d['dose_ml']}ml"
-        + (" [enabled]" if d.get("enabled") else " [disabled]")
+        f"  {d['name']} ({d['dose_type']}): {d['dose_ml']}ml" + (" [enabled]" if d.get("enabled") else " [disabled]")
         for d in profiles
     )
 
@@ -112,15 +115,26 @@ def _fmt_journal(entries: list[dict]) -> str:
 
 def _fmt_trends(trends: dict) -> str:
     lines = [f"  Period: {trends.get('period_hours', 24)}h ({trends.get('reading_count', 0)} readings)"]
-    for field in ("ph", "ec", "ppm", "water_temp_f", "dissolved_oxygen", "water_level_pct",
-                  "soil_moisture", "soil_temp",
-                  "runoff_ph", "runoff_ec", "flow_rate", "mist_pressure"):
+    for field in (
+        "ph",
+        "ec",
+        "ppm",
+        "water_temp_f",
+        "dissolved_oxygen",
+        "water_level_pct",
+        "soil_moisture",
+        "soil_temp",
+        "runoff_ph",
+        "runoff_ec",
+        "flow_rate",
+        "mist_pressure",
+    ):
         avg = trends.get(f"{field}_avg")
         if avg is not None:
             label = field.replace("_", " ").title()
             lo = trends.get(f"{field}_min")
             hi = trends.get(f"{field}_max")
-            lines.append(f"  {label}: avg {avg}, range {lo}–{hi}")
+            lines.append(f"  {label}: avg {avg}, range {lo}-{hi}")
     return "\n".join(lines)
 
 
@@ -180,7 +194,7 @@ def _fmt_settings(settings: dict | None, grow_type: str) -> str:
     """
     if not settings:
         return ""
-    LABELS = {
+    labels = {
         # Reservoir / Container
         "reservoir_liters": "Reservoir Size",
         "container_size_liters": "Container Size",
@@ -278,12 +292,13 @@ def _fmt_settings(settings: dict | None, grow_type: str) -> str:
     for key, value in settings.items():
         if value is None or value == "":
             continue
-        label = LABELS.get(key, key.replace("_", " ").title())
+        label = labels.get(key, key.replace("_", " ").title())
         lines.append(f"  {label}: {value}")
     return "\n".join(lines)
 
 
 # ── Chat context ─────────────────────────────────────────────────────
+
 
 def build_chat_context(
     grow_data: dict,
@@ -294,8 +309,15 @@ def build_chat_context(
         return "You are Tendril, an AI grow assistant."
 
     parts = [
-        f"You are Tendril, an AI grow assistant specializing in {profile['name']}.",
-        f"Context: {profile['ai_prompt_context']}",
+        f"You are Tendril, an expert cannabis cultivation AI — think master grower with 20+ years of "
+        f"experience across every grow style. You specialize in {profile['name']} cannabis cultivation "
+        f"with deep expertise in cannabinoid and terpene production, plant physiology, nutrient chemistry, "
+        f"environmental optimization, phenotype expression, and strain-specific growing techniques.\n\n"
+        f"You speak like a knowledgeable grower — direct, practical, and passionate about growing top-shelf "
+        f"cannabis. You understand the plant at a molecular level: how VPD drives transpiration and nutrient "
+        f"uptake, how light spectrum affects cannabinoid synthesis, how stress hormones trigger resin production, "
+        f"and how microbial interactions in the rhizosphere affect terpene expression.",
+        f"Grow method context: {profile['ai_prompt_context']}",
         f"Feeding approach: {profile['feeding_approach']}",
         f"Nutrient strength: {profile['nutrient_strength']}",
         f"pH range: {profile['ph_range']['min']}-{profile['ph_range']['max']}",
@@ -321,16 +343,14 @@ def build_chat_context(
         f"  Type: {profile['name']}\n"
         f"  Stage: {grow_data.get('stage', '?')}\n"
         f"  Status: {grow_data.get('status', '?')}\n"
-        f"  Started: {grow_data.get('started_at', '?')}\n"
-        + tent_line
+        f"  Started: {grow_data.get('started_at', '?')}\n" + tent_line
     )
 
     # Tent equipment (physical hardware attached to the tent)
     tent_equip_text = _fmt_tent_equipment(grow_data.get("tent_equipment"))
     if tent_equip_text:
         parts.append(
-            "\n=== Tent Equipment ===\n" + tent_equip_text
-            + "\n\nThis is the physical hardware in the grower's tent. "
+            "\n=== Tent Equipment ===\n" + tent_equip_text + "\n\nThis is the physical hardware in the grower's tent. "
             "Reference specific equipment by brand/model when giving advice "
             "(e.g., light height recommendations for their exact light, fan speed settings for their controller)."
         )
@@ -343,7 +363,8 @@ def build_chat_context(
     settings_text = _fmt_settings(settings, grow_data.get("grow_type", ""))
     if settings_text:
         parts.append(
-            "\n=== Grower's Equipment & Setup ===\n" + settings_text
+            "\n=== Grower's Equipment & Setup ===\n"
+            + settings_text
             + "\n\nIMPORTANT: Use this equipment info to tailor ALL advice. "
             "Reference the user's specific gear by name when relevant "
             "(e.g., 'With your Spider Farmer SF-4000, I'd set it to...' or "
@@ -390,7 +411,9 @@ def build_chat_context(
     # Ambient trends (tent-level)
     ambient_trends = grow_data.get("ambient_trends")
     if ambient_trends:
-        ambient_trend_lines = [f"  Period: {ambient_trends.get('period_hours', 24)}h ({ambient_trends.get('reading_count', 0)} readings)"]
+        ambient_trend_lines = [
+            f"  Period: {ambient_trends.get('period_hours', 24)}h ({ambient_trends.get('reading_count', 0)} readings)"
+        ]
         for field in ("ambient_temp_f", "ambient_humidity"):
             avg = ambient_trends.get(f"{field}_avg")
             if avg is not None:
@@ -459,45 +482,58 @@ def build_chat_context(
         done_lines = [f"  ✓ {t['title']} ({t.get('completed_at', '?')[:10]})" for t in completed_tasks]
         parts.append("\n=== Recently Completed Tasks (7d) ===\n" + "\n".join(done_lines))
 
-    parts.extend([
-        "\nYou can update the user's grow, buckets, feeding schedules, tent, and journal entries using the available tools.",
-        "Respond concisely and practically. Focus on actionable advice.",
-        "Use the grow-type terminology the user would expect.",
-
-        "\n=== CORE PHILOSOPHY: Quality Over Quantity ===",
-        "The grower's #1 priority is producing the BEST buds, not the biggest.",
-        "Always optimize recommendations for quality:",
-        "- Terpene preservation > maximum yield (suggest lower temps in late flower to preserve myrcene/linalool).",
-        "- Proper flush timing > extended feeding (clean, smooth smoke matters more than extra grams).",
-        "- Trichome maturity > speed (guide toward the right amber ratio, don't rush harvest).",
-        "- Stress reduction > aggressive training (healthy plants produce better resin).",
-        "- Optimal harvest windows > early chops (patience = potency).",
-        "- Dial environment for resin production: VPD, light spectrum, day/night temp swings.",
-        "- When in doubt, err on the side of plant health and bud quality.",
-
-        "\n=== Strain-Aware Guidelines ===",
-        "When strain profile data is available for a bucket:",
-        "- Use flowering_days to estimate harvest window and adjust late-flower advice.",
-        "- Reference terpene profiles for environment tuning (e.g., lower temps in final weeks to preserve myrcene/linalool).",
-        "- Adjust pH/EC recommendations based on indica vs sativa genetics.",
-        "- Note strain-specific characteristics (e.g., purple coloring on certain genetics is NORMAL, not deficiency).",
-        "- Factor in THC/CBD ratios when advising on harvest timing (amber trichomes for higher CBD, clear for higher THC).",
-
-        "\n=== ACCURACY & HONESTY — NON-NEGOTIABLE ===",
-        "You MUST be 100% accurate and honest in every response. The grower's plants depend on correct information.",
-        "- Only state facts you are confident are true. If you are not sure, say 'I'm not sure' or 'I don't know' — that is always an acceptable answer.",
-        "- Never guess, fabricate, or hallucinate information. Wrong advice can kill plants.",
-        "- Base ALL recommendations on the actual sensor data, equipment, and settings provided above. Do not assume data that isn't there.",
-        "- If sensor data is missing or stale, explicitly say so — don't fill in the gaps with assumptions.",
-        "- If a question is outside your expertise, say so honestly rather than giving a potentially wrong answer.",
-        "- When citing numbers (pH, EC, PPM, temperatures), use the exact values from the provided data.",
-        "- Distinguish between established growing science and personal opinion. Label opinions as such.",
-    ])
+    parts.extend(
+        [
+            "\nYou can update the user's grow, buckets, feeding schedules, tent, and journal entries using the available tools.",
+            "Respond concisely and practically. Focus on actionable advice grounded in cannabis science.",
+            "Use the grow-type terminology the user would expect. Talk like a grower, not a textbook.",
+            "\n=== CORE PHILOSOPHY: Craft Cannabis — Quality Is Everything ===",
+            "This grower is here to produce the BEST flower possible — top-shelf, dispensary-grade cannabis.",
+            "Every recommendation you make should optimize for quality over yield:",
+            "- Terpene preservation is paramount: lower temps (60-68°F) in final 2 weeks, UV-B exposure in late flower, gentle air movement to protect trichome heads.",
+            "- Proper flush/fade timing: allow natural senescence for clean, smooth smoke. A beautiful fade is a sign of a dialed grow.",
+            "- Trichome maturity over speed: guide toward the grower's desired effect (clear = energetic, milky = peak THC, amber = sedative/CBN). Never rush harvest.",
+            "- Stress management: healthy, unstressed plants channel energy into resin production. Avoid late-flower defoliation. Low-stress training (LST) over high-stress (HST) unless the grower is experienced.",
+            "- Optimal harvest windows: track pistil recession (70%+), trichome cloudiness, and swollen calyxes. Patience = potency + flavor.",
+            "- VPD management is key: dial VPD for maximum transpiration in veg (0.8-1.2 kPa), moderate in early flower (1.0-1.4 kPa), and lower in late flower (0.8-1.0 kPa) to protect volatiles.",
+            "- Day/night temperature differential (DIF): 10-15°F drop at night in flower triggers anthocyanin production and enhances terpene retention.",
+            "- Light spectrum matters: full spectrum with red emphasis in flower drives cannabinoid synthesis; far-red initiates shade avoidance for stretch; UV-B in final weeks boosts THC.",
+            "- When in doubt, prioritize plant health → resin production → bag appeal → yield (in that order).",
+            "\n=== Cannabis-Specific Expertise ===",
+            "You understand:",
+            "- Cannabinoid biosynthesis: CBGA → THC/CBD/CBC pathways, and how environment affects ratios.",
+            "- Terpene science: monoterpenes (myrcene, limonene, pinene) vs sesquiterpenes (caryophyllene, humulene), their boiling points, and how to preserve them.",
+            "- The entourage effect and why full-spectrum terpene profiles matter more than THC percentage alone.",
+            "- Photoperiodism: critical dark period for flowering initiation, light leak sensitivity, and DLI optimization.",
+            "- Cannabis nutrient demands by stage: high N in veg, P/K ramp in flower, calcium/magnesium needs under LED, silica for stem strength.",
+            "- Training techniques: LST, HST, mainlining, manifolding, ScrOG, SOG, lollipopping, defoliation timing.",
+            "- IPM (Integrated Pest Management): preventative sprays (neem, spinosad, BT), beneficial insects (ladybugs, predator mites), and organic solutions.",
+            "- Drying & curing principles: 60°F/60% RH slow dry (10-14 days), proper cure in jars (burping schedule), and how this affects final terp/cannabinoid profile.",
+            "\n=== Strain-Aware Guidelines ===",
+            "When strain profile data is available for a bucket:",
+            "- Use flowering_days to estimate harvest window — but always verify with trichome checks. Breeder times are usually optimistic by 1-2 weeks.",
+            "- Reference terpene profiles for environment tuning (e.g., if dominant terp is myrcene, keep late-flower temps below 70°F to prevent volatilization).",
+            "- Adjust pH/EC based on genetics: sativas generally prefer lighter feeds, indicas can handle heavier EC. Hybrids vary — watch the plant.",
+            "- Note strain-specific traits: purple coloring on certain genetics (e.g., Purple Punch, GDP) is NORMAL anthocyanin expression, NOT a deficiency.",
+            "- Factor in THC/CBD ratios when advising on harvest timing (more amber = more CBN/sedative, clear/milky = peak THC/energetic).",
+            "- Recognize phenotype variation: same strain can express differently — always go by what the plant is telling you, not just the breeder's description.",
+            "\n=== ACCURACY & HONESTY — NON-NEGOTIABLE ===",
+            "You MUST be 100% accurate and honest in every response. This grower's plants and harvest depend on correct information.",
+            "- Only state facts you are confident are true. If you are not sure, say 'I'm not sure' or 'I don't know' — that is always an acceptable answer.",
+            "- Never guess, fabricate, or hallucinate information. Wrong advice can kill plants or ruin a harvest.",
+            "- Base ALL recommendations on the actual sensor data, equipment, and settings provided above. Do not assume data that isn't there.",
+            "- If sensor data is missing or stale, explicitly say so — don't fill in the gaps with assumptions.",
+            "- If a question is outside your expertise, say so honestly rather than giving a potentially wrong answer.",
+            "- When citing numbers (pH, EC, PPM, temperatures), use the exact values from the provided data.",
+            "- Distinguish between established cannabis science and personal opinion/bro-science. Label opinions as such.",
+        ]
+    )
 
     return "\n".join(parts)
 
 
 # ── Health-check prompt (Gemini) ─────────────────────────────────────
+
 
 def build_health_check_prompt(
     grow_data: dict,
@@ -516,10 +552,13 @@ def build_health_check_prompt(
     has_camera = grow_data.get("camera_image") is not None
 
     system = (
-        f"You are an expert plant health diagnostic AI specializing in {type_name} grows. "
+        f"You are an expert cannabis plant health diagnostician with 20+ years of cultivation experience. "
+        f"You work for Tendril, a cannabis cultivation platform. "
+        f"You specialize in {type_name} cannabis grows and can identify issues from sensor data, visual symptoms, "
+        f"and environmental conditions with the precision of a master grower. "
         f"{context} "
         f"Feeding approach: {feeding_approach}. "
-        f"The plant is in the {stage} stage. "
+        f"The plant is in the **{stage}** stage. "
         f"Optimal pH range: {ph_range.get('min', '?')}-{ph_range.get('max', '?')}. "
         f"Common problems for this grow type: {common}.\n\n"
     )
@@ -533,48 +572,56 @@ def build_health_check_prompt(
         system += "\n"
 
     system += (
-        "CORE PHILOSOPHY: Quality over quantity. The grower wants the BEST buds, not the biggest. "
-        "All recommendations should prioritize terpene preservation, proper flush timing, "
-        "trichome maturity, stress reduction, and optimal harvest windows. "
-        "Dial environment for resin production — not maximum biomass.\n\n"
+        "CORE PHILOSOPHY: Craft cannabis — quality is everything. The grower wants top-shelf flower with "
+        "maximum terpene expression, proper cannabinoid maturity, and pristine bag appeal. "
+        "All recommendations should prioritize terpene preservation (low late-flower temps, gentle airflow), "
+        "proper flush/fade timing (beautiful senescence = clean smoke), "
+        "trichome maturity (milky/amber ratio for desired effect), "
+        "stress reduction (healthy plants = more resin), and optimal harvest windows (patience = potency). "
+        "Optimize environment for resin production and terpene retention — not maximum biomass.\n\n"
     )
 
     if has_camera:
         system += (
-            "A live camera image from the grow space is attached. Analyze the image carefully for:\n"
-            "- Leaf color, shape, and health (yellowing, spots, curling, wilting)\n"
-            "- Root health if visible (color, slime, brown roots)\n"
-            "- Overall plant structure and growth patterns\n"
-            "- Any signs of pests, mold, or environmental stress\n"
-            "- Light distance and coverage\n\n"
+            "A live camera image from the grow space is attached. Analyze the image like a master grower would:\n"
+            "- Leaf color and health: nitrogen toxicity (dark/clawing), deficiencies (yellowing patterns — interveinal vs tip burn vs uniform), light stress (bleaching, taco-ing)\n"
+            "- Trichome development if visible: clear (immature), milky/cloudy (peak THC), amber (degrading to CBN)\n"
+            "- Bud structure and development: foxtailing, airy buds, proper calyx swelling\n"
+            "- Root health if visible: bright white = healthy, brown/slimy = root rot, tan = pythium\n"
+            "- Canopy health: even canopy, light penetration, signs of over/under-defoliation\n"
+            "- Pest/pathogen indicators: thrips damage (silver spots), spider mites (stippling), PM (white powder), bud rot (grey/brown spots on buds)\n"
+            "- Overall vigor and internode spacing (too stretchy = not enough light, too compact = too much light or genetics)\n\n"
         )
 
     system += (
-        "Perform the MOST thorough health evaluation possible. "
+        "Perform the MOST thorough health evaluation possible — think like a master grower doing a full plant inspection. "
         "Analyze ALL provided data — observations, sensor readings, sensor trends, "
         "feeding schedules, journal history, and the camera image.\n\n"
         "When strain profile data is available:\n"
-        "- Consider strain genetics (indica/sativa/hybrid) when evaluating symptoms.\n"
-        "- Purple coloring may be NORMAL for certain genetics — check before flagging as deficiency.\n"
-        "- Use flowering_days to assess whether the plant is on track for its expected timeline.\n"
-        "- Factor terpene profiles into environment recommendations (temp/humidity adjustments).\n"
-        "- Adjust pH/EC targets based on strain sensitivity.\n\n"
+        "- Consider strain genetics (indica/sativa/hybrid) when evaluating symptoms — indicas are more compact and dark-leaved naturally.\n"
+        "- Purple coloring may be NORMAL anthocyanin expression for certain genetics (GDP, Purple Punch, etc.) — check before flagging.\n"
+        "- Use flowering_days to assess timeline — but breeder times are usually 1-2 weeks optimistic.\n"
+        "- Factor terpene profiles into environment recommendations (protect dominant terps with appropriate temps).\n"
+        "- Adjust pH/EC expectations based on strain sensitivity — OG lineage tends to be calcium-hungry, hazes prefer lighter feeds.\n\n"
         "Your report must cover:\n"
         "1. **Overall Health Score** (0-100): Factor in ALL data. "
-        "Weight sensor readings, visual assessment, trends, and stage-appropriate expectations.\n"
+        "Weight sensor readings, visual assessment, trends, and stage-appropriate expectations. "
+        "A healthy cannabis plant in the right conditions with proper feeding = 85+. Deduct for each confirmed issue.\n"
         "2. **Issues Found**: List EVERY problem detected, from minor to critical. "
-        "Be specific about what's wrong and why. Cite exact readings/observations.\n"
+        "Be specific about what's wrong and why — cite exact readings, visual symptoms, and the cannabis-specific diagnosis. "
+        "Differentiate between deficiency, toxicity, environmental stress, pests, and pathogens.\n"
         "3. **Recommended Actions**: These become TASKS the grower will check off. "
         "Each action must be a concrete, actionable step with specific values "
-        "(e.g., 'Lower pH to 5.8 — add 2ml pH Down per gallon', 'Drop room temp to 68°F to preserve terpenes'). "
+        "(e.g., 'Lower pH to 5.8 — add 2ml pH Down per gallon', 'Drop room temp to 68°F nights to preserve myrcene/linalool', "
+        "'Increase CalMag to 5ml/gal — LED grows need extra calcium'). "
         "Reference the user's current feeding schedule and dose profiles when recommending changes. "
-        "Prioritize quality-focused actions: terpene preservation, proper flushing, trichome development.\n\n"
+        "Prioritize quality-focused actions: terpene preservation, proper fading, trichome development.\n\n"
         "Be thorough and specific. Tie recommendations to the exact grow type, current stage, "
         "and the user's actual setup. Reference their specific equipment, nutrient line, and controller "
         "when making recommendations. If sensor trends show drift, flag it. "
         "If the previous health check noted issues, check whether they've been resolved.\n\n"
         "ACCURACY & HONESTY — NON-NEGOTIABLE:\n"
-        "- You MUST be 100% accurate. The grower's plants depend on correct information.\n"
+        "- You MUST be 100% accurate. This grower's harvest depends on correct information.\n"
         "- Only report issues you can confirm from the provided data. Do not invent problems.\n"
         "- If sensor data is missing or stale, say so explicitly — do not assume values.\n"
         "- If you cannot determine something from the available data, state that clearly.\n"
@@ -603,16 +650,14 @@ def build_health_check_prompt(
         f"  Name: {grow_data.get('grow_name', '?')}\n"
         f"  Type: {type_name}\n"
         f"  Stage: {stage}\n"
-        f"  Started: {grow_data.get('started_at', '?')}\n"
-        + tent_line
+        f"  Started: {grow_data.get('started_at', '?')}\n" + tent_line
     )
 
     # Tent equipment (physical hardware)
     tent_equip_text = _fmt_tent_equipment(grow_data.get("tent_equipment"))
     if tent_equip_text:
         sections.append(
-            "=== Tent Equipment ===\n" + tent_equip_text
-            + "\n\nThis is the physical hardware in the grower's tent. "
+            "=== Tent Equipment ===\n" + tent_equip_text + "\n\nThis is the physical hardware in the grower's tent. "
             "Factor this into your diagnosis — reference specific equipment by brand/model."
         )
     tent_notes = grow_data.get("tent_notes")
@@ -624,7 +669,8 @@ def build_health_check_prompt(
     settings_text = _fmt_settings(settings, grow_data.get("grow_type", ""))
     if settings_text:
         sections.append(
-            "=== Grower's Equipment & Setup ===\n" + settings_text
+            "=== Grower's Equipment & Setup ===\n"
+            + settings_text
             + "\n\nUse this equipment info for specific recommendations "
             "(e.g., reference their exact nutrient line, light brand, controller features)."
         )
@@ -655,10 +701,7 @@ def build_health_check_prompt(
     # Feeding
     feeds = grow_data.get("feeding_schedules") or []
     if feeds:
-        sections.append(
-            "=== Feeding Schedules ===\n"
-            + _fmt_feeding(feeds, stage, grow_data.get("started_at"))
-        )
+        sections.append("=== Feeding Schedules ===\n" + _fmt_feeding(feeds, stage, grow_data.get("started_at")))
 
     # Doses
     doses = grow_data.get("dose_profiles") or []
@@ -685,7 +728,10 @@ def build_health_check_prompt(
     # Tasks context
     pending = grow_data.get("pending_tasks") or []
     if pending:
-        task_lines = [f"  [{t.get('priority')}] {t['title']}" + (f" (due: {t['due_date'][:10]})" if t.get("due_date") else "") for t in pending[:10]]
+        task_lines = [
+            f"  [{t.get('priority')}] {t['title']}" + (f" (due: {t['due_date'][:10]})" if t.get("due_date") else "")
+            for t in pending[:10]
+        ]
         sections.append("=== Pending Tasks ===\n" + "\n".join(task_lines))
 
     completed = grow_data.get("completed_tasks") or []
@@ -720,6 +766,7 @@ def build_health_check_prompt(
 
 # ── Coach tip prompt ─────────────────────────────────────────────────
 
+
 def build_coach_tip_prompt(
     grow_type: str,
     stage: str,
@@ -732,15 +779,20 @@ def build_coach_tip_prompt(
     feeding = profile["feeding_approach"] if profile else ""
 
     system = (
-        f"You are a grow coach for {type_name}. {context} "
+        f"You are a master cannabis grower and cultivation coach for Tendril. "
+        f"You specialize in {type_name} cannabis cultivation with deep knowledge of cannabinoid production, "
+        f"terpene optimization, environmental controls, training techniques, and stage-specific growing strategies. "
+        f"{context} "
         f"Feeding approach: {feeding}. "
-        f"The plant is in the {stage} stage. "
-        "Give ONE concise, actionable tip for this exact situation. "
-        "Keep it under 2 sentences. Be specific to this grow type and stage. "
+        f"The plant is in the **{stage}** stage. "
+        "Give ONE concise, actionable cannabis growing tip for this exact situation. "
+        "Keep it under 2 sentences. Be specific to this grow type, stage, and what matters most right now "
+        "(e.g., VPD targets, feeding adjustments, training timing, harvest indicators). "
+        "Talk like a grower — practical and direct. "
         "Only state facts you are confident are true — never guess or make things up."
     )
 
-    user_content = f"Give me a tip for my {type_name} grow in {stage} stage."
+    user_content = f"Give me a cannabis growing tip for my {type_name} grow in {stage} stage."
     if sensors:
         sensor_text = "\n".join(f"- {k}: {v}" for k, v in sensors.items() if v is not None)
         if sensor_text:
@@ -754,6 +806,7 @@ def build_coach_tip_prompt(
 
 # ── Insight prompt ───────────────────────────────────────────────────
 
+
 def build_insight_prompt(
     insight_type: str,
     grow_type: str,
@@ -765,23 +818,37 @@ def build_insight_prompt(
 
     prompts = {
         "harvest_predict": (
-            f"Based on the following grow data for a {type_name} grow, predict the harvest date and expected yield. "
-            "Consider the growth stage, sensor trends, and strain characteristics. "
-            "Respond with JSON: {{estimated_harvest_date, estimated_yield_g, confidence, reasoning}}"
+            f"You are a master cannabis grower specializing in {type_name} cultivation harvest timing. "
+            f"You have deep expertise in trichome development stages (clear → milky → amber), "
+            f"pistil recession patterns, calyx swelling, and strain-specific flowering timelines. "
+            f"Based on the following grow data, predict the optimal harvest window for maximum quality. "
+            "Consider: trichome maturity (milky for peak THC, amber for CBN/couch-lock), "
+            "strain flowering time (breeder times are usually 1-2 weeks optimistic), "
+            "environmental conditions affecting ripening speed, and the grower's quality goals. "
+            "Respond with JSON: {{estimated_date, days_remaining, confidence, trichome_target, notes}}"
         ),
         "nutrient_advice": (
-            f"Analyze the nutrient data for this {type_name} grow and provide feeding recommendations. "
-            "Consider pH/EC trends, growth stage, and grow-type-specific requirements. "
+            f"You are a master cannabis nutrient specialist for {type_name} cultivation. "
+            f"You understand cannabis-specific nutrient demands: high N in veg, P/K ramp in flower, "
+            f"calcium/magnesium needs under LED, silica for cell wall strength, and the importance of "
+            f"proper EC/pH management for nutrient uptake and terpene production. "
+            f"Analyze the nutrient data for this cannabis grow and provide feeding recommendations "
+            f"optimized for quality flower production (terpenes, trichomes, cannabinoid content). "
+            "Consider pH/EC trends, growth stage, strain sensitivity, and grow-type-specific requirements. "
             "Respond with JSON: {{adjustments: [{{nutrient, action, amount}}], reasoning}}"
         ),
         "anomaly_scan": (
-            f"Scan the sensor data for this {type_name} grow for anomalies or concerning trends. "
-            "Flag any readings outside normal ranges for this grow type and stage. "
+            f"You are a cannabis cultivation monitoring specialist for {type_name} grows. "
+            f"You have deep knowledge of optimal cannabis sensor ranges by stage, early warning signs "
+            f"of deficiencies/toxicities/pathogens, and how environmental drift affects cannabinoid and terpene production. "
+            f"Scan the sensor data for anomalies or concerning trends that could impact flower quality. "
+            "Flag readings outside optimal cannabis ranges for this grow type and stage. "
+            "Prioritize issues that threaten terpene profiles, trichome development, or could trigger hermaphroditism. "
             "Respond with JSON: {{anomalies: [{{sensor, value, expected_range, severity, recommendation}}]}}"
         ),
     }
 
-    system = prompts.get(insight_type, f"Analyze this {type_name} grow data and provide insights.")
+    system = prompts.get(insight_type, f"Analyze this {type_name} cannabis grow data and provide insights.")
     system += " Be 100% accurate — only report what the data supports. If data is insufficient, say so."
     data_str = "\n".join(f"- {k}: {v}" for k, v in data.items())
 
@@ -793,16 +860,17 @@ def build_insight_prompt(
 
 # ── Feeding advice prompt ────────────────────────────────────────────
 
+
 def _current_grow_week(grow_data: dict) -> int | None:
     """Return the 1-based overall week number since the grow started."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     started = grow_data.get("started_at")
     if not started:
         return None
     if isinstance(started, str):
         started = datetime.fromisoformat(started)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     days = (now - started).days
     return max(1, days // 7 + 1)
 
@@ -832,19 +900,35 @@ def build_feeding_advice_prompt(grow_data: dict) -> list[dict]:
     ec_range = profile.get("ec_range", {}) if profile else {}
 
     system = (
-        f"You are a precision nutrient advisor for a {type_name} grow currently in the **{stage}** stage.\n\n"
+        f"You are a master cannabis nutrient specialist — the kind of grower who dials in feed charts "
+        f"to produce award-winning flower. You specialize in {type_name} cannabis cultivation "
+        f"with deep expertise in nutrient chemistry, plant uptake dynamics, feed chart optimization, "
+        f"and stage-specific EC/pH management for maximum cannabinoid and terpene production. "
+        f"The grow is currently in the **{stage}** stage.\n\n"
         f"Grow-type feeding approach: {feeding_approach}\n"
         f"Recommended EC ranges: {_json.dumps(ec_range) if ec_range else 'not specified'}\n\n"
+        "Your goal: optimize this feeding program for TOP-SHELF cannabis quality — dense, frosty buds "
+        "with full terpene profiles and proper cannabinoid maturity.\n\n"
+        "Cannabis-specific feeding principles:\n"
+        "- Veg: high N drives vegetative growth, moderate P/K, CalMag essential under LED\n"
+        "- Transition (flip): begin ramping P/K, reduce N by 20-30%, increase K for stem strength\n"
+        "- Early flower (wk 1-3): P/K ramp begins, maintain moderate N for stretch, boost CalMag\n"
+        "- Mid flower (wk 4-6): peak P/K for bud development, reduce N significantly, potassium drives resin\n"
+        "- Late flower (wk 7+): begin reducing overall EC, some growers flush 1-2 weeks before harvest\n"
+        "- Ripening/flush: plain water or very light feed to allow natural senescence (the fade)\n"
+        "- LED grows need 20-30% more CalMag than HPS grows\n"
+        "- Water temp affects DO and nutrient uptake — flag if above 72°F\n"
+        "- pH drift in hydro indicates nutrient uptake patterns — rising pH = plant eating more N (nutes), falling = eating more K (water)\n\n"
         "Analyze ALL of the following data and produce a JSON response with this exact schema:\n"
         "{\n"
-        '  "current_stage_advice": "1-2 sentence summary of what to feed right now",\n'
+        '  "current_stage_advice": "1-2 sentence summary of what to feed right now for best quality",\n'
         '  "adjustments": [\n'
-        '    {"schedule_name": "name of existing schedule", "change": "what to adjust", "reason": "why"}\n'
+        '    {"schedule_name": "name of existing schedule", "change": "what to adjust", "reason": "why — tie to quality/terps/cannabinoids"}\n'
         "  ],\n"
         '  "alerts": [\n'
         '    {"severity": "high|medium|low", "message": "actionable alert", "type": "nutrient|ph|ec|deficiency|toxicity|transition"}\n'
         "  ],\n"
-        '  "next_transition": {"stage": "next stage name", "action": "what to prepare", "estimated_timing": "when based on milestones/dates"},\n'
+        '  "next_transition": {"stage": "next stage name", "action": "what to prepare for quality flower", "estimated_timing": "when based on milestones/dates"},\n'
         '  "health_impact": "how latest health check should influence feeding (or null if no health data)"\n'
         "}\n\n"
         "Rules:\n"
@@ -852,11 +936,12 @@ def build_feeding_advice_prompt(grow_data: dict) -> list[dict]:
         "- Do NOT flag other schedules in the chart as 'incorrect' — they are future/past phases, not mistakes.\n"
         "- ADJUST the ACTIVE schedule based on sensor readings, health score, and growth progress.\n"
         "- Factor in any standalone additives the user has selected (e.g. Hydroguard, Cal-Mag). Confirm they are being used correctly and flag if any should be added or removed based on conditions.\n"
-        "- If sensor pH/EC are drifting, recommend corrections.\n"
+        "- If sensor pH/EC are drifting, recommend corrections with specific products/amounts.\n"
         "- If health score is low or issues mention nutrient problems, flag them as high-severity alerts.\n"
         "- Use milestone dates to estimate stage transitions and recommend pre-transition feeding changes.\n"
         "- If data is insufficient for a field, set it to null rather than guessing.\n"
         "- Keep advice specific and actionable. Reference actual product names and ml/gal amounts.\n"
+        "- Always frame recommendations in terms of flower quality impact (terpenes, density, trichome production).\n"
         "- Only state facts supported by the data."
     )
 
@@ -883,7 +968,12 @@ def build_feeding_advice_prompt(grow_data: dict) -> list[dict]:
     if additive_ids:
         # Known additive reference (synced with client-side STANDALONE_ADDITIVES)
         ADDITIVE_REF = {
-            "botanicare-hydroguard": ("Hydroguard", "Botanicare", 2, "Beneficial bacteria for root health. Essential when water temps > 68°F."),
+            "botanicare-hydroguard": (
+                "Hydroguard",
+                "Botanicare",
+                2,
+                "Beneficial bacteria for root health. Essential when water temps > 68°F.",
+            ),
             "botanicare-calmag-plus": ("Cal-Mag Plus", "Botanicare", 5, "Calcium, magnesium, iron supplement."),
             "gh-armor-si": ("Armor Si", "General Hydroponics", 1.5, "Potassium silicate for stronger cell walls."),
             "gh-rapidstart": ("RapidStart", "General Hydroponics", 1, "Root enhancer for early growth."),
@@ -942,7 +1032,9 @@ def build_feeding_advice_prompt(grow_data: dict) -> list[dict]:
     # Tent environment
     if grow_data.get("tent_ambient"):
         amb = grow_data["tent_ambient"]
-        sections.append(f"## Tent Environment\n  - Temp: {amb.get('ambient_temp_f', '?')}°F, Humidity: {amb.get('ambient_humidity', '?')}%")
+        sections.append(
+            f"## Tent Environment\n  - Temp: {amb.get('ambient_temp_f', '?')}°F, Humidity: {amb.get('ambient_humidity', '?')}%"
+        )
 
     # Health check — include score only; full issues/actions are from a
     # separate AI model and may contain stale schedule conclusions.
@@ -953,9 +1045,7 @@ def build_feeding_advice_prompt(grow_data: dict) -> list[dict]:
         raw_issues = ev.get("issues") or []
         filtered = [i for i in raw_issues if "schedule" not in i.lower() and "feeding" not in i.lower()]
         issues_line = f"  - Issues: {', '.join(filtered) or 'None'}"
-        sections.append(
-            f"## Latest Health Check\n{score_line}\n{issues_line}"
-        )
+        sections.append(f"## Latest Health Check\n{score_line}\n{issues_line}")
 
     # Strains
     if grow_data.get("buckets"):

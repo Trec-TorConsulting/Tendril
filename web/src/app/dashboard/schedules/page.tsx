@@ -52,6 +52,8 @@ import {
   Droplets,
   Settings,
 } from "lucide-react";
+import { toast } from "sonner";
+import { useConfirm } from "@/components/confirm-dialog";
 
 interface TentOption {
   id: string;
@@ -66,6 +68,7 @@ const typeIcon: Record<string, React.ReactNode> = {
 };
 
 export default function SchedulesPage() {
+  const confirm = useConfirm();
   const [schedules, setSchedules] = useState<ScheduleResponse[]>([]);
   const [tents, setTents] = useState<TentOption[]>([]);
   const [showCreate, setShowCreate] = useState(false);
@@ -74,13 +77,18 @@ export default function SchedulesPage() {
   const refresh = useCallback(async () => {
     const token = getAccessToken();
     if (!token) return;
-    const [s, t] = await Promise.all([
-      listSchedules(token),
-      listTents(token),
-    ]);
-    setSchedules(s);
-    setTents(t.map((t: { id: string; name: string }) => ({ id: t.id, name: t.name })));
-    setLoading(false);
+    try {
+      const [s, t] = await Promise.all([
+        listSchedules(token),
+        listTents(token),
+      ]);
+      setSchedules(s);
+      setTents(t.map((t: { id: string; name: string }) => ({ id: t.id, name: t.name })));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load schedules");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -90,15 +98,23 @@ export default function SchedulesPage() {
   const handleToggle = async (sched: ScheduleResponse) => {
     const token = getAccessToken();
     if (!token) return;
-    await updateSchedule(token, sched.id, { enabled: !sched.enabled });
-    refresh();
+    try {
+      await updateSchedule(token, sched.id, { enabled: !sched.enabled });
+      toast.success(sched.enabled ? "Schedule disabled" : "Schedule enabled");
+      refresh();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to toggle schedule"); }
   };
 
   const handleDelete = async (id: string) => {
+    const ok = await confirm({ title: "Delete Schedule", description: "This schedule will be permanently deleted.", confirmText: "Delete", variant: "destructive" });
+    if (!ok) return;
     const token = getAccessToken();
     if (!token) return;
-    await deleteSchedule(token, id);
-    refresh();
+    try {
+      await deleteSchedule(token, id);
+      toast.success("Schedule deleted");
+      refresh();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to delete schedule"); }
   };
 
   if (loading) return <PageSkeleton rows={4} cards />;
@@ -230,7 +246,10 @@ function CreateScheduleDialog({
         off_time: offTime,
         ...(stage ? { stage } : {}),
       });
+      toast.success("Schedule created");
       onCreated();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to create schedule");
     } finally {
       setSubmitting(false);
     }

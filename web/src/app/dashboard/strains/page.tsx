@@ -7,11 +7,14 @@ import { useConfirm } from "@/components/confirm-dialog";
 import {
   listStrains,
   createStrain,
+  updateStrain,
   deleteStrain,
   getStrainLeaderboard,
   getStrainComparison,
+  getStrainFeedingSuggestions,
   type StrainResponse,
   type StrainGrowComparison,
+  type FeedingSuggestion,
 } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -48,7 +51,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { Plus, Trash2, Trophy, Library, MoreHorizontal, BarChart3 } from "lucide-react";
+import { Plus, Trash2, Trophy, Library, MoreHorizontal, BarChart3, Pencil, FlaskConical, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 export default function StrainsPage() {
   const [strains, setStrains] = useState<StrainResponse[]>([]);
@@ -56,12 +60,17 @@ export default function StrainsPage() {
     { strain_name: string; harvests: number; avg_dry_weight_g: number | null; avg_quality: number | null }[]
   >([]);
   const [showCreate, setShowCreate] = useState(false);
+  const [editStrain, setEditStrain] = useState<StrainResponse | null>(null);
   const [form, setForm] = useState({ name: "", breeder: "", genetics: "" });
+  const [editForm, setEditForm] = useState({ name: "", breeder: "", genetics: "" });
   const [tab, setTab] = useState<"library" | "leaderboard" | "comparison">("library");
   const confirm = useConfirm();
   const [loading, setLoading] = useState(true);
   const [comparisonStrainId, setComparisonStrainId] = useState("");
   const [comparison, setComparison] = useState<StrainGrowComparison[]>([]);
+  const [feedingStrain, setFeedingStrain] = useState<StrainResponse | null>(null);
+  const [feedingSuggestions, setFeedingSuggestions] = useState<FeedingSuggestion[]>([]);
+  const [feedingLoading, setFeedingLoading] = useState(false);
 
   const refresh = useCallback(async () => {
     const token = getAccessToken();
@@ -70,6 +79,8 @@ export default function StrainsPage() {
       const [s, lb] = await Promise.all([listStrains(token), getStrainLeaderboard(token)]);
       setStrains(s);
       setLeaderboard(lb);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load strains");
     } finally { setLoading(false); }
   }, []);
 
@@ -80,22 +91,56 @@ export default function StrainsPage() {
   const handleCreate = async () => {
     const token = getAccessToken();
     if (!token || !form.name) return;
-    await createStrain(token, {
-      name: form.name,
-      breeder: form.breeder || undefined,
-      genetics: form.genetics || undefined,
-    });
-    setShowCreate(false);
-    setForm({ name: "", breeder: "", genetics: "" });
-    refresh();
+    try {
+      await createStrain(token, {
+        name: form.name,
+        breeder: form.breeder || undefined,
+        genetics: form.genetics || undefined,
+      });
+      toast.success("Strain created");
+      setShowCreate(false);
+      setForm({ name: "", breeder: "", genetics: "" });
+      refresh();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to create strain"); }
+  };
+
+  const handleEdit = async () => {
+    if (!editStrain) return;
+    const token = getAccessToken();
+    if (!token) return;
+    try {
+      await updateStrain(token, editStrain.id, {
+        name: editForm.name || undefined,
+        breeder: editForm.breeder || undefined,
+        genetics: editForm.genetics || undefined,
+      });
+      toast.success("Strain updated");
+      setEditStrain(null);
+      refresh();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to update strain"); }
+  };
+
+  const handleFeedingGuide = async (strain: StrainResponse) => {
+    setFeedingStrain(strain);
+    setFeedingLoading(true);
+    const token = getAccessToken();
+    if (!token) return;
+    try {
+      const data = await getStrainFeedingSuggestions(token, strain.id);
+      setFeedingSuggestions(data);
+    } catch { setFeedingSuggestions([]); }
+    finally { setFeedingLoading(false); }
   };
 
   const handleDelete = async (id: string) => {
     if (!await confirm({ title: "Delete Strain", description: "Delete this strain?", confirmLabel: "Delete", variant: "destructive" })) return;
     const token = getAccessToken();
     if (!token) return;
-    await deleteStrain(token, id);
-    refresh();
+    try {
+      await deleteStrain(token, id);
+      toast.success("Strain deleted");
+      refresh();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to delete strain"); }
   };
 
   if (loading) return <PageSkeleton rows={4} cards />;
@@ -166,6 +211,16 @@ export default function StrainsPage() {
                           <MoreHorizontal className="h-4 w-4" />
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={() => { setEditStrain(s); setEditForm({ name: s.name, breeder: s.breeder || "", genetics: s.genetics || "" }); }}
+                          >
+                            <Pencil className="mr-2 h-4 w-4" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleFeedingGuide(s)}>
+                            <FlaskConical className="mr-2 h-4 w-4" />
+                            Feeding Guide
+                          </DropdownMenuItem>
                           <DropdownMenuItem
                             className="text-destructive focus:text-destructive"
                             onClick={() => handleDelete(s.id)}
@@ -253,8 +308,12 @@ export default function StrainsPage() {
                   if (!id) { setComparison([]); return; }
                   const token = getAccessToken();
                   if (!token) return;
-                  const data = await getStrainComparison(token, id);
-                  setComparison(data);
+                  try {
+                    const data = await getStrainComparison(token, id);
+                    setComparison(data);
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : "Failed to load comparison");
+                  }
                 }}
               >
                 <SelectTrigger>
@@ -352,6 +411,74 @@ export default function StrainsPage() {
                 Cancel
               </Button>
               <Button onClick={handleCreate}>Save</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Feeding Suggestions Dialog */}
+        <Dialog open={!!feedingStrain} onOpenChange={(open) => { if (!open) setFeedingStrain(null); }}>
+          <DialogContent className="sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <FlaskConical className="size-5" /> Feeding Guide — {feedingStrain?.name}
+              </DialogTitle>
+            </DialogHeader>
+            {feedingLoading ? (
+              <div className="flex justify-center py-8"><Loader2 className="size-6 animate-spin text-muted-foreground" /></div>
+            ) : feedingSuggestions.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4">No feeding suggestions available for this strain.</p>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">Strain-specific EC/PPM targets based on genetics{feedingStrain?.genetics ? ` (${feedingStrain.genetics})` : ""}</p>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Stage</TableHead>
+                      <TableHead className="text-right">EC</TableHead>
+                      <TableHead className="text-right">PPM</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {feedingSuggestions.map((s) => (
+                      <TableRow key={s.stage}>
+                        <TableCell>
+                          <span className="font-medium capitalize">{s.stage.replace("_", " ")}</span>
+                          <p className="text-[11px] text-muted-foreground mt-0.5 max-w-xs">{s.notes}</p>
+                        </TableCell>
+                        <TableCell className="text-right font-mono">{s.target_ec.toFixed(2)}</TableCell>
+                        <TableCell className="text-right font-mono">{Math.round(s.target_ppm)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Strain Dialog */}
+        <Dialog open={!!editStrain} onOpenChange={(open) => { if (!open) setEditStrain(null); }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Strain</DialogTitle>
+            </DialogHeader>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label>Name</Label>
+                <Input value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} />
+              </div>
+              <div className="grid gap-2">
+                <Label>Breeder</Label>
+                <Input value={editForm.breeder} onChange={(e) => setEditForm((f) => ({ ...f, breeder: e.target.value }))} />
+              </div>
+              <div className="grid gap-2">
+                <Label>Genetics</Label>
+                <Input value={editForm.genetics} onChange={(e) => setEditForm((f) => ({ ...f, genetics: e.target.value }))} />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditStrain(null)}>Cancel</Button>
+              <Button onClick={handleEdit}>Save</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

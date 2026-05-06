@@ -29,6 +29,7 @@ import { getAccessToken } from "@/lib/auth";
 import {
   listDevices,
   registerDevice,
+  pairDevice,
   revokeDevice,
   deleteDevice,
   updateDevice,
@@ -51,6 +52,7 @@ import {
   Loader2,
   MapPin,
 } from "lucide-react";
+import { toast } from "sonner";
 import {
   Select,
   SelectContent,
@@ -63,6 +65,7 @@ type ModalState =
   | { type: "none" }
   | { type: "register" }
   | { type: "registered"; data: DeviceRegisterResponse }
+  | { type: "pair" }
   | { type: "qr"; deviceId: string }
   | { type: "rename"; device: DeviceResponse };
 
@@ -86,8 +89,8 @@ export default function DevicesPage() {
       ]);
       setDevices(devData);
       setTents(tentData);
-    } catch {
-      /* ignore */
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load devices");
     } finally {
       setLoading(false);
     }
@@ -102,23 +105,33 @@ export default function DevicesPage() {
     setSubmitting(true);
     try {
       const result = await registerDevice(token, registerLabel || undefined);
+      toast.success("Device registered");
       setModal({ type: "registered", data: result });
       setRegisterLabel("");
       refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to register device");
     } finally {
       setSubmitting(false);
     }
   }
 
   async function handleRevoke(deviceId: string) {
-    await revokeDevice(token, deviceId);
-    refresh();
+    if (!await confirm({ title: "Revoke Device", description: "Revoke this device's credentials? It will need to be re-paired.", confirmLabel: "Revoke", variant: "destructive" })) return;
+    try {
+      await revokeDevice(token, deviceId);
+      toast.success("Device credentials revoked");
+      refresh();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to revoke device"); }
   }
 
   async function handleDelete(deviceId: string) {
     if (!await confirm({ title: "Delete Device", description: "Permanently delete this device?", confirmLabel: "Delete", variant: "destructive" })) return;
-    await deleteDevice(token, deviceId);
-    refresh();
+    try {
+      await deleteDevice(token, deviceId);
+      toast.success("Device deleted");
+      refresh();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to delete device"); }
   }
 
   async function handleRename(e: React.FormEvent) {
@@ -127,20 +140,26 @@ export default function DevicesPage() {
     setSubmitting(true);
     try {
       await updateDevice(token, modal.device.device_id, { label: renameLabel });
+      toast.success("Device renamed");
       setModal({ type: "none" });
       refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to rename device");
     } finally {
       setSubmitting(false);
     }
   }
 
   async function handleTentAssign(deviceId: string, tentId: string) {
-    if (tentId === "" || tentId === "none") {
-      await updateDevice(token, deviceId, { unassign_tent: true });
-    } else {
-      await updateDevice(token, deviceId, { tent_id: tentId });
-    }
-    refresh();
+    try {
+      if (tentId === "" || tentId === "none") {
+        await updateDevice(token, deviceId, { unassign_tent: true });
+      } else {
+        await updateDevice(token, deviceId, { tent_id: tentId });
+      }
+      toast.success("Device assignment updated");
+      refresh();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to assign device"); }
   }
 
   const statusVariant = (status: string) => {
@@ -156,10 +175,16 @@ export default function DevicesPage() {
         title="Devices"
         breadcrumbs={[{ label: "Dashboard", href: "/dashboard" }, { label: "Devices" }]}
         actions={
-          <Button size="sm" onClick={() => setModal({ type: "register" })}>
-            <Plus className="mr-1 size-4" />
-            Register Device
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setModal({ type: "pair" })}>
+              <Cpu className="mr-1 size-4" />
+              Pair Device
+            </Button>
+            <Button size="sm" onClick={() => setModal({ type: "register" })}>
+              <Plus className="mr-1 size-4" />
+              Register Device
+            </Button>
+          </div>
         }
       />
       <div className="flex flex-1 flex-col gap-4 p-4 lg:p-6">
@@ -324,6 +349,14 @@ export default function DevicesPage() {
 
       {/* QR Code Dialog */}
       <Dialog open={modal.type === "qr"} onOpenChange={(open) => !open && setModal({ type: "none" })}>
+
+      {/* Pair Device Dialog */}
+      <PairDeviceDialog
+        open={modal.type === "pair"}
+        onOpenChange={(open) => { if (!open) setModal({ type: "none" }); }}
+        tents={tents}
+        onPaired={refresh}
+      />
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Device QR Code</DialogTitle>
@@ -395,5 +428,74 @@ function CopyField({ label, value }: { label: string; value: string }) {
         </Button>
       </div>
     </div>
+  );
+}
+
+function PairDeviceDialog({ open, onOpenChange, tents, onPaired }: { open: boolean; onOpenChange: (o: boolean) => void; tents: TentResponse[]; onPaired: () => void }) {
+  const [deviceId, setDeviceId] = useState("");
+  const [psk, setPsk] = useState("");
+  const [tentId, setTentId] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    const token = getAccessToken();
+    if (!token || !deviceId || !psk) return;
+    setSubmitting(true);
+    try {
+      await pairDevice(token, { device_id: deviceId, psk, tent_id: tentId || undefined });
+      onOpenChange(false);
+      setDeviceId("");
+      setPsk("");
+      setTentId("");
+      onPaired();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Invalid device ID or PSK");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Pair Device</DialogTitle>
+          <DialogDescription>
+            Enter the device ID and pre-shared key (PSK) from your ESP32 to pair it with your account.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid gap-2">
+            <Label>Device ID</Label>
+            <Input value={deviceId} onChange={(e) => setDeviceId(e.target.value)} placeholder="e.g. tendril-abc123" required />
+          </div>
+          <div className="grid gap-2">
+            <Label>Pre-Shared Key (PSK)</Label>
+            <Input type="password" value={psk} onChange={(e) => setPsk(e.target.value)} placeholder="Enter PSK" required />
+          </div>
+          <div className="grid gap-2">
+            <Label>Assign to Tent (optional)</Label>
+            <Select value={tentId} onValueChange={(v) => setTentId(v ?? "")}>
+              <SelectTrigger><SelectValue placeholder="No tent" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">None</SelectItem>
+                {tents.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <DialogFooter>
+            <Button type="submit" className="w-full" disabled={submitting || !deviceId || !psk}>
+              {submitting ? <><Loader2 className="mr-2 size-4 animate-spin" /> Pairing…</> : "Pair Device"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

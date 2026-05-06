@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
 import { listAuditLogs } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
@@ -31,6 +31,7 @@ import {
 import { cn, formatDateTime } from "@/lib/utils";
 import { ChevronLeft, ChevronRight, Eye, EyeOff } from "lucide-react";
 import { PageSkeleton } from "@/components/page-skeleton";
+import { toast } from "sonner";
 
 interface AuditEntry {
   id: string;
@@ -71,8 +72,8 @@ export default function AuditPage() {
       });
       setEntries(data.items);
       setTotal(data.total);
-    } catch {
-      /* tier restricted */
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load audit logs");
     } finally { setLoading(false); }
   }, [page, actionFilter, resourceFilter]);
 
@@ -107,7 +108,7 @@ export default function AuditPage() {
               setPage(1);
             }}
           >
-            <SelectTrigger className="w-[160px]">
+            <SelectTrigger className="w-full sm:w-[160px]">
               <SelectValue placeholder="All Actions" />
             </SelectTrigger>
             <SelectContent>
@@ -124,7 +125,7 @@ export default function AuditPage() {
               setPage(1);
             }}
             placeholder="Filter by resource type..."
-            className="w-[220px]"
+            className="w-full sm:w-[220px]"
           />
         </div>
 
@@ -151,8 +152,8 @@ export default function AuditPage() {
                 </TableHeader>
                 <TableBody>
                   {entries.map((e) => (
-                    <>
-                      <TableRow key={e.id}>
+                    <React.Fragment key={e.id}>
+                      <TableRow>
                         <TableCell className="text-xs text-muted-foreground">
                           {formatDateTime(e.created_at)}
                         </TableCell>
@@ -188,7 +189,7 @@ export default function AuditPage() {
                         </TableCell>
                       </TableRow>
                       {expanded === e.id && (
-                        <TableRow key={`${e.id}-detail`}>
+                        <TableRow>
                           <TableCell colSpan={6} className="p-0">
                             <div className="grid grid-cols-2 gap-4 rounded bg-muted p-3 text-xs">
                               <div>
@@ -215,7 +216,7 @@ export default function AuditPage() {
                           </TableCell>
                         </TableRow>
                       )}
-                    </>
+                    </React.Fragment>
                   ))}
                 </TableBody>
               </Table>

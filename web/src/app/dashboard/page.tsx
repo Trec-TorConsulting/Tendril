@@ -2,331 +2,681 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { getAccessToken } from "@/lib/auth";
-import { listGrows, listDevices, listTents, getHarvestCountdown, getTent, listSensorReadings, listTentReadings, type GrowResponse, type DeviceResponse, type HarvestCountdownItem, type TentResponse, type SensorReadingResponse, type TentReadingResponse } from "@/lib/api";
+import { toast } from "sonner";
+import { useGrow } from "@/hooks/use-grow";
+import { useLayoutMode } from "@/hooks/use-layout-mode";
+import {
+  listDevices,
+  listTasks,
+  listBuckets,
+  completeTask,
+  getHarvestCountdown,
+  listSensorReadings,
+  getLatestReading,
+  listTentReadings,
+  type DeviceResponse,
+  type HarvestCountdownItem,
+  type BucketResponse,
+  type SensorReadingResponse,
+  type TentReadingResponse,
+  type TaskItem,
+} from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { OnboardingChecklist } from "@/components/onboarding-checklist";
-import { SensorSparkline } from "@/components/sparkline";
+import { usePreferences } from "@/hooks/use-preferences";
+import { formatTemp, tempUnitLabel } from "@/lib/units";
+import { CameraGrid } from "@/components/camera-grid";
+import { Sparkline, SensorSparkline } from "@/components/sparkline";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatCalendarDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Sprout, Cpu, Activity, Plus, ArrowRight, Timer, Camera, ChevronRight, Settings2, Thermometer, Droplets } from "lucide-react";
+import { Sprout, Droplets, Thermometer, Wind, CheckCircle2, TrendingUp, Clock, Zap, Bot, CalendarIcon, FlaskConical } from "lucide-react";
+import { cn, formatCalendarDate } from "@/lib/utils";
 import { PullToRefresh } from "@/components/pull-to-refresh";
-import { useWidgetLayout, type WidgetId } from "@/hooks/use-widget-layout";
-import { CustomizeWidgetsDialog } from "@/components/customize-widgets-dialog";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  ResponsiveContainer,
+  Legend,
+  Tooltip as RechartsTooltip,
+} from "recharts";
+
+// ─── Helpers ────────────────────────────────────────────────────────────────────
+
+function timeAgo(isoString: string): string {
+  const seconds = Math.floor((Date.now() - new Date(isoString).getTime()) / 1000);
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+// ─── Types ──────────────────────────────────────────────────────────────────────
+
+interface PlantCardData {
+  id: string;
+  name: string;
+  stage: string;
+  dayInStage: number;
+  stageDuration: number;
+  moistureHistory: number[];
+  growType: string;
+  growId: string;
+  lastReadingAt: string | null;
+}
+
+interface ClimateDataPoint {
+  time: string;
+  temperature: number | null;
+  humidity: number | null;
+}
+
+// Stage durations (days) used for progress calculation
+const STAGE_DURATIONS: Record<string, number> = {
+  germination: 7,
+  seedling: 14,
+  vegetative: 30,
+  flowering: 56,
+  drying: 10,
+  curing: 21,
+};
+
+// ─── Animations ─────────────────────────────────────────────────────────────────
+
+const fadeUp = {
+  initial: { opacity: 0, y: 12 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -8 },
+};
+
+const stagger = {
+  animate: { transition: { staggerChildren: 0.06 } },
+};
+
+// ─── Main Page ──────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
-  const [grows, setGrows] = useState<GrowResponse[]>([]);
+  const { selectedGrow, grows, loading: growLoading } = useGrow();
+  const { prefs } = usePreferences();
+  const { mode, config } = useLayoutMode();
   const [devices, setDevices] = useState<DeviceResponse[]>([]);
   const [countdown, setCountdown] = useState<HarvestCountdownItem[]>([]);
-  const [heroTent, setHeroTent] = useState<TentResponse | null>(null);
-  const [tents, setTents] = useState<TentResponse[]>([]);
+  const [buckets, setBuckets] = useState<BucketResponse[]>([]);
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [sensorTrends, setSensorTrends] = useState<{
+    ph: number[];
+    ec: number[];
+    temp: number[];
+    humidity: number[];
+  }>({ ph: [], ec: [], temp: [], humidity: [] });
+  const [lastReadingAt, setLastReadingAt] = useState<string | null>(null);
+  const [bucketLastReading, setBucketLastReading] = useState<Map<string, string>>(new Map());
+  const [climateData, setClimateData] = useState<ClimateDataPoint[]>([]);
   const [loading, setLoading] = useState(true);
-  const [customizeOpen, setCustomizeOpen] = useState(false);
-  const [sensorTrends, setSensorTrends] = useState<{ ph: number[]; ec: number[]; temp: number[]; humidity: number[] }>({ ph: [], ec: [], temp: [], humidity: [] });
-  const { widgets, toggle, moveUp, moveDown, reset, isVisible } = useWidgetLayout();
 
   const refresh = useCallback(async () => {
     const token = getAccessToken();
-    if (!token) return;
+    if (!token || !selectedGrow) { setLoading(false); return; }
     try {
-      const [g, d, hc] = await Promise.all([
-        listGrows(token),
-        listDevices(token),
+      const tentId = selectedGrow.tent_id;
+      const growId = selectedGrow.id;
+
+      const [d, hc, b, tk, sensorReadings, tentReadings] = await Promise.all([
+        listDevices(token).catch(() => [] as DeviceResponse[]),
         getHarvestCountdown(token).catch(() => [] as HarvestCountdownItem[]),
+        listBuckets(token, growId).catch(() => [] as BucketResponse[]),
+        listTasks(token, { status: "pending", grow_cycle_id: growId }).catch(() => [] as TaskItem[]),
+        // Sensor readings will be filtered client-side by bucket IDs
+        listSensorReadings(token, undefined, 50).catch(() => [] as SensorReadingResponse[]),
+        listTentReadings(token, tentId, 50).catch(() => [] as TentReadingResponse[]),
       ]);
-      const t = await listTents(token).catch(() => [] as TentResponse[]);
-      setGrows(g);
       setDevices(d);
-      setCountdown(hc);
-      setTents(t);
-      // Fetch tent for the primary active grow (hero card camera)
-      const primaryGrow = g.find((gr) => gr.status === "active");
-      if (primaryGrow) {
-        try { setHeroTent(await getTent(token, primaryGrow.tent_id)); } catch { setHeroTent(null); }
+      setCountdown(hc.filter((h) => h.grow_id === growId));
+      setBuckets(b);
+      setTasks(
+        [...tk].sort((a, b) => {
+          if (!a.due_date && !b.due_date) return 0;
+          if (!a.due_date) return 1;
+          if (!b.due_date) return -1;
+          return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+        }).slice(0, 6)
+      );
+
+      // Filter sensor readings to only this grow's buckets
+      const bucketIds = new Set(b.map((bk) => bk.id));
+      const growSensorReadings = sensorReadings.filter((r) => bucketIds.has(r.bucket_id));
+
+      const phVals = growSensorReadings.map((r) => r.ph).filter((v): v is number => v != null).reverse();
+      const ecVals = growSensorReadings.map((r) => r.ec).filter((v): v is number => v != null).reverse();
+      const tempVals = tentReadings.map((r) => r.ambient_temp_f).filter((v): v is number => v != null).reverse();
+      const humVals = tentReadings.map((r) => r.ambient_humidity).filter((v): v is number => v != null).reverse();
+      setSensorTrends({ ph: phVals, ec: ecVals, temp: tempVals, humidity: humVals });
+      // Track when the latest ambient reading was recorded
+      const latestTentReading = tentReadings[0];
+      setLastReadingAt(latestTentReading?.recorded_at ?? null);
+
+      // Build per-bucket latest reading timestamp map
+      const bucketLatest = new Map<string, string>();
+      for (const r of growSensorReadings) {
+        if (!bucketLatest.has(r.bucket_id) || r.recorded_at > bucketLatest.get(r.bucket_id)!) {
+          bucketLatest.set(r.bucket_id, r.recorded_at);
+        }
       }
-      // Fetch sensor trends for sparklines (last 50 readings)
-      try {
-        const [sensorReadings, tentReadings] = await Promise.all([
-          listSensorReadings(token, undefined, 50).catch(() => [] as SensorReadingResponse[]),
-          listTentReadings(token, undefined, 50).catch(() => [] as TentReadingResponse[]),
-        ]);
-        const phVals = sensorReadings.map((r) => r.ph).filter((v): v is number => v != null).reverse();
-        const ecVals = sensorReadings.map((r) => r.ec).filter((v): v is number => v != null).reverse();
-        const tempVals = tentReadings.map((r) => r.ambient_temp_f).filter((v): v is number => v != null).reverse();
-        const humVals = tentReadings.map((r) => r.ambient_humidity).filter((v): v is number => v != null).reverse();
-        setSensorTrends({ ph: phVals, ec: ecVals, temp: tempVals, humidity: humVals });
-      } catch { /* non-critical */ }
+      // Also fetch latest reading per bucket directly for any that were missed
+      const missingBuckets = b.filter((bk) => !bucketLatest.has(bk.id));
+      if (missingBuckets.length > 0) {
+        const latestReadings = await Promise.all(
+          missingBuckets.map((bk) => getLatestReading(token, bk.id).catch(() => null))
+        );
+        latestReadings.forEach((r, i) => {
+          if (r?.recorded_at) bucketLatest.set(missingBuckets[i].id, r.recorded_at);
+        });
+      }
+      setBucketLastReading(bucketLatest);
+
+      // Build 24h climate chart from tent readings
+      const climate: ClimateDataPoint[] = tentReadings
+        .slice(0, 24)
+        .reverse()
+        .map((r) => ({
+          time: new Date(r.recorded_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          temperature: r.ambient_temp_f,
+          humidity: r.ambient_humidity,
+        }));
+      setClimateData(climate);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedGrow]);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
 
-  const activeGrows = grows.filter((g) => g.status === "active").length;
-  const devicesOnline = devices.filter((d) => d.status === "online").length;
+  const handleCompleteTask = async (taskId: string) => {
+    const token = getAccessToken();
+    if (!token) return;
+    try {
+      await completeTask(taskId, token);
+      setTasks((prev) => prev.filter((t) => t.id !== taskId));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to complete task");
+    }
+  };
+
+  // Derive environment stats from latest readings
+  const latestTemp = sensorTrends.temp[sensorTrends.temp.length - 1];
+  const latestHumidity = sensorTrends.humidity[sensorTrends.humidity.length - 1];
+  const latestCO2 = null; // Placeholder — CO2 sensor not yet in data model
+  const updatedAgo = lastReadingAt ? timeAgo(lastReadingAt) : null;
+
+  // Build plant cards from selected grow's buckets
+  const maxCards = mode === "pro" || mode === "commercial" ? 16 : mode === "beginner" ? 4 : 8;
+  const plantCards: PlantCardData[] = selectedGrow
+    ? buckets
+        .filter((b) => b.status === "active")
+        .slice(0, maxCards)
+        .map((b) => {
+          const daysSinceStart = Math.floor(
+            (Date.now() - new Date(selectedGrow.started_at).getTime()) / 86400000
+          );
+          const stageDuration = STAGE_DURATIONS[b.growth_stage || selectedGrow.stage] || 30;
+          const stageStart = selectedGrow.milestones?.[selectedGrow.stage]
+            ? Math.floor((Date.now() - new Date(selectedGrow.milestones[selectedGrow.stage]).getTime()) / 86400000)
+            : Math.min(daysSinceStart, stageDuration);
+          return {
+            id: b.id,
+            name: b.label || b.strain_name || `Bucket ${b.position}`,
+            stage: b.growth_stage || selectedGrow.stage,
+            dayInStage: stageStart,
+            stageDuration,
+            moistureHistory: sensorTrends.humidity.slice(-10),
+            growType: selectedGrow.grow_type,
+            growId: selectedGrow.id,
+            lastReadingAt: bucketLastReading.get(b.id) ?? null,
+          };
+        })
+    : [];
+
+  if (loading || growLoading) {
+    return (
+      <>
+        <PageHeader title="Dashboard" />
+        <div className="flex flex-1 flex-col gap-6 p-4 lg:p-6">
+          <div className="grid gap-4 sm:grid-cols-3">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-24 rounded-xl" />
+            ))}
+          </div>
+          <Skeleton className="h-64 rounded-xl" />
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {[1, 2, 3, 4].map((i) => (
+              <Skeleton key={i} className="h-56 rounded-xl" />
+            ))}
+          </div>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
-      <PageHeader
-        title="Dashboard"
-        actions={
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => setCustomizeOpen(true)}>
-              <Settings2 className="mr-1 size-4" />
-              Customize
-            </Button>
-            <Button render={<Link href="/dashboard/grows" />} size="sm">
-              <Plus className="mr-1 size-4" />
-              New Grow
-            </Button>
-          </div>
-        }
-      />
+      <PageHeader title={selectedGrow ? `Dashboard — ${selectedGrow.name}` : "Dashboard"} />
       <PullToRefresh onRefresh={refresh}>
-      <div className="flex flex-1 flex-col gap-4 p-4 lg:gap-6 lg:p-6">
-        {widgets.map((w) => {
-          if (!w.visible) return null;
-          switch (w.id) {
-            case "stats":
-              return (
-                <div key="stats" className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  <StatsCard
-                    title="Active Grows"
-                    value={loading ? undefined : activeGrows}
-                    icon={<Sprout className="size-4 text-primary" />}
-                    loading={loading}
-                  />
-                  <StatsCard
-                    title="Devices Online"
-                    value={loading ? undefined : `${devicesOnline} / ${devices.length}`}
-                    icon={<Cpu className="size-4 text-primary" />}
-                    loading={loading}
-                  />
-                  <StatsCard
-                    title="Total Grows"
-                    value={loading ? undefined : grows.length}
-                    icon={<Activity className="size-4 text-primary" />}
-                    loading={loading}
-                  />
-                  {sensorTrends.ph.length >= 2 && (
-                    <StatsCard
-                      title="pH Trend"
-                      value={sensorTrends.ph[sensorTrends.ph.length - 1]?.toFixed(1)}
-                      icon={<Droplets className="size-4 text-primary" />}
-                      sparklineData={sensorTrends.ph}
-                      sparklineRanges={{ min: 5.5, max: 6.5 }}
-                    />
-                  )}
-                  {sensorTrends.ec.length >= 2 && (
-                    <StatsCard
-                      title="EC Trend"
-                      value={sensorTrends.ec[sensorTrends.ec.length - 1]?.toFixed(2)}
-                      icon={<Activity className="size-4 text-primary" />}
-                      sparklineData={sensorTrends.ec}
-                      sparklineRanges={{ min: 1.0, max: 2.5 }}
-                    />
-                  )}
-                  {sensorTrends.temp.length >= 2 && (
-                    <StatsCard
-                      title="Temp Trend"
-                      value={`${sensorTrends.temp[sensorTrends.temp.length - 1]?.toFixed(0)}°F`}
-                      icon={<Thermometer className="size-4 text-primary" />}
-                      sparklineData={sensorTrends.temp}
-                      sparklineRanges={{ min: 68, max: 82 }}
-                    />
-                  )}
-                </div>
-              );
+        <div className="flex flex-1 flex-col gap-6 p-4 lg:p-6">
+          {/* ─── Camera Feeds ──────────────────────────────────── */}
+          {selectedGrow && (
+            <motion.section {...fadeUp} transition={{ duration: 0.4 }}>
+              <CameraGrid tentId={selectedGrow.tent_id} hideEmpty />
+            </motion.section>
+          )}
 
-            case "hero":
-              if (loading) return null;
-              const primaryGrow = grows.find((g) => g.status === "active");
-              if (!primaryGrow) return null;
-              const hasCamera = heroTent?.camera_url;
-              const daysSinceStart = Math.floor((Date.now() - new Date(primaryGrow.started_at).getTime()) / 86400000);
-              const heroCountdown = countdown.find((c) => c.grow_id === primaryGrow.id);
-              return (
-                <Link key="hero" href={`/dashboard/grows/${primaryGrow.id}`}>
-                  <motion.div whileTap={{ scale: 0.99 }} transition={{ type: "spring", stiffness: 400, damping: 25 }}>
-                    <Card className="overflow-hidden border-primary/20 hover:border-primary/40 transition-colors cursor-pointer">
-                      <div className={hasCamera ? "grid md:grid-cols-[1fr_auto]" : ""}>
-                        <CardContent className="p-5">
-                          <div className="flex items-center gap-2 mb-3">
-                            <Badge variant="default" className="text-xs capitalize">{primaryGrow.stage}</Badge>
-                            <span className="text-xs text-muted-foreground">Day {daysSinceStart}</span>
-                            {heroCountdown && heroCountdown.days_remaining > 0 && (
-                              <Badge variant="outline" className="text-xs ml-auto">
-                                <Timer className="mr-1 size-3" /> {heroCountdown.days_remaining}d to harvest
-                              </Badge>
-                            )}
-                            {heroCountdown && heroCountdown.days_remaining <= 0 && (
-                              <Badge variant="destructive" className="text-xs ml-auto">Ready to harvest!</Badge>
-                            )}
-                          </div>
-                          <h2 className="text-xl font-bold">{primaryGrow.name}</h2>
-                          <p className="mt-1 text-sm text-muted-foreground">
-                            {heroTent?.name || "—"} · {primaryGrow.grow_type}
-                          </p>
-                          <div className="mt-4 flex items-center gap-1 text-sm text-primary font-medium">
-                            View grow <ChevronRight className="size-4" />
-                          </div>
-                        </CardContent>
-                        {hasCamera && (
-                          <div className="relative h-48 md:h-auto md:w-64 bg-black overflow-hidden">
-                            <img
-                              src={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/v1"}/tents/${primaryGrow.tent_id}/camera-snapshot?token=${encodeURIComponent(getAccessToken() || "")}&t=${Date.now()}`}
-                              alt="Live camera"
-                              className="size-full object-cover opacity-90"
-                            />
-                            <div className="absolute top-2 left-2 flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-white">
-                              <Camera className="size-3" /> Live
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </Card>
-                  </motion.div>
-                </Link>
-              );
+          {/* ─── Environment Health Header ─────────────────────────── */}
+          <motion.section {...fadeUp} transition={{ duration: 0.4 }}>
+            <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
+              <EnvironmentBadgeCard
+                label="Temperature"
+                value={latestTemp != null ? formatTemp(latestTemp, "f", prefs.temp_unit, 0) : "—"}
+                status={latestTemp != null ? (latestTemp >= 68 && latestTemp <= 82 ? "optimal" : "warning") : "unknown"}
+                icon={<Thermometer className="size-5" />}
+                updatedAgo={updatedAgo}
+              />
+              <EnvironmentBadgeCard
+                label="Humidity"
+                value={latestHumidity != null ? `${latestHumidity.toFixed(0)}%` : "—"}
+                status={latestHumidity != null ? (latestHumidity >= 40 && latestHumidity <= 70 ? "optimal" : "warning") : "unknown"}
+                icon={<Droplets className="size-5" />}
+                updatedAgo={updatedAgo}
+              />
+              <EnvironmentBadgeCard
+                label="CO₂"
+                value={latestCO2 != null ? `${latestCO2} ppm` : "—"}
+                status="unknown"
+                icon={<Wind className="size-5" />}
+                updatedAgo={updatedAgo}
+              />
+              <EnvironmentBadgeCard
+                label="pH"
+                value={sensorTrends.ph.length > 0 ? sensorTrends.ph[sensorTrends.ph.length - 1].toFixed(1) : "—"}
+                status={sensorTrends.ph.length > 0 ? (sensorTrends.ph[sensorTrends.ph.length - 1] >= 5.5 && sensorTrends.ph[sensorTrends.ph.length - 1] <= 6.5 ? "optimal" : "warning") : "unknown"}
+                icon={<FlaskConical className="size-5" />}
+                updatedAgo={updatedAgo}
+              />
+            </div>
+          </motion.section>
 
-            case "countdown":
-              if (loading || countdown.length === 0) return null;
-              return (
-                <div key="countdown">
-                  <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold">
-                    <Timer className="size-5" /> Harvest Countdown
-                  </h2>
-                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    {countdown.map((item) => (
-                      <motion.div key={item.bucket_id} whileTap={{ scale: 0.98 }} transition={{ type: "spring", stiffness: 400, damping: 25 }}>
-                      <Link href={`/dashboard/grows/${item.grow_id}`}>
-                      <Card className={`transition-colors hover:border-primary/50 cursor-pointer ${item.days_remaining <= 3 ? "border-orange-500/50" : item.days_remaining <= 0 ? "border-red-500/50" : ""}`}>
-                        <CardContent className="p-4">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="font-medium">{item.strain_name}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {item.grow_name} — {item.bucket_label || "Bucket"}
-                              </p>
-                            </div>
-                            <Badge variant={item.days_remaining <= 0 ? "destructive" : item.days_remaining <= 3 ? "secondary" : "outline"}>
-                              {item.days_remaining <= 0 ? "Ready!" : `${item.days_remaining}d`}
-                            </Badge>
-                          </div>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {item.flowering_days}d flower cycle — est. {formatCalendarDate(item.estimated_harvest)}
-                          </p>
-                        </CardContent>
-                      </Card>
-                      </Link>
-                      </motion.div>
-                    ))}
-                  </div>
-                </div>
-              );
-
-            case "active-grows":
-              if (loading || activeGrows === 0) return null;
-              return (
-                <div key="active-grows">
+          {/* ─── Main Content: Grid + Sidebar ─────────────────────── */}
+          <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+            {/* Left Column */}
+            <div className="flex flex-col gap-6">
+              {/* ─── Plant Grid ────────────────────────────────────── */}
+              {plantCards.length > 0 && (
+                <motion.section {...fadeUp} transition={{ duration: 0.4, delay: 0.1 }}>
                   <div className="mb-3 flex items-center justify-between">
-                    <h2 className="text-lg font-semibold">Active Grows</h2>
-                    <Button variant="ghost" size="sm" render={<Link href="/dashboard/grows" />}>
-                      View all <ArrowRight className="ml-1 size-4" />
+                    <h2 className="flex items-center gap-2 text-lg font-semibold">
+                      <Sprout className="size-5 text-primary" />
+                      Buckets
+                    </h2>
+                    <Button variant="ghost" size="sm" render={<Link href={`/dashboard/grows/${selectedGrow?.id}`} />}>
+                      View grow
                     </Button>
                   </div>
-                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {grows
-                      .filter((g) => g.status === "active")
-                      .slice(0, 6)
-                      .map((g) => (
-                        <motion.div key={g.id} whileTap={{ scale: 0.98 }} transition={{ type: "spring", stiffness: 400, damping: 25 }}>
-                        <Card className="transition-colors hover:border-primary/50">
-                          <Link href={`/dashboard/grows/${g.id}`} className="block p-4">
-                            <div className="flex items-start justify-between">
-                              <div>
-                                <h3 className="font-medium">{g.name}</h3>
-                                <p className="mt-1 text-sm text-muted-foreground">{g.grow_type}</p>
-                              </div>
-                              <Badge variant="secondary">{g.stage}</Badge>
+                  <motion.div
+                    className={cn(
+                      "grid gap-4",
+                      config.density === "compact"
+                        ? "grid-cols-2 sm:grid-cols-3 xl:grid-cols-5"
+                        : config.density === "relaxed"
+                          ? "sm:grid-cols-2"
+                          : "sm:grid-cols-2 xl:grid-cols-4"
+                    )}
+                    variants={stagger}
+                    initial="initial"
+                    animate="animate"
+                  >
+                    {plantCards.map((plant) => (
+                      <PlantCard key={plant.id} plant={plant} />
+                    ))}
+                  </motion.div>
+                </motion.section>
+              )}
+
+              {/* ─── Climate Analytics ─────────────────────────────── */}
+              {climateData.length >= 2 && (
+                <motion.section {...fadeUp} transition={{ duration: 0.4, delay: 0.2 }}>
+                  <Card className="border-border/50 backdrop-blur-sm">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <TrendingUp className="size-5 text-primary" />
+                        Climate Analytics — 24h
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={climateData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" opacity={0.5} />
+                            <XAxis
+                              dataKey="time"
+                              tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }}
+                              tickLine={false}
+                              axisLine={false}
+                            />
+                            <YAxis
+                              yAxisId="temp"
+                              tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }}
+                              tickLine={false}
+                              axisLine={false}
+                              domain={["dataMin - 5", "dataMax + 5"]}
+                            />
+                            <YAxis
+                              yAxisId="humidity"
+                              orientation="right"
+                              tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }}
+                              tickLine={false}
+                              axisLine={false}
+                              domain={[0, 100]}
+                            />
+                            <RechartsTooltip
+                              contentStyle={{
+                                backgroundColor: "var(--color-card)",
+                                border: "1px solid var(--color-border)",
+                                borderRadius: "8px",
+                                fontSize: 12,
+                              }}
+                            />
+                            <Legend
+                              wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
+                            />
+                            <Line
+                              yAxisId="temp"
+                              type="monotone"
+                              dataKey="temperature"
+                              stroke="oklch(0.65 0.15 30)"
+                              strokeWidth={2}
+                              dot={false}
+                              name={`Temp (${tempUnitLabel(prefs.temp_unit)})`}
+                            />
+                            <Line
+                              yAxisId="humidity"
+                              type="monotone"
+                              dataKey="humidity"
+                              stroke="oklch(0.65 0.14 200)"
+                              strokeWidth={2}
+                              dot={false}
+                              name="Humidity (%)"
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.section>
+              )}
+            </div>
+
+            {/* ─── Right Sidebar: Task Management ──────────────────── */}
+            <motion.aside {...fadeUp} transition={{ duration: 0.4, delay: 0.15 }} className="flex flex-col gap-4">
+              <Card className="border-border/50 backdrop-blur-sm">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Clock className="size-4 text-primary" />
+                    Pending Maintenance
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-2">
+                  {tasks.length === 0 && (
+                    <p className="text-sm text-muted-foreground py-4 text-center">
+                      All caught up! No pending tasks.
+                    </p>
+                  )}
+                  <AnimatePresence mode="popLayout">
+                    {tasks.map((task) => {
+                      const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== "completed";
+                      return (
+                        <motion.div
+                          key={task.id}
+                          layout
+                          {...fadeUp}
+                          transition={{ duration: 0.2 }}
+                          className={cn(
+                            "flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50",
+                            isOverdue ? "border-red-500/50" : "border-border/50",
+                          )}
+                        >
+                          <button
+                            onClick={() => handleCompleteTask(task.id)}
+                            className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border-2 border-muted-foreground/40 transition hover:border-green-500 hover:bg-green-500/10"
+                            aria-label={`Complete task: ${task.title}`}
+                          >
+                            <CheckCircle2 className="size-3 text-transparent" />
+                          </button>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <p className="text-sm font-medium leading-tight truncate">{task.title}</p>
+                              {task.source === "auto" && <Zap className="size-3 text-amber-500" title="Auto-generated" />}
+                              {task.source === "ai" && <Bot className="size-3 text-purple-500" title="AI-suggested" />}
                             </div>
-                          </Link>
-                        </Card>
+                            {task.description && (
+                              <p className="mt-0.5 text-xs text-muted-foreground line-clamp-1">{task.description}</p>
+                            )}
+                            <div className="mt-1 flex flex-wrap items-center gap-2">
+                              {task.category && (
+                                <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                                  {CATEGORY_LABELS[task.category] || task.category.replace(/_/g, " ")}
+                                </Badge>
+                              )}
+                              <Badge variant={PRIORITY_VARIANT[task.priority] || "outline"} className="text-[10px] px-1.5 py-0">
+                                {task.priority}
+                              </Badge>
+                              {task.due_date && (
+                                <span className={cn("flex items-center gap-0.5 text-[10px]", isOverdue ? "text-red-500 font-medium" : "text-muted-foreground")}>
+                                  <CalendarIcon className="size-2.5" />
+                                  {isOverdue ? "Overdue" : formatCalendarDate(task.due_date)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </motion.div>
-                      ))}
-                  </div>
-                </div>
-              );
+                      );
+                    })}
+                  </AnimatePresence>
+                  {tasks.length > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="mt-2 w-full text-muted-foreground"
+                      render={<Link href="/dashboard/tasks" />}
+                    >
+                      View all tasks
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
 
-            default:
-              return null;
-          }
-        })}
+              {/* Quick sensor stats sidebar cards */}
+              {sensorTrends.ec.length >= 2 && (
+                <Card className="border-border/50 backdrop-blur-sm">
+                  <CardContent className="pt-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-muted-foreground">EC Level</span>
+                      <span className="text-lg font-bold">
+                        {sensorTrends.ec[sensorTrends.ec.length - 1]?.toFixed(2)}
+                      </span>
+                    </div>
+                    <SensorSparkline
+                      data={sensorTrends.ec}
+                      ranges={{ min: 1.0, max: 2.5 }}
+                      height={36}
+                    />
+                  </CardContent>
+                </Card>
+              )}
+            </motion.aside>
+          </div>
 
-        {/* Onboarding / Empty State */}
-        {!loading && (grows.length === 0 || tents.length === 0 || devices.length === 0) && (
-          <OnboardingChecklist
-            hasTents={tents.length > 0}
-            hasGrows={grows.length > 0}
-            hasDevices={devices.length > 0}
-          />
-        )}
-      </div>
+          {/* ─── Onboarding / Empty State ──────────────────────────── */}
+          {grows.length === 0 || devices.length === 0 ? (
+            <OnboardingChecklist
+              hasTents={!!selectedGrow?.tent_id}
+              hasGrows={grows.length > 0}
+              hasDevices={devices.length > 0}
+            />
+          ) : null}
+        </div>
       </PullToRefresh>
-
-      <CustomizeWidgetsDialog
-        open={customizeOpen}
-        onOpenChange={setCustomizeOpen}
-        widgets={widgets}
-        toggle={toggle}
-        moveUp={moveUp}
-        moveDown={moveDown}
-        reset={reset}
-      />
     </>
   );
 }
 
-function StatsCard({
-  title,
+// ─── Sub-Components ───────────────────────────────────────────────────────────
+
+function EnvironmentBadgeCard({
+  label,
   value,
+  status,
   icon,
-  loading,
-  sparklineData,
-  sparklineRanges,
+  updatedAgo,
 }: {
-  title: string;
-  value?: string | number;
+  label: string;
+  value: string;
+  status: "optimal" | "warning" | "unknown";
   icon: React.ReactNode;
-  loading?: boolean;
-  sparklineData?: number[];
-  sparklineRanges?: { min: number; max: number };
+  updatedAgo?: string | null;
 }) {
+  const statusColor = {
+    optimal: "bg-primary/10 text-primary border-primary/20",
+    warning: "bg-orange-500/10 text-orange-500 border-orange-500/20",
+    unknown: "bg-muted text-muted-foreground border-border",
+  }[status];
+
+  const statusLabel = {
+    optimal: "Optimal",
+    warning: "Attention",
+    unknown: "No data",
+  }[status];
+
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-        {icon}
-      </CardHeader>
-      <CardContent>
-        {loading ? (
-          <Skeleton className="h-8 w-20" />
-        ) : (
-          <div className="flex items-end justify-between gap-3">
-            <div className="text-2xl font-bold">{value}</div>
-            {sparklineData && sparklineData.length >= 2 && (
-              <SensorSparkline data={sparklineData} ranges={sparklineRanges} height={28} className="w-24 shrink-0" />
-            )}
-          </div>
-        )}
+    <Card className={`border ${statusColor.split(" ").find((c) => c.startsWith("border-")) || "border-border"} backdrop-blur-sm`}>
+      <CardContent className="flex items-center gap-4 py-4">
+        <div className={`flex size-10 items-center justify-center rounded-lg ${statusColor.split(" ").slice(0, 2).join(" ")}`}>
+          {icon}
+        </div>
+        <div className="flex-1">
+          <p className="text-xs text-muted-foreground">{label}</p>
+          <p className="text-xl font-bold">{value}</p>
+          {updatedAgo && <p className="text-[10px] text-muted-foreground">{updatedAgo}</p>}
+        </div>
+        <Badge
+          variant="outline"
+          className={`text-[10px] ${status === "optimal" ? "border-primary/40 text-primary" : status === "warning" ? "border-orange-500/40 text-orange-500" : ""}`}
+        >
+          {statusLabel}
+        </Badge>
       </CardContent>
     </Card>
   );
 }
+
+function PlantCard({ plant }: { plant: PlantCardData }) {
+  const progress = Math.min(100, (plant.dayInStage / plant.stageDuration) * 100);
+
+  return (
+    <motion.div variants={fadeUp}>
+      <Link href={`/dashboard/grows/${plant.growId}`} className="block">
+        <Card className="group border-border/50 backdrop-blur-sm transition-all hover:border-primary/30 hover:shadow-lg hover:shadow-primary/5 cursor-pointer">
+          {/* Plant thumbnail placeholder */}
+          <div className="relative mx-4 mt-4 flex h-28 items-center justify-center rounded-lg bg-gradient-to-br from-primary/5 to-primary/15 overflow-hidden">
+            <Sprout className="size-10 text-primary/60" />
+            <div className="absolute top-2 right-2">
+              <Badge variant="secondary" className="text-[10px] capitalize">
+                {plant.stage}
+              </Badge>
+            </div>
+          </div>
+
+          <CardContent className="pt-3">
+            <h3 className="font-medium text-sm truncate">{plant.name}</h3>
+            <div className="flex items-center justify-between mt-0.5">
+              <p className="text-xs text-muted-foreground">{plant.growType}</p>
+              {plant.lastReadingAt && (
+                <p className="text-[10px] text-muted-foreground">{timeAgo(plant.lastReadingAt)}</p>
+              )}
+            </div>
+
+            {/* Growth progress */}
+            <div className="mt-3">
+              <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                <span className="capitalize">{plant.stage}</span>
+                <span>Day {plant.dayInStage}/{plant.stageDuration}</span>
+              </div>
+              <Progress value={progress} className="h-1.5" />
+            </div>
+
+            {/* Moisture sparkline */}
+            {plant.moistureHistory.length >= 2 && (
+              <div className="mt-3">
+                <p className="text-[10px] text-muted-foreground mb-1">Moisture</p>
+                <Sparkline
+                  data={plant.moistureHistory}
+                  color="oklch(0.65 0.14 200)"
+                  height={24}
+                />
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </Link>
+    </motion.div>
+  );
+}
+
+const PRIORITY_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+  low: "secondary",
+  medium: "outline",
+  high: "default",
+  urgent: "destructive",
+};
+
+const CATEGORY_LABELS: Record<string, string> = {
+  ph_check: "pH Check",
+  ec_check: "EC Check",
+  flush_and_fill: "Flush & Fill",
+  water_change: "Water Change",
+  water_temp: "Water Temp",
+  top_off: "Top Off",
+  watering: "Watering",
+  health_check: "Health Check",
+  pest_check: "Pest Check",
+  defoliation: "Defoliation",
+  trichome_check: "Trichomes",
+  flush: "Flush",
+  flush_start: "Start Flush",
+  harvest: "Harvest",
+  calmag: "CalMag",
+  top_dress: "Top Dress",
+  feeding: "Feeding",
+  health_response: "Health Action",
+  alert_response: "Alert Response",
+  stage_transition: "Stage Prep",
+  followup: "Follow-up",
+  water_level: "Water Level",
+  nozzle_check: "Nozzle Check",
+  circulation_check: "Circulation",
+  algae_check: "Algae Check",
+  root_check: "Root Check",
+  weather_check: "Weather Check",
+  soil_amendment: "Soil Amendment",
+  runoff_check: "Runoff Check",
+  dryback_check: "Dry-back",
+};

@@ -58,6 +58,8 @@ import {
   Bot,
   Zap,
 } from "lucide-react";
+import { toast } from "sonner";
+import { useConfirm } from "@/components/confirm-dialog";
 
 const PRIORITY_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
   low: "secondary",
@@ -97,10 +99,37 @@ const CATEGORY_LABELS: Record<string, string> = {
   soil_amendment: "Soil Amendment",
   runoff_check: "Runoff Check",
   dryback_check: "Dry-back",
+  ipm_spray: "IPM Spray",
+  equipment_check: "Equipment",
+  meter_calibration: "Calibration",
+  photo_documentation: "Photo Doc",
+  nutrient_prep: "Nutrient Prep",
+  deep_clean: "Deep Clean",
+  carbon_filter: "Carbon Filter",
+  air_stone: "Air Stone",
+  light_check: "Light Check",
+  harvest_check: "Harvest Check",
+  pest_scout: "Field Scout",
+  companion_check: "Companions",
+  rain_gauge: "Rain Gauge",
+  verify_automation: "Verify Auto",
+};
+
+const ROUTINE_LABELS: Record<string, string> = {
+  morning: "Morning",
+  evening: "Evening",
+  weekly: "Weekly",
+  biweekly: "Biweekly",
+  monthly: "Monthly",
+  on_demand: "Action",
 };
 
 function getCategoryLabel(cat: string | null) {
   return cat ? CATEGORY_LABELS[cat] || cat.replace(/_/g, " ") : null;
+}
+
+function getRoutineLabel(routine: string | null) {
+  return routine ? ROUTINE_LABELS[routine] || routine : null;
 }
 
 // Calendar helpers
@@ -117,10 +146,11 @@ function fmtMonthYear(year: number, month: number) {
 }
 
 export default function TasksPage() {
+  const confirm = useConfirm();
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [grows, setGrows] = useState<GrowResponse[]>([]);
   const [showCreate, setShowCreate] = useState(false);
-  const [filter, setFilter] = useState<string>("");
+  const [filter, setFilter] = useState<string>("pending");
   const [growFilter, setGrowFilter] = useState<string>("");
   const [view, setView] = useState<"list" | "calendar">("list");
   const [title, setTitle] = useState("");
@@ -149,8 +179,8 @@ export default function TasksPage() {
       const [t, g] = await Promise.all([listTasks(token, filters), listGrows(token)]);
       setTasks(t);
       setGrows(g);
-    } catch {
-      /* empty */
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load tasks");
     } finally { setLoading(false); }
   }, [filter, growFilter]);
 
@@ -162,7 +192,7 @@ export default function TasksPage() {
     try {
       setCalTasks(await getCalendarTasks(token, start, end));
     } catch {
-      /* empty */
+      toast.error("Failed to load calendar tasks");
     }
   }, [calYear, calMonth]);
 
@@ -192,6 +222,7 @@ export default function TasksPage() {
         },
         token,
       );
+      toast.success("Task created");
       setShowCreate(false);
       setTitle("");
       setDescription("");
@@ -212,26 +243,51 @@ export default function TasksPage() {
   const handleComplete = async (id: string) => {
     const token = getAccessToken();
     if (!token) return;
-    await completeTask(id, token);
-    completionStreak.current += 1;
-    if (completionStreak.current >= 3) {
-      fireRain();
-      completionStreak.current = 0;
+    try {
+      await completeTask(id, token);
+      completionStreak.current += 1;
+      if (completionStreak.current >= 3) {
+        fireRain();
+        completionStreak.current = 0;
+      }
+      refresh();
+      if (view === "calendar") refreshCalendar();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to complete task");
     }
-    refresh();
-    if (view === "calendar") refreshCalendar();
   };
 
   const handleDelete = async (id: string) => {
+    const ok = await confirm({ title: "Delete Task", description: "This task will be permanently deleted.", confirmText: "Delete", variant: "destructive" });
+    if (!ok) return;
     const token = getAccessToken();
     if (!token) return;
-    await deleteTask(id, token);
-    refresh();
-    if (view === "calendar") refreshCalendar();
+    try {
+      await deleteTask(id, token);
+      toast.success("Task deleted");
+      refresh();
+      if (view === "calendar") refreshCalendar();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to delete task");
+    }
   };
 
-  const activeTasks = tasks.filter((t) => t.status !== "completed" && t.status !== "cancelled");
-  const completedTasks = tasks.filter((t) => t.status === "completed");
+  const activeTasks = tasks
+    .filter((t) => t.status !== "completed" && t.status !== "cancelled")
+    .sort((a, b) => {
+      if (!a.due_date && !b.due_date) return 0;
+      if (!a.due_date) return 1;
+      if (!b.due_date) return -1;
+      return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+    });
+  const completedTasks = tasks
+    .filter((t) => t.status === "completed")
+    .sort((a, b) => {
+      if (!a.completed_at && !b.completed_at) return 0;
+      if (!a.completed_at) return 1;
+      if (!b.completed_at) return -1;
+      return new Date(b.completed_at).getTime() - new Date(a.completed_at).getTime();
+    });
 
   // Build calendar grid
   const { startDay, totalDays } = getMonthDays(calYear, calMonth);
@@ -290,7 +346,7 @@ export default function TasksPage() {
           {/* Grow filter */}
           {grows.length > 0 && (
             <Select value={growFilter || "all"} onValueChange={(v) => setGrowFilter(!v || v === "all" ? "" : v)}>
-              <SelectTrigger className="h-8 w-[180px]">
+              <SelectTrigger className="h-8 w-full sm:w-[180px]">
                 <SelectValue>{growFilter ? grows.find((g) => g.id === growFilter)?.name ?? "Grow" : "All Grows"}</SelectValue>
               </SelectTrigger>
               <SelectContent>
@@ -304,7 +360,6 @@ export default function TasksPage() {
 
           {view === "list" &&
             [
-              { value: "", label: "All" },
               { value: "pending", label: "Pending" },
               { value: "in_progress", label: "In Progress" },
               { value: "completed", label: "Completed" },
@@ -318,6 +373,16 @@ export default function TasksPage() {
                 {s.label}
               </Button>
             ))}
+          {view === "list" && (
+            <Button
+              variant={filter === "" ? "default" : "outline"}
+              size="sm"
+              className="ml-auto"
+              onClick={() => setFilter("")}
+            >
+              All
+            </Button>
+          )}
         </div>
 
         {/* ─── List View ──────────────────────────────── */}
@@ -624,6 +689,12 @@ function TaskCard({
             )}
             {task.source === "ai" && (
               <span title="AI-suggested"><Bot className="size-3 text-purple-500" /></span>
+            )}
+            {task.routine && (
+              <Badge variant="outline" className="text-xs border-blue-500/30 text-blue-600 dark:text-blue-400">{getRoutineLabel(task.routine)}</Badge>
+            )}
+            {task.estimated_minutes && (
+              <span className="text-xs text-muted-foreground">~{task.estimated_minutes} min</span>
             )}
           </div>
           {task.description && (

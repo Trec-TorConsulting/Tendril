@@ -20,6 +20,8 @@ DAILY_REPORT_INTERVAL = 24 * 3600  # Daily
 HARVEST_CHECK_INTERVAL = 4 * 3600  # 4 hours
 TASK_GENERATION_INTERVAL = 6 * 3600  # 6 hours
 INTEGRATION_POLL_INTERVAL = 60  # 1 minute (checks due integrations)
+DUNNING_CHECK_INTERVAL = 3600  # Hourly
+ACCOUNT_PURGE_INTERVAL = 24 * 3600  # Daily
 
 
 class TaskRunner:
@@ -43,6 +45,12 @@ class TaskRunner:
             ),
             asyncio.create_task(
                 self._loop(shutdown_event, "integration_poll", INTEGRATION_POLL_INTERVAL, self._integration_poll)
+            ),
+            asyncio.create_task(
+                self._loop(shutdown_event, "dunning_check", DUNNING_CHECK_INTERVAL, self._dunning_check)
+            ),
+            asyncio.create_task(
+                self._loop(shutdown_event, "account_purge", ACCOUNT_PURGE_INTERVAL, self._account_purge)
             ),
         ]
         await shutdown_event.wait()
@@ -200,7 +208,7 @@ class TaskRunner:
                                     )
                                 )
                             except Exception:
-                                logger.warning("Failed to save scheduled snapshot to S3 for grow %s", grow.id)
+                                logger.exception("Failed to save scheduled snapshot to S3 for grow %s", grow.id)
 
                         await session.commit()
 
@@ -616,10 +624,8 @@ class TaskRunner:
                     # Set RLS context for this tenant
                     from sqlalchemy import text
 
-                    await session.execute(
-                        text("SET app.current_tenant = :tid"),
-                        {"tid": str(cfg.tenant_id)},
-                    )
+                    tid_str = str(cfg.tenant_id)
+                    await session.execute(text(f"SET app.current_tenant = '{tid_str}'"))
 
                     dm_result = await session.execute(
                         select(IntegrationDeviceMap).where(
@@ -644,11 +650,15 @@ class TaskRunner:
                                 written = await connector.persist_readings(session, poll_result)
                                 logger.info(
                                     "Persisted %d readings for integration %s (%s)",
-                                    written, cfg.id, cfg.type,
+                                    written,
+                                    cfg.id,
+                                    cfg.type,
                                 )
                             except Exception:
                                 logger.exception(
-                                    "Failed to persist readings for %s (%s)", cfg.id, cfg.type,
+                                    "Failed to persist readings for %s (%s)",
+                                    cfg.id,
+                                    cfg.type,
                                 )
                                 poll_result.errors.append("Reading persistence failed")
 
@@ -670,3 +680,27 @@ class TaskRunner:
                     logger.debug("Integration poll: none due")
         except Exception:
             logger.exception("Integration poll sweep failed")
+
+    async def _dunning_check(self) -> None:
+        """Check for expired grace periods and downgrade accounts to free."""
+        from app.billing.dunning import check_expired_grace_periods
+        from app.database import async_session_factory
+
+        try:
+            async with async_session_factory() as session:
+                await check_expired_grace_periods(session)
+                logger.debug("Dunning check complete")
+        except Exception:
+            logger.exception("Dunning check failed")
+
+    async def _account_purge(self) -> None:
+        """Purge accounts whose deletion retention period has expired."""
+        from app.billing.account_deletion import purge_expired_accounts
+        from app.database import async_session_factory
+
+        try:
+            async with async_session_factory() as session:
+                await purge_expired_accounts(session)
+                logger.debug("Account purge check complete")
+        except Exception:
+            logger.exception("Account purge check failed")

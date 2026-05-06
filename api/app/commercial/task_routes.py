@@ -1,7 +1,8 @@
 """Task management API — create, assign, complete, recurring, calendar."""
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -19,6 +20,7 @@ router = APIRouter()
 
 
 # ---------- Schemas ----------
+
 
 class TaskCreate(BaseModel):
     title: str
@@ -59,6 +61,8 @@ class TaskResponse(BaseModel):
     due_date: str | None
     completed_at: str | None
     recurring: str | None
+    routine: str | None
+    estimated_minutes: int | None
     created_at: str
 
 
@@ -79,11 +83,14 @@ def _to_response(t: Task) -> TaskResponse:
         due_date=t.due_date.isoformat() if t.due_date else None,
         completed_at=t.completed_at.isoformat() if t.completed_at else None,
         recurring=t.recurring,
+        routine=t.routine,
+        estimated_minutes=t.estimated_minutes,
         created_at=t.created_at.isoformat(),
     )
 
 
 # ---------- CRUD ----------
+
 
 @router.post("", status_code=201)
 async def create_task(
@@ -146,7 +153,9 @@ async def list_tasks(
     items, total = await paginate(session, query, pagination)
     return PaginatedResponse(
         items=[_to_response(t) for t in items],
-        total=total, page=pagination.page, page_size=pagination.page_size,
+        total=total,
+        page=pagination.page,
+        page_size=pagination.page_size,
     )
 
 
@@ -161,9 +170,9 @@ async def calendar_tasks(
     start_dt = datetime.fromisoformat(start)
     end_dt = datetime.fromisoformat(end)
     if start_dt.tzinfo is None:
-        start_dt = start_dt.replace(tzinfo=timezone.utc)
+        start_dt = start_dt.replace(tzinfo=UTC)
     if end_dt.tzinfo is None:
-        end_dt = end_dt.replace(tzinfo=timezone.utc)
+        end_dt = end_dt.replace(tzinfo=UTC)
 
     result = await session.execute(
         select(Task)
@@ -213,7 +222,7 @@ async def update_task(
     if body.status is not None:
         task.status = body.status
         if body.status == "completed":
-            task.completed_at = datetime.now(timezone.utc)
+            task.completed_at = datetime.now(UTC)
 
     await session.commit()
     await session.refresh(task)
@@ -246,11 +255,12 @@ async def complete_task(
         raise HTTPException(status_code=404, detail="Task not found")
 
     task.status = "completed"
-    task.completed_at = datetime.now(timezone.utc)
+    task.completed_at = datetime.now(UTC)
 
     # Create next recurring task
     if task.recurring and task.due_date:
         from datetime import timedelta
+
         delta_map = {
             "daily": timedelta(days=1),
             "weekly": timedelta(weeks=1),

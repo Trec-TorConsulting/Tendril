@@ -1,7 +1,6 @@
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
-import { motion, useMotionValue, useTransform, type PanInfo } from "framer-motion";
+import { useCallback, useRef, useState, type ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 
 const PULL_THRESHOLD = 80;
@@ -14,57 +13,84 @@ interface PullToRefreshProps {
 
 /**
  * Wrap scrollable content to enable pull-to-refresh on touch devices.
- * Shows a spinner indicator when pulled down past the threshold.
+ * Uses native touch events so iOS scroll is never blocked.
  */
 export function PullToRefresh({ onRefresh, children, className }: PullToRefreshProps) {
-  const y = useMotionValue(0);
   const [refreshing, setRefreshing] = useState(false);
+  const [pullDistance, setPullDistance] = useState(0);
+  const startYRef = useRef(0);
+  const pullingRef = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const spinOpacity = useTransform(y, [0, PULL_THRESHOLD], [0, 1]);
-  const spinRotate = useTransform(y, [0, PULL_THRESHOLD], [0, 180]);
 
-  const handleDragEnd = async (_: unknown, info: PanInfo) => {
-    if (info.offset.y > PULL_THRESHOLD && !refreshing) {
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (refreshing) return;
+    // Only activate pull when scrolled to top
+    const scrollTop = containerRef.current?.scrollTop ?? window.scrollY ?? document.documentElement.scrollTop;
+    if (scrollTop <= 0) {
+      startYRef.current = e.touches[0].clientY;
+      pullingRef.current = true;
+    }
+  }, [refreshing]);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!pullingRef.current || refreshing) return;
+    const currentY = e.touches[0].clientY;
+    const diff = currentY - startYRef.current;
+    if (diff > 0) {
+      // Apply resistance
+      setPullDistance(Math.min(diff * 0.4, 120));
+    } else {
+      // User scrolling up — cancel pull tracking
+      pullingRef.current = false;
+      setPullDistance(0);
+    }
+  }, [refreshing]);
+
+  const handleTouchEnd = useCallback(async () => {
+    if (!pullingRef.current) return;
+    pullingRef.current = false;
+    if (pullDistance >= PULL_THRESHOLD && !refreshing) {
       setRefreshing(true);
+      setPullDistance(0);
       try {
         await onRefresh();
       } finally {
         setRefreshing(false);
       }
+    } else {
+      setPullDistance(0);
     }
-  };
-
-  // Only allow pull when scroll is at the top
-  const handleDragStart = () => {
-    const el = containerRef.current;
-    if (el && el.scrollTop > 0) {
-      // Reset motion value to prevent drag when not at top
-      y.set(0);
-    }
-  };
+  }, [pullDistance, refreshing, onRefresh]);
 
   return (
-    <div ref={containerRef} className={className}>
+    <div
+      ref={containerRef}
+      className={className}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+    >
       {/* Refresh indicator */}
-      <motion.div
-        className="flex items-center justify-center py-2"
-        style={{ opacity: refreshing ? 1 : spinOpacity, height: refreshing ? 40 : 0 }}
+      <div
+        className="flex items-center justify-center overflow-hidden transition-[height,opacity] duration-200"
+        style={{
+          height: refreshing ? 40 : pullDistance > 10 ? pullDistance * 0.5 : 0,
+          opacity: refreshing ? 1 : Math.min(pullDistance / PULL_THRESHOLD, 1),
+        }}
       >
-        <motion.div style={{ rotate: refreshing ? undefined : spinRotate }}>
-          <Loader2 className={`size-5 text-muted-foreground ${refreshing ? "animate-spin" : ""}`} />
-        </motion.div>
-      </motion.div>
-      <motion.div
-        style={{ y: refreshing ? 0 : y }}
-        drag={refreshing ? false : "y"}
-        dragConstraints={{ top: 0, bottom: 120 }}
-        dragElastic={0.4}
-        dragSnapToOrigin
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
+        <Loader2
+          className={`size-5 text-muted-foreground ${refreshing ? "animate-spin" : ""}`}
+          style={{ transform: refreshing ? undefined : `rotate(${(pullDistance / PULL_THRESHOLD) * 180}deg)` }}
+        />
+      </div>
+      <div
+        style={{
+          transform: refreshing ? undefined : pullDistance > 0 ? `translateY(${pullDistance * 0.3}px)` : undefined,
+          transition: pullingRef.current ? "none" : "transform 0.2s ease-out",
+        }}
       >
         {children}
-      </motion.div>
+      </div>
     </div>
   );
 }

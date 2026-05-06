@@ -1,18 +1,23 @@
 """Journal entries API — bucket event logging."""
+
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select, desc
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
+from app.billing.tier_gate import require_usage_limit
 from app.grows.models import JournalEntry
 from app.pagination import PaginatedResponse, PaginationParams, paginate
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -39,7 +44,12 @@ class JournalResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-@router.post("", response_model=JournalResponse, status_code=201)
+@router.post(
+    "",
+    response_model=JournalResponse,
+    status_code=201,
+    dependencies=[Depends(require_usage_limit("journal_entries"))],
+)
 async def create_entry(
     body: JournalCreate,
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
@@ -55,9 +65,11 @@ async def create_entry(
     if body.event_type in ("feeding", "water_change", "training", "topping", "defoliation", "transplant"):
         try:
             from app.grows.models import Bucket
+
             bucket = await session.get(Bucket, body.bucket_id)
             grow_cycle_id = bucket.grow_cycle_id if bucket else None
             from app.scheduler.task_generator import create_journal_followup_tasks
+
             await create_journal_followup_tasks(
                 session,
                 tenant_id=user.tenant_id,
@@ -68,7 +80,7 @@ async def create_entry(
                 payload=body.payload,
             )
         except Exception:
-            pass  # Don't fail the journal creation
+            logger.debug("journal followup task failed", exc_info=True)
 
     return entry
 

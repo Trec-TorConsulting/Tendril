@@ -8,9 +8,10 @@ const TIERS = [
     price: "Free",
     description: "Get started with basic grow tracking.",
     features: [
-      "1 tent, 4 buckets",
-      "Manual sensor logging",
-      "AI chat (5/day)",
+      "1 grow, 2 devices",
+      "50 journal entries/mo",
+      "10 AI analyses/mo",
+      "1 GB storage",
       "Community support",
     ],
     cta: "Get Started",
@@ -18,54 +19,91 @@ const TIERS = [
     highlighted: false,
   },
   {
-    name: "Grower",
-    price: "$14.99",
+    name: "Hobby",
+    price: "$9.99",
     period: "/mo",
-    description: "Everything you need for a serious home grow.",
+    description: "For hobbyist growers with IoT and automation.",
     features: [
-      "5 tents, 20 buckets",
-      "IoT sensor integration",
-      "Unlimited AI chat",
-      "Automation rules",
-      "Push & Discord notifications",
-      "CSV data export",
+      "5 grows, 10 devices",
+      "Unlimited journal entries",
+      "50 AI analyses/mo",
+      "10 GB storage",
+      "5 automations",
+      "3 integrations",
+      "Email support",
     ],
     cta: "Start Free Trial",
-    href: "/register?plan=grower",
-    highlighted: true,
+    href: "/register?plan=hobby",
+    highlighted: false,
   },
   {
     name: "Pro",
     price: "$29.99",
     period: "/mo",
-    description: "Advanced analytics and AI for serious cultivators.",
+    description: "Advanced AI and analytics for serious cultivators.",
     features: [
-      "Unlimited tents & buckets",
-      "AI health checks & insights",
-      "PDF grow reports",
-      "Weather automation",
-      "All notification channels",
+      "25 grows, 50 devices",
+      "500 AI analyses/mo",
+      "100 GB storage",
+      "Unlimited automations",
+      "10 integrations",
       "Priority support",
+      "Weather automation",
     ],
     cta: "Start Free Trial",
     href: "/register?plan=pro",
-    highlighted: false,
+    highlighted: true,
   },
   {
     name: "Commercial",
     price: "$79.99",
     period: "/mo",
-    description: "Multi-user teams, audit trails, and API access.",
+    description: "Teams, audit trails, API access, and compliance.",
     features: [
-      "Everything in Pro",
+      "100 grows, 200 devices",
+      "5 team members",
+      "Unlimited AI & storage",
+      "API key access",
+      "Audit trail logging",
       "Custom grow types",
       "Task management",
-      "Audit trail logging",
-      "API key access",
-      "Team management",
     ],
-    cta: "Contact Us",
+    cta: "Start Free Trial",
     href: "/register?plan=commercial",
+    highlighted: false,
+  },
+  {
+    name: "Enterprise",
+    price: "$249.99",
+    period: "/mo",
+    description: "Large operations with white-label and SLA.",
+    features: [
+      "Unlimited everything",
+      "25 team members",
+      "White-label branding",
+      "SSO/SAML",
+      "Custom domain",
+      "Dedicated support",
+      "SLA guarantee",
+    ],
+    cta: "Contact Sales",
+    href: "/register?plan=enterprise",
+    highlighted: false,
+  },
+  {
+    name: "Dedicated",
+    price: "Custom",
+    description: "Your own servers, your own domain, unlimited.",
+    features: [
+      "Dedicated infrastructure",
+      "Custom domain & branding",
+      "Unlimited everything",
+      "Priority SLA",
+      "Custom integrations",
+      "On-premise option",
+    ],
+    cta: "Contact Sales",
+    href: "mailto:info@trector.com",
     highlighted: false,
   },
 ];
@@ -171,7 +209,7 @@ export default function LandingPage() {
         <div className="mx-auto max-w-6xl px-4">
           <h2 className="mb-4 text-center text-3xl font-bold">Simple, Transparent Pricing</h2>
           <p className="mb-12 text-center text-neutral-400">Start free, upgrade when you need more.</p>
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {TIERS.map((tier) => (
               <div
                 key={tier.name}
@@ -219,7 +257,15 @@ export default function LandingPage() {
       {/* Footer */}
       <footer className="border-t border-neutral-800 py-8">
         <div className="mx-auto max-w-6xl px-4 text-center text-sm text-neutral-500">
-          <p>© {new Date().getFullYear()} Tendril — Built for growers, by growers.</p>
+          <p className="mb-2">© {new Date().getFullYear()} Tendril — Built for growers, by growers.</p>
+          <p className="flex items-center justify-center gap-4">
+            <Link href="/terms" className="hover:text-neutral-300">Terms of Service</Link>
+            <span>·</span>
+            <Link href="/privacy" className="hover:text-neutral-300">Privacy Policy</Link>
+            <span>·</span>
+            <a href="mailto:info@trector.com" className="hover:text-neutral-300">Contact</a>
+          </p>
+          <p className="mt-2 text-neutral-600">Geek Info LLC · Managed by Trec-Tor Consulting · New Jersey, USA</p>
         </div>
       </footer>
     </div>

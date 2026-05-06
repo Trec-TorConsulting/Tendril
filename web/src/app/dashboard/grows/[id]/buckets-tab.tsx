@@ -33,6 +33,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Plus, Trash2, Droplets, Pencil, Loader2, Dna } from "lucide-react";
+import { toast } from "sonner";
+import { ReferenceStrainSearch } from "@/components/reference-search";
+import { usePreferences } from "@/hooks/use-preferences";
+import { formatTemp } from "@/lib/units";
 
 interface BucketsTabProps {
   growId: string;
@@ -43,6 +47,7 @@ interface BucketsTabProps {
 }
 
 export function BucketsTab({ growId, buckets, latestReadings, onRefresh, onOpenSensorDialog }: BucketsTabProps) {
+  const { prefs } = usePreferences();
   const [addLabel, setAddLabel] = useState("");
   const [addStrainId, setAddStrainId] = useState("");
   const [addVolume, setAddVolume] = useState("");
@@ -85,8 +90,10 @@ export function BucketsTab({ growId, buckets, latestReadings, onRefresh, onOpenS
     if (!await confirm({ title: "Delete Bucket", description: "Delete this bucket/plant?", confirmLabel: "Delete", variant: "destructive" })) return;
     const token = getAccessToken();
     if (!token) return;
-    await deleteBucket(token, bucketId);
-    onRefresh();
+    try {
+      await deleteBucket(token, bucketId);
+      onRefresh();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to delete bucket"); }
   };
 
   const handleEditSubmit = async () => {
@@ -101,7 +108,7 @@ export function BucketsTab({ growId, buckets, latestReadings, onRefresh, onOpenS
       });
       setEditDialog(false);
       onRefresh();
-    } catch { /* empty */ } finally { setEditSaving(false); }
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to update bucket"); } finally { setEditSaving(false); }
   };
 
   return (
@@ -146,7 +153,7 @@ export function BucketsTab({ growId, buckets, latestReadings, onRefresh, onOpenS
                     {reading.ph != null && <div><span className="text-muted-foreground">pH</span><p className="font-medium">{reading.ph.toFixed(1)}</p></div>}
                     {reading.ec != null && <div><span className="text-muted-foreground">EC</span><p className="font-medium">{reading.ec.toFixed(2)}</p></div>}
                     {reading.ppm != null && <div><span className="text-muted-foreground">PPM</span><p className="font-medium">{Math.round(reading.ppm)}</p></div>}
-                    {reading.water_temp_f != null && <div><span className="text-muted-foreground">Water °F</span><p className="font-medium">{reading.water_temp_f.toFixed(1)}</p></div>}
+                    {reading.water_temp_f != null && <div><span className="text-muted-foreground">Water {prefs.temp_unit === "celsius" ? "°C" : "°F"}</span><p className="font-medium">{formatTemp(reading.water_temp_f, "f", prefs.temp_unit)}</p></div>}
                   </div>
                 )}
                 {!reading && <p className="mt-2 text-xs text-muted-foreground">No readings yet</p>}
@@ -198,6 +205,11 @@ export function BucketsTab({ growId, buckets, latestReadings, onRefresh, onOpenS
                   ))}
                 </SelectContent>
               </Select>
+              <ReferenceStrainSearch
+                placeholder="Or search global strain database..."
+                onSelect={(s) => setAddStrainId(s.id)}
+                className="mt-1"
+              />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Bucket Size (gallons)</Label>

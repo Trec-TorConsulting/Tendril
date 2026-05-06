@@ -73,6 +73,7 @@ class UserResponse(BaseModel):
     tenant_role: str | None = None
     account_id: UUID | None = None
     layout_mode: str = "standard"
+    preferences: dict = {}
 
 
 class VerifyEmailRequest(BaseModel):
@@ -83,6 +84,7 @@ class UpdateProfileRequest(BaseModel):
     display_name: str | None = None
     email: EmailStr | None = None
     layout_mode: str | None = None
+    preferences: dict | None = None
 
 
 class ChangePasswordRequest(BaseModel):
@@ -181,7 +183,7 @@ def _set_auth_cookies(response: Response, access_token: str, refresh_token: str)
         httponly=False,
         secure=secure,
         samesite=same_site,
-        max_age=15 * 60,
+        max_age=7 * 24 * 60 * 60,  # 7 days (matches refresh token lifetime)
         path="/",
         domain=cookie_domain,
     )
@@ -251,11 +253,11 @@ async def register(body: RegisterRequest, response: Response, db: Annotated[Asyn
     await db.commit()
     await db.refresh(user)
 
-    # Generate email verification token
+    # Send email verification
     verify_token = create_email_verification_token(user.id)
-    import logging
+    from app.auth.email import send_verification_email
 
-    logging.getLogger("tendril.auth").info("Email verification token for %s: %s", user.email, verify_token)
+    await send_verification_email(user.email, verify_token)
 
     access = create_access_token(
         user.id,
@@ -435,6 +437,7 @@ async def me(
         tenant_role=user.tenant_role.value if user.tenant_role else None,
         account_id=user.account_id,
         layout_mode=db_user.layout_mode,
+        preferences=db_user.preferences or {},
     )
 
 
@@ -467,6 +470,31 @@ async def update_profile(
             raise HTTPException(status_code=422, detail=f"Invalid layout_mode. Must be one of: {valid_modes}")
         db_user.layout_mode = body.layout_mode
 
+    if body.preferences is not None:
+        # Allowlist of valid preference keys
+        valid_pref_keys = {
+            "temp_unit",
+            "date_format",
+            "time_format",
+            "timezone",
+            "default_grow_id",
+            "theme",
+            "widget_layout",
+            "measurement_system",
+            "wind_unit",
+            "pressure_unit",
+            "week_start",
+            "compact_numbers",
+            "show_onboarding",
+        }
+        invalid = set(body.preferences.keys()) - valid_pref_keys
+        if invalid:
+            raise HTTPException(status_code=422, detail=f"Invalid preference keys: {invalid}")
+        # Shallow merge — only update supplied keys
+        merged = {**(db_user.preferences or {}), **body.preferences}
+        # Remove keys set to None (user wants to reset to default)
+        db_user.preferences = {k: v for k, v in merged.items() if v is not None}
+
     await db.commit()
     await db.refresh(db_user)
     return UserResponse(
@@ -482,6 +510,7 @@ async def update_profile(
         tenant_role=user.tenant_role.value if user.tenant_role else None,
         account_id=user.account_id,
         layout_mode=db_user.layout_mode,
+        preferences=db_user.preferences or {},
     )
 
 
@@ -552,10 +581,9 @@ async def resend_verification(
         return {"message": "Email already verified"}
 
     verify_token = create_email_verification_token(db_user.id)
-    # TODO: Send verification email
-    import logging
+    from app.auth.email import send_verification_email
 
-    logging.getLogger("tendril.auth").info("Resend verification token for %s: %s", db_user.email, verify_token)
+    await send_verification_email(db_user.email, verify_token)
     return {"message": "Verification email sent"}
 
 
@@ -567,10 +595,9 @@ async def forgot_password(body: ForgotPasswordRequest, db: Annotated[AsyncSessio
 
     if user and user.auth_provider == "local":
         reset_token = create_password_reset_token(user.id)
-        # TODO: Send password reset email
-        import logging
+        from app.auth.email import send_password_reset_email
 
-        logging.getLogger("tendril.auth").info("Password reset token for %s: %s", user.email, reset_token)
+        await send_password_reset_email(user.email, reset_token)
 
     # Always return success to prevent email enumeration
     return {"message": "If an account exists with that email, a reset link has been sent"}

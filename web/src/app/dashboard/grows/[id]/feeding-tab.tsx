@@ -5,13 +5,25 @@ import { getAccessToken } from "@/lib/auth";
 import {
   getFeedingAdvice,
   updateGrow,
+  listFeedingSchedules,
+  createFeedingSchedule,
+  updateFeedingSchedule,
+  deleteFeedingSchedule,
+  listDoseProfiles,
+  createDoseProfile,
+  updateDoseProfile,
+  deleteDoseProfile,
   type BucketResponse,
   type FeedingAdviceResponse,
+  type DoseProfileResponse,
 } from "@/lib/api";
 import { NUTRIENT_BRANDS, STANDALONE_ADDITIVES, type NutrientBrand, type FeedChartPhase, type StandaloneAdditive } from "@/lib/nutrient-brands";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -20,6 +32,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useConfirm } from "@/components/confirm-dialog";
 import {
   FlaskConical,
   Sparkles,
@@ -35,7 +55,12 @@ import {
   Plus,
   Droplets,
   X,
+  Pencil,
+  Trash2,
+  ClipboardList,
 } from "lucide-react";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 const STAGES = ["seedling", "vegetative", "flowering", "ripening", "drying", "curing"];
 const STAGE_ORDER: Record<string, number> = Object.fromEntries(STAGES.map((s, i) => [s, i]));
@@ -112,6 +137,21 @@ export function FeedingTab({ growId, growStage, growStartedAt, milestones, setti
   const [adviceLoading, setAdviceLoading] = useState(false);
   const [adviceError, setAdviceError] = useState(false);
 
+  // Custom feeding schedules
+  const confirm = useConfirm();
+  const [schedules, setSchedules] = useState<{ id: string; name: string; stage: string; nutrients: object[]; target_ppm?: number | null; target_ec?: number | null; notes?: string | null }[]>([]);
+  const [scheduleDialog, setScheduleDialog] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState<typeof schedules[0] | null>(null);
+  const [scheduleForm, setScheduleForm] = useState({ name: "", stage: "vegetative", target_ppm: "", target_ec: "", notes: "" });
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+
+  // Dose profiles
+  const [doseProfiles, setDoseProfiles] = useState<DoseProfileResponse[]>([]);
+  const [doseDialog, setDoseDialog] = useState(false);
+  const [editingDose, setEditingDose] = useState<DoseProfileResponse | null>(null);
+  const [doseForm, setDoseForm] = useState({ name: "", dose_type: "nutrient", dose_ml: "" });
+  const [doseSaving, setDoseSaving] = useState(false);
+
   // Resolve brand data
   const brand = useMemo(() => NUTRIENT_BRANDS.find((b) => b.id === brandId) || null, [brandId]);
 
@@ -172,9 +212,140 @@ export function FeedingTab({ growId, growStage, growStartedAt, milestones, setti
     }
   }, [growId]);
 
+  const loadSchedules = useCallback(async () => {
+    const token = getAccessToken();
+    if (!token) return;
+    try {
+      setSchedules(await listFeedingSchedules(token, growId));
+    } catch { setSchedules([]); }
+  }, [growId]);
+
+  const loadDoseProfiles = useCallback(async () => {
+    const token = getAccessToken();
+    if (!token) return;
+    try {
+      setDoseProfiles(await listDoseProfiles(token, growId));
+    } catch { setDoseProfiles([]); }
+  }, [growId]);
+
   useEffect(() => {
     if (brand) loadAdvice();
-  }, [brand, loadAdvice]);
+    loadSchedules();
+    loadDoseProfiles();
+  }, [brand, loadAdvice, loadSchedules, loadDoseProfiles]);
+
+  // --- Custom schedule handlers ---
+  const openScheduleCreate = () => {
+    setEditingSchedule(null);
+    setScheduleForm({ name: "", stage: growStage || "vegetative", target_ppm: "", target_ec: "", notes: "" });
+    setScheduleDialog(true);
+  };
+
+  const openScheduleEdit = (s: typeof schedules[0]) => {
+    setEditingSchedule(s);
+    setScheduleForm({
+      name: s.name,
+      stage: s.stage,
+      target_ppm: s.target_ppm != null ? String(s.target_ppm) : "",
+      target_ec: s.target_ec != null ? String(s.target_ec) : "",
+      notes: s.notes || "",
+    });
+    setScheduleDialog(true);
+  };
+
+  const handleScheduleSave = async () => {
+    const token = getAccessToken();
+    if (!token || !scheduleForm.name.trim()) return;
+    setScheduleSaving(true);
+    try {
+      if (editingSchedule) {
+        await updateFeedingSchedule(token, editingSchedule.id, {
+          name: scheduleForm.name.trim(),
+          stage: scheduleForm.stage,
+          target_ppm: scheduleForm.target_ppm ? parseFloat(scheduleForm.target_ppm) : null,
+          target_ec: scheduleForm.target_ec ? parseFloat(scheduleForm.target_ec) : null,
+          notes: scheduleForm.notes.trim() || undefined,
+        });
+      } else {
+        await createFeedingSchedule(token, {
+          grow_cycle_id: growId,
+          name: scheduleForm.name.trim(),
+          stage: scheduleForm.stage,
+          nutrients: [],
+          target_ppm: scheduleForm.target_ppm ? parseFloat(scheduleForm.target_ppm) : undefined,
+          target_ec: scheduleForm.target_ec ? parseFloat(scheduleForm.target_ec) : undefined,
+          notes: scheduleForm.notes.trim() || undefined,
+        });
+      }
+      setScheduleDialog(false);
+      loadSchedules();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to save schedule"); } finally { setScheduleSaving(false); }
+  };
+
+  const handleScheduleDelete = async (id: string) => {
+    if (!await confirm({ title: "Delete Schedule", description: "Remove this feeding schedule?", confirmLabel: "Delete", variant: "destructive" })) return;
+    const token = getAccessToken();
+    if (!token) return;
+    try {
+      await deleteFeedingSchedule(token, id);
+      loadSchedules();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to delete schedule"); }
+  };
+
+  // --- Dose profile handlers ---
+  const openDoseCreate = () => {
+    setEditingDose(null);
+    setDoseForm({ name: "", dose_type: "nutrient", dose_ml: "" });
+    setDoseDialog(true);
+  };
+
+  const openDoseEdit = (d: DoseProfileResponse) => {
+    setEditingDose(d);
+    setDoseForm({ name: d.name, dose_type: d.dose_type, dose_ml: String(d.dose_ml) });
+    setDoseDialog(true);
+  };
+
+  const handleDoseSave = async () => {
+    const token = getAccessToken();
+    if (!token || !doseForm.name.trim() || !doseForm.dose_ml) return;
+    setDoseSaving(true);
+    try {
+      if (editingDose) {
+        await updateDoseProfile(token, editingDose.id, {
+          name: doseForm.name.trim(),
+          dose_ml: parseFloat(doseForm.dose_ml),
+        });
+      } else {
+        await createDoseProfile(token, {
+          grow_cycle_id: growId,
+          name: doseForm.name.trim(),
+          dose_type: doseForm.dose_type,
+          dose_ml: parseFloat(doseForm.dose_ml),
+        });
+      }
+      setDoseDialog(false);
+      loadDoseProfiles();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to save dose profile"); } finally { setDoseSaving(false); }
+  };
+
+  const handleDoseDelete = async (id: string) => {
+    if (!await confirm({ title: "Delete Dose", description: "Remove this dose profile?", confirmLabel: "Delete", variant: "destructive" })) return;
+    const token = getAccessToken();
+    if (!token) return;
+    try {
+      await deleteDoseProfile(token, id);
+      loadDoseProfiles();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to delete dose"); }
+  };
+
+  const handleDoseToggle = async (d: DoseProfileResponse) => {
+    const token = getAccessToken();
+    if (!token) return;
+    try {
+      await updateDoseProfile(token, d.id, { enabled: !d.enabled });
+      loadDoseProfiles();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to toggle dose"); }
+  };
 
   // --- Brand selection handlers ---
   const openBrandSelector = () => {
@@ -689,8 +860,190 @@ export function FeedingTab({ growId, growStage, growStartedAt, milestones, setti
         })}
       </div>
 
+      {/* Custom Feeding Schedules */}
+      <div className="mt-6 mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <ClipboardList className="size-4 text-muted-foreground" />
+          <h3 className="text-sm font-medium">Custom Schedules</h3>
+          <span className="text-xs text-muted-foreground">({schedules.length})</span>
+        </div>
+        <Button variant="outline" size="sm" onClick={openScheduleCreate}>
+          <Plus className="mr-1 size-3" /> Add Schedule
+        </Button>
+      </div>
+
+      {schedules.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-8">
+            <ClipboardList className="size-8 text-muted-foreground/40" />
+            <p className="mt-2 text-sm text-muted-foreground">No custom schedules yet</p>
+            <p className="text-xs text-muted-foreground">Create custom feeding schedules to track stage-specific nutrient targets</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-2">
+          {schedules.map((s) => (
+            <Card key={s.id}>
+              <CardContent className="flex items-center justify-between p-4">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-sm">{s.name}</span>
+                    <Badge variant="secondary" className="text-xs capitalize">{s.stage}</Badge>
+                  </div>
+                  <div className="flex gap-4 mt-1 text-xs text-muted-foreground">
+                    {s.target_ppm != null && <span>Target PPM: <strong className="text-foreground">{s.target_ppm}</strong></span>}
+                    {s.target_ec != null && <span>Target EC: <strong className="text-foreground">{s.target_ec}</strong></span>}
+                  </div>
+                  {s.notes && <p className="mt-1 text-xs text-muted-foreground">{s.notes}</p>}
+                </div>
+                <div className="flex gap-1 shrink-0 ml-2">
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => openScheduleEdit(s)}>
+                    <Pencil className="size-3" />
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={() => handleScheduleDelete(s.id)}>
+                    <Trash2 className="size-3" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Schedule Create/Edit Dialog */}
+      <Dialog open={scheduleDialog} onOpenChange={(o) => !o && setScheduleDialog(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingSchedule ? "Edit Schedule" : "Create Schedule"}</DialogTitle>
+            <DialogDescription>Define a custom feeding schedule for a specific growth stage</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Name</Label>
+              <Input value={scheduleForm.name} onChange={(e) => setScheduleForm((p) => ({ ...p, name: e.target.value }))} placeholder="e.g. Week 3 Veg Heavy Feed" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Stage</Label>
+              <Select value={scheduleForm.stage} onValueChange={(v) => setScheduleForm((p) => ({ ...p, stage: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {STAGES.map((s) => <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Target PPM</Label>
+                <Input type="number" value={scheduleForm.target_ppm} onChange={(e) => setScheduleForm((p) => ({ ...p, target_ppm: e.target.value }))} placeholder="e.g. 850" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Target EC (mS/cm)</Label>
+                <Input type="number" step="0.1" value={scheduleForm.target_ec} onChange={(e) => setScheduleForm((p) => ({ ...p, target_ec: e.target.value }))} placeholder="e.g. 1.4" />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Notes</Label>
+              <Textarea rows={2} value={scheduleForm.notes} onChange={(e) => setScheduleForm((p) => ({ ...p, notes: e.target.value }))} placeholder="Optional notes about this schedule..." />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setScheduleDialog(false)}>Cancel</Button>
+            <Button onClick={handleScheduleSave} disabled={scheduleSaving || !scheduleForm.name.trim()}>
+              {scheduleSaving && <Loader2 className="mr-2 size-4 animate-spin" />}
+              {editingSchedule ? "Save" : "Create"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {renderBrandDialog()}
       {renderAdditiveDialog()}
+
+      {/* ── Dose Profiles ─────────────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <Droplets className="size-4" /> Dose Profiles
+            </CardTitle>
+            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={openDoseCreate}>
+              <Plus className="mr-1 size-3" /> Add Dose
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {doseProfiles.length === 0 ? (
+            <p className="text-xs text-muted-foreground">No dose profiles yet. Create one to track nutrient dosing amounts per product.</p>
+          ) : (
+            <div className="space-y-2">
+              {doseProfiles.map((d) => (
+                <div key={d.id} className="flex items-center justify-between rounded-lg border p-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className={cn("font-medium text-sm", !d.enabled && "text-muted-foreground line-through")}>{d.name}</span>
+                      <Badge variant="secondary" className="text-xs capitalize">{d.dose_type}</Badge>
+                      {!d.enabled && <Badge variant="outline" className="text-xs">Disabled</Badge>}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">{d.dose_ml} mL per gallon</p>
+                  </div>
+                  <div className="flex gap-1 shrink-0 ml-2">
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => handleDoseToggle(d)} title={d.enabled ? "Disable" : "Enable"}>
+                      <Check className={cn("size-3", d.enabled ? "text-green-600" : "text-muted-foreground")} />
+                    </Button>
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => openDoseEdit(d)}>
+                      <Pencil className="size-3" />
+                    </Button>
+                    <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-destructive hover:text-destructive" onClick={() => handleDoseDelete(d.id)}>
+                      <Trash2 className="size-3" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Dose Profile Create/Edit Dialog */}
+      <Dialog open={doseDialog} onOpenChange={(o) => !o && setDoseDialog(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingDose ? "Edit Dose Profile" : "New Dose Profile"}</DialogTitle>
+            <DialogDescription>Track a specific nutrient product dosage for this grow</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Product Name</Label>
+              <Input value={doseForm.name} onChange={(e) => setDoseForm((p) => ({ ...p, name: e.target.value }))} placeholder="e.g. CalMag, FloraMicro, Big Bloom" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Type</Label>
+              <Select value={doseForm.dose_type} onValueChange={(v) => setDoseForm((p) => ({ ...p, dose_type: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="nutrient">Nutrient</SelectItem>
+                  <SelectItem value="supplement">Supplement</SelectItem>
+                  <SelectItem value="ph_up">pH Up</SelectItem>
+                  <SelectItem value="ph_down">pH Down</SelectItem>
+                  <SelectItem value="enzyme">Enzyme</SelectItem>
+                  <SelectItem value="beneficial">Beneficial</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Dose (mL per gallon)</Label>
+              <Input type="number" step="0.1" min="0" value={doseForm.dose_ml} onChange={(e) => setDoseForm((p) => ({ ...p, dose_ml: e.target.value }))} placeholder="e.g. 5" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDoseDialog(false)}>Cancel</Button>
+            <Button onClick={handleDoseSave} disabled={doseSaving || !doseForm.name.trim() || !doseForm.dose_ml}>
+              {doseSaving && <Loader2 className="mr-2 size-4 animate-spin" />}
+              {editingDose ? "Save" : "Create"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

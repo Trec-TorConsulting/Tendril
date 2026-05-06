@@ -2,6 +2,8 @@
 
 import { Badge } from "@/components/ui/badge";
 import { Droplets, Thermometer, Wind, Zap } from "lucide-react";
+import { usePreferences } from "@/hooks/use-preferences";
+import { formatTemp } from "@/lib/units";
 
 interface SensorSummaryStripProps {
   ph?: number | null;
@@ -11,6 +13,7 @@ interface SensorSummaryStripProps {
 }
 
 export function SensorSummaryStrip({ ph, ec, tempF, humidity }: SensorSummaryStripProps) {
+  const { prefs } = usePreferences();
   return (
     <div className="flex flex-wrap gap-2">
       {ph != null && (
@@ -28,7 +31,7 @@ export function SensorSummaryStrip({ ph, ec, tempF, humidity }: SensorSummaryStr
       {tempF != null && (
         <Badge variant="outline" className="gap-1 text-xs font-normal">
           <Thermometer className="size-3 text-orange-500" />
-          {tempF.toFixed(0)}°F
+          {formatTemp(tempF, "f", prefs.temp_unit, 0)}
         </Badge>
       )}
       {humidity != null && (

@@ -6,11 +6,31 @@ import {
   listTasks,
   completeTask,
   deleteTask,
+  createTask,
+  updateTask,
   type TaskItem,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,8 +47,12 @@ import {
   ListChecks,
   Bot,
   Zap,
+  Plus,
+  Pencil,
+  Loader2,
 } from "lucide-react";
 import Link from "next/link";
+import { toast } from "sonner";
 import { SwipeableCard } from "@/components/swipeable-card";
 
 const PRIORITY_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
@@ -69,15 +93,48 @@ const CATEGORY_LABELS: Record<string, string> = {
   soil_amendment: "Soil Amendment",
   runoff_check: "Runoff Check",
   dryback_check: "Dry-back",
+  ipm_spray: "IPM Spray",
+  equipment_check: "Equipment",
+  meter_calibration: "Calibration",
+  photo_documentation: "Photo Doc",
+  nutrient_prep: "Nutrient Prep",
+  deep_clean: "Deep Clean",
+  carbon_filter: "Carbon Filter",
+  air_stone: "Air Stone",
+  light_check: "Light Check",
+  harvest_check: "Harvest Check",
+  pest_scout: "Field Scout",
+  companion_check: "Companions",
+  rain_gauge: "Rain Gauge",
+  verify_automation: "Verify Auto",
+};
+
+const ROUTINE_LABELS: Record<string, string> = {
+  morning: "Morning",
+  evening: "Evening",
+  weekly: "Weekly",
+  biweekly: "Biweekly",
+  monthly: "Monthly",
+  on_demand: "Action",
 };
 
 function getCategoryLabel(cat: string | null) {
   return cat ? CATEGORY_LABELS[cat] || cat.replace(/_/g, " ") : null;
 }
 
+function getRoutineLabel(routine: string | null) {
+  return routine ? ROUTINE_LABELS[routine] || routine : null;
+}
+
 export function TasksTab({ growId }: { growId: string }) {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
-  const [filter, setFilter] = useState<string>("");
+  const [filter, setFilter] = useState<string>("pending");
+
+  // Create / Edit dialog
+  const [taskDialog, setTaskDialog] = useState(false);
+  const [editingTask, setEditingTask] = useState<TaskItem | null>(null);
+  const [taskForm, setTaskForm] = useState({ title: "", description: "", priority: "medium", category: "", due_date: "", recurring: "" });
+  const [taskSaving, setTaskSaving] = useState(false);
 
   const refresh = useCallback(async () => {
     const token = getAccessToken();
@@ -94,25 +151,94 @@ export function TasksTab({ growId }: { growId: string }) {
   const handleComplete = async (id: string) => {
     const token = getAccessToken();
     if (!token) return;
-    await completeTask(id, token);
-    refresh();
+    try {
+      await completeTask(id, token);
+      refresh();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to complete task"); }
   };
 
   const handleDelete = async (id: string) => {
     const token = getAccessToken();
     if (!token) return;
-    await deleteTask(id, token);
-    refresh();
+    try {
+      await deleteTask(id, token);
+      refresh();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to delete task"); }
   };
 
-  const activeTasks = tasks.filter((t) => t.status !== "completed" && t.status !== "cancelled");
-  const completedTasks = tasks.filter((t) => t.status === "completed");
+  const openCreateDialog = () => {
+    setEditingTask(null);
+    setTaskForm({ title: "", description: "", priority: "medium", category: "", due_date: "", recurring: "" });
+    setTaskDialog(true);
+  };
+
+  const openEditDialog = (task: TaskItem) => {
+    setEditingTask(task);
+    setTaskForm({
+      title: task.title,
+      description: task.description || "",
+      priority: task.priority,
+      category: task.category || "",
+      due_date: task.due_date ? new Date(task.due_date).toISOString().slice(0, 10) : "",
+      recurring: task.recurring || "",
+    });
+    setTaskDialog(true);
+  };
+
+  const handleTaskSave = async () => {
+    const token = getAccessToken();
+    if (!token || !taskForm.title.trim()) return;
+    setTaskSaving(true);
+    try {
+      if (editingTask) {
+        const data: Record<string, unknown> = {
+          title: taskForm.title.trim(),
+          description: taskForm.description.trim() || null,
+          priority: taskForm.priority,
+        };
+        if (taskForm.category) data.category = taskForm.category;
+        if (taskForm.due_date) data.due_date = new Date(taskForm.due_date).toISOString();
+        if (taskForm.recurring) data.recurring = taskForm.recurring;
+        else data.recurring = null;
+        await updateTask(editingTask.id, data, token);
+      } else {
+        const data: Parameters<typeof createTask>[0] = {
+          title: taskForm.title.trim(),
+          grow_cycle_id: growId,
+          priority: taskForm.priority,
+        };
+        if (taskForm.description.trim()) data.description = taskForm.description.trim();
+        if (taskForm.category) data.category = taskForm.category;
+        if (taskForm.due_date) data.due_date = new Date(taskForm.due_date).toISOString();
+        if (taskForm.recurring) data.recurring = taskForm.recurring;
+        await createTask(data, token);
+      }
+      setTaskDialog(false);
+      refresh();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to save task"); } finally { setTaskSaving(false); }
+  };
+
+  const activeTasks = tasks
+    .filter((t) => t.status !== "completed" && t.status !== "cancelled")
+    .sort((a, b) => {
+      if (!a.due_date && !b.due_date) return 0;
+      if (!a.due_date) return 1;
+      if (!b.due_date) return -1;
+      return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+    });
+  const completedTasks = tasks
+    .filter((t) => t.status === "completed")
+    .sort((a, b) => {
+      if (!a.completed_at && !b.completed_at) return 0;
+      if (!a.completed_at) return 1;
+      if (!b.completed_at) return -1;
+      return new Date(b.completed_at).getTime() - new Date(a.completed_at).getTime();
+    });
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         {[
-          { value: "", label: "All" },
           { value: "pending", label: "Pending" },
           { value: "in_progress", label: "In Progress" },
           { value: "completed", label: "Completed" },
@@ -126,7 +252,19 @@ export function TasksTab({ growId }: { growId: string }) {
             {s.label}
           </Button>
         ))}
-        <div className="ml-auto">
+        <Button
+          variant={filter === "" ? "default" : "outline"}
+          size="sm"
+          className="ml-auto"
+          onClick={() => setFilter("")}
+        >
+          All
+        </Button>
+        <div className="flex gap-2">
+          <Button variant="default" size="sm" onClick={openCreateDialog}>
+            <Plus className="mr-1 h-4 w-4" />
+            Add Task
+          </Button>
           <Button variant="outline" size="sm" render={<Link href="/dashboard/tasks" />}>
             <ListChecks className="mr-1 h-4 w-4" />
             All Tasks
@@ -155,6 +293,7 @@ export function TasksTab({ growId }: { growId: string }) {
             task={t}
             onComplete={handleComplete}
             onDelete={handleDelete}
+            onEdit={openEditDialog}
           />
         </SwipeableCard>
       ))}
@@ -184,6 +323,77 @@ export function TasksTab({ growId }: { growId: string }) {
           ))}
         </>
       )}
+
+      {/* Create / Edit Task Dialog */}
+      <Dialog open={taskDialog} onOpenChange={(open) => !open && setTaskDialog(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingTask ? "Edit Task" : "Create Task"}</DialogTitle>
+            <DialogDescription>{editingTask ? "Update task details" : "Add a manual task for this grow"}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Title</Label>
+              <Input value={taskForm.title} onChange={(e) => setTaskForm((p) => ({ ...p, title: e.target.value }))} placeholder="e.g. Check pH levels" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Description</Label>
+              <Textarea rows={2} value={taskForm.description} onChange={(e) => setTaskForm((p) => ({ ...p, description: e.target.value }))} placeholder="Optional details..." />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">Priority</Label>
+                <Select value={taskForm.priority} onValueChange={(v) => setTaskForm((p) => ({ ...p, priority: v }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="urgent">Urgent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Category</Label>
+                <Select value={taskForm.category} onValueChange={(v) => setTaskForm((p) => ({ ...p, category: v }))}>
+                  <SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger>
+                  <SelectContent>
+                    {Object.entries(CATEGORY_LABELS).map(([k, v]) => (
+                      <SelectItem key={k} value={k}>{v}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Due Date</Label>
+                <Input type="date" value={taskForm.due_date} onChange={(e) => setTaskForm((p) => ({ ...p, due_date: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Recurring</Label>
+                <Select value={taskForm.recurring} onValueChange={(v) => setTaskForm((p) => ({ ...p, recurring: v }))}>
+                  <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">None</SelectItem>
+                    <SelectItem value="daily">Daily</SelectItem>
+                    <SelectItem value="every_2_days">Every 2 Days</SelectItem>
+                    <SelectItem value="every_3_days">Every 3 Days</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
+                    <SelectItem value="biweekly">Biweekly</SelectItem>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" type="button" onClick={() => setTaskDialog(false)}>Cancel</Button>
+            <Button type="button" onClick={handleTaskSave} disabled={taskSaving || !taskForm.title.trim()}>
+              {taskSaving && <Loader2 className="mr-2 size-4 animate-spin" />}
+              {editingTask ? "Save" : "Create"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -192,10 +402,12 @@ function GrowTaskCard({
   task,
   onComplete,
   onDelete,
+  onEdit,
 }: {
   task: TaskItem;
   onComplete: (id: string) => void;
   onDelete: (id: string) => void;
+  onEdit: (task: TaskItem) => void;
 }) {
   const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== "completed";
 
@@ -223,6 +435,12 @@ function GrowTaskCard({
             )}
             {task.source === "ai" && (
               <span title="AI-suggested"><Bot className="size-3 text-purple-500" /></span>
+            )}
+            {task.routine && (
+              <Badge variant="outline" className="text-xs border-blue-500/30 text-blue-600 dark:text-blue-400">{getRoutineLabel(task.routine)}</Badge>
+            )}
+            {task.estimated_minutes && (
+              <span className="text-xs text-muted-foreground">~{task.estimated_minutes} min</span>
             )}
           </div>
           {task.description && (
@@ -252,6 +470,10 @@ function GrowTaskCard({
             <MoreHorizontal className="h-4 w-4" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => onEdit(task)}>
+              <Pencil className="mr-2 h-4 w-4" />
+              Edit
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onComplete(task.id)}>
               <CheckCircle2 className="mr-2 h-4 w-4" />
               Complete

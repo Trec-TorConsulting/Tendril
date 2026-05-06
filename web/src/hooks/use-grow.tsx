@@ -31,7 +31,7 @@ export function useGrow() {
   return useContext(GrowContext);
 }
 
-export function GrowProvider({ children }: { children: ReactNode }) {
+export function GrowProvider({ children, defaultGrowId }: { children: ReactNode; defaultGrowId?: string }) {
   const [grows, setGrows] = useState<GrowResponse[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
   const [loading, setLoading] = useState(true);
@@ -42,16 +42,20 @@ export function GrowProvider({ children }: { children: ReactNode }) {
     try {
       const data = await listGrows(token);
       setGrows(data);
-      // Auto-select first active grow if nothing selected or stale
+      // Auto-select: honor default_grow_id preference, then first active, then first
       if (!selectedId || !data.find((g) => g.id === selectedId)) {
-        const active = data.find((g) => g.status === "active");
-        if (active) setSelectedId(active.id);
-        else if (data.length > 0) setSelectedId(data[0].id);
+        const preferred = defaultGrowId ? data.find((g) => g.id === defaultGrowId) : null;
+        if (preferred) setSelectedId(preferred.id);
+        else {
+          const active = data.find((g) => g.status === "active");
+          if (active) setSelectedId(active.id);
+          else if (data.length > 0) setSelectedId(data[0].id);
+        }
       }
     } finally {
       setLoading(false);
     }
-  }, [selectedId]);
+  }, [selectedId, defaultGrowId]);
 
   useEffect(() => {
     refreshGrows();

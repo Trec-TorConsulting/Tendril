@@ -34,7 +34,7 @@ export function InstallPrompt() {
   }
 
   return (
-    <div className="fixed bottom-4 left-4 right-4 z-50 flex items-center justify-between rounded-lg border border-green-800 bg-green-950/90 px-4 py-3 shadow-lg backdrop-blur sm:left-auto sm:right-4 sm:w-80">
+    <div className="fixed bottom-20 left-4 right-4 z-50 flex items-center justify-between rounded-lg border border-green-800 bg-green-950/90 px-4 py-3 shadow-lg backdrop-blur sm:bottom-4 sm:left-auto sm:right-4 sm:w-80">
       <div>
         <p className="text-sm font-medium text-white">Install Tendril</p>
         <p className="text-xs text-green-300">Add to your home screen</p>

@@ -32,6 +32,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { NotebookPen, Plus, Trash2, Pencil, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 const EVENT_TYPES = ["note", "feeding", "water_change", "training", "transplant", "defoliation", "topping", "flushing", "other"];
 
@@ -69,7 +70,7 @@ export function JournalTab({ buckets, journalEntries, bucketLabelMap, onRefresh 
       setEditId(null);
       setForm({ bucket_id: "", event_type: "note", content: "" });
       onRefresh();
-    } catch { /* empty */ } finally { setSaving(false); }
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to save journal entry"); } finally { setSaving(false); }
   };
 
   const confirm = useConfirm();
@@ -78,8 +79,10 @@ export function JournalTab({ buckets, journalEntries, bucketLabelMap, onRefresh 
     if (!await confirm({ title: "Delete Entry", description: "Delete this journal entry?", confirmLabel: "Delete", variant: "destructive" })) return;
     const token = getAccessToken();
     if (!token) return;
-    await deleteJournalEntry(token, entryId);
-    onRefresh();
+    try {
+      await deleteJournalEntry(token, entryId);
+      onRefresh();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to delete entry"); }
   };
 
   return (

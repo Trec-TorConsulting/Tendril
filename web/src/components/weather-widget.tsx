@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
 import { getCurrentWeather } from "@/lib/api";
+import { usePreferences } from "@/hooks/use-preferences";
+import { formatTemp, formatWind } from "@/lib/units";
 
 interface WeatherWidgetProps {
   tentId: string;
@@ -23,6 +25,7 @@ interface WeatherAlert {
 }
 
 export function WeatherWidget({ tentId }: WeatherWidgetProps) {
+  const { prefs } = usePreferences();
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [alerts, setAlerts] = useState<WeatherAlert[]>([]);
   const [error, setError] = useState("");
@@ -79,7 +82,7 @@ export function WeatherWidget({ tentId }: WeatherWidgetProps) {
         {weather.temperature_c != null && (
           <div>
             <span className="text-neutral-500">Temp</span>
-            <p className="text-white">{weather.temperature_c}°C</p>
+            <p className="text-white">{formatTemp(weather.temperature_c, "c", prefs.temp_unit)}</p>
           </div>
         )}
         {weather.humidity_pct != null && (
@@ -91,7 +94,7 @@ export function WeatherWidget({ tentId }: WeatherWidgetProps) {
         {weather.wind_speed_kmh != null && (
           <div>
             <span className="text-neutral-500">Wind</span>
-            <p className="text-white">{weather.wind_speed_kmh} km/h</p>
+            <p className="text-white">{formatWind(weather.wind_speed_kmh, prefs.wind_unit)}</p>
           </div>
         )}
         {weather.uv_index != null && (

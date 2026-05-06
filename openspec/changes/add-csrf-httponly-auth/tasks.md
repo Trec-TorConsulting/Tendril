@@ -19,7 +19,7 @@
 - [x] 3.6 Update auth tests for cookie-based flow
 
 ## 4. Validation
-- [ ] 4.1 Unit tests for CSRF middleware (valid token, missing token, invalid token)
-- [ ] 4.2 Unit tests for cookie-based auth (httpOnly, Secure, SameSite flags)
+- [x] 4.1 Unit tests for CSRF middleware (valid token, missing token, invalid token)
+- [x] 4.2 Unit tests for cookie-based auth (httpOnly, Secure, SameSite flags)
 - [ ] 4.3 E2E test: login → mutation → verify CSRF token required
-- [ ] 4.4 Verify XSS cannot access tokens via `document.cookie`
+- [x] 4.4 Verify XSS cannot access tokens via `document.cookie`

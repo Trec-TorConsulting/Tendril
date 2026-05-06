@@ -39,7 +39,7 @@ spec:
             - ALL
         env:
         - name: NEXT_PUBLIC_API_URL
-          value: "https://api.tendril.example.com/v1"  # Replace with your domain
+          value: "https://api.tendril.maddscientist.com/v1"
         resources:
           requests:
             cpu: 50m

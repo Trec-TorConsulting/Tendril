@@ -35,6 +35,12 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["S101", "S106"]  # Allow asserts and hardcoded passwords in tests
+"**/grow_types.py" = ["E501"]  # Data file with long string literals
+"**/grow_type_configs/**" = ["E501"]  # Data files with long string literals
+"**/task_generator.py" = ["E501"]  # Task templates with long description strings
+"**/ai/context.py" = ["E501", "RUF001", "N806"]  # AI prompts with long strings and special chars
+"**/migrations/**/*.py" = ["E501"]  # Migrations contain long SQL strings
+"**/email_service.py" = ["E501"]  # Email HTML templates with long inline styles
 
 [tool.ruff.format]
 quote-style = "double"

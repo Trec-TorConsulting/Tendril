@@ -29,23 +29,27 @@ import {
   Moon,
   Sun,
   Monitor,
+  Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "next-themes";
 import { useChat } from "@/components/chat-provider";
 import { useLayoutMode } from "@/hooks/use-layout-mode";
+import { PhotoAIDialog } from "@/components/photo-ai-dialog";
 import type { TabConfig } from "@/lib/layout-config";
 
 /* ── FAB quick actions ── */
 const FAB_ACTIONS = [
   { label: "Log Reading", icon: Droplets, href: "/dashboard/grows" },
-  { label: "Health Check", icon: Stethoscope, href: "/dashboard/ai/health" },
+  { label: "Diagnose Plant", icon: Stethoscope, action: "diagnose" as const },
+  { label: "Identify Plant", icon: Search, action: "identify" as const },
   { label: "Quick Photo", icon: Camera, href: "/dashboard/grows" },
   { label: "Log Ambient", icon: Thermometer, href: "/dashboard/grows" },
 ];
 
 /* ── More menu items ── */
 const MORE_ITEMS = [
+  { href: "/dashboard/ai", label: "AI Chat", icon: MessageSquare },
   { href: "/dashboard/tasks", label: "Tasks", icon: CheckSquare },
   { href: "/dashboard/devices", label: "Devices", icon: Cpu },
   { href: "/dashboard/automation", label: "Automation", icon: Bot },
@@ -68,6 +72,8 @@ export function MobileBottomNav() {
   const router = useRouter();
   const [fabOpen, setFabOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [aiDialogOpen, setAiDialogOpen] = useState(false);
+  const [aiDialogMode, setAiDialogMode] = useState<"diagnose" | "identify">("diagnose");
   const { theme, setTheme } = useTheme();
   const { config } = useLayoutMode();
 
@@ -105,7 +111,12 @@ export function MobileBottomNav() {
                   onClick={(e) => {
                     e.stopPropagation();
                     setFabOpen(false);
-                    router.push(action.href);
+                    if ("action" in action && action.action) {
+                      setAiDialogMode(action.action);
+                      setAiDialogOpen(true);
+                    } else if ("href" in action && action.href) {
+                      router.push(action.href);
+                    }
                   }}
                 >
                   <div className="flex size-9 items-center justify-center rounded-full bg-primary text-primary-foreground">
@@ -188,10 +199,14 @@ export function MobileBottomNav() {
           {tabs.map((tab) => {
             if (tab.href === "/dashboard/quick-log") {
               // Quick-log gets special "Log" button treatment
+              const logActive = isTabActive(tab.href);
               return (
                 <button
                   key={tab.id}
-                  className="flex flex-col items-center gap-0.5 px-3 py-2 text-[10px] font-medium text-primary"
+                  className={cn(
+                    "flex flex-col items-center gap-0.5 px-3 py-2 text-[10px] font-medium transition-colors",
+                    logActive ? "text-primary" : "text-muted-foreground"
+                  )}
                   onClick={() => router.push(tab.href)}
                 >
                   <tab.icon className="size-5" />
@@ -239,6 +254,13 @@ export function MobileBottomNav() {
           )}
         </div>
       </nav>
+
+      {/* Photo AI Dialog */}
+      <PhotoAIDialog
+        open={aiDialogOpen}
+        onOpenChange={setAiDialogOpen}
+        initialMode={aiDialogMode}
+      />
     </>
   );
 }

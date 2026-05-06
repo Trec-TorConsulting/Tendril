@@ -3,7 +3,16 @@
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
-import { Search } from "lucide-react";
+import { Search, Sprout } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { useGrow } from "@/hooks/use-grow";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -20,18 +29,44 @@ interface PageHeaderProps {
 }
 
 export function PageHeader({ title, breadcrumbs, actions }: PageHeaderProps) {
+  const isMobile = useIsMobile();
+  const { grows, selectedGrow, setSelectedGrowId } = useGrow();
   const openCommandPalette = () => {
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
   };
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-4 lg:px-6">
-      <SidebarTrigger className="-ml-1" />
-      <Separator orientation="vertical" className="mr-2 !h-4" />
-      <div className="flex flex-1 items-center justify-between gap-2">
-        {breadcrumbs && breadcrumbs.length > 0 ? (
-          <Breadcrumb>
-            <BreadcrumbList>
+      {!isMobile && (
+        <>
+          <SidebarTrigger className="-ml-1" />
+          <Separator orientation="vertical" className="mr-2 !h-4" />
+        </>
+      )}
+      {/* Mobile grow switcher — sidebar not rendered on mobile */}
+      {isMobile && grows.length > 0 && (
+        <>
+          <Select value={selectedGrow?.id || ""} onValueChange={(v) => setSelectedGrowId(v ?? "")}>
+            <SelectTrigger className="h-8 w-auto max-w-[140px] gap-1.5 border-none bg-transparent px-1.5 text-xs font-medium shadow-none">
+              <Sprout className="size-3 shrink-0 text-primary" />
+              <SelectValue>{selectedGrow?.name || "Grow"}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {grows.filter((g) => g.status === "active").map((g) => (
+                <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>
+              ))}
+              {grows.filter((g) => g.status !== "active").map((g) => (
+                <SelectItem key={g.id} value={g.id}>{g.name} ({g.status})</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Separator orientation="vertical" className="!h-4" />
+        </>
+      )}
+      <div className="flex flex-1 items-center justify-between gap-2 min-w-0">
+        {breadcrumbs && breadcrumbs.length > 0 && !isMobile ? (
+          <Breadcrumb className="min-w-0">
+            <BreadcrumbList className="flex-nowrap overflow-hidden">
               {breadcrumbs.map((crumb, i) => (
                 <span key={crumb.label} className="contents">
                   {i > 0 && <BreadcrumbSeparator />}
@@ -47,9 +82,9 @@ export function PageHeader({ title, breadcrumbs, actions }: PageHeaderProps) {
             </BreadcrumbList>
           </Breadcrumb>
         ) : (
-          <h1 className="text-sm font-semibold lg:text-base">{title}</h1>
+          <h1 className="text-sm font-semibold lg:text-base truncate">{title}</h1>
         )}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <Button
             variant="outline"
             size="sm"

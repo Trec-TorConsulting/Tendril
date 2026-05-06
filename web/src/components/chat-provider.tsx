@@ -80,6 +80,10 @@ function ChatDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const connectedGrowRef = useRef<string | undefined>(undefined);
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryCount = useRef(0);
+  const intentionalClose = useRef(false);
+  const authFailed = useRef(false);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -92,84 +96,126 @@ function ChatDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
     }
   }, [open]);
 
-  // Connect / reconnect when grow changes
-  const connect = useCallback(() => {
-    const token = getAccessToken();
-    if (!token) return;
-
-    // Close existing connection
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-
-    const ws = new WebSocket(getAiChatWsUrl());
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      ws.send(JSON.stringify({ token, grow_id: selectedGrow?.id || undefined }));
-      connectedGrowRef.current = selectedGrow?.id;
-    };
-
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-
-      if (data.type === "ready") {
-        setConnected(true);
-        return;
+  // WebSocket — connects when drawer opens, auto-reconnects on drop (not on auth failure)
+  useEffect(() => {
+    if (!open) {
+      // Drawer closed — disconnect cleanly
+      intentionalClose.current = true;
+      if (reconnectTimer.current) {
+        clearTimeout(reconnectTimer.current);
+        reconnectTimer.current = null;
       }
-
-      if (data.type === "chunk") {
-        setStreaming(true);
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last && last.role === "assistant") {
-            return [...prev.slice(0, -1), { ...last, content: last.content + data.content }];
-          }
-          return [...prev, { role: "assistant", content: data.content }];
-        });
-        return;
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
       }
-
-      if (data.type === "action") {
-        setMessages((prev) => [
-          ...prev,
-          { role: "action", content: data.result, tool: data.tool },
-        ]);
-        return;
-      }
-
-      if (data.type === "done") {
-        setStreaming(false);
-        return;
-      }
-
-      if (data.type === "error") {
-        setMessages((prev) => [...prev, { role: "assistant", content: `Error: ${data.message}` }]);
-        setStreaming(false);
-      }
-    };
-
-    ws.onclose = () => {
       setConnected(false);
-    };
-
-    return () => ws.close();
-  }, [selectedGrow?.id]);
-
-  // Reconnect when grow changes
-  useEffect(() => {
-    if (selectedGrow?.id !== connectedGrowRef.current) {
-      const cleanup = connect();
-      return () => cleanup?.();
+      return;
     }
-  }, [selectedGrow?.id, connect]);
 
-  // Initial connection
-  useEffect(() => {
-    const cleanup = connect();
-    return () => cleanup?.();
-  }, [connect]);
+    intentionalClose.current = false;
+    authFailed.current = false;
+
+    function connect() {
+      const token = getAccessToken();
+      if (!token) {
+        authFailed.current = true;
+        setConnected(false);
+        return;
+      }
+
+      // Close existing connection
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+
+      const growId = selectedGrow?.id;
+      const ws = new WebSocket(getAiChatWsUrl());
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ token, grow_id: growId || undefined }));
+        connectedGrowRef.current = growId;
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.type === "ready") {
+          setConnected(true);
+          retryCount.current = 0;
+          return;
+        }
+
+        if (data.type === "chunk") {
+          setStreaming(true);
+          setMessages((prev) => {
+            const last = prev[prev.length - 1];
+            if (last && last.role === "assistant") {
+              return [...prev.slice(0, -1), { ...last, content: last.content + data.content }];
+            }
+            return [...prev, { role: "assistant", content: data.content }];
+          });
+          return;
+        }
+
+        if (data.type === "action") {
+          setMessages((prev) => [
+            ...prev,
+            { role: "action", content: data.result, tool: data.tool },
+          ]);
+          return;
+        }
+
+        if (data.type === "done") {
+          setStreaming(false);
+          return;
+        }
+
+        if (data.type === "error") {
+          // Stop reconnecting on auth errors
+          if (data.message?.toLowerCase().includes("auth") || data.message?.toLowerCase().includes("token")) {
+            authFailed.current = true;
+          }
+          setMessages((prev) => [...prev, { role: "assistant", content: `Error: ${data.message}` }]);
+          setStreaming(false);
+        }
+      };
+
+      ws.onerror = () => {
+        // Will trigger onclose, reconnect handled there
+      };
+
+      ws.onclose = () => {
+        setConnected(false);
+        if (wsRef.current === ws) {
+          wsRef.current = null;
+        }
+        // Auto-reconnect with exponential backoff (max 30s), but NOT on auth failure
+        if (!intentionalClose.current && !authFailed.current) {
+          const delay = Math.min(2000 * 2 ** retryCount.current, 30000);
+          retryCount.current += 1;
+          reconnectTimer.current = setTimeout(connect, delay);
+        }
+      };
+    }
+
+    connect();
+
+    return () => {
+      intentionalClose.current = true;
+      if (reconnectTimer.current) {
+        clearTimeout(reconnectTimer.current);
+        reconnectTimer.current = null;
+      }
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, selectedGrow?.id]);
 
   const sendMessage = () => {
     if (!input.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;

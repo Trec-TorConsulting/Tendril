@@ -7,6 +7,7 @@ import {
   getHealthCheckHistory,
   updateGrow,
   getTent,
+  listTentCameras,
   type HealthCheckResult,
   type TentResponse,
 } from "@/lib/api";
@@ -117,6 +118,7 @@ export default function HealthPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [includeCamera, setIncludeCamera] = useState(true);
+  const [hasCamera, setHasCamera] = useState(false);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [autoCheck, setAutoCheck] = useState(false);
@@ -139,7 +141,11 @@ export default function HealthPage() {
         ]);
         setTent(tentData);
         setHistory(historyData.items);
-        setIncludeCamera(!!tentData.camera_url);
+        // Check for cameras (new TentCamera records OR legacy camera_url)
+        const cameras = await listTentCameras(token, selectedGrow.tent_id).catch(() => []);
+        const cameraAvailable = cameras.length > 0 || !!tentData.camera_url;
+        setHasCamera(cameraAvailable);
+        setIncludeCamera(cameraAvailable);
       } catch {
         setTent(null);
         setHistory([]);
@@ -182,7 +188,7 @@ export default function HealthPage() {
         const res = await runHealthCheck(token, {
           grow_id: selectedGrow.id,
           observations,
-          include_camera: includeCamera && !!tent?.camera_url,
+          include_camera: hasCamera,
           image_base64: uploadedImage || undefined,
         });
         setResult(res);
@@ -195,7 +201,7 @@ export default function HealthPage() {
         setLoading(false);
       }
     },
-    [selectedGrow, includeCamera, tent, uploadedImage],
+    [selectedGrow, hasCamera, uploadedImage],
   );
 
   const toggleAutoCheck = async () => {
@@ -251,7 +257,7 @@ export default function HealthPage() {
             <CardContent className="space-y-4">
               {/* Camera + image section */}
               <div className="flex flex-wrap items-start gap-4 rounded-lg border p-3">
-                {tent?.camera_url && (
+                {hasCamera && (
                   <div className="flex items-center gap-3">
                     <Camera className="size-4 text-muted-foreground" />
                     <div className="flex items-center gap-2">
@@ -262,7 +268,7 @@ export default function HealthPage() {
                       <div>
                         <Label className="text-sm">Include Camera Snapshot</Label>
                         <p className="text-xs text-muted-foreground">
-                          Live image from {tent.name} camera
+                          Live image from {tent?.name || "tent"} camera
                         </p>
                       </div>
                     </div>
@@ -305,7 +311,7 @@ export default function HealthPage() {
                 <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="size-4 animate-spin" />
                   Running health check…
-                  {(includeCamera && tent?.camera_url) && (
+                  {(includeCamera && hasCamera) && (
                     <Badge variant="secondary" className="text-xs">
                       <Camera className="mr-1 size-3" />
                       Camera

@@ -7,6 +7,8 @@ import { getCurrentWeather, getWeatherForecast, getWeatherHistory } from "@/lib/
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Cloud, Sun, Droplets, Wind, Thermometer, AlertTriangle } from "lucide-react";
+import { usePreferences } from "@/hooks/use-preferences";
+import { formatTemp, formatWind } from "@/lib/units";
 
 interface WeatherCardProps {
   tentId: string;
@@ -15,6 +17,7 @@ interface WeatherCardProps {
 }
 
 export function WeatherCard({ tentId, tentName, environmentType }: WeatherCardProps) {
+  const { prefs } = usePreferences();
   const [current, setCurrent] = useState<Record<string, unknown> | null>(null);
   const [alerts, setAlerts] = useState<unknown[]>([]);
   const [forecast, setForecast] = useState<unknown[]>([]);
@@ -103,7 +106,7 @@ export function WeatherCard({ tentId, tentName, environmentType }: WeatherCardPr
               <Thermometer className="size-4 text-muted-foreground" />
               <div>
                 <p className="text-xs text-muted-foreground">Temperature</p>
-                <p className="font-medium">{Number(temp).toFixed(1)}°C / {(Number(temp) * 9 / 5 + 32).toFixed(1)}°F</p>
+                <p className="font-medium">{formatTemp(Number(temp), "c", prefs.temp_unit)}</p>
               </div>
             </div>
           )}
@@ -121,7 +124,7 @@ export function WeatherCard({ tentId, tentName, environmentType }: WeatherCardPr
               <Wind className="size-4 text-muted-foreground" />
               <div>
                 <p className="text-xs text-muted-foreground">Wind</p>
-                <p className="font-medium">{Number(windSpeed).toFixed(1)} km/h</p>
+                <p className="font-medium">{formatWind(Number(windSpeed), prefs.wind_unit)}</p>
               </div>
             </div>
           )}
@@ -156,7 +159,7 @@ export function WeatherCard({ tentId, tentName, environmentType }: WeatherCardPr
                 return (
                   <div key={i} className="flex-shrink-0 rounded-md border p-2 text-center min-w-[5rem]">
                     <p className="text-xs text-muted-foreground">{fc.date ? formatWeekday(fc.date as string) : `Day ${i + 1}`}</p>
-                    <p className="text-sm font-medium">{fc.temp_max_c != null ? `${Number(fc.temp_max_c).toFixed(0)}°` : fc.temperature_c != null ? `${Number(fc.temperature_c).toFixed(0)}°` : "—"}</p>
+                    <p className="text-sm font-medium">{fc.temp_max_c != null ? formatTemp(Number(fc.temp_max_c), "c", prefs.temp_unit, 0) : fc.temperature_c != null ? formatTemp(Number(fc.temperature_c), "c", prefs.temp_unit, 0) : "—"}</p>
                     {fc.condition ? <p className="text-xs text-muted-foreground capitalize">{String(fc.condition)}</p> : null}
                   </div>
                 );

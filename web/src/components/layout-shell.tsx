@@ -19,25 +19,23 @@ export function LayoutShell({ children, user, onLogout }: LayoutShellProps) {
   const isMobile = useIsMobile();
   const { config } = useLayoutMode();
 
-  if (isMobile) {
-    return (
-      <div className={cn("flex min-h-dvh flex-col", densityClass(config.density))}>
-        <main className="flex flex-1 flex-col pb-16">{children}</main>
-        <MobileBottomNav />
-      </div>
-    );
-  }
-
   return (
     <SidebarProvider>
-      <AppSidebar user={user} onLogout={onLogout} />
-      <SidebarInset>
-        <main
-          className={cn("flex flex-1 flex-col", densityClass(config.density))}
-        >
-          {children}
-        </main>
-      </SidebarInset>
+      {!isMobile && <AppSidebar user={user} onLogout={onLogout} />}
+      {isMobile ? (
+        <div className={cn("flex min-h-dvh flex-col overflow-x-hidden", densityClass(config.density))}>
+          <main className="flex flex-1 flex-col pb-16">{children}</main>
+          <MobileBottomNav />
+        </div>
+      ) : (
+        <SidebarInset>
+          <main
+            className={cn("flex flex-1 flex-col", densityClass(config.density))}
+          >
+            {children}
+          </main>
+        </SidebarInset>
+      )}
       <CommandPalette />
     </SidebarProvider>
   );

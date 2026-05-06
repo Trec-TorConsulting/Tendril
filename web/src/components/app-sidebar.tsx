@@ -26,6 +26,8 @@ import {
   ChevronUp,
   ChevronRight,
   Leaf,
+  BookOpen,
+  Plug,
 } from "lucide-react";
 import {
   Sidebar,
@@ -88,6 +90,8 @@ const AUTOMATION_NAV = [
 
 const LIBRARY_NAV = [
   { href: "/dashboard/strains", label: "Strains", icon: Dna },
+  { href: "/dashboard/reference", label: "Reference", icon: BookOpen },
+  { href: "/dashboard/integrations", label: "Integrations", icon: Plug },
 ];
 
 const ACCOUNT_NAV = [

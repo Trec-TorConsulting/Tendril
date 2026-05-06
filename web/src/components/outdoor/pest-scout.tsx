@@ -5,6 +5,7 @@ import { getAccessToken } from "@/lib/auth";
 import {
   listPestScouts,
   createPestScout,
+  updatePestScout,
   deletePestScout,
   type PestScoutResponse,
 } from "@/lib/api";
@@ -28,7 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Bug, Plus, Trash2, Shield, AlertTriangle } from "lucide-react";
+import { Bug, Plus, Trash2, Shield, AlertTriangle, Pencil } from "lucide-react";
 
 const PEST_TYPES = ["insect", "disease", "animal", "beneficial", "unknown"];
 const SEVERITIES = ["low", "medium", "high", "critical"];
@@ -49,6 +50,7 @@ export function PestScout({ growId }: Props) {
   const [entries, setEntries] = useState<PestScoutResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>("all");
 
   const [form, setForm] = useState({
@@ -100,6 +102,36 @@ export function PestScout({ growId }: Props) {
     const token = await getAccessToken();
     if (!token) return;
     await deletePestScout(token, growId, id);
+    refresh();
+  };
+
+  const handleEdit = (e: PestScoutResponse) => {
+    setEditingId(e.id);
+    setForm({
+      pest_type: e.pest_type || "insect", species: e.species || "",
+      severity: e.severity || "low", grid_row: e.grid_row?.toString() ?? "",
+      grid_col: e.grid_col?.toString() ?? "", treatment_applied: e.treatment_applied || "",
+      treatment_type: e.treatment_type || "", notes: e.notes || "",
+    });
+    setShowDialog(true);
+  };
+
+  const handleUpdate = async () => {
+    if (!editingId) return;
+    const token = await getAccessToken();
+    if (!token) return;
+    const data: Record<string, unknown> = {
+      pest_type: form.pest_type, species: form.species, severity: form.severity,
+    };
+    if (form.grid_row) data.grid_row = +form.grid_row;
+    if (form.grid_col) data.grid_col = +form.grid_col;
+    if (form.treatment_applied) data.treatment_applied = form.treatment_applied;
+    if (form.treatment_type) data.treatment_type = form.treatment_type;
+    if (form.notes) data.notes = form.notes;
+    await updatePestScout(token, growId, editingId, data);
+    setShowDialog(false);
+    setEditingId(null);
+    setForm({ pest_type: "insect", species: "", severity: "low", grid_row: "", grid_col: "", treatment_applied: "", treatment_type: "", notes: "" });
     refresh();
   };
 
@@ -172,7 +204,10 @@ export function PestScout({ growId }: Props) {
                   )}
                   {e.notes && <p className="text-xs text-muted-foreground">{e.notes}</p>}
                 </div>
-                <Button variant="ghost" size="icon" onClick={() => handleDelete(e.id)}><Trash2 className="size-3" /></Button>
+                <div className="flex gap-1">
+                  <Button variant="ghost" size="icon" onClick={() => handleEdit(e)}><Pencil className="size-3" /></Button>
+                  <Button variant="ghost" size="icon" onClick={() => handleDelete(e.id)}><Trash2 className="size-3" /></Button>
+                </div>
               </div>
             </Card>
           ))}
@@ -220,8 +255,8 @@ export function PestScout({ growId }: Props) {
             <div><Label>Notes</Label><Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDialog(false)}>Cancel</Button>
-            <Button onClick={handleCreate} disabled={!form.species}>Save</Button>
+            <Button variant="outline" onClick={() => { setShowDialog(false); setEditingId(null); }}>Cancel</Button>
+            <Button onClick={editingId ? handleUpdate : handleCreate} disabled={!form.species}>{editingId ? "Update" : "Save"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

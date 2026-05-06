@@ -1,4 +1,5 @@
 """Photos API — bucket URL photos + grow-level file uploads (S3/MinIO)."""
+
 from __future__ import annotations
 
 import asyncio
@@ -117,6 +118,7 @@ async def delete_photo(
 
 # ---------- Grow-level photos (S3 file upload) ----------
 
+
 class GrowPhotoResponse(BaseModel):
     id: UUID
     grow_cycle_id: UUID
@@ -150,7 +152,12 @@ async def upload_grow_photo(
 
     loop = asyncio.get_running_loop()
     key = await loop.run_in_executor(
-        None, s3_upload, data, file.content_type, str(user.tenant_id), grow_cycle_id,
+        None,
+        s3_upload,
+        data,
+        file.content_type,
+        str(user.tenant_id),
+        grow_cycle_id,
     )
 
     photo = GrowPhoto(
@@ -186,13 +193,34 @@ async def list_grow_photos(
 async def serve_grow_photo(
     photo_id: UUID,
     request: Request,
-    sig: str = Query(..., description="HMAC signature"),
-    exp: str = Query(..., description="Expiry timestamp"),
-    tid: str = Query(..., description="Tenant ID"),
+    sig: str = Query(None, description="HMAC signature"),
+    exp: str = Query(None, description="Expiry timestamp"),
+    tid: str = Query(None, description="Tenant ID"),
 ):
-    """Serve an uploaded photo from S3 storage. Uses HMAC-signed URLs for <img> tags."""
-    from app.auth.signed_url import verify_signed_url
-    tenant_id = verify_signed_url(request.url.path, sig, exp, tid)
+    """Serve an uploaded photo from S3 storage. Accepts signed URLs or cookie auth."""
+    tenant_id: str | None = None
+
+    # Method 1: HMAC-signed URL params
+    if sig and exp and tid:
+        from app.auth.signed_url import verify_signed_url
+
+        tenant_id = verify_signed_url(request.url.path, sig, exp, tid)
+    else:
+        # Method 2: Cookie-based auth (access_token cookie)
+        from jose import JWTError
+
+        from app.auth.jwt import decode_token
+
+        token = request.cookies.get("access_token")
+        if not token:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        try:
+            payload = decode_token(token)
+        except JWTError:
+            raise HTTPException(status_code=401, detail="Invalid or expired token") from None
+        tenant_id = payload.get("tid")
+        if not tenant_id:
+            raise HTTPException(status_code=403, detail="No tenant context")
 
     async with async_session_factory() as session:
         await session.execute(text(f"SET app.current_tenant = '{tenant_id}'"))
@@ -206,7 +234,7 @@ async def serve_grow_photo(
         data, content_type = await loop.run_in_executor(None, s3_get, photo.storage_key)
     except Exception:
         logger.exception("Failed to fetch photo from S3: %s", photo.storage_key)
-        raise HTTPException(status_code=502, detail="Failed to retrieve photo")
+        raise HTTPException(status_code=502, detail="Failed to retrieve photo") from None
 
     return Response(
         content=data,
@@ -257,6 +285,7 @@ async def delete_grow_photo(
 
 # ---------- Timelapse (animated GIF from health-check snapshots) ----------
 
+
 def _build_timelapse_gif(frames: list[tuple[bytes, str]]) -> bytes:
     """Stitch snapshot frames into an animated GIF with timestamp overlay.
 
@@ -267,15 +296,15 @@ def _build_timelapse_gif(frames: list[tuple[bytes, str]]) -> bytes:
 
     from PIL import Image, ImageDraw, ImageFont
 
-    FRAME_WIDTH = 640
-    DURATION_MS = 800  # ms per frame
+    frame_width = 640
+    duration_ms = 800  # ms per frame
 
     pil_frames: list[Image.Image] = []
     for img_bytes, caption in frames:
         img = Image.open(BytesIO(img_bytes)).convert("RGB")
         # Resize proportionally to fixed width
-        ratio = FRAME_WIDTH / img.width
-        img = img.resize((FRAME_WIDTH, int(img.height * ratio)), Image.LANCZOS)
+        ratio = frame_width / img.width
+        img = img.resize((frame_width, int(img.height * ratio)), Image.LANCZOS)
 
         # Overlay timestamp caption at the bottom
         draw = ImageDraw.Draw(img)
@@ -298,7 +327,7 @@ def _build_timelapse_gif(frames: list[tuple[bytes, str]]) -> bytes:
         format="GIF",
         save_all=True,
         append_images=pil_frames[1:],
-        duration=DURATION_MS,
+        duration=duration_ms,
         loop=0,
     )
     return buf.getvalue()
@@ -308,28 +337,53 @@ def _build_timelapse_gif(frames: list[tuple[bytes, str]]) -> bytes:
 async def get_timelapse(
     grow_cycle_id: UUID,
     request: Request,
-    sig: str = Query(..., description="HMAC signature"),
-    exp: str = Query(..., description="Expiry timestamp"),
-    tid: str = Query(..., description="Tenant ID"),
+    sig: str = Query(None, description="HMAC signature"),
+    exp: str = Query(None, description="Expiry timestamp"),
+    tid: str = Query(None, description="Tenant ID"),
 ):
     """Generate an animated GIF timelapse from health-check snapshots.
 
-    Uses HMAC-signed URLs for <img> tags.
+    Accepts signed URLs or cookie auth.
     """
-    from app.auth.signed_url import verify_signed_url
-    tenant_id = verify_signed_url(request.url.path, sig, exp, tid)
+    tenant_id: str | None = None
+
+    if sig and exp and tid:
+        from app.auth.signed_url import verify_signed_url
+
+        tenant_id = verify_signed_url(request.url.path, sig, exp, tid)
+    else:
+        from jose import JWTError
+
+        from app.auth.jwt import decode_token
+
+        token = request.cookies.get("access_token")
+        if not token:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        try:
+            payload = decode_token(token)
+        except JWTError:
+            raise HTTPException(status_code=401, detail="Invalid or expired token") from None
+        tenant_id = payload.get("tid")
+        if not tenant_id:
+            raise HTTPException(status_code=403, detail="No tenant context")
 
     async with async_session_factory() as session:
         await session.execute(text(f"SET app.current_tenant = '{tenant_id}'"))
 
-        photos = (await session.execute(
-            select(GrowPhoto)
-            .where(
-                GrowPhoto.grow_cycle_id == grow_cycle_id,
-                GrowPhoto.source == "health_check",
+        photos = (
+            (
+                await session.execute(
+                    select(GrowPhoto)
+                    .where(
+                        GrowPhoto.grow_cycle_id == grow_cycle_id,
+                        GrowPhoto.source == "health_check",
+                    )
+                    .order_by(GrowPhoto.created_at)
+                )
             )
-            .order_by(GrowPhoto.created_at)
-        )).scalars().all()
+            .scalars()
+            .all()
+        )
 
     if len(photos) < 2:
         raise HTTPException(

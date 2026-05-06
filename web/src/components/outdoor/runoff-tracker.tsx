@@ -5,6 +5,7 @@ import { getAccessToken } from "@/lib/auth";
 import {
   listRunoffReadings,
   createRunoffReading,
+  updateRunoffReading,
   getRunoffStats,
   deleteRunoffReading,
   listBuckets,
@@ -65,6 +66,7 @@ export default function RunoffTracker({ growId }: RunoffTrackerProps) {
   const [buckets, setBuckets] = useState<BucketResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [filterBucket, setFilterBucket] = useState<string>("all");
   const [form, setForm] = useState({
@@ -132,6 +134,40 @@ export default function RunoffTracker({ growId }: RunoffTrackerProps) {
     if (!token) return;
     await deleteRunoffReading(token, growId, id);
     await refresh();
+  };
+
+  const handleEdit = (r: RunoffReadingResponse) => {
+    setEditingId(r.id);
+    setForm({
+      bucket_id: r.bucket_id, input_ph: r.input_ph?.toString() ?? "",
+      input_ec: r.input_ec?.toString() ?? "", runoff_ph: r.runoff_ph?.toString() ?? "",
+      runoff_ec: r.runoff_ec?.toString() ?? "", runoff_pct: r.runoff_pct?.toString() ?? "",
+      notes: r.notes || "",
+    });
+    setShowForm(true);
+  };
+
+  const handleUpdate = async () => {
+    if (!editingId) return;
+    const token = getAccessToken();
+    if (!token) return;
+    setSubmitting(true);
+    try {
+      await updateRunoffReading(token, growId, editingId, {
+        input_ph: form.input_ph ? parseFloat(form.input_ph) : null,
+        input_ec: form.input_ec ? parseFloat(form.input_ec) : null,
+        runoff_ph: form.runoff_ph ? parseFloat(form.runoff_ph) : null,
+        runoff_ec: form.runoff_ec ? parseFloat(form.runoff_ec) : null,
+        runoff_pct: form.runoff_pct ? parseFloat(form.runoff_pct) : null,
+        notes: form.notes || null,
+      });
+      setForm({ bucket_id: "", input_ph: "", input_ec: "", runoff_ph: "", runoff_ec: "", runoff_pct: "", notes: "" });
+      setEditingId(null);
+      setShowForm(false);
+      await refresh();
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const filteredReadings = filterBucket === "all"
@@ -242,8 +278,8 @@ export default function RunoffTracker({ growId }: RunoffTrackerProps) {
                 )}
               </div>
             )}
-            <Button onClick={handleSubmit} disabled={!form.bucket_id || submitting}>
-              {submitting ? "Saving..." : "Log Reading"}
+            <Button onClick={editingId ? handleUpdate : handleSubmit} disabled={(!editingId && !form.bucket_id) || submitting}>
+              {submitting ? "Saving..." : editingId ? "Update Reading" : "Log Reading"}
             </Button>
           </CardContent>
         </Card>
@@ -320,7 +356,10 @@ export default function RunoffTracker({ growId }: RunoffTrackerProps) {
                         <span className="text-xs text-muted-foreground">
                           {new Date(r.recorded_at).toLocaleDateString()}
                         </span>
-                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground" onClick={() => handleDelete(r.id)}>×</Button>
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground" onClick={() => handleEdit(r)}>✎</Button>
+                          <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground" onClick={() => handleDelete(r.id)}>×</Button>
+                        </div>
                       </div>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">

@@ -8,22 +8,16 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 build_api() {
-    echo "=== Building tendril-api for arm64 ==="
-    docker buildx build \
-        --platform linux/arm64 \
-        --push \
-        -t "$API_IMAGE" \
-        "$PROJECT_DIR/api"
+    echo "=== Building tendril-api ==="
+    docker build --load -t "$API_IMAGE" "$PROJECT_DIR/api"
+    docker push "$API_IMAGE"
     echo "=== Pushed to $API_IMAGE ==="
 }
 
 build_web() {
-    echo "=== Building tendril-web for arm64 ==="
-    docker buildx build \
-        --platform linux/arm64 \
-        --push \
-        -t "$WEB_IMAGE" \
-        "$PROJECT_DIR/web"
+    echo "=== Building tendril-web ==="
+    docker build --load -t "$WEB_IMAGE" "$PROJECT_DIR/web"
+    docker push "$WEB_IMAGE"
     echo "=== Pushed to $WEB_IMAGE ==="
 }
 

@@ -1,19 +1,37 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { register } from "@/lib/api";
+import { Badge } from "@/components/ui/badge";
+import { register, createCheckout } from "@/lib/api";
 import { setTokens } from "@/lib/auth";
 import { Loader2 } from "lucide-react";
 
+const PLAN_NAMES: Record<string, string> = {
+  hobby: "Hobby",
+  pro: "Pro",
+  commercial: "Commercial",
+  enterprise: "Enterprise",
+};
+
 export default function RegisterPage() {
+  return (
+    <Suspense>
+      <RegisterForm />
+    </Suspense>
+  );
+}
+
+function RegisterForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const selectedPlan = searchParams.get("plan");
   const [form, setForm] = useState({
     email: "",
     password: "",
@@ -34,6 +52,18 @@ export default function RegisterPage() {
     try {
       const tokens = await register(form);
       setTokens(tokens.access_token, tokens.refresh_token);
+
+      // If user selected a paid plan, redirect to Stripe checkout
+      if (selectedPlan && selectedPlan !== "free" && PLAN_NAMES[selectedPlan]) {
+        try {
+          const { checkout_url } = await createCheckout(tokens.access_token, selectedPlan);
+          window.location.href = checkout_url;
+          return;
+        } catch {
+          // If checkout fails, fall through to dashboard (they can upgrade later)
+        }
+      }
+
       router.push("/dashboard");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Registration failed");
@@ -47,6 +77,11 @@ export default function RegisterPage() {
       <CardHeader className="text-center">
         <CardTitle className="text-xl">Create your account</CardTitle>
         <CardDescription>Get started with Tendril in seconds</CardDescription>
+        {selectedPlan && PLAN_NAMES[selectedPlan] && (
+          <Badge variant="secondary" className="mx-auto mt-2 bg-green-900/50 text-green-300">
+            {PLAN_NAMES[selectedPlan]} plan selected — you&apos;ll complete payment after signup
+          </Badge>
+        )}
       </CardHeader>
       <CardContent>
         {error && (

@@ -1,4 +1,5 @@
 """Grow cycle CRUD API — tenant-scoped, grow-type-aware."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -13,6 +14,7 @@ from sqlalchemy.orm import selectinload
 
 from app.audit import record_audit
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
+from app.billing.tier_gate import require_usage_limit
 from app.grows.models import Bucket, GrowCycle
 from app.pagination import PaginatedResponse, PaginationParams, paginate
 
@@ -56,7 +58,7 @@ class GrowResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-@router.post("", response_model=GrowResponse, status_code=201)
+@router.post("", response_model=GrowResponse, status_code=201, dependencies=[Depends(require_usage_limit("grows"))])
 async def create_grow(
     body: GrowCreate,
     request: Request,
@@ -82,13 +84,76 @@ async def list_grows(
     tent_id: UUID | None = None,
 ):
     """List all grow cycles for the current tenant."""
-    q = select(GrowCycle).where(GrowCycle.deleted_at.is_(None), GrowCycle.tenant_id == user.tenant_id).order_by(GrowCycle.created_at.desc())
+    q = (
+        select(GrowCycle)
+        .where(GrowCycle.deleted_at.is_(None), GrowCycle.tenant_id == user.tenant_id)
+        .order_by(GrowCycle.created_at.desc())
+    )
     if status:
         q = q.where(GrowCycle.status == status)
     if tent_id:
         q = q.where(GrowCycle.tent_id == tent_id)
     items, total = await paginate(session, q, pagination)
     return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
+
+
+class HarvestCountdownItem(BaseModel):
+    grow_id: UUID
+    grow_name: str
+    bucket_id: UUID
+    bucket_label: str | None
+    strain_name: str | None
+    flowering_days: int
+    flowering_start: str
+    estimated_harvest: str
+    days_remaining: int
+
+
+@router.get("/harvest-countdown", response_model=list[HarvestCountdownItem])
+async def harvest_countdown(
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Return harvest countdown for active grows with strain-linked buckets."""
+    result = await session.execute(
+        select(GrowCycle)
+        .options(selectinload(GrowCycle.buckets).selectinload(Bucket.strain))
+        .where(GrowCycle.status == "active")
+    )
+    grows = result.scalars().all()
+    items: list[HarvestCountdownItem] = []
+    now = datetime.now(UTC)
+    for grow in grows:
+        milestones = grow.milestones or {}
+        for bucket in grow.buckets:
+            if bucket.status != "active":
+                continue
+            strain = bucket.strain
+            if not strain or not strain.flowering_days:
+                continue
+            flowering_start_str = milestones.get("flowering") or milestones.get("flower")
+            if not flowering_start_str:
+                continue
+            flowering_start = datetime.fromisoformat(flowering_start_str)
+            if flowering_start.tzinfo is None:
+                flowering_start = flowering_start.replace(tzinfo=UTC)
+            estimated_harvest = flowering_start + timedelta(days=strain.flowering_days)
+            days_remaining = (estimated_harvest - now).days
+            items.append(
+                HarvestCountdownItem(
+                    grow_id=grow.id,
+                    grow_name=grow.name,
+                    bucket_id=bucket.id,
+                    bucket_label=bucket.label,
+                    strain_name=strain.name,
+                    flowering_days=strain.flowering_days,
+                    flowering_start=flowering_start.isoformat(),
+                    estimated_harvest=estimated_harvest.isoformat(),
+                    days_remaining=days_remaining,
+                )
+            )
+    items.sort(key=lambda x: x.days_remaining)
+    return items
 
 
 @router.get("/{grow_id}", response_model=GrowResponse)
@@ -143,9 +208,12 @@ async def update_grow(
     if "stage" in updates:
         try:
             from app.scheduler.task_generator import create_stage_transition_tasks
+
             await create_stage_transition_tasks(session, grow, updates["stage"])
-        except Exception:
-            pass  # Don't fail the API call if task creation fails
+        except Exception as exc:
+            import logging
+
+            logging.getLogger(__name__).warning("Stage task creation failed: %s", exc)
 
     await session.refresh(grow)
     return grow
@@ -165,61 +233,3 @@ async def delete_grow(
     await record_audit(session, user.tenant_id, user.user_id, "delete", "grow", str(grow_id), request=request)
     grow.deleted_at = datetime.now(UTC)
     await session.commit()
-
-
-class HarvestCountdownItem(BaseModel):
-    grow_id: UUID
-    grow_name: str
-    bucket_id: UUID
-    bucket_label: str | None
-    strain_name: str | None
-    flowering_days: int
-    flowering_start: str
-    estimated_harvest: str
-    days_remaining: int
-
-
-@router.get("/harvest-countdown", response_model=list[HarvestCountdownItem])
-async def harvest_countdown(
-    user: Annotated[CurrentUser, Depends(get_current_user)],
-    session: Annotated[AsyncSession, Depends(get_tenant_session)],
-):
-    """Return harvest countdown for active grows with strain-linked buckets."""
-    result = await session.execute(
-        select(GrowCycle)
-        .options(selectinload(GrowCycle.buckets).selectinload(Bucket.strain))
-        .where(GrowCycle.status == "active")
-    )
-    grows = result.scalars().all()
-    items: list[HarvestCountdownItem] = []
-    now = datetime.now(UTC)
-    for grow in grows:
-        milestones = grow.milestones or {}
-        for bucket in grow.buckets:
-            if bucket.status != "active":
-                continue
-            strain = bucket.strain
-            if not strain or not strain.flowering_days:
-                continue
-            # Determine flowering start from milestones
-            flowering_start_str = milestones.get("flowering") or milestones.get("flower")
-            if not flowering_start_str:
-                continue
-            flowering_start = datetime.fromisoformat(flowering_start_str)
-            if flowering_start.tzinfo is None:
-                flowering_start = flowering_start.replace(tzinfo=UTC)
-            estimated_harvest = flowering_start + timedelta(days=strain.flowering_days)
-            days_remaining = (estimated_harvest - now).days
-            items.append(HarvestCountdownItem(
-                grow_id=grow.id,
-                grow_name=grow.name,
-                bucket_id=bucket.id,
-                bucket_label=bucket.label,
-                strain_name=strain.name,
-                flowering_days=strain.flowering_days,
-                flowering_start=flowering_start.isoformat(),
-                estimated_harvest=estimated_harvest.isoformat(),
-                days_remaining=days_remaining,
-            ))
-    items.sort(key=lambda x: x.days_remaining)
-    return items

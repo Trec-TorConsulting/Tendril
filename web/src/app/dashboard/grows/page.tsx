@@ -43,7 +43,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Plus, Sprout, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { PullToRefresh } from "@/components/pull-to-refresh";
+import { PageSkeleton } from "@/components/page-skeleton";
 
 const createGrowSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -67,17 +69,25 @@ export default function GrowsPage() {
     defaultValues: { name: "", tent_id: "", grow_type: "" },
   });
 
+  const [loading, setLoading] = useState(true);
+
   const refresh = useCallback(async () => {
     const token = getAccessToken();
     if (!token) return;
-    const [g, t, gt] = await Promise.all([
-      listGrows(token, filter !== "all" ? { status: filter } : undefined),
-      listTents(token),
-      listGrowTypes(token),
-    ]);
-    setGrows(g);
-    setTents(t);
-    setGrowTypes(gt);
+    try {
+      const [g, t, gt] = await Promise.all([
+        listGrows(token, filter !== "all" ? { status: filter } : undefined),
+        listTents(token),
+        listGrowTypes(token),
+      ]);
+      setGrows(g);
+      setTents(t);
+      setGrowTypes(gt);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load grows");
+    } finally {
+      setLoading(false);
+    }
   }, [filter]);
 
   useEffect(() => {
@@ -93,6 +103,7 @@ export default function GrowsPage() {
         name: data.name,
         grow_type: data.grow_type,
       });
+      toast.success("Grow created");
       setDialogOpen(false);
       reset();
       refresh();
@@ -107,9 +118,10 @@ export default function GrowsPage() {
     if (!token) return;
     try {
       await deleteGrow(token, id);
+      toast.success("Grow deleted");
       refresh();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Failed to delete grow");
+      toast.error(e instanceof Error ? e.message : "Failed to delete grow");
     }
   };
 
@@ -144,7 +156,9 @@ export default function GrowsPage() {
           </TabsList>
         </Tabs>
 
-        {grows.length === 0 ? (
+        {loading ? (
+          <PageSkeleton variant="card" count={3} />
+        ) : grows.length === 0 ? (
           <Card className="flex flex-col items-center justify-center py-16">
             <Sprout className="size-12 text-muted-foreground/50" />
             <h3 className="mt-4 text-lg font-semibold">No grows found</h3>

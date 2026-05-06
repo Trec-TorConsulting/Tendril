@@ -34,7 +34,33 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ImageIcon, Plus, Trash2, Pencil, Loader2, Upload, Camera, Film } from "lucide-react";
+import { ImageIcon, Plus, Trash2, Pencil, Loader2, Upload, Camera, Film, Stethoscope } from "lucide-react";
+import { toast } from "sonner";
+import { PhotoAIDialog } from "@/components/photo-ai-dialog";
+
+/** Fetches an image via credentialed request and returns an object URL. */
+function useAuthImage(url: string | null) {
+  const [src, setSrc] = useState<string>("");
+  useEffect(() => {
+    if (!url) { setSrc(""); return; }
+    let revoke: string | null = null;
+    fetch(url, { credentials: "include" })
+      .then((r) => (r.ok ? r.blob() : Promise.reject(r.statusText)))
+      .then((blob) => {
+        revoke = URL.createObjectURL(blob);
+        setSrc(revoke);
+      })
+      .catch(() => setSrc(""));
+    return () => { if (revoke) URL.revokeObjectURL(revoke); };
+  }, [url]);
+  return src;
+}
+
+function AuthImage({ url, alt, className }: { url: string; alt: string; className?: string }) {
+  const src = useAuthImage(url);
+  if (!src) return <div className={`${className} bg-muted animate-pulse`} />;
+  return <img src={src} alt={alt} className={className} loading="lazy" />;
+}
 
 interface PhotosTabProps {
   growId: string;
@@ -54,6 +80,7 @@ export function PhotosTab({ growId, buckets }: PhotosTabProps) {
   const [editSaving, setEditSaving] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [timelapseDialog, setTimelapseDialog] = useState(false);
+  const [aiDialog, setAiDialog] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const bucketLabelMap: Record<string, string> = {};
@@ -66,7 +93,7 @@ export function PhotosTab({ growId, buckets }: PhotosTabProps) {
     try {
       const data = await listGrowPhotos(token, growId);
       setPhotos(data);
-    } catch { /* empty */ }
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to load photos"); }
     setLoading(false);
   }, [growId]);
 
@@ -134,7 +161,7 @@ export function PhotosTab({ growId, buckets }: PhotosTabProps) {
       await updateGrowPhoto(token, viewPhoto.id, { caption: editCaption.trim() });
       setViewPhoto(null);
       loadPhotos();
-    } catch { /* empty */ } finally { setEditSaving(false); }
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to update caption"); } finally { setEditSaving(false); }
   };
 
   const confirm = useConfirm();
@@ -143,9 +170,11 @@ export function PhotosTab({ growId, buckets }: PhotosTabProps) {
     if (!await confirm({ title: "Delete Photo", description: "Delete this photo?", confirmLabel: "Delete", variant: "destructive" })) return;
     const token = getAccessToken();
     if (!token) return;
-    await deleteGrowPhoto(token, photoId);
-    if (viewPhoto?.id === photoId) setViewPhoto(null);
-    loadPhotos();
+    try {
+      await deleteGrowPhoto(token, photoId);
+      if (viewPhoto?.id === photoId) setViewPhoto(null);
+      loadPhotos();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to delete photo"); }
   };
 
   const getImageSrc = (photo: GrowPhotoResponse) => {
@@ -168,6 +197,9 @@ export function PhotosTab({ growId, buckets }: PhotosTabProps) {
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-sm font-medium">Photo Gallery ({photos.length})</h3>
         <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" onClick={() => setAiDialog(true)}>
+            <Stethoscope className="mr-1 size-3" /> AI Analysis
+          </Button>
           {hasTimelapse && (
             <Button size="sm" variant="outline" onClick={() => setTimelapseDialog(true)}>
               <Film className="mr-1 size-3" /> Timelapse
@@ -217,7 +249,7 @@ export function PhotosTab({ growId, buckets }: PhotosTabProps) {
           {photos.map((p) => (
             <Card key={p.id} className="overflow-hidden cursor-pointer group" onClick={() => { setViewPhoto(p); setEditCaption(p.caption || ""); }}>
               <div className="aspect-square bg-muted relative">
-                <img src={getImageSrc(p)} alt={p.caption || "Photo"} className="size-full object-cover" loading="lazy" />
+                <AuthImage url={getImageSrc(p)} alt={p.caption || "Photo"} className="size-full object-cover" />
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
                 {p.source === "health_check" && (
                   <Badge variant="secondary" className="absolute top-1.5 right-1.5 text-[10px] gap-1">
@@ -319,7 +351,7 @@ export function PhotosTab({ growId, buckets }: PhotosTabProps) {
                 </DialogTitle>
               </DialogHeader>
               <div className="rounded-lg overflow-hidden border">
-                <img src={getImageSrc(viewPhoto)} alt={viewPhoto.caption || "Photo"} className="w-full max-h-[60vh] object-contain bg-muted" />
+                <AuthImage url={getImageSrc(viewPhoto)} alt={viewPhoto.caption || "Photo"} className="w-full max-h-[60vh] object-contain bg-muted" />
               </div>
               <div className="flex items-end gap-2">
                 <div className="flex-1 space-y-1">
@@ -350,8 +382,8 @@ export function PhotosTab({ growId, buckets }: PhotosTabProps) {
             </DialogDescription>
           </DialogHeader>
           <div className="rounded-lg overflow-hidden border bg-black">
-            <img
-              src={getTimelapseSrc()}
+            <AuthImage
+              url={getTimelapseSrc()}
               alt="Grow timelapse"
               className="w-full object-contain"
             />
@@ -362,6 +394,14 @@ export function PhotosTab({ growId, buckets }: PhotosTabProps) {
           </p>
         </DialogContent>
       </Dialog>
+
+      {/* AI Analysis Dialog */}
+      <PhotoAIDialog
+        open={aiDialog}
+        onOpenChange={setAiDialog}
+        growId={growId}
+        onPhotoSaved={loadPhotos}
+      />
     </>
   );
 }

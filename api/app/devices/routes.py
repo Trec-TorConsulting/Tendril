@@ -1,4 +1,5 @@
 """Device registration, pairing, and management API endpoints."""
+
 from __future__ import annotations
 
 import io
@@ -18,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import record_audit
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
+from app.billing.tier_gate import require_usage_limit
 from app.database import async_session_factory
 from app.pagination import PaginatedResponse, PaginationParams, paginate
 from app.tenants.models import Device
@@ -26,6 +28,7 @@ router = APIRouter()
 
 
 # ---------- Schemas ----------
+
 
 class DeviceRegisterRequest(BaseModel):
     label: str | None = None
@@ -65,7 +68,13 @@ class DeviceResponse(BaseModel):
 
 # ---------- Endpoints ----------
 
-@router.post("/register", response_model=DeviceRegisterResponse, status_code=201)
+
+@router.post(
+    "/register",
+    response_model=DeviceRegisterResponse,
+    status_code=201,
+    dependencies=[Depends(require_usage_limit("devices"))],
+)
 async def register_device(
     body: DeviceRegisterRequest,
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
@@ -131,7 +140,11 @@ async def list_devices(
     pagination: Annotated[PaginationParams, Depends()],
 ):
     """List all devices for the current tenant (RLS-enforced)."""
-    q = select(Device).where(Device.deleted_at.is_(None), Device.tenant_id == user.tenant_id).order_by(Device.created_at.desc())
+    q = (
+        select(Device)
+        .where(Device.deleted_at.is_(None), Device.tenant_id == user.tenant_id)
+        .order_by(Device.created_at.desc())
+    )
     items, total = await paginate(session, q, pagination)
     return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
 
@@ -218,6 +231,7 @@ async def get_device_qr(
 ):
     """Generate a QR code PNG containing the device_id for pairing."""
     from app.auth.signed_url import verify_signed_url
+
     tenant_id = verify_signed_url(request.url.path, sig, exp, tid)
 
     async with async_session_factory() as session:

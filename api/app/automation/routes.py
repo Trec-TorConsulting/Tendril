@@ -1,4 +1,5 @@
 """Automation API routes — rules CRUD, alert history, environment schedules."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -12,12 +13,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
 from app.automation.models import AlertHistory, AutomationRule, EnvironmentSchedule
+from app.billing.tier_gate import require_usage_limit
 from app.pagination import PaginatedResponse, PaginationParams, paginate
 
 router = APIRouter()
 
 
 # ---------- Automation Rules ----------
+
 
 class RuleCreate(BaseModel):
     grow_cycle_id: str | None = None
@@ -56,7 +59,12 @@ class RuleResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-@router.post("/rules", response_model=RuleResponse, status_code=201)
+@router.post(
+    "/rules",
+    response_model=RuleResponse,
+    status_code=201,
+    dependencies=[Depends(require_usage_limit("automations"))],
+)
 async def create_rule(
     body: RuleCreate,
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
@@ -136,6 +144,7 @@ async def delete_rule(
 
 # ---------- Alert History ----------
 
+
 class AlertResponse(BaseModel):
     id: UUID
     rule_id: UUID | None
@@ -193,6 +202,7 @@ async def acknowledge_alert(
 
 
 # ---------- Environment Schedules ----------
+
 
 class ScheduleCreate(BaseModel):
     tent_id: str

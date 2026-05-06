@@ -11,6 +11,7 @@ import { RefreshCw, Maximize2, Camera, Loader2 } from "lucide-react";
 
 interface CameraGridProps {
   tentId?: string;
+  hideEmpty?: boolean;
 }
 
 interface CameraWithSnapshot {
@@ -21,7 +22,7 @@ interface CameraWithSnapshot {
   error?: string;
 }
 
-export function CameraGrid({ tentId }: CameraGridProps) {
+export function CameraGrid({ tentId, hideEmpty }: CameraGridProps) {
   const [cameras, setCameras] = useState<CameraWithSnapshot[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCamera, setSelectedCamera] = useState<CameraWithSnapshot | null>(null);
@@ -79,6 +80,7 @@ export function CameraGrid({ tentId }: CameraGridProps) {
   }, [cameras.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {
+    if (hideEmpty) return null;
     return (
       <div className="flex items-center justify-center p-8">
         <Loader2 className="size-6 animate-spin text-muted-foreground" />
@@ -87,6 +89,7 @@ export function CameraGrid({ tentId }: CameraGridProps) {
   }
 
   if (cameras.length === 0) {
+    if (hideEmpty) return null;
     return (
       <div className="flex flex-col items-center justify-center gap-3 p-8 text-center">
         <Camera className="size-10 text-muted-foreground" />

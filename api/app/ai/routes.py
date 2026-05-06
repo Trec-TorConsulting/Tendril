@@ -1,29 +1,33 @@
 """AI API routes — chat (WebSocket), health check, coach tips, insights, reports."""
+
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import logging
+from datetime import UTC
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
-from sqlalchemy import select, desc
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.jwt import decode_token
-from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
-from app.ai.ollama import chat_completion, chat_completion_stream, chat_with_tools
 from app.ai.context import (
     build_chat_context,
-    build_health_check_prompt,
     build_coach_tip_prompt,
-    build_insight_prompt,
     build_feeding_advice_prompt,
+    build_health_check_prompt,
+    build_insight_prompt,
 )
 from app.ai.gather import gather_grow_data
+from app.ai.ollama import chat_completion, chat_completion_stream, chat_with_tools
 from app.ai.tools import CHAT_TOOLS, execute_tool
+from app.auth.jwt import decode_token
+from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
+from app.billing.tier_gate import require_usage_limit
 
 logger = logging.getLogger("tendril.ai")
 router = APIRouter()
@@ -33,25 +37,32 @@ MAX_TOOL_ROUNDS = 5
 
 # ---------- WebSocket Chat (4.1) — with tool support ----------
 
+
 @router.websocket("/chat")
 async def websocket_chat(ws: WebSocket):
     """AI chat via WebSocket with full grow context and tool-calling support."""
     await ws.accept()
 
     # Auth: first message must be {"token": "...", "grow_id": "..."}
+    # Token may also come from httpOnly cookie on the WS handshake.
     try:
         init = await ws.receive_json()
         token = init.get("token", "")
         grow_id = init.get("grow_id")
 
+        # Prefer cookie-based auth (httpOnly cookie sent with WS upgrade)
+        cookie_token = ws.cookies.get("access_token")
+        if cookie_token:
+            token = cookie_token
+
         payload = decode_token(token)
         if payload.get("type") != "access":
-            await ws.send_json({"error": "Invalid token"})
+            await ws.send_json({"type": "error", "message": "Authentication failed: invalid token"})
             await ws.close()
             return
         tenant_id = UUID(payload["tid"])
     except Exception:
-        await ws.send_json({"error": "Authentication failed"})
+        await ws.send_json({"type": "error", "message": "Authentication failed"})
         await ws.close()
         return
 
@@ -60,9 +71,10 @@ async def websocket_chat(ws: WebSocket):
     grow_uuid = None
     if grow_id:
         try:
+            from sqlalchemy import text
+
             from app.database import async_session_factory
             from app.grows.models import GrowCycle
-            from sqlalchemy import text
 
             async with async_session_factory() as session:
                 tid = str(tenant_id)
@@ -70,8 +82,13 @@ async def websocket_chat(ws: WebSocket):
                 grow = await session.get(GrowCycle, UUID(grow_id))
                 if grow and grow.tenant_id == tenant_id:
                     grow_uuid = grow.id
-                    grow_data = await gather_grow_data(session, grow, include_camera=False)
+                    grow_data = await asyncio.wait_for(
+                        gather_grow_data(session, grow, include_camera=False),
+                        timeout=10.0,
+                    )
                     system_context = build_chat_context(grow_data)
+        except TimeoutError:
+            logger.warning("Timed out loading grow context for chat, using default")
         except Exception:
             logger.exception("Failed to load grow context for chat")
 
@@ -89,7 +106,6 @@ async def websocket_chat(ws: WebSocket):
             messages.append({"role": "user", "content": user_msg})
 
             # Tool-calling loop: detect tool calls, execute, re-query
-            tool_used = False
             if grow_uuid:
                 for _round in range(MAX_TOOL_ROUNDS):
                     try:
@@ -103,7 +119,6 @@ async def websocket_chat(ws: WebSocket):
                         break
 
                     # Model wants to call tools
-                    tool_used = True
                     messages.append(result["message"])
 
                     for tc in tool_calls:
@@ -112,16 +127,16 @@ async def websocket_chat(ws: WebSocket):
                         fn_args = fn.get("arguments", {})
 
                         try:
-                            from app.database import async_session_factory
                             from sqlalchemy import text
+
+                            from app.database import async_session_factory
 
                             async with async_session_factory() as tool_session:
                                 tid = str(tenant_id)
-                                await tool_session.execute(
-                                    text(f"SET app.current_tenant = '{tid}'")
-                                )
+                                await tool_session.execute(text(f"SET app.current_tenant = '{tid}'"))
                                 tool_result = await execute_tool(
-                                    fn_name, fn_args,
+                                    fn_name,
+                                    fn_args,
                                     session=tool_session,
                                     tenant_id=tenant_id,
                                     grow_id=grow_uuid,
@@ -131,11 +146,13 @@ async def websocket_chat(ws: WebSocket):
                             tool_result = f"Error: {e}"
 
                         messages.append({"role": "tool", "content": tool_result})
-                        await ws.send_json({
-                            "type": "action",
-                            "tool": fn_name,
-                            "result": tool_result,
-                        })
+                        await ws.send_json(
+                            {
+                                "type": "action",
+                                "tool": fn_name,
+                                "result": tool_result,
+                            }
+                        )
 
             # Stream the final natural-language response
             full_response = ""
@@ -156,6 +173,7 @@ async def websocket_chat(ws: WebSocket):
 
 
 # ---------- Health Check (4.2) — powered by Gemini with camera + full data ----------
+
 
 class HealthCheckRequest(BaseModel):
     grow_id: str
@@ -178,19 +196,27 @@ class HealthCheckHistoryResponse(BaseModel):
     items: list[HealthCheckResponse]
 
 
-@router.post("/health-check", response_model=HealthCheckResponse)
+@router.post(
+    "/health-check",
+    response_model=HealthCheckResponse,
+    dependencies=[Depends(require_usage_limit("ai_analyses"))],
+)
 async def run_health_check(
     body: HealthCheckRequest,
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Run a Gemini-powered AI health check with camera image and full grow data."""
-    from app.grows.models import GrowCycle, HealthEval
     from app.ai.gemini import (
-        chat_completion as gemini_chat,
-        is_configured as gemini_configured,
         GeminiRateLimitError,
     )
+    from app.ai.gemini import (
+        chat_completion as gemini_chat,
+    )
+    from app.ai.gemini import (
+        is_configured as gemini_configured,
+    )
+    from app.grows.models import GrowCycle, HealthEval
 
     if not gemini_configured():
         raise HTTPException(status_code=503, detail="AI health check service not configured")
@@ -201,7 +227,9 @@ async def run_health_check(
 
     # Gather ALL data
     grow_data = await gather_grow_data(
-        session, grow, include_camera=body.include_camera,
+        session,
+        grow,
+        include_camera=body.include_camera,
     )
 
     # Build prompt with all data
@@ -230,10 +258,10 @@ async def run_health_check(
         raise HTTPException(
             status_code=429,
             detail="AI rate limit reached. Try again in a few minutes.",
-        )
+        ) from None
     except Exception:
         logger.exception("Gemini health check failed")
-        raise HTTPException(status_code=503, detail="AI service unavailable")
+        raise HTTPException(status_code=503, detail="AI service unavailable") from None
 
     # Parse JSON response
     score = None
@@ -270,17 +298,21 @@ async def run_health_check(
     grow.feeding_advice_cached_at = None
 
     # Save camera snapshot as a grow photo for the gallery
-    if camera_image and not body.image_base64:
-        # Only auto-save the camera image (not user-uploaded duplicates)
+    if camera_image:
         try:
             import asyncio
+
             from app.grows.models import GrowPhoto
             from app.storage import upload_photo as s3_upload
 
             loop = asyncio.get_running_loop()
             key = await loop.run_in_executor(
-                None, s3_upload, camera_image, "image/jpeg",
-                str(grow.tenant_id), str(grow.id),
+                None,
+                s3_upload,
+                camera_image,
+                "image/jpeg",
+                str(grow.tenant_id),
+                str(grow.id),
             )
             grow_photo = GrowPhoto(
                 tenant_id=grow.tenant_id,
@@ -291,7 +323,36 @@ async def run_health_check(
             )
             session.add(grow_photo)
         except Exception:
-            logger.warning("Failed to save health check snapshot to S3")
+            logger.exception("Failed to save health check camera snapshot to S3")
+
+    # Also save user-uploaded image as a grow photo
+    if body.image_base64:
+        try:
+            import asyncio
+
+            from app.grows.models import GrowPhoto
+            from app.storage import upload_photo as s3_upload
+
+            user_bytes = base64.b64decode(body.image_base64)
+            loop = asyncio.get_running_loop()
+            key = await loop.run_in_executor(
+                None,
+                s3_upload,
+                user_bytes,
+                "image/jpeg",
+                str(grow.tenant_id),
+                str(grow.id),
+            )
+            grow_photo = GrowPhoto(
+                tenant_id=grow.tenant_id,
+                grow_cycle_id=grow.id,
+                source="health_check",
+                storage_key=key,
+                caption=f"Health check upload (score: {score})" if score else "Health check upload",
+            )
+            session.add(grow_photo)
+        except Exception:
+            logger.exception("Failed to save user-uploaded health check image to S3")
 
     await session.commit()
     await session.refresh(health_eval)
@@ -317,12 +378,18 @@ async def get_health_check_history(
     """Get health check history for a grow cycle."""
     from app.grows.models import HealthEval
 
-    evals = (await session.execute(
-        select(HealthEval)
-        .where(HealthEval.grow_cycle_id == UUID(grow_id))
-        .order_by(desc(HealthEval.created_at))
-        .limit(min(limit, 50))
-    )).scalars().all()
+    evals = (
+        (
+            await session.execute(
+                select(HealthEval)
+                .where(HealthEval.grow_cycle_id == UUID(grow_id))
+                .order_by(desc(HealthEval.created_at))
+                .limit(min(limit, 50))
+            )
+        )
+        .scalars()
+        .all()
+    )
 
     return HealthCheckHistoryResponse(
         items=[
@@ -342,6 +409,7 @@ async def get_health_check_history(
 
 # ---------- Coach Tips (4.3) ----------
 
+
 class CoachTipRequest(BaseModel):
     grow_id: str
 
@@ -350,30 +418,34 @@ class CoachTipResponse(BaseModel):
     tip: str
 
 
-@router.post("/coach-tip", response_model=CoachTipResponse)
+@router.post(
+    "/coach-tip",
+    response_model=CoachTipResponse,
+    dependencies=[Depends(require_usage_limit("ai_analyses"))],
+)
 async def get_coach_tip(
     body: CoachTipRequest,
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Get an AI coach tip for a specific grow cycle."""
-    from app.grows.models import GrowCycle, BucketSensorReading, Bucket
+    from app.grows.models import Bucket, BucketSensorReading, GrowCycle
 
     grow = await session.get(GrowCycle, UUID(body.grow_id))
     if not grow:
         raise HTTPException(status_code=404, detail="Grow not found")
 
     sensors = {}
-    buckets = (await session.execute(
-        select(Bucket).where(Bucket.grow_cycle_id == grow.id)
-    )).scalars().all()
+    buckets = (await session.execute(select(Bucket).where(Bucket.grow_cycle_id == grow.id))).scalars().all()
     if buckets:
-        reading = (await session.execute(
-            select(BucketSensorReading)
-            .where(BucketSensorReading.bucket_id == buckets[0].id)
-            .order_by(desc(BucketSensorReading.recorded_at))
-            .limit(1)
-        )).scalar_one_or_none()
+        reading = (
+            await session.execute(
+                select(BucketSensorReading)
+                .where(BucketSensorReading.bucket_id == buckets[0].id)
+                .order_by(desc(BucketSensorReading.recorded_at))
+                .limit(1)
+            )
+        ).scalar_one_or_none()
         if reading:
             sensors = {"ph": reading.ph, "ec": reading.ec, "water_temp_f": reading.water_temp_f}
 
@@ -382,12 +454,19 @@ async def get_coach_tip(
     try:
         tip = await chat_completion(messages)
     except Exception:
-        raise HTTPException(status_code=503, detail="AI service unavailable")
+        # Fallback to Gemini if Ollama is unavailable
+        try:
+            from app.ai.gemini import chat_completion as gemini_chat
+
+            tip = await gemini_chat(messages)
+        except Exception:
+            raise HTTPException(status_code=503, detail="AI service unavailable") from None
 
     return CoachTipResponse(tip=tip.strip())
 
 
 # ---------- AI Insights (4.13) ----------
+
 
 class InsightRequest(BaseModel):
     grow_id: str
@@ -399,14 +478,18 @@ class InsightResponse(BaseModel):
     result: dict | str
 
 
-@router.post("/insights", response_model=InsightResponse)
+@router.post(
+    "/insights",
+    response_model=InsightResponse,
+    dependencies=[Depends(require_usage_limit("ai_analyses"))],
+)
 async def get_insight(
     body: InsightRequest,
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Get AI-powered insights for a grow cycle."""
-    from app.grows.models import GrowCycle, BucketSensorReading, Bucket
+    from app.grows.models import Bucket, BucketSensorReading, GrowCycle
 
     if body.insight_type not in ("harvest_predict", "nutrient_advice", "anomaly_scan"):
         raise HTTPException(status_code=400, detail="Invalid insight type")
@@ -423,16 +506,20 @@ async def get_insight(
     }
 
     # Add sensor summary
-    buckets = (await session.execute(
-        select(Bucket).where(Bucket.grow_cycle_id == grow.id)
-    )).scalars().all()
+    buckets = (await session.execute(select(Bucket).where(Bucket.grow_cycle_id == grow.id))).scalars().all()
     if buckets:
-        readings = (await session.execute(
-            select(BucketSensorReading)
-            .where(BucketSensorReading.bucket_id == buckets[0].id)
-            .order_by(desc(BucketSensorReading.recorded_at))
-            .limit(10)
-        )).scalars().all()
+        readings = (
+            (
+                await session.execute(
+                    select(BucketSensorReading)
+                    .where(BucketSensorReading.bucket_id == buckets[0].id)
+                    .order_by(desc(BucketSensorReading.recorded_at))
+                    .limit(10)
+                )
+            )
+            .scalars()
+            .all()
+        )
         if readings:
             ph_vals = [r.ph for r in readings if r.ph is not None]
             ec_vals = [r.ec for r in readings if r.ec is not None]
@@ -449,17 +536,37 @@ async def get_insight(
     try:
         raw = await chat_completion(messages)
     except Exception:
-        raise HTTPException(status_code=503, detail="AI service unavailable")
+        try:
+            from app.ai.gemini import chat_completion as gemini_chat
 
+            raw = await gemini_chat(messages)
+        except Exception:
+            raise HTTPException(status_code=503, detail="AI service unavailable") from None
+
+    # Try to extract JSON from the response (LLM may wrap it in markdown)
+    import re
+
+    result: dict | str
     try:
         result = json.loads(raw)
     except json.JSONDecodeError:
-        result = raw
+        # Try to find JSON block in markdown code fence or inline
+        json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
+        if not json_match:
+            json_match = re.search(r"(\{.*\})", raw, re.DOTALL)
+        if json_match:
+            try:
+                result = json.loads(json_match.group(1))
+            except json.JSONDecodeError:
+                result = raw
+        else:
+            result = raw
 
     return InsightResponse(insight_type=body.insight_type, result=result)
 
 
 # ---------- Feeding Advice (AI-powered) ----------
+
 
 class FeedingAdviceResponse(BaseModel):
     current_stage_advice: str | None = None
@@ -476,7 +583,8 @@ async def get_feeding_advice(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """AI-powered feeding recommendations — cached until the next health check."""
-    from datetime import datetime, timezone
+    from datetime import datetime
+
     from app.grows.models import GrowCycle, HealthEval
 
     grow = await session.get(GrowCycle, UUID(grow_id))
@@ -485,12 +593,14 @@ async def get_feeding_advice(
 
     # Check if we have a valid cache: advice exists and no newer health eval
     if grow.cached_feeding_advice and grow.feeding_advice_cached_at:
-        latest_eval = (await session.execute(
-            select(HealthEval)
-            .where(HealthEval.grow_cycle_id == grow.id)
-            .order_by(desc(HealthEval.created_at))
-            .limit(1)
-        )).scalar_one_or_none()
+        latest_eval = (
+            await session.execute(
+                select(HealthEval)
+                .where(HealthEval.grow_cycle_id == grow.id)
+                .order_by(desc(HealthEval.created_at))
+                .limit(1)
+            )
+        ).scalar_one_or_none()
 
         cache_valid = True
         if latest_eval and latest_eval.created_at > grow.feeding_advice_cached_at:
@@ -513,18 +623,24 @@ async def get_feeding_advice(
     try:
         raw = await chat_completion(messages)
     except Exception:
-        logger.exception("Feeding advice AI call failed")
-        # If we have stale cache, return it rather than erroring
-        if grow.cached_feeding_advice:
-            cached = grow.cached_feeding_advice
-            return FeedingAdviceResponse(
-                current_stage_advice=cached.get("current_stage_advice"),
-                adjustments=cached.get("adjustments") or [],
-                alerts=cached.get("alerts") or [],
-                next_transition=cached.get("next_transition"),
-                health_impact=cached.get("health_impact"),
-            )
-        raise HTTPException(status_code=503, detail="AI service unavailable")
+        # Try Gemini as fallback
+        try:
+            from app.ai.gemini import chat_completion as gemini_chat
+
+            raw = await gemini_chat(messages)
+        except Exception:
+            logger.exception("Feeding advice AI call failed")
+            # If we have stale cache, return it rather than erroring
+            if grow.cached_feeding_advice:
+                cached = grow.cached_feeding_advice
+                return FeedingAdviceResponse(
+                    current_stage_advice=cached.get("current_stage_advice"),
+                    adjustments=cached.get("adjustments") or [],
+                    alerts=cached.get("alerts") or [],
+                    next_transition=cached.get("next_transition"),
+                    health_impact=cached.get("health_impact"),
+                )
+        raise HTTPException(status_code=503, detail="AI service unavailable") from None
 
     # Parse JSON response
     try:
@@ -544,12 +660,12 @@ async def get_feeding_advice(
             start = cleaned.find("{")
             end = cleaned.rfind("}")
             if start != -1 and end != -1 and end > start:
-                cleaned = cleaned[start:end + 1]
+                cleaned = cleaned[start : end + 1]
         parsed = json.loads(cleaned)
 
         # Cache the parsed result on the grow
         grow.cached_feeding_advice = parsed
-        grow.feeding_advice_cached_at = datetime.now(timezone.utc)
+        grow.feeding_advice_cached_at = datetime.now(UTC)
         await session.commit()
 
         return FeedingAdviceResponse(
@@ -566,6 +682,7 @@ async def get_feeding_advice(
 
 # ---------- PDF Report (4.14) ----------
 
+
 @router.get("/report/{grow_id}")
 async def get_grow_report(
     grow_id: str,
@@ -574,15 +691,430 @@ async def get_grow_report(
 ):
     """Generate a PDF report for a grow cycle."""
     from fastapi.responses import Response
+
     from app.ai.reports import generate_grow_report
 
     try:
         pdf_bytes = await generate_grow_report(session, UUID(grow_id))
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from None
 
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="grow-report-{grow_id[:8]}.pdf"'},
+    )
+
+
+# ---------- Plant Photo Diagnosis (Gemini Vision) ----------
+
+
+class DiagnoseRequest(BaseModel):
+    image_base64: str
+    grow_id: str | None = None
+    observations: str | None = None
+
+
+class DiagnosisIssue(BaseModel):
+    name: str
+    severity: str  # "low", "medium", "high", "critical"
+    confidence: float  # 0-1
+    description: str
+    treatment: str
+
+
+class DiagnoseResponse(BaseModel):
+    overall_score: int  # 0-100
+    summary: str
+    issues: list[DiagnosisIssue] = []
+    actions: list[str] = []
+    grow_stage_assessment: str | None = None
+
+
+@router.post(
+    "/diagnose",
+    response_model=DiagnoseResponse,
+    dependencies=[Depends(require_usage_limit("ai_analyses"))],
+)
+async def diagnose_plant_photo(
+    body: DiagnoseRequest,
+    user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Diagnose plant health from a photo using Gemini Vision.
+
+    Provides structured issues with severity, confidence, and treatment recommendations.
+    Optionally pass grow_id for grow-type-aware diagnosis.
+    """
+    from app.ai.gemini import (
+        GeminiRateLimitError,
+    )
+    from app.ai.gemini import (
+        chat_completion as gemini_chat,
+    )
+    from app.ai.gemini import (
+        is_configured as gemini_configured,
+    )
+
+    if not gemini_configured():
+        raise HTTPException(status_code=503, detail="Gemini API not configured")
+
+    try:
+        image_bytes = base64.b64decode(body.image_base64)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid base64 image data") from None
+
+    # Build grow context if grow_id is provided
+    grow_context = ""
+    if body.grow_id:
+        from app.grows.models import GrowCycle
+
+        grow = await session.get(GrowCycle, UUID(body.grow_id))
+        if grow:
+            from app.ai.context import get_grow_type_profile
+
+            profile = get_grow_type_profile(grow.grow_type)
+            type_name = profile["name"] if profile else grow.grow_type
+            common = ", ".join(profile["common_problems"]) if profile else ""
+            grow_context = (
+                f"\n\nGrow Context:\n"
+                f"- Grow type: {type_name}\n"
+                f"- Current stage: {grow.stage}\n"
+                f"- Common problems for this type: {common}\n"
+                f"- Use this context to provide grow-type-specific treatment recommendations.\n"
+            )
+
+    observations_text = ""
+    if body.observations:
+        observations_text = f"\n\nGrower's observations: {body.observations}"
+
+    system_prompt = (
+        "You are an expert cannabis plant health diagnostic AI with extensive knowledge of "
+        "nutrient deficiencies, pests, diseases, environmental stress, and growth abnormalities. "
+        "Analyze the provided plant photo and diagnose any health issues.\n\n"
+        "ACCURACY IS CRITICAL:\n"
+        "- Only report issues you can clearly identify in the image.\n"
+        "- Assign confidence scores honestly — if you're uncertain, reflect that.\n"
+        "- If the plant looks healthy, say so. Don't invent problems.\n"
+        "- Distinguish between confirmed issues (clearly visible) and potential concerns.\n\n"
+        "DIAGNOSTIC AREAS:\n"
+        "- Nutrient deficiencies/toxicities (N, P, K, Ca, Mg, Fe, Mn, Zn, S, B, Cu, Mo)\n"
+        "- pH-related lockout symptoms\n"
+        "- Pests (spider mites, thrips, aphids, fungus gnats, whiteflies, caterpillars)\n"
+        "- Diseases (powdery mildew, botrytis/bud rot, root rot, fusarium, septoria)\n"
+        "- Environmental stress (light burn, heat stress, wind burn, overwatering, underwatering)\n"
+        "- Training/mechanical damage\n"
+        f"{grow_context}{observations_text}\n\n"
+        "Respond ONLY with valid JSON (no markdown, no code fences):\n"
+        "{\n"
+        '  "overall_score": <int 0-100>,\n'
+        '  "summary": "<1-2 sentence overall assessment>",\n'
+        '  "issues": [\n'
+        "    {\n"
+        '      "name": "<issue name, e.g. Calcium Deficiency>",\n'
+        '      "severity": "<low|medium|high|critical>",\n'
+        '      "confidence": <float 0.0-1.0>,\n'
+        '      "description": "<what you see and why you think this>",\n'
+        '      "treatment": "<specific actionable fix>"\n'
+        "    }\n"
+        "  ],\n"
+        '  "actions": ["<immediate action 1>", "<action 2>", ...],\n'
+        '  "grow_stage_assessment": "<assessment of growth stage if determinable, or null>"\n'
+        "}\n"
+    )
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": "Please analyze this plant photo and provide a full health diagnosis."},
+    ]
+
+    try:
+        raw = await gemini_chat(messages, image_bytes=image_bytes)
+    except GeminiRateLimitError:
+        raise HTTPException(status_code=429, detail="AI rate limit reached. Try again in a few minutes.") from None
+    except Exception:
+        logger.exception("Gemini diagnose failed")
+        raise HTTPException(status_code=503, detail="AI service unavailable") from None
+
+    # Parse response
+    try:
+        cleaned = raw.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3]
+        cleaned = cleaned.strip()
+        parsed = json.loads(cleaned)
+    except json.JSONDecodeError:
+        logger.warning("Gemini diagnose returned non-JSON: %s", raw[:300])
+        return DiagnoseResponse(
+            overall_score=0,
+            summary="Unable to parse AI response. Please try again.",
+            issues=[],
+            actions=[],
+        )
+
+    # Save photo as a grow photo if grow_id provided
+    if body.grow_id:
+        try:
+            import asyncio
+
+            from app.grows.models import GrowCycle, GrowPhoto
+            from app.storage import upload_photo as s3_upload
+
+            grow = await session.get(GrowCycle, UUID(body.grow_id))
+            if grow:
+                loop = asyncio.get_running_loop()
+                key = await loop.run_in_executor(
+                    None,
+                    s3_upload,
+                    image_bytes,
+                    "image/jpeg",
+                    str(grow.tenant_id),
+                    str(grow.id),
+                )
+                score = parsed.get("overall_score")
+                photo = GrowPhoto(
+                    tenant_id=grow.tenant_id,
+                    grow_cycle_id=grow.id,
+                    source="health_check",
+                    storage_key=key,
+                    caption=f"AI Diagnosis (score: {score})" if score else "AI Diagnosis",
+                )
+                session.add(photo)
+                await session.commit()
+        except Exception:
+            logger.exception("Failed to save diagnosis photo to S3")
+
+    return DiagnoseResponse(
+        overall_score=parsed.get("overall_score", 0),
+        summary=parsed.get("summary", ""),
+        issues=[DiagnosisIssue(**i) for i in parsed.get("issues", []) if isinstance(i, dict)],
+        actions=parsed.get("actions", []),
+        grow_stage_assessment=parsed.get("grow_stage_assessment"),
+    )
+
+
+# ---------- Plant Identification (Gemini Vision) ----------
+
+
+class IdentifyRequest(BaseModel):
+    image_base64: str
+
+
+class IdentifyResponse(BaseModel):
+    plant_type: str
+    confidence: float
+    species: str | None = None
+    strain_guess: str | None = None
+    strain_confidence: float | None = None
+    characteristics: list[str] = []
+    growth_stage: str | None = None
+    indica_sativa_ratio: str | None = None
+    notes: str = ""
+
+
+@router.post(
+    "/identify",
+    response_model=IdentifyResponse,
+    dependencies=[Depends(require_usage_limit("ai_analyses"))],
+)
+async def identify_plant(
+    body: IdentifyRequest,
+    user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
+):
+    """Identify a plant from a photo using Gemini Vision.
+
+    Attempts to determine species, possible strain characteristics,
+    growth stage, and indica/sativa dominance from visual features.
+    """
+    from app.ai.gemini import (
+        GeminiRateLimitError,
+    )
+    from app.ai.gemini import (
+        chat_completion as gemini_chat,
+    )
+    from app.ai.gemini import (
+        is_configured as gemini_configured,
+    )
+
+    if not gemini_configured():
+        raise HTTPException(status_code=503, detail="Gemini API not configured")
+
+    try:
+        image_bytes = base64.b64decode(body.image_base64)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid base64 image data") from None
+
+    system_prompt = (
+        "You are an expert botanist specializing in cannabis (Cannabis sativa L.) identification. "
+        "Analyze the provided plant photo and identify the plant.\n\n"
+        "IDENTIFICATION CAPABILITIES:\n"
+        "- Determine if the plant is cannabis vs another species\n"
+        "- Assess indica vs sativa dominance from leaf morphology (broad vs narrow leaves, "
+        "internodal spacing, plant structure)\n"
+        "- Estimate growth stage (seedling, veg, pre-flower, flower, late flower)\n"
+        "- Note distinguishing characteristics (leaf shape, color, structure, trichome density)\n\n"
+        "STRAIN IDENTIFICATION LIMITATIONS (be honest):\n"
+        "- Visual strain identification is unreliable — there are thousands of strains "
+        "with overlapping phenotypes\n"
+        "- At best you can suggest indica/sativa dominance and general phenotype characteristics\n"
+        "- Purple coloring, leaf shape, bud structure, and growth pattern can narrow down lineage\n"
+        "- Never claim 100% certainty on strain identification\n"
+        "- If you recognize very distinctive phenotypes (e.g., extreme purple, duck foot, ABC), note them\n\n"
+        "ACCURACY:\n"
+        "- If the image is not a cannabis plant, say so clearly\n"
+        "- If you cannot determine something, set confidence appropriately low or use null\n"
+        "- Confidence scores should reflect genuine certainty\n\n"
+        "Respond ONLY with valid JSON (no markdown, no code fences):\n"
+        "{\n"
+        '  "plant_type": "<Cannabis / Not Cannabis / Unknown>",\n'
+        '  "confidence": <float 0.0-1.0 for plant_type identification>,\n'
+        '  "species": "<Cannabis sativa / Cannabis indica / Hybrid or null>",\n'
+        '  "strain_guess": "<best guess strain name or lineage family, or null if impossible to tell>",\n'
+        '  "strain_confidence": <float 0.0-1.0 or null — typically low (0.1-0.3) since visual ID is unreliable>,\n'
+        '  "characteristics": ["<observable trait 1>", "<trait 2>", ...],\n'
+        '  "growth_stage": "<seedling|early_veg|late_veg|pre_flower|early_flower|'
+        'mid_flower|late_flower|harvest or null>",\n'
+        '  "indica_sativa_ratio": "<e.g. 70% Indica / 30% Sativa, or null if unclear>",\n'
+        '  "notes": "<any additional observations about the plant morphology, health, or unusual features>"\n'
+        "}\n"
+    )
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": "Please identify this plant and describe its characteristics."},
+    ]
+
+    try:
+        raw = await gemini_chat(messages, image_bytes=image_bytes)
+    except GeminiRateLimitError:
+        raise HTTPException(status_code=429, detail="AI rate limit reached. Try again in a few minutes.") from None
+    except Exception:
+        logger.exception("Gemini identify failed")
+        raise HTTPException(status_code=503, detail="AI service unavailable") from None
+
+    # Parse response
+    try:
+        cleaned = raw.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3]
+        cleaned = cleaned.strip()
+        parsed = json.loads(cleaned)
+    except json.JSONDecodeError:
+        logger.warning("Gemini identify returned non-JSON: %s", raw[:300])
+        return IdentifyResponse(
+            plant_type="Unknown",
+            confidence=0.0,
+            notes="Unable to parse AI response. Please try again.",
+        )
+
+    return IdentifyResponse(
+        plant_type=parsed.get("plant_type", "Unknown"),
+        confidence=parsed.get("confidence", 0.0),
+        species=parsed.get("species"),
+        strain_guess=parsed.get("strain_guess"),
+        strain_confidence=parsed.get("strain_confidence"),
+        characteristics=parsed.get("characteristics", []),
+        growth_stage=parsed.get("growth_stage"),
+        indica_sativa_ratio=parsed.get("indica_sativa_ratio"),
+        notes=parsed.get("notes", ""),
+    )
+
+
+# ---------- Treatment Recommendations Database ----------
+
+
+class TreatmentSummaryResponse(BaseModel):
+    id: str
+    category: str
+    name: str
+    summary: str
+
+
+class TreatmentDetailResponse(BaseModel):
+    id: str
+    category: str
+    name: str
+    aka: list[str]
+    summary: str
+    symptoms: list[str]
+    identification_tips: list[str]
+    causes: list[str]
+    severity_criteria: dict[str, str]
+    treatments: dict[str, list[str]]
+    prevention: list[str]
+    recovery_time: str
+    commonly_confused_with: list[str]
+
+
+class TreatmentListResponse(BaseModel):
+    items: list[TreatmentSummaryResponse]
+    total: int
+
+
+@router.get("/treatments", response_model=TreatmentListResponse)
+async def list_treatments(
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    category: str | None = None,
+    query: str | None = None,
+):
+    """List treatment database entries, optionally filtered by category or search query."""
+    from app.ai.treatment_db import TREATMENT_DATABASE, list_by_category, search_treatments
+
+    if query:
+        entries = search_treatments(query)
+    elif category:
+        entries = list_by_category(category)
+    else:
+        entries = TREATMENT_DATABASE
+
+    return TreatmentListResponse(
+        items=[TreatmentSummaryResponse(id=e.id, category=e.category, name=e.name, summary=e.summary) for e in entries],
+        total=len(entries),
+    )
+
+
+@router.get("/treatments/{treatment_id}", response_model=TreatmentDetailResponse)
+async def get_treatment_detail(
+    treatment_id: str,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    grow_type: str | None = None,
+):
+    """Get detailed treatment information for a specific issue.
+
+    Optionally pass grow_type to get type-specific treatment recommendations.
+    """
+    from app.ai.treatment_db import get_treatment
+
+    entry = get_treatment(treatment_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Treatment not found")
+
+    # If grow_type provided, filter treatments to relevant category
+    treatments = dict(entry.treatments)
+    if grow_type:
+        from app.ai.treatment_db import get_treatments_for_grow_type
+
+        type_treatments = get_treatments_for_grow_type(grow_type)
+        specific = type_treatments.get(treatment_id, [])
+        if specific:
+            treatments = {grow_type: specific}
+
+    return TreatmentDetailResponse(
+        id=entry.id,
+        category=entry.category,
+        name=entry.name,
+        aka=entry.aka,
+        summary=entry.summary,
+        symptoms=entry.symptoms,
+        identification_tips=entry.identification_tips,
+        causes=entry.causes,
+        severity_criteria=entry.severity_criteria,
+        treatments=treatments,
+        prevention=entry.prevention,
+        recovery_time=entry.recovery_time,
+        commonly_confused_with=entry.commonly_confused_with,
     )

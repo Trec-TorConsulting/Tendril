@@ -5,9 +5,11 @@ import { getAccessToken } from "@/lib/auth";
 import {
   listSoilTests,
   createSoilTest,
+  updateSoilTest,
   deleteSoilTest,
   listAmendments,
   createAmendment,
+  updateAmendment,
   deleteAmendment,
   type SoilTestResponse,
   type AmendmentResponse,
@@ -33,7 +35,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FlaskConical, Leaf, Trash2, Plus, TrendingUp, TrendingDown } from "lucide-react";
+import { FlaskConical, Leaf, Trash2, Plus, TrendingUp, TrendingDown, Pencil } from "lucide-react";
 
 const AMENDMENT_TYPES = [
   "compost", "worm_castings", "bone_meal", "blood_meal", "kelp",
@@ -50,6 +52,8 @@ export function SoilDashboard({ growId }: Props) {
   const [amendments, setAmendments] = useState<AmendmentResponse[]>([]);
   const [showTestDialog, setShowTestDialog] = useState(false);
   const [showAmendmentDialog, setShowAmendmentDialog] = useState(false);
+  const [editingTestId, setEditingTestId] = useState<string | null>(null);
+  const [editingAmendmentId, setEditingAmendmentId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Test form
@@ -132,6 +136,69 @@ export function SoilDashboard({ growId }: Props) {
     const token = await getAccessToken();
     if (!token) return;
     await deleteAmendment(token, growId, id);
+    refresh();
+  };
+
+  const handleEditTest = (t: SoilTestResponse) => {
+    setEditingTestId(t.id);
+    setTestForm({
+      ph: t.ph?.toString() ?? "", nitrogen_ppm: t.nitrogen_ppm?.toString() ?? "",
+      phosphorus_ppm: t.phosphorus_ppm?.toString() ?? "", potassium_ppm: t.potassium_ppm?.toString() ?? "",
+      organic_matter_pct: t.organic_matter_pct?.toString() ?? "", cec: t.cec?.toString() ?? "",
+      calcium_ppm: t.calcium_ppm?.toString() ?? "", magnesium_ppm: t.magnesium_ppm?.toString() ?? "",
+      sulfur_ppm: t.sulfur_ppm?.toString() ?? "", source: t.source || "home_kit", notes: t.notes || "",
+    });
+    setShowTestDialog(true);
+  };
+
+  const handleUpdateTest = async () => {
+    if (!editingTestId) return;
+    const token = await getAccessToken();
+    if (!token) return;
+    const data: Record<string, unknown> = { source: testForm.source };
+    if (testForm.ph) data.ph = +testForm.ph;
+    if (testForm.nitrogen_ppm) data.nitrogen_ppm = +testForm.nitrogen_ppm;
+    if (testForm.phosphorus_ppm) data.phosphorus_ppm = +testForm.phosphorus_ppm;
+    if (testForm.potassium_ppm) data.potassium_ppm = +testForm.potassium_ppm;
+    if (testForm.organic_matter_pct) data.organic_matter_pct = +testForm.organic_matter_pct;
+    if (testForm.cec) data.cec = +testForm.cec;
+    if (testForm.calcium_ppm) data.calcium_ppm = +testForm.calcium_ppm;
+    if (testForm.magnesium_ppm) data.magnesium_ppm = +testForm.magnesium_ppm;
+    if (testForm.sulfur_ppm) data.sulfur_ppm = +testForm.sulfur_ppm;
+    if (testForm.notes) data.notes = testForm.notes;
+    await updateSoilTest(token, growId, editingTestId, data);
+    setShowTestDialog(false);
+    setEditingTestId(null);
+    setTestForm({ ph: "", nitrogen_ppm: "", phosphorus_ppm: "", potassium_ppm: "", organic_matter_pct: "", cec: "", calcium_ppm: "", magnesium_ppm: "", sulfur_ppm: "", source: "home_kit", notes: "" });
+    refresh();
+  };
+
+  const handleEditAmendment = (a: AmendmentResponse) => {
+    setEditingAmendmentId(a.id);
+    setAmendForm({
+      amendment_type: a.amendment_type || "compost", product_name: a.product_name || "",
+      quantity: a.quantity || "", area_applied: a.area_applied || "",
+      cost: a.cost?.toString() ?? "", notes: a.notes || "",
+    });
+    setShowAmendmentDialog(true);
+  };
+
+  const handleUpdateAmendment = async () => {
+    if (!editingAmendmentId) return;
+    const token = await getAccessToken();
+    if (!token) return;
+    const data: Record<string, unknown> = {
+      amendment_type: amendForm.amendment_type,
+      product_name: amendForm.product_name,
+    };
+    if (amendForm.quantity) data.quantity = amendForm.quantity;
+    if (amendForm.area_applied) data.area_applied = amendForm.area_applied;
+    if (amendForm.cost) data.cost = +amendForm.cost;
+    if (amendForm.notes) data.notes = amendForm.notes;
+    await updateAmendment(token, growId, editingAmendmentId, data);
+    setShowAmendmentDialog(false);
+    setEditingAmendmentId(null);
+    setAmendForm({ amendment_type: "compost", product_name: "", quantity: "", area_applied: "", cost: "", notes: "" });
     refresh();
   };
 
@@ -227,7 +294,10 @@ export function SoilDashboard({ growId }: Props) {
                       </div>
                       <Badge variant="outline" className="mt-1 text-xs">{t.source}</Badge>
                     </div>
-                    <Button variant="ghost" size="icon" onClick={() => handleDeleteTest(t.id)}><Trash2 className="size-3" /></Button>
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => handleEditTest(t)}><Pencil className="size-3" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleDeleteTest(t.id)}><Trash2 className="size-3" /></Button>
+                    </div>
                   </div>
                 </Card>
               ))}
@@ -269,7 +339,10 @@ export function SoilDashboard({ growId }: Props) {
                         {a.cost !== null && <span>${a.cost.toFixed(2)}</span>}
                       </div>
                     </div>
-                    <Button variant="ghost" size="icon" onClick={() => handleDeleteAmendment(a.id)}><Trash2 className="size-3" /></Button>
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => handleEditAmendment(a)}><Pencil className="size-3" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleDeleteAmendment(a.id)}><Trash2 className="size-3" /></Button>
+                    </div>
                   </div>
                 </Card>
               ))}
@@ -305,8 +378,8 @@ export function SoilDashboard({ growId }: Props) {
           </div>
           <div><Label>Notes</Label><Textarea value={testForm.notes} onChange={(e) => setTestForm({ ...testForm, notes: e.target.value })} /></div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowTestDialog(false)}>Cancel</Button>
-            <Button onClick={handleCreateTest}>Save Test</Button>
+            <Button variant="outline" onClick={() => { setShowTestDialog(false); setEditingTestId(null); }}>Cancel</Button>
+            <Button onClick={editingTestId ? handleUpdateTest : handleCreateTest}>{editingTestId ? "Update Test" : "Save Test"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -331,8 +404,8 @@ export function SoilDashboard({ growId }: Props) {
             <div><Label>Notes</Label><Textarea value={amendForm.notes} onChange={(e) => setAmendForm({ ...amendForm, notes: e.target.value })} /></div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAmendmentDialog(false)}>Cancel</Button>
-            <Button onClick={handleCreateAmendment} disabled={!amendForm.product_name}>Save</Button>
+            <Button variant="outline" onClick={() => { setShowAmendmentDialog(false); setEditingAmendmentId(null); }}>Cancel</Button>
+            <Button onClick={editingAmendmentId ? handleUpdateAmendment : handleCreateAmendment} disabled={!amendForm.product_name}>{editingAmendmentId ? "Update" : "Save"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

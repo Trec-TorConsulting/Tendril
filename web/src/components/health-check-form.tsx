@@ -5,6 +5,7 @@ import { getAccessToken } from "@/lib/auth";
 import { getGrowType } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface HealthCheckFormProps {
   growType: string;
@@ -14,14 +15,31 @@ interface HealthCheckFormProps {
 interface HealthQuestion {
   id: string;
   question: string;
-  type: "boolean" | "text";
+  type: "boolean" | "text" | "date" | "select";
+  options?: string[];
 }
 
 /* Heuristic: questions starting with these words expect a yes/no answer. */
 const YES_NO_PATTERN = /^(is |are |any |do |does |did |can |have |has |using |pre-soaked |pre-buffered )/i;
 
-function classifyQuestion(q: string): "boolean" | "text" {
-  return YES_NO_PATTERN.test(q) ? "boolean" : "text";
+/* Pattern matching for special input types */
+const DATE_PATTERN = /when did you last|last.*change|last.*replaced/i;
+const WATER_COLOR_PATTERN = /water color|water.*clarity|color.*clarity/i;
+
+const WATER_COLOR_OPTIONS = [
+  "Clear",
+  "Slightly tinted (light yellow/amber)",
+  "Cloudy/murky",
+  "Brown/dark",
+  "Green (algae)",
+  "Foamy/bubbly surface",
+];
+
+function classifyQuestion(q: string): { type: HealthQuestion["type"]; options?: string[] } {
+  if (DATE_PATTERN.test(q)) return { type: "date" };
+  if (WATER_COLOR_PATTERN.test(q)) return { type: "select", options: WATER_COLOR_OPTIONS };
+  if (YES_NO_PATTERN.test(q)) return { type: "boolean" };
+  return { type: "text" };
 }
 
 export function HealthCheckForm({ growType, onSubmit }: HealthCheckFormProps) {
@@ -39,14 +57,17 @@ export function HealthCheckForm({ growType, onSubmit }: HealthCheckFormProps) {
           setQuestions(
             qs.map((q: unknown, i: number) => {
               if (typeof q === "string") {
-                return { id: `q${i}`, question: q, type: classifyQuestion(q) };
+                const classified = classifyQuestion(q);
+                return { id: `q${i}`, question: q, type: classified.type, options: classified.options };
               }
               const item = q as Record<string, unknown>;
               const text = (item.question as string) || "";
+              const classified = classifyQuestion(text);
               return {
                 id: (item.id as string) || `q${i}`,
                 question: text,
-                type: Array.isArray(item.options) ? "boolean" as const : classifyQuestion(text),
+                type: Array.isArray(item.options) ? "select" as const : classified.type,
+                options: Array.isArray(item.options) ? (item.options as string[]) : classified.options,
               };
             }),
           );
@@ -86,6 +107,27 @@ export function HealthCheckForm({ growType, onSubmit }: HealthCheckFormProps) {
                 </button>
               ))}
             </div>
+          ) : q.type === "date" ? (
+            <Input
+              type="date"
+              value={answers[q.id] || ""}
+              onChange={(e) => setAnswers({ ...answers, [q.id]: e.target.value })}
+              className="max-w-[200px]"
+            />
+          ) : q.type === "select" && q.options ? (
+            <Select
+              value={answers[q.id] || ""}
+              onValueChange={(val) => setAnswers({ ...answers, [q.id]: val })}
+            >
+              <SelectTrigger className="max-w-sm">
+                <SelectValue placeholder="Select…" />
+              </SelectTrigger>
+              <SelectContent>
+                {q.options.map((opt) => (
+                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           ) : (
             <Input
               placeholder="Describe…"

@@ -18,6 +18,7 @@ spec:
       containers:
       - name: migrate
         image: 192.168.4.10:30500/tendril-api:latest  # Replace with your registry
+        imagePullPolicy: Always
         command: ["alembic", "upgrade", "head"]
         env:
         - name: PYTHONPATH

@@ -5,11 +5,18 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.admin.routes import router as admin_router
 from app.ai.routes import router as ai_router
 from app.auth.routes import router as auth_router
 from app.automation.routes import router as automation_router
+from app.billing.account_deletion import router as account_deletion_router
+from app.billing.cancellation import router as billing_cancel_router
+from app.billing.invoices import router as billing_invoices_router
+from app.billing.metrics import router as billing_metrics_router
+from app.billing.plans import router as billing_plans_router
+from app.billing.provider_admin import router as billing_providers_router
 from app.billing.routes import router as billing_router
 from app.commercial.api_key_routes import router as api_keys_router
 from app.commercial.audit_routes import router as audit_router
@@ -19,14 +26,15 @@ from app.config import get_settings
 from app.data.routes import router as data_router
 from app.devices.routes import router as devices_router
 from app.grows.bucket_routes import router as buckets_router
+from app.grows.expense_routes import router as expense_router
 from app.grows.feeding_routes import router as feeding_router
 from app.grows.grow_routes import router as grows_router
 from app.grows.grow_type_routes import router as grow_types_router
 from app.grows.journal_routes import router as journal_router
 from app.grows.photo_routes import router as photos_router
+from app.grows.quick_log_routes import router as quick_log_router
 from app.grows.strain_routes import router as strains_router
 from app.grows.tent_routes import router as tents_router
-from app.grows.quick_log_routes import router as quick_log_router
 from app.grows.yield_routes import router as yields_router
 from app.integrations.routes import router as integrations_router
 from app.logging_config import setup_logging
@@ -42,6 +50,10 @@ from app.outdoor.yield_routes import router as harvest_yield_router
 from app.reference.routes import router as reference_router
 from app.sensors.routes import router as sensors_router
 from app.sensors.tent_routes import router as tent_sensors_router
+from app.support.admin_routes import router as support_admin_router
+from app.support.forum_routes import router as forum_router
+from app.support.kb_routes import router as kb_router
+from app.support.routes import router as support_tickets_router
 from app.tenants.routes import router as tenants_router
 from app.weather.routes import router as weather_router
 
@@ -73,9 +85,11 @@ def create_app() -> FastAPI:
     from app.middleware.rate_limit import RateLimiter
     from app.middleware.request_logging import RequestLoggingMiddleware
     from app.middleware.security import SecurityHeadersMiddleware
+    from app.middleware.tenant_plan import TenantPlanMiddleware
 
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(RequestLoggingMiddleware)
+    app.add_middleware(TenantPlanMiddleware)
     app.add_middleware(CSRFMiddleware)
     app.add_middleware(RateLimiter)
     app.add_middleware(BruteForceProtection)
@@ -112,6 +126,14 @@ def create_app() -> FastAPI:
     app.include_router(automation_router, prefix=f"{settings.api_prefix}/automation", tags=["automation"])
     app.include_router(notifications_router, prefix=f"{settings.api_prefix}/notifications", tags=["notifications"])
     app.include_router(billing_router, prefix=f"{settings.api_prefix}/billing", tags=["billing"])
+    app.include_router(billing_plans_router, prefix=f"{settings.api_prefix}/billing/plans", tags=["billing-plans"])
+    app.include_router(
+        billing_providers_router, prefix=f"{settings.api_prefix}/billing/providers", tags=["billing-providers"]
+    )
+    app.include_router(billing_cancel_router, prefix=f"{settings.api_prefix}/billing", tags=["billing-cancellation"])
+    app.include_router(billing_invoices_router, prefix=f"{settings.api_prefix}/billing", tags=["billing-invoices"])
+    app.include_router(billing_metrics_router, prefix=f"{settings.api_prefix}/billing", tags=["billing-metrics"])
+    app.include_router(account_deletion_router, prefix=f"{settings.api_prefix}/account", tags=["account"])
     app.include_router(data_router, prefix=f"{settings.api_prefix}/data", tags=["data"])
     app.include_router(
         custom_grow_types_router, prefix=f"{settings.api_prefix}/custom-grow-types", tags=["custom-grow-types"]
@@ -129,10 +151,32 @@ def create_app() -> FastAPI:
     app.include_router(container_router, prefix=f"{settings.api_prefix}/grows", tags=["outdoor-containers"])
     app.include_router(runoff_router, prefix=f"{settings.api_prefix}/grows", tags=["outdoor-runoff"])
     app.include_router(integrations_router, prefix=f"{settings.api_prefix}/integrations", tags=["integrations"])
+    app.include_router(expense_router, prefix=f"{settings.api_prefix}/grows", tags=["cost-roi"])
+    app.include_router(support_tickets_router, prefix=f"{settings.api_prefix}/support/tickets", tags=["support"])
+    app.include_router(support_admin_router, prefix=f"{settings.api_prefix}/support/admin", tags=["support-admin"])
+    app.include_router(kb_router, prefix=f"{settings.api_prefix}/support/kb", tags=["knowledge-base"])
+    app.include_router(forum_router, prefix=f"{settings.api_prefix}/support/forum", tags=["forum"])
 
     @app.get("/health")
     async def health():
         return {"status": "ok"}
+
+    @app.get("/health/ready")
+    async def health_ready():
+        """Readiness probe — verifies DB connectivity."""
+        from sqlalchemy import text
+
+        from app.database import async_session_factory
+
+        try:
+            async with async_session_factory() as session:
+                await session.execute(text("SELECT 1"))
+            return {"status": "ok", "db": "connected"}
+        except Exception as exc:
+            return JSONResponse(
+                status_code=503,
+                content={"status": "degraded", "db": "unreachable", "error": str(exc)},
+            )
 
     return app
 

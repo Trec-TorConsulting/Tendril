@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.auth.middleware import CurrentUser, get_tenant_session, require_role
+from app.billing.tier_gate import require_usage_limit
 from app.database import get_db
 from app.integrations.connectors.base import get_connector_class
 from app.integrations.crypto import decrypt_config, encrypt_config, redact_config
@@ -79,7 +80,12 @@ async def _get_config_or_404(
 # ---------------------------------------------------------------------------
 
 
-@router.post("", response_model=IntegrationResponse, status_code=201)
+@router.post(
+    "",
+    response_model=IntegrationResponse,
+    status_code=201,
+    dependencies=[Depends(require_usage_limit("integrations"))],
+)
 async def create_integration(
     body: IntegrationCreate,
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],

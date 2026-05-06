@@ -12,6 +12,7 @@ import {
   pushUnsubscribe,
   listNotificationPreferences,
   createNotificationPreference,
+  updateNotificationPreference,
   deleteNotificationPreference,
   type ChannelResponse,
   type NotificationPreference,
@@ -57,7 +58,10 @@ import {
   Mail,
   Smartphone,
   Loader2,
+  Pencil,
 } from "lucide-react";
+import { toast } from "sonner";
+import { useConfirm } from "@/components/confirm-dialog";
 
 const typeIcon: Record<string, React.ReactNode> = {
   discord: <MessageSquare className="size-4" />,
@@ -67,10 +71,12 @@ const typeIcon: Record<string, React.ReactNode> = {
 };
 
 export default function NotificationsPage() {
+  const confirm = useConfirm();
   const [channels, setChannels] = useState<ChannelResponse[]>([]);
   const [preferences, setPreferences] = useState<NotificationPreference[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [showPref, setShowPref] = useState(false);
+  const [editingPref, setEditingPref] = useState<NotificationPreference | null>(null);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [testing, setTesting] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -105,15 +111,27 @@ export default function NotificationsPage() {
   const handleToggle = async (ch: ChannelResponse) => {
     const token = getAccessToken();
     if (!token) return;
-    await updateChannel(token, ch.id, { enabled: !ch.enabled });
-    refresh();
+    try {
+      await updateChannel(token, ch.id, { enabled: !ch.enabled });
+      toast.success(ch.enabled ? "Channel disabled" : "Channel enabled");
+      refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update channel");
+    }
   };
 
   const handleDelete = async (id: string) => {
+    const ok = await confirm({ title: "Delete Channel", description: "This notification channel will be permanently removed.", confirmText: "Delete", variant: "destructive" });
+    if (!ok) return;
     const token = getAccessToken();
     if (!token) return;
-    await deleteChannel(token, id);
-    refresh();
+    try {
+      await deleteChannel(token, id);
+      toast.success("Channel deleted");
+      refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to delete channel");
+    }
   };
 
   const handleTest = async (id: string) => {
@@ -122,6 +140,9 @@ export default function NotificationsPage() {
     setTesting(id);
     try {
       await testChannel(token, id);
+      toast.success("Test notification sent");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to send test notification");
     } finally {
       setTesting(null);
     }
@@ -130,26 +151,31 @@ export default function NotificationsPage() {
   const handlePushToggle = async () => {
     const token = getAccessToken();
     if (!token || !("serviceWorker" in navigator)) return;
-
-    if (pushEnabled) {
-      await pushUnsubscribe(token);
-      const reg = await navigator.serviceWorker.ready;
-      const sub = await reg.pushManager.getSubscription();
-      if (sub) await sub.unsubscribe();
-      setPushEnabled(false);
-    } else {
-      const reg = await navigator.serviceWorker.ready;
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
-      });
-      const keys = sub.toJSON().keys || {};
-      await pushSubscribe(token, {
-        endpoint: sub.endpoint,
-        p256dh: keys.p256dh || "",
-        auth: keys.auth || "",
-      });
-      setPushEnabled(true);
+    try {
+      if (pushEnabled) {
+        await pushUnsubscribe(token);
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) await sub.unsubscribe();
+        setPushEnabled(false);
+        toast.success("Push notifications disabled");
+      } else {
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
+        });
+        const keys = sub.toJSON().keys || {};
+        await pushSubscribe(token, {
+          endpoint: sub.endpoint,
+          p256dh: keys.p256dh || "",
+          auth: keys.auth || "",
+        });
+        setPushEnabled(true);
+        toast.success("Push notifications enabled");
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update push notifications");
     }
   };
 
@@ -256,7 +282,7 @@ export default function NotificationsPage() {
             ))}
           </div>
         )}
-        
+
         {/* Notification Preferences */}
         <Card>
           <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
@@ -292,14 +318,26 @@ export default function NotificationsPage() {
                         </div>
                         <p className="text-xs text-muted-foreground mt-0.5">Severity: {pref.severity_filter}</p>
                       </div>
-                      <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive hover:text-destructive" onClick={async () => {
-                        const token = getAccessToken();
-                        if (!token) return;
-                        await deleteNotificationPreference(token, pref.id);
-                        refresh();
-                      }}>
-                        <Trash2 className="size-3" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setEditingPref(pref)}>
+                          <Pencil className="size-3" />
+                        </Button>
+                        <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive hover:text-destructive" onClick={async () => {
+                          const ok = await confirm({ title: "Delete Preference", description: "Remove this notification preference?", confirmText: "Delete", variant: "destructive" });
+                          if (!ok) return;
+                          const token = getAccessToken();
+                          if (!token) return;
+                          try {
+                            await deleteNotificationPreference(token, pref.id);
+                            toast.success("Preference deleted");
+                            refresh();
+                          } catch (e) {
+                            toast.error(e instanceof Error ? e.message : "Failed to delete preference");
+                          }
+                        }}>
+                          <Trash2 className="size-3" />
+                        </Button>
+                      </div>
                     </div>
                   );
                 })}
@@ -327,6 +365,19 @@ export default function NotificationsPage() {
           refresh();
         }}
       />
+
+      {editingPref && (
+        <EditPreferenceDialog
+          open={!!editingPref}
+          onOpenChange={(open) => { if (!open) setEditingPref(null); }}
+          pref={editingPref}
+          channels={channels}
+          onUpdated={() => {
+            setEditingPref(null);
+            refresh();
+          }}
+        />
+      )}
     </>
   );
 }
@@ -361,7 +412,10 @@ function CreateChannelDialog({
     setSubmitting(true);
     try {
       await createChannel(token, { channel_type: type, name, config });
+      toast.success("Channel created");
       onCreated();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to create channel");
     } finally {
       setSubmitting(false);
     }
@@ -482,7 +536,10 @@ function CreatePreferenceDialog({
         severity_filter: severity,
         event_types: eventTypes,
       });
+      toast.success("Preference created");
       onCreated();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to create preference");
     } finally {
       setSubmitting(false);
     }
@@ -529,6 +586,98 @@ function CreatePreferenceDialog({
             <Button type="submit" disabled={submitting || !channelId}>
               {submitting && <Loader2 className="mr-1 size-4 animate-spin" />}
               Save Preference
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditPreferenceDialog({
+  open,
+  onOpenChange,
+  pref,
+  channels,
+  onUpdated,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  pref: NotificationPreference;
+  channels: ChannelResponse[];
+  onUpdated: () => void;
+}) {
+  const [eventTypes, setEventTypes] = useState(pref.event_types);
+  const [severity, setSeverity] = useState(pref.severity_filter);
+  const [enabled, setEnabled] = useState(pref.enabled);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    setEventTypes(pref.event_types);
+    setSeverity(pref.severity_filter);
+    setEnabled(pref.enabled);
+  }, [pref]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const token = getAccessToken();
+    if (!token) return;
+    setSubmitting(true);
+    try {
+      await updateNotificationPreference(token, pref.id, {
+        event_types: eventTypes,
+        severity_filter: severity,
+        enabled,
+      });
+      toast.success("Preference updated");
+      onUpdated();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update preference");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const ch = channels.find((c) => c.id === pref.channel_id);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit Notification Preference</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label>Channel</Label>
+            <Input value={ch?.name || "Unknown"} disabled className="opacity-70" />
+          </div>
+          <div className="space-y-2">
+            <Label>Event Types</Label>
+            <Select value={eventTypes} onValueChange={(v) => setEventTypes(v ?? "all")}>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {EVENT_TYPE_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Severity Filter</Label>
+            <Select value={severity} onValueChange={(v) => setSeverity(v ?? "warning,critical")}>
+              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {SEVERITY_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center justify-between">
+            <Label>Enabled</Label>
+            <Switch checked={enabled} onCheckedChange={setEnabled} />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" type="button" onClick={() => onOpenChange(false)}>Cancel</Button>
+            <Button type="submit" disabled={submitting}>
+              {submitting && <Loader2 className="mr-1 size-4 animate-spin" />}
+              Update Preference
             </Button>
           </DialogFooter>
         </form>

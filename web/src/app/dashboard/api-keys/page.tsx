@@ -43,6 +43,8 @@ import {
   Clock,
 } from "lucide-react";
 import { PageSkeleton } from "@/components/page-skeleton";
+import { toast } from "sonner";
+import { useConfirm } from "@/components/confirm-dialog";
 
 interface ApiKeyItem {
   id: string;
@@ -56,6 +58,7 @@ interface ApiKeyItem {
 }
 
 export default function ApiKeysPage() {
+  const confirm = useConfirm();
   const [keys, setKeys] = useState<ApiKeyItem[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [newKey, setNewKey] = useState<string | null>(null);
@@ -70,8 +73,8 @@ export default function ApiKeysPage() {
     if (!token) return;
     try {
       setKeys(await listApiKeys(token));
-    } catch {
-      /* tier restricted */
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load API keys");
     } finally { setLoading(false); }
   }, []);
 
@@ -92,6 +95,7 @@ export default function ApiKeysPage() {
         },
         token,
       );
+      toast.success("API key created");
       setNewKey(result.key);
       setShowCreate(false);
       setName("");
@@ -104,15 +108,23 @@ export default function ApiKeysPage() {
   };
 
   const handleRevoke = async (id: string) => {
+    const ok = await confirm({ title: "Revoke API Key", description: "This key will be permanently revoked and cannot be restored.", confirmText: "Revoke", variant: "destructive" });
+    if (!ok) return;
     const token = getAccessToken();
     if (!token) return;
-    await revokeApiKey(id, token);
-    refresh();
+    try {
+      await revokeApiKey(id, token);
+      toast.success("API key revoked");
+      refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to revoke key");
+    }
   };
 
   const copyKey = () => {
     if (newKey) {
       navigator.clipboard.writeText(newKey);
+      toast.success("API key copied to clipboard");
     }
   };
 

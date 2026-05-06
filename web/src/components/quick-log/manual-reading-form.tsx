@@ -9,6 +9,8 @@ import { getAccessToken } from "@/lib/auth";
 import { quickLogReading } from "@/lib/api";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { usePreferences } from "@/hooks/use-preferences";
+import { tempUnitLabel } from "@/lib/units";
 
 interface ManualReadingFormProps {
   onSuccess: () => void;
@@ -16,6 +18,7 @@ interface ManualReadingFormProps {
 
 export function ManualReadingForm({ onSuccess }: ManualReadingFormProps) {
   const { selectedGrow } = useGrow();
+  const { prefs } = usePreferences();
   const [tempF, setTempF] = useState("");
   const [humidity, setHumidity] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -66,7 +69,7 @@ export function ManualReadingForm({ onSuccess }: ManualReadingFormProps) {
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <Label htmlFor="mr-temp" className="text-xs">Temp (°F)</Label>
+          <Label htmlFor="mr-temp" className="text-xs">Temp ({tempUnitLabel(prefs.temp_unit)})</Label>
           <Input
             id="mr-temp"
             type="number"

@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { getAccessToken } from "@/lib/auth";
 import { useConfirm } from "@/components/confirm-dialog";
 import { fireBurst } from "@/lib/confetti";
+import { toast } from "sonner";
 import {
   getGrow,
   updateGrow,
@@ -18,8 +19,11 @@ import {
   getTent,
   listJournalEntries,
   getExportUrl,
+  getGrowExportUrl,
   getHealthCheckHistory,
   listDevices,
+  listSensorReadings,
+  listTentReadings,
   type GrowResponse,
   type BucketResponse,
   type SensorReadingResponse,
@@ -62,7 +66,6 @@ import {
 } from "@/components/ui/sheet";
 import {
   CheckCircle,
-  Camera,
   Droplets,
   Loader2,
   Pencil,
@@ -72,8 +75,20 @@ import {
   Thermometer,
   Heart,
   MessageSquare,
+  Calendar,
+  Sprout,
+  FlaskConical,
+  Waves,
+  Activity,
+  SunMedium,
+  Timer,
+  TrendingUp,
 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { Progress } from "@/components/ui/progress";
+import { SensorSparkline } from "@/components/sparkline";
+import { CameraGrid } from "@/components/camera-grid";
 import { useChat } from "@/components/chat-provider";
 
 // Brand selection is now handled inside FeedingTab
@@ -89,6 +104,8 @@ import { HealthTab } from "./health-tab";
 import { WeatherCard } from "./weather-card";
 import { isOutdoorSoil, isOutdoorContainer, isOutdoor, t } from "@/lib/terminology";
 import { PlotDesigner } from "@/components/outdoor/plot-designer";
+import { usePreferences } from "@/hooks/use-preferences";
+import { formatTemp, tempUnitLabel } from "@/lib/units";
 import { SoilDashboard } from "@/components/outdoor/soil-dashboard";
 import { PestScout } from "@/components/outdoor/pest-scout";
 import { OutdoorIntelligence } from "@/components/outdoor/intelligence";
@@ -96,8 +113,13 @@ import { SeasonTimeline } from "@/components/outdoor/season-timeline";
 import { IrrigationPlanner } from "@/components/outdoor/irrigation-planner";
 import ContainerManager from "@/components/outdoor/container-manager";
 import RunoffTracker from "@/components/outdoor/runoff-tracker";
+import { HarvestTracker } from "@/components/outdoor/harvest-tracker";
 
 const STAGES = ["seedling", "vegetative", "flowering", "ripening", "drying", "curing"];
+const STAGE_DURATIONS: Record<string, number> = { seedling: 14, vegetative: 30, flowering: 56, ripening: 14, drying: 10, curing: 21 };
+const STAGE_ICONS: Record<string, typeof Sprout> = { seedling: Sprout, vegetative: SunMedium, flowering: Waves, ripening: Timer, drying: Activity, curing: FlaskConical };
+const fadeUp = { initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0, y: -8 } };
+const stagger = { animate: { transition: { staggerChildren: 0.06 } } };
 const MILESTONE_LABELS: Record<string, string> = {
   seedling: "Seedling / Germ",
   vegetative: "Veg Started",
@@ -122,6 +144,7 @@ export default function GrowDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const confirm = useConfirm();
+  const { prefs } = usePreferences();
   const [grow, setGrow] = useState<GrowResponse | null>(null);
   const [tent, setTent] = useState<TentResponse | null>(null);
   const [buckets, setBuckets] = useState<BucketResponse[]>([]);
@@ -131,7 +154,7 @@ export default function GrowDetailPage() {
   const [journalEntries, setJournalEntries] = useState<JournalEntryResponse[]>([]);
 
   // Sensor reading dialog
-  const [sensorDialog, setSensorDialog] = useState<{ open: boolean; bucketId: string; bucketLabel: string }>({ open: false, bucketId: "", bucketLabel: "" });
+  const [sensorDialog, setSensorDialog] = useState<{ open: boolean; bucketIds: string[]; bucketLabel: string }>({ open: false, bucketIds: [], bucketLabel: "" });
   const [sensorForm, setSensorForm] = useState({ ph: "", ec: "", ppm: "", water_temp_f: "" });
   const [sensorSaving, setSensorSaving] = useState(false);
 
@@ -161,13 +184,26 @@ export default function GrowDetailPage() {
   // Health score
   const [healthScore, setHealthScore] = useState<number | null>(null);
 
+  // Sensor trends for overview sparklines
+  const [sensorTrends, setSensorTrends] = useState<{ ph: number[]; ec: number[]; temp: number[]; humidity: number[] }>({ ph: [], ec: [], temp: [], humidity: [] });
+
+  const [loadError, setLoadError] = useState<string | null>(null);
+
   const refresh = useCallback(async () => {
     const token = getAccessToken();
     if (!token) return;
-    const [g, bkts] = await Promise.all([
-      getGrow(token, id),
-      listBuckets(token, id),
-    ]);
+    let g: GrowResponse;
+    let bkts: BucketResponse[];
+    try {
+      [g, bkts] = await Promise.all([
+        getGrow(token, id),
+        listBuckets(token, id),
+      ]);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Failed to load grow");
+      return;
+    }
+    setLoadError(null);
     setGrow(g);
     setBuckets(bkts);
 
@@ -193,6 +229,22 @@ export default function GrowDetailPage() {
       setHealthScore(hist.items.length > 0 ? hist.items[0].score : null);
     } catch { setHealthScore(null); }
 
+    // Fetch sensor trends for overview sparklines
+    try {
+      const [sensorReadings, tentReadings2] = await Promise.all([
+        listSensorReadings(token, undefined, 30).catch(() => []),
+        listTentReadings(token, g.tent_id, 30).catch(() => []),
+      ]);
+      const bucketIds = new Set(bkts.map((b) => b.id));
+      const growSensor = sensorReadings.filter((r: { bucket_id: string }) => bucketIds.has(r.bucket_id));
+      setSensorTrends({
+        ph: growSensor.map((r: { ph: number | null }) => r.ph).filter((v: number | null): v is number => v != null).reverse(),
+        ec: growSensor.map((r: { ec: number | null }) => r.ec).filter((v: number | null): v is number => v != null).reverse(),
+        temp: tentReadings2.map((r: { ambient_temp_f: number | null }) => r.ambient_temp_f).filter((v: number | null): v is number => v != null).reverse(),
+        humidity: tentReadings2.map((r: { ambient_humidity: number | null }) => r.ambient_humidity).filter((v: number | null): v is number => v != null).reverse(),
+      });
+    } catch { /* empty */ }
+
     try {
       const allEntries: JournalEntryResponse[] = [];
       await Promise.all(bkts.map(async (b) => {
@@ -214,9 +266,13 @@ export default function GrowDetailPage() {
     if (!await confirm({ title: "Complete Grow", description: "Mark this grow as completed?", confirmLabel: "Complete" })) return;
     const token = getAccessToken();
     if (!token) return;
-    await updateGrow(token, id, { status: "completed" });
-    fireBurst();
-    refresh();
+    try {
+      await updateGrow(token, id, { status: "completed" });
+      fireBurst();
+      refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to complete grow");
+    }
   };
 
   const handleSensorSubmit = async () => {
@@ -224,16 +280,20 @@ export default function GrowDetailPage() {
     if (!token) return;
     setSensorSaving(true);
     try {
-      const data: Record<string, unknown> = { bucket_id: sensorDialog.bucketId };
-      if (sensorForm.ph) data.ph = parseFloat(sensorForm.ph);
-      if (sensorForm.ec) data.ec = parseFloat(sensorForm.ec);
-      if (sensorForm.ppm) data.ppm = parseFloat(sensorForm.ppm);
-      if (sensorForm.water_temp_f) data.water_temp_f = parseFloat(sensorForm.water_temp_f);
-      await createSensorReading(token, data as Parameters<typeof createSensorReading>[1]);
-      setSensorDialog({ open: false, bucketId: "", bucketLabel: "" });
+      const base: Record<string, unknown> = {};
+      if (sensorForm.ph) base.ph = parseFloat(sensorForm.ph);
+      if (sensorForm.ec) base.ec = parseFloat(sensorForm.ec);
+      if (sensorForm.ppm) base.ppm = parseFloat(sensorForm.ppm);
+      if (sensorForm.water_temp_f) base.water_temp_f = parseFloat(sensorForm.water_temp_f);
+      await Promise.all(
+        sensorDialog.bucketIds.map((id) =>
+          createSensorReading(token, { ...base, bucket_id: id } as Parameters<typeof createSensorReading>[1])
+        )
+      );
+      setSensorDialog({ open: false, bucketIds: [], bucketLabel: "" });
       setSensorForm({ ph: "", ec: "", ppm: "", water_temp_f: "" });
       refresh();
-    } catch { /* empty */ } finally { setSensorSaving(false); }
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to save reading"); } finally { setSensorSaving(false); }
   };
 
   const handleEditGrowSubmit = async () => {
@@ -265,17 +325,14 @@ export default function GrowDetailPage() {
       await updateGrow(token, id, payload);
       setEditGrowDialog(false);
       refresh();
-    } catch { /* empty */ } finally { setEditGrowSaving(false); }
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to save grow"); } finally { setEditGrowSaving(false); }
   };
 
   const handleExport = () => {
     const token = getAccessToken();
-    if (!token || buckets.length === 0) return;
-    // Export all buckets
-    for (const b of buckets) {
-      const url = getExportUrl(token, b.id);
-      window.open(url, "_blank");
-    }
+    if (!token || !grow) return;
+    const url = getGrowExportUrl(token, grow.id);
+    window.open(url, "_blank");
   };
 
   const handleCloneGrow = async () => {
@@ -308,7 +365,7 @@ export default function GrowDetailPage() {
       setCloneDialog(false);
       setCloneName("");
       router.push(`/dashboard/grows/${newGrow.id}`);
-    } catch { /* empty */ } finally { setCloneSaving(false); }
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to clone grow"); } finally { setCloneSaving(false); }
   };
 
   const handleSettingsSave = async () => {
@@ -324,10 +381,29 @@ export default function GrowDetailPage() {
       await updateGrow(token, id, { settings } as Parameters<typeof updateGrow>[2]);
       setSettingsDialog(false);
       refresh();
-    } catch { /* empty */ } finally { setSettingsSaving(false); }
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to save settings"); } finally { setSettingsSaving(false); }
   };
 
   // --- Render ---
+
+  if (loadError) {
+    return (
+      <>
+        <PageHeader
+          title="Error"
+          breadcrumbs={[
+            { label: "Dashboard", href: "/dashboard" },
+            { label: "Grows", href: "/dashboard/grows" },
+            { label: "Error" },
+          ]}
+        />
+        <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8">
+          <p className="text-sm text-destructive">{loadError}</p>
+          <Button variant="outline" size="sm" onClick={refresh}>Retry</Button>
+        </div>
+      </>
+    );
+  }
 
   if (!grow) {
     return (
@@ -356,7 +432,7 @@ export default function GrowDetailPage() {
   buckets.forEach((b) => { bucketLabelMap[b.id] = `#${b.position} ${b.label || "Unnamed"}`; });
 
   // Grow type specific settings schema
-  const settingsSchema = getSettingsSchema(grow.grow_type);
+  const settingsSchema = getSettingsSchema(grow.grow_type, tempUnitLabel(prefs.temp_unit));
 
   return (
     <Tabs defaultValue="overview" className="flex flex-1 flex-col">
@@ -383,7 +459,7 @@ export default function GrowDetailPage() {
           </div>
         }
       />
-      <div className="sticky top-0 z-10 border-b bg-background">
+      <div className="sticky top-0 z-10 border-b bg-background overflow-hidden">
         <div className="overflow-x-auto scrollbar-none px-4 lg:px-6">
           <TabsList className="w-max">
             <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -397,6 +473,7 @@ export default function GrowDetailPage() {
             {isOutdoor(grow.grow_type) && <TabsTrigger value="scouts">Field Scout</TabsTrigger>}
             <TabsTrigger value="journal">Journal</TabsTrigger>
             <TabsTrigger value="harvest">Harvest</TabsTrigger>
+            {isOutdoor(grow.grow_type) && <TabsTrigger value="outdoor-yields">Yields</TabsTrigger>}
             {isOutdoor(grow.grow_type) && <TabsTrigger value="intelligence">Intelligence</TabsTrigger>}
             {isOutdoor(grow.grow_type) && <TabsTrigger value="irrigation">Irrigation</TabsTrigger>}
             {isOutdoor(grow.grow_type) && <TabsTrigger value="season">Season</TabsTrigger>}
@@ -409,42 +486,46 @@ export default function GrowDetailPage() {
       </div>
       <div className="flex flex-1 flex-col gap-6 p-4 lg:p-6">
         <TabsContent value="overview" className="mt-0 flex flex-col gap-6">
-        {/* Grow Info Bar */}
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border bg-card px-4 py-3 text-sm">
-          {healthScore != null ? (
-            <Badge variant="outline" className={cn("gap-1 text-xs", healthScore >= 80 ? "border-primary/40 text-primary" : healthScore >= 50 ? "border-yellow-500/40 text-yellow-500" : "border-destructive/40 text-destructive")}>
-              <Heart className="size-3" />
-              {healthScore}
-            </Badge>
-          ) : (
-            <Badge variant="outline" className="gap-1 text-xs text-muted-foreground">
-              <Heart className="size-3" />
-              —
-            </Badge>
-          )}
-          <Badge variant={grow.status === "active" ? "default" : "secondary"} className="text-xs capitalize">{grow.status}</Badge>
-          <span className="capitalize font-medium">{grow.stage}</span>
-          <span className="text-muted-foreground">·</span>
-          <span>{grow.grow_type}</span>
-          <span className="text-muted-foreground">·</span>
-          <span>{tent?.name || "No tent"}</span>
-          <span className="text-muted-foreground">·</span>
-          <span className="text-muted-foreground">Started {formatCalendarDate(grow.started_at)}</span>
-          {grow.ended_at && <><span className="text-muted-foreground">·</span><span className="text-muted-foreground">Ended {formatCalendarDate(grow.ended_at)}</span></>}
-          <span className="text-muted-foreground">·</span>
-          <span>{buckets.length} bucket{buckets.length !== 1 ? "s" : ""}</span>
-          <div className="ml-auto flex items-center gap-1">
+        {/* ── Hero Header ─────────────────────────────────────────────── */}
+        <motion.div {...fadeUp} className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-xl border bg-card p-5">
+          <div className="flex items-center gap-4 min-w-0">
+            {/* Health ring */}
+            <div className={cn(
+              "flex size-14 shrink-0 items-center justify-center rounded-full border-2",
+              healthScore != null && healthScore >= 80 ? "border-emerald-500/60 bg-emerald-500/10" :
+              healthScore != null && healthScore >= 50 ? "border-yellow-500/60 bg-yellow-500/10" :
+              healthScore != null ? "border-destructive/60 bg-destructive/10" : "border-muted-foreground/20 bg-muted/30"
+            )}>
+              <Heart className={cn("size-6", healthScore != null && healthScore >= 80 ? "text-emerald-500" : healthScore != null && healthScore >= 50 ? "text-yellow-500" : healthScore != null ? "text-destructive" : "text-muted-foreground")} />
+            </div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant={grow.status === "active" ? "default" : "secondary"} className="text-xs capitalize">{grow.status}</Badge>
+                <Badge variant="outline" className="text-xs capitalize gap-1">
+                  {(() => { const Icon = STAGE_ICONS[grow.stage] || Sprout; return <Icon className="size-3" />; })()}
+                  {grow.stage}
+                </Badge>
+                <span className="text-xs text-muted-foreground">{grow.grow_type.replace(/_/g, " ")}</span>
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+                <span className="flex items-center gap-1"><Calendar className="size-3.5" /> {formatCalendarDate(grow.started_at)}</span>
+                <span>{tent?.name || "No tent"}</span>
+                <span>{buckets.length} {buckets.length === 1 ? "bucket" : "buckets"}</span>
+                {healthScore != null && <span className="font-medium text-foreground">Score: {healthScore}</span>}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <ChatButton />
             {settingsSchema.length > 0 && (
-              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => {
+              <Button variant="ghost" size="icon" className="size-8" onClick={() => {
                 const form: Record<string, string> = {};
                 for (const s of settingsSchema) form[s.key] = ((grow.settings as Record<string, unknown>)?.[s.key] as string) || "";
                 setSettingsForm(form);
                 setSettingsDialog(true);
-              }}>
-                <Settings className="size-3" />
-              </Button>
+              }}><Settings className="size-4" /></Button>
             )}
-            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => {
+            <Button variant="ghost" size="icon" className="size-8" onClick={() => {
               const msForm: Record<string, string> = {};
               for (const key of [...STAGES, "harvest"]) {
                 const iso = grow.milestones?.[key];
@@ -457,62 +538,211 @@ export default function GrowDetailPage() {
                 milestones: msForm,
               });
               setEditGrowDialog(true);
-            }}>
-              <Pencil className="size-3" />
-            </Button>
+            }}><Pencil className="size-4" /></Button>
           </div>
-        </div>
+        </motion.div>
 
-        {/* Camera Snapshot + AI Chat button */}
-        {tent?.camera_url && (
+        {/* ── Stage Progress ──────────────────────────────────────────── */}
+        <motion.div {...fadeUp} transition={{ delay: 0.06 }}>
           <Card>
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                  <Camera className="size-4" /> Camera Snapshot
-                </CardTitle>
-                <ChatButton />
+            <CardContent className="pt-5 pb-4">
+              <div className="mb-3 flex items-center justify-between text-sm">
+                <span className="font-medium">Growth Timeline</span>
+                <span className="text-xs text-muted-foreground">
+                  Day {Math.floor((Date.now() - new Date(grow.started_at).getTime()) / 86400000)}
+                </span>
               </div>
-            </CardHeader>
-            <CardContent>
-              <div className="mx-auto overflow-hidden rounded-lg border bg-black">
-                <img
-                  src={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/v1"}/tents/${grow.tent_id}/camera-snapshot?token=${encodeURIComponent(getAccessToken() || "")}&t=${Date.now()}`}
-                  alt="Camera snapshot"
-                  className="aspect-video w-full object-contain"
-                />
+              <div className="flex items-center gap-1">
+                {STAGES.map((stage) => {
+                  const isCurrent = grow.stage === stage;
+                  const isPast = STAGES.indexOf(grow.stage) > STAGES.indexOf(stage);
+                  const msDate = grow.milestones?.[stage];
+                  const Icon = STAGE_ICONS[stage] || Sprout;
+                  let pct = 0;
+                  if (isPast) pct = 100;
+                  else if (isCurrent) {
+                    const start = msDate ? new Date(msDate).getTime() : new Date(grow.started_at).getTime();
+                    const elapsed = (Date.now() - start) / 86400000;
+                    pct = Math.min(100, Math.max(5, (elapsed / (STAGE_DURATIONS[stage] || 30)) * 100));
+                  }
+                  return (
+                    <div key={stage} className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1 mb-1.5">
+                        <Icon className={cn("size-3 shrink-0", isCurrent ? "text-primary" : isPast ? "text-emerald-500" : "text-muted-foreground/40")} />
+                        <span className={cn("text-[10px] truncate", isCurrent ? "font-semibold text-foreground" : isPast ? "text-muted-foreground" : "text-muted-foreground/50")}>
+                          {MILESTONE_LABELS[stage]?.split(" ")[0] || stage}
+                        </span>
+                      </div>
+                      <Progress value={pct} className={cn("h-1.5", isCurrent ? "[&>div]:bg-primary" : isPast ? "[&>div]:bg-emerald-500" : "")} />
+                    </div>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
-        )}
+        </motion.div>
 
-        {/* Tent Ambient */}
-        <Card>
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                <Thermometer className="size-4" /> Tent Environment
-              </CardTitle>
-              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => {
-                setAmbientForm({ ambient_temp_f: "", ambient_humidity: "" });
-                setAmbientDialog(true);
-              }}>
-                <Droplets className="mr-1 size-3" /> Log Ambient
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {tentAmbient ? (
-              <div className="flex items-center gap-4 text-sm">
-                {tentAmbient.ambient_temp_f != null && <span>🌡 {tentAmbient.ambient_temp_f.toFixed(1)}°F</span>}
-                {tentAmbient.ambient_humidity != null && <span>💧 {tentAmbient.ambient_humidity.toFixed(0)}%</span>}
-                <span className="text-xs text-muted-foreground">{formatDateTime(tentAmbient.recorded_at)}</span>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">No ambient readings yet</p>
-            )}
-          </CardContent>
-        </Card>
+        {/* ── Camera Feed ─────────────────────────────────────────────── */}
+        <CameraGrid tentId={grow.tent_id} hideEmpty />
+
+        {/* ── Environment + Sensor Trend Cards ────────────────────────── */}
+        <motion.div variants={stagger} initial="initial" animate="animate" className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+          {/* Temperature */}
+          <motion.div variants={fadeUp}>
+            <Card className="relative overflow-hidden">
+              <CardContent className="pt-4 pb-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="flex size-8 items-center justify-center rounded-lg bg-orange-500/10"><Thermometer className="size-4 text-orange-500" /></div>
+                    <div>
+                      <p className="text-[11px] text-muted-foreground">Temperature</p>
+                      <p className="text-lg font-semibold tabular-nums">
+                        {tentAmbient?.ambient_temp_f != null ? formatTemp(tentAmbient.ambient_temp_f, "f", prefs.temp_unit) : "—"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                {sensorTrends.temp.length > 2 && (
+                  <div className="mt-2 h-8"><SensorSparkline data={sensorTrends.temp} color="#f97316" /></div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          {/* Humidity */}
+          <motion.div variants={fadeUp}>
+            <Card className="relative overflow-hidden">
+              <CardContent className="pt-4 pb-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="flex size-8 items-center justify-center rounded-lg bg-blue-500/10"><Droplets className="size-4 text-blue-500" /></div>
+                    <div>
+                      <p className="text-[11px] text-muted-foreground">Humidity</p>
+                      <p className="text-lg font-semibold tabular-nums">
+                        {tentAmbient?.ambient_humidity != null ? `${tentAmbient.ambient_humidity.toFixed(0)}%` : "—"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                {sensorTrends.humidity.length > 2 && (
+                  <div className="mt-2 h-8"><SensorSparkline data={sensorTrends.humidity} color="#3b82f6" /></div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          {/* pH */}
+          <motion.div variants={fadeUp}>
+            <Card className="relative overflow-hidden">
+              <CardContent className="pt-4 pb-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="flex size-8 items-center justify-center rounded-lg bg-emerald-500/10"><FlaskConical className="size-4 text-emerald-500" /></div>
+                    <div>
+                      <p className="text-[11px] text-muted-foreground">pH</p>
+                      <p className="text-lg font-semibold tabular-nums">
+                        {sensorTrends.ph.length > 0 ? sensorTrends.ph[sensorTrends.ph.length - 1].toFixed(1) : "—"}
+                      </p>
+                    </div>
+                  </div>
+                  {sensorTrends.ph.length >= 2 && (() => {
+                    const delta = sensorTrends.ph[sensorTrends.ph.length - 1] - sensorTrends.ph[sensorTrends.ph.length - 2];
+                    return <Badge variant="outline" className={cn("text-[10px] gap-0.5", delta > 0 ? "text-emerald-500" : delta < 0 ? "text-orange-500" : "")}><TrendingUp className="size-2.5" />{delta >= 0 ? "+" : ""}{delta.toFixed(1)}</Badge>;
+                  })()}
+                </div>
+                {sensorTrends.ph.length > 2 && (
+                  <div className="mt-2 h-8"><SensorSparkline data={sensorTrends.ph} color="#10b981" /></div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+
+          {/* EC */}
+          <motion.div variants={fadeUp}>
+            <Card className="relative overflow-hidden">
+              <CardContent className="pt-4 pb-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="flex size-8 items-center justify-center rounded-lg bg-violet-500/10"><Waves className="size-4 text-violet-500" /></div>
+                    <div>
+                      <p className="text-[11px] text-muted-foreground">EC</p>
+                      <p className="text-lg font-semibold tabular-nums">
+                        {sensorTrends.ec.length > 0 ? sensorTrends.ec[sensorTrends.ec.length - 1].toFixed(2) : "—"}
+                      </p>
+                    </div>
+                  </div>
+                  {sensorTrends.ec.length >= 2 && (() => {
+                    const delta = sensorTrends.ec[sensorTrends.ec.length - 1] - sensorTrends.ec[sensorTrends.ec.length - 2];
+                    return <Badge variant="outline" className={cn("text-[10px] gap-0.5", delta > 0 ? "text-emerald-500" : delta < 0 ? "text-orange-500" : "")}><TrendingUp className="size-2.5" />{delta >= 0 ? "+" : ""}{delta.toFixed(2)}</Badge>;
+                  })()}
+                </div>
+                {sensorTrends.ec.length > 2 && (
+                  <div className="mt-2 h-8"><SensorSparkline data={sensorTrends.ec} color="#8b5cf6" /></div>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+        </motion.div>
+
+        {/* ── Quick Actions Row ───────────────────────────────────────── */}
+        <motion.div {...fadeUp} transition={{ delay: 0.18 }} className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" className="gap-1.5" onClick={() => {
+            setAmbientForm({ ambient_temp_f: "", ambient_humidity: "" });
+            setAmbientDialog(true);
+          }}>
+            <Thermometer className="size-3.5" /> Log Ambient
+          </Button>
+          {buckets.length > 0 && (
+            <Button variant="outline" size="sm" className="gap-1.5" onClick={() => {
+              setSensorForm({ ph: "", ec: "", ppm: "", water_temp_f: "" });
+              setSensorDialog({ open: true, bucketIds: buckets.map((b) => b.id), bucketLabel: `All Buckets (${buckets.length})` });
+            }}>
+              <Droplets className="size-3.5" /> Log Reading
+            </Button>
+          )}
+        </motion.div>
+
+        {/* ── Bucket Quick View ───────────────────────────────────────── */}
+        {buckets.length > 0 && (
+          <motion.div {...fadeUp} transition={{ delay: 0.24 }}>
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-sm font-medium">
+                  <Sprout className="size-4" /> Plants
+                  <Badge variant="secondary" className="ml-auto text-xs">{buckets.length}</Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <AnimatePresence>
+                  <motion.div variants={stagger} initial="initial" animate="animate" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {buckets.map((b) => {
+                      const r = latestReadings[b.id];
+                      return (
+                        <motion.div key={b.id} variants={fadeUp} className="rounded-lg border p-3 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium text-sm truncate">
+                              #{b.position} {b.label || b.strain_name || "Unnamed"}
+                            </span>
+                            <Badge variant="outline" className="text-[10px] capitalize">{b.growth_stage || grow.stage}</Badge>
+                          </div>
+                          {r ? (
+                            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                              {r.ph != null && <span>pH <strong className="text-foreground">{r.ph.toFixed(1)}</strong></span>}
+                              {r.ec != null && <span>EC <strong className="text-foreground">{r.ec.toFixed(2)}</strong></span>}
+                              {r.water_temp_f != null && <span>{formatTemp(r.water_temp_f, "f", prefs.temp_unit, 0)}</span>}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-muted-foreground/60">No readings yet</p>
+                          )}
+                        </motion.div>
+                      );
+                    })}
+                  </motion.div>
+                </AnimatePresence>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
 
         {/* Weather (for outdoor/greenhouse tents) */}
         {tent && <WeatherCard tentId={tent.id} tentName={tent.name} environmentType={tent.environment_type} />}
@@ -526,7 +756,7 @@ export default function GrowDetailPage() {
               onRefresh={refresh}
               onOpenSensorDialog={(bucketId, label) => {
                 setSensorForm({ ph: "", ec: "", ppm: "", water_temp_f: "" });
-                setSensorDialog({ open: true, bucketId, bucketLabel: label });
+                setSensorDialog({ open: true, bucketIds: [bucketId], bucketLabel: label });
               }}
             />
           </TabsContent>
@@ -589,6 +819,12 @@ export default function GrowDetailPage() {
           <TabsContent value="harvest" className="mt-0">
             <HarvestTab growId={id} buckets={buckets} />
           </TabsContent>
+
+          {isOutdoor(grow.grow_type) && (
+            <TabsContent value="outdoor-yields" className="mt-0">
+              <HarvestTracker growId={id} buckets={buckets} />
+            </TabsContent>
+          )}
 
           {isOutdoor(grow.grow_type) && (
             <TabsContent value="intelligence" className="mt-0">
@@ -662,7 +898,7 @@ export default function GrowDetailPage() {
       </div>
 
       {/* --- SENSOR READING DIALOG --- */}
-      <Dialog open={sensorDialog.open} onOpenChange={(open) => !open && setSensorDialog({ open: false, bucketId: "", bucketLabel: "" })}>
+      <Dialog open={sensorDialog.open} onOpenChange={(open) => !open && setSensorDialog({ open: false, bucketIds: [], bucketLabel: "" })}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Log Sensor Reading</DialogTitle>
@@ -682,13 +918,13 @@ export default function GrowDetailPage() {
               <Input type="number" step="1" placeholder="e.g. 850" value={sensorForm.ppm} onChange={(e) => setSensorForm((p) => ({ ...p, ppm: e.target.value }))} />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Water Temp °F</Label>
+              <Label className="text-xs">Water Temp {tempUnitLabel(prefs.temp_unit)}</Label>
               <Input type="number" step="0.1" placeholder="e.g. 68.0" value={sensorForm.water_temp_f} onChange={(e) => setSensorForm((p) => ({ ...p, water_temp_f: e.target.value }))} />
             </div>
           </div>
-          <p className="text-xs text-muted-foreground">Ambient temp & humidity are logged at the tent level. <button type="button" className="underline" onClick={() => { setSensorDialog({ open: false, bucketId: "", bucketLabel: "" }); setAmbientDialog(true); }}>Log ambient reading →</button></p>
+          <p className="text-xs text-muted-foreground">Ambient temp & humidity are logged at the tent level. <button type="button" className="underline" onClick={() => { setSensorDialog({ open: false, bucketIds: [], bucketLabel: "" }); setAmbientDialog(true); }}>Log ambient reading →</button></p>
           <DialogFooter>
-            <Button variant="outline" type="button" onClick={() => setSensorDialog({ open: false, bucketId: "", bucketLabel: "" })}>Cancel</Button>
+            <Button variant="outline" type="button" onClick={() => setSensorDialog({ open: false, bucketIds: [], bucketLabel: "" })}>Cancel</Button>
             <Button type="button" onClick={handleSensorSubmit} disabled={sensorSaving}>
               {sensorSaving && <Loader2 className="mr-2 size-4 animate-spin" />}
               Save Reading
@@ -706,12 +942,12 @@ export default function GrowDetailPage() {
           </DialogHeader>
           {tentAmbient && (
             <div className="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-              Last reading: {tentAmbient.ambient_temp_f != null && `${tentAmbient.ambient_temp_f.toFixed(1)}°F`} {tentAmbient.ambient_humidity != null && `${tentAmbient.ambient_humidity.toFixed(0)}%`} — {formatDateTime(tentAmbient.recorded_at)}
+              Last reading: {tentAmbient.ambient_temp_f != null && formatTemp(tentAmbient.ambient_temp_f, "f", prefs.temp_unit)} {tentAmbient.ambient_humidity != null && `${tentAmbient.ambient_humidity.toFixed(0)}%`} — {formatDateTime(tentAmbient.recorded_at)}
             </div>
           )}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <Label className="text-xs">Ambient Temp °F</Label>
+              <Label className="text-xs">Ambient Temp {tempUnitLabel(prefs.temp_unit)}</Label>
               <Input type="number" step="0.1" placeholder="e.g. 78.0" value={ambientForm.ambient_temp_f} onChange={(e) => setAmbientForm((p) => ({ ...p, ambient_temp_f: e.target.value }))} />
             </div>
             <div className="space-y-1">
@@ -904,7 +1140,7 @@ const GROUP_LABELS: Record<string, string> = {
   outdoor: "Outdoor & Protection",
 };
 
-function getSettingsSchema(growType: string): SettingsField[] {
+function getSettingsSchema(growType: string, tempUnit = "°F"): SettingsField[] {
   // Common indoor light fields (hardware lives on Tent equipment; these are per-grow-cycle)
   const LIGHT_FIELDS: SettingsField[] = [
     { key: "light_schedule", label: "Light Schedule", group: "lighting", placeholder: "e.g. 18/6, 12/12", hint: "Hours on / hours off" },
@@ -913,8 +1149,8 @@ function getSettingsSchema(growType: string): SettingsField[] {
   // Common environment fields
   const ENV_FIELDS: SettingsField[] = [
     { key: "target_vpd", label: "Target VPD", group: "environment", type: "number", step: "0.1", unit: "kPa", placeholder: "e.g. 1.2", hint: "Vapor Pressure Deficit target" },
-    { key: "target_temp_day_f", label: "Day Temp Target", group: "environment", type: "number", step: "1", unit: "°F", placeholder: "e.g. 80" },
-    { key: "target_temp_night_f", label: "Night Temp Target", group: "environment", type: "number", step: "1", unit: "°F", placeholder: "e.g. 70" },
+    { key: "target_temp_day_f", label: "Day Temp Target", group: "environment", type: "number", step: "1", unit: tempUnit, placeholder: "e.g. 80" },
+    { key: "target_temp_night_f", label: "Night Temp Target", group: "environment", type: "number", step: "1", unit: tempUnit, placeholder: "e.g. 70" },
     { key: "target_humidity_pct", label: "Target Humidity", group: "environment", type: "number", step: "1", unit: "%", placeholder: "e.g. 55" },
     { key: "co2_ppm", label: "CO₂ Target", group: "environment", type: "number", step: "50", unit: "ppm", placeholder: "e.g. 1000", hint: "Only if supplementing CO₂" },
   ];

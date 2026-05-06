@@ -38,7 +38,7 @@ class Settings:
     ollama_base_url: str = field(
         default_factory=lambda: os.environ.get("OLLAMA_BASE_URL", "http://ollama.ollama.svc.cluster.local:11434")
     )
-    ollama_model: str = field(default_factory=lambda: os.environ.get("OLLAMA_MODEL", "llama3.1:8b"))
+    ollama_model: str = field(default_factory=lambda: os.environ.get("OLLAMA_MODEL", "mistral-nemo:12b"))
 
     # Gemini (used for health checks)
     gemini_api_key: str = field(default_factory=lambda: os.environ.get("GEMINI_API_KEY", ""))
@@ -62,6 +62,23 @@ class Settings:
     # Web Push (VAPID)
     vapid_private_key: str = field(default_factory=lambda: os.environ.get("VAPID_PRIVATE_KEY", ""))
     vapid_email: str = field(default_factory=lambda: os.environ.get("VAPID_EMAIL", "mailto:admin@tendril.example.com"))
+
+    # Email (Resend)
+    resend_api_key: str = field(default_factory=lambda: os.environ.get("RESEND_API_KEY", ""))
+    email_from: str = field(
+        default_factory=lambda: os.environ.get("EMAIL_FROM", "Tendril <noreply@tendril.trector.com>")
+    )
+
+    # Stripe Tax
+    stripe_tax_enabled: bool = field(
+        default_factory=lambda: os.environ.get("STRIPE_TAX_ENABLED", "true").lower() == "true"
+    )
+
+    # Dunning
+    dunning_grace_days: int = field(default_factory=lambda: int(os.environ.get("DUNNING_GRACE_DAYS", "14")))
+
+    # Account deletion
+    data_retention_days: int = field(default_factory=lambda: int(os.environ.get("DATA_RETENTION_DAYS", "30")))
 
     # App
     app_name: str = "Tendril"

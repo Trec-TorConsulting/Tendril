@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getAccessToken } from "@/lib/auth";
-import { listTents, createTent, updateTent, deleteTent } from "@/lib/api";
-import type { TentResponse, EquipmentItem } from "@/lib/api";
+import { listTents, createTent, updateTent, deleteTent, listTentCameras, createTentCamera, updateTentCamera, deleteTentCamera } from "@/lib/api";
+import type { TentResponse, EquipmentItem, CameraResponse } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +37,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, MoreHorizontal, Pencil, Trash2, MapPin, Warehouse, Loader2, LocateFixed, Search, Camera, Fan, X } from "lucide-react";
 import { motion } from "framer-motion";
+import { toast } from "sonner";
+import { useConfirm } from "@/components/confirm-dialog";
 
 // Equipment presets
 const EQUIPMENT_TYPES = [
@@ -87,12 +89,24 @@ function emptyEquipment(): EquipmentItem {
   return { type: "exhaust_fan", brand: "", model: "", specs: "", quantity: 1 };
 }
 
+interface CameraFormItem {
+  id?: string; // present if existing camera
+  label: string;
+  url: string;
+  is_primary: boolean;
+}
+
+function emptyCamera(): CameraFormItem {
+  return { label: "Camera", url: "", is_primary: false };
+}
+
 function equipmentLabel(type: string) {
   return EQUIPMENT_TYPES.find((t) => t.value === type)?.label ?? type;
 }
 
 export default function TentsPage() {
   const router = useRouter();
+  const confirm = useConfirm();
   const [tents, setTents] = useState<TentResponse[]>([]);
   const [modal, setModal] = useState<ModalState>({ type: "closed" });
   const [name, setName] = useState("");
@@ -106,7 +120,8 @@ export default function TentsPage() {
   const [geoLoading, setGeoLoading] = useState(false);
   const [zipCode, setZipCode] = useState("");
   const [zipLoading, setZipLoading] = useState(false);
-  const [cameraUrl, setCameraUrl] = useState("");
+  const [cameras, setCameras] = useState<CameraFormItem[]>([]);
+  const [existingCameraIds, setExistingCameraIds] = useState<string[]>([]);
   const [equipment, setEquipment] = useState<EquipmentItem[]>([]);
   const [notes, setNotes] = useState("");
 
@@ -115,8 +130,8 @@ export default function TentsPage() {
     if (!token) return;
     try {
       setTents(await listTents(token));
-    } catch {
-      /* empty */
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load tents");
     } finally {
       setPageLoading(false);
     }
@@ -133,7 +148,8 @@ export default function TentsPage() {
     setLatitude("");
     setLongitude("");
     setZipCode("");
-    setCameraUrl("");
+    setCameras([]);
+    setExistingCameraIds([]);
     setEquipment([]);
     setNotes("");
     setError("");
@@ -147,10 +163,24 @@ export default function TentsPage() {
     setLatitude(tent.latitude?.toString() ?? "");
     setLongitude(tent.longitude?.toString() ?? "");
     setZipCode("");
-    setCameraUrl(tent.camera_url ?? "");
     setEquipment((tent.equipment ?? []).map((e) => ({ ...e, quantity: e.quantity ?? 1 })));
     setNotes(tent.notes ?? "");
     setError("");
+    // Load existing cameras
+    const token = getAccessToken();
+    if (token) {
+      listTentCameras(token, tent.id).then((cams) => {
+        const items = cams.map((c) => ({ id: c.id, label: c.label, url: c.url, is_primary: c.is_primary }));
+        setCameras(items);
+        setExistingCameraIds(cams.map((c) => c.id));
+      }).catch(() => {
+        setCameras([]);
+        setExistingCameraIds([]);
+      });
+    } else {
+      setCameras([]);
+      setExistingCameraIds([]);
+    }
     setModal({ type: "edit", tent });
   }
 
@@ -160,31 +190,49 @@ export default function TentsPage() {
     setLoading(true);
     setError("");
     const cleanEquipment = equipment.filter((e) => e.type);
+    const validCameras = cameras.filter((c) => c.url.trim());
     try {
+      let tentId: string;
       if (modal.type === "create") {
-        await createTent(token, {
+        const created = await createTent(token, {
           name: name.trim(),
           environment_type: envType,
           ...(size.trim() ? { size: size.trim() } : {}),
           ...(latitude ? { latitude: parseFloat(latitude) } : {}),
           ...(longitude ? { longitude: parseFloat(longitude) } : {}),
-          ...(cameraUrl.trim() ? { camera_url: cameraUrl.trim() } : {}),
           equipment: cleanEquipment,
           ...(notes.trim() ? { notes: notes.trim() } : {}),
         });
+        tentId = created.id;
       } else if (modal.type === "edit") {
-        await updateTent(token, modal.tent.id, {
+        tentId = modal.tent.id;
+        await updateTent(token, tentId, {
           name: name.trim(),
           environment_type: envType,
           size: size.trim() || null,
           ...(latitude ? { latitude: parseFloat(latitude) } : {}),
           ...(longitude ? { longitude: parseFloat(longitude) } : {}),
-          camera_url: cameraUrl.trim() || null,
           equipment: cleanEquipment,
           notes: notes.trim() || null,
         });
+      } else {
+        return;
       }
+
+      // Sync cameras: delete removed, update existing, create new
+      const keptIds = validCameras.filter((c) => c.id).map((c) => c.id!);
+      const toDelete = existingCameraIds.filter((id) => !keptIds.includes(id));
+      await Promise.all(toDelete.map((id) => deleteTentCamera(token, tentId, id)));
+      for (const cam of validCameras) {
+        if (cam.id) {
+          await updateTentCamera(token, tentId, cam.id, { label: cam.label, url: cam.url, is_primary: cam.is_primary });
+        } else {
+          await createTentCamera(token, tentId, { label: cam.label, url: cam.url, is_primary: cam.is_primary });
+        }
+      }
+
       setModal({ type: "closed" });
+      toast.success(modal.type === "create" ? "Tent created" : "Tent updated");
       refresh();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to save");
@@ -194,13 +242,16 @@ export default function TentsPage() {
   }
 
   async function handleDelete(id: string) {
+    const ok = await confirm({ title: "Delete Tent", description: "This tent and its data will be permanently deleted.", confirmText: "Delete", variant: "destructive" });
+    if (!ok) return;
     const token = getAccessToken();
     if (!token) return;
     try {
       await deleteTent(token, id);
+      toast.success("Tent deleted");
       refresh();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to delete");
+      toast.error(e instanceof Error ? e.message : "Failed to delete tent");
     }
   }
 
@@ -322,15 +373,14 @@ export default function TentsPage() {
                     {tent.latitude?.toFixed(4)}, {tent.longitude?.toFixed(4)}
                   </p>
                 )}
-                {tent.camera_url && (
-                  <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-                    <Camera className="size-3" />
-                    Camera linked
-                  </p>
-                )}
-                {tent.equipment && tent.equipment.length > 0 && (
+                {((tent.equipment && tent.equipment.length > 0) || tent.camera_url) && (
                   <div className="mt-2 flex flex-wrap gap-1">
-                    {tent.equipment.map((e, i) => (
+                    {tent.camera_url && (
+                      <Badge variant="outline" className="text-[10px] font-normal">
+                        <Camera className="mr-0.5 size-2.5" /> Camera
+                      </Badge>
+                    )}
+                    {tent.equipment?.map((e, i) => (
                       <Badge key={i} variant="outline" className="text-[10px] font-normal">
                         {e.quantity > 1 ? `${e.quantity}× ` : ""}{equipmentLabel(e.type)}{e.brand ? ` (${e.brand})` : ""}
                       </Badge>
@@ -406,14 +456,6 @@ export default function TentsPage() {
                     />
                   )}
                 </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Camera URL (optional)</Label>
-                  <Input
-                    value={cameraUrl}
-                    onChange={(e) => setCameraUrl(e.target.value)}
-                    placeholder="e.g. http://192.168.1.50:8554/tent-cam"
-                  />
-                </div>
                 <div className="space-y-1 sm:col-span-2">
                   <Label className="text-xs">Notes (optional)</Label>
                   <Textarea
@@ -473,7 +515,7 @@ export default function TentsPage() {
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  <Fan className="inline size-3 mr-1" />Equipment
+                  <Fan className="inline size-3 mr-1" />Equipment & Cameras
                 </h4>
                 <Button
                   type="button"
@@ -482,8 +524,55 @@ export default function TentsPage() {
                   className="h-7 text-xs"
                   onClick={() => setEquipment((prev) => [...prev, emptyEquipment()])}
                 >
-                  <Plus className="mr-1 size-3" /> Add
+                  <Plus className="mr-1 size-3" /> Equipment
                 </Button>
+              </div>
+              {/* Cameras */}
+              <div className="space-y-2 mb-3">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs"><Camera className="inline size-3 mr-1" />Cameras</Label>
+                  <Button type="button" variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setCameras((prev) => [...prev, emptyCamera()])}>
+                    <Plus className="mr-1 size-3" /> Add Camera
+                  </Button>
+                </div>
+                {cameras.length === 0 ? (
+                  <p className="text-xs text-muted-foreground py-1">No cameras. Click Add Camera to connect a feed.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {cameras.map((cam, idx) => (
+                      <div key={idx} className="rounded-lg border p-3 space-y-2 relative">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="absolute top-1 right-1 size-6"
+                          onClick={() => setCameras((prev) => prev.filter((_, i) => i !== idx))}
+                        >
+                          <X className="size-3.5" />
+                        </Button>
+                        <div className="grid gap-2 sm:grid-cols-2 pr-6">
+                          <div className="space-y-1">
+                            <Label className="text-[11px] text-muted-foreground">Label</Label>
+                            <Input className="h-8 text-xs" value={cam.label} onChange={(e) => setCameras((prev) => prev.map((c, i) => i === idx ? { ...c, label: e.target.value } : c))} placeholder="e.g. Top-down, Side view" />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[11px] text-muted-foreground">URL</Label>
+                            <Input className="h-8 text-xs" value={cam.url} onChange={(e) => setCameras((prev) => prev.map((c, i) => i === idx ? { ...c, url: e.target.value } : c))} placeholder="http://192.168.1.50/snap" />
+                          </div>
+                        </div>
+                        <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={cam.is_primary}
+                            onChange={(e) => setCameras((prev) => prev.map((c, i) => i === idx ? { ...c, is_primary: e.target.checked } : c))}
+                            className="size-3.5 rounded"
+                          />
+                          Primary camera
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               {equipment.length === 0 ? (
                 <p className="text-xs text-muted-foreground py-2">No equipment added yet. Click Add to configure fans, filters, humidity control, etc.</p>

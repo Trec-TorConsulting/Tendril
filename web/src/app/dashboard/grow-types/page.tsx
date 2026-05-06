@@ -9,6 +9,7 @@ import {
   submitGrowTypeForReview,
   listGrowTypes,
   getGrowType,
+  listGrowTypeReviewQueue,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
@@ -41,6 +42,8 @@ import {
 } from "@/components/ui/collapsible";
 import { Plus, Leaf, ChevronDown, Trash2, Send } from "lucide-react";
 import { PageSkeleton } from "@/components/page-skeleton";
+import { toast } from "sonner";
+import { useConfirm } from "@/components/confirm-dialog";
 
 interface CustomGrowType {
   id: string;
@@ -72,8 +75,10 @@ const CATEGORY_VARIANT: Record<string, "default" | "secondary" | "outline" | "de
 };
 
 export default function GrowTypesPage() {
+  const confirm = useConfirm();
   const [customTypes, setCustomTypes] = useState<CustomGrowType[]>([]);
   const [builtIn, setBuiltIn] = useState<BuiltInType[]>([]);
+  const [reviewQueue, setReviewQueue] = useState<{ id: string; name: string; submitted_by: string; submitted_at: string; status: string }[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedProfile, setExpandedProfile] = useState<Record<string, unknown> | null>(null);
 
@@ -104,13 +109,20 @@ export default function GrowTypesPage() {
       const built = await listGrowTypes(token);
       setBuiltIn(built);
     } catch {
-      /* empty */
+      toast.error("Failed to load built-in grow types");
     }
     try {
       const custom = await listCustomGrowTypes(token);
       setCustomTypes(custom);
     } catch {
       /* tier restricted */
+    }
+    try {
+      const queue = await listGrowTypeReviewQueue(token);
+      setReviewQueue(queue);
+    } catch {
+      /* not owner or endpoint unavailable */
+      setReviewQueue([]);
     } finally { setLoading(false); }
   }, []);
 
@@ -163,6 +175,7 @@ export default function GrowTypesPage() {
       setFeedingApproach("");
       setAiContext("");
       setTab("custom");
+      toast.success("Grow type created");
       refresh();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to create");
@@ -170,17 +183,29 @@ export default function GrowTypesPage() {
   };
 
   const handleDelete = async (id: string) => {
+    const ok = await confirm({ title: "Delete Grow Type", description: "This will permanently delete this custom grow type. Continue?", confirmText: "Delete", variant: "destructive" });
+    if (!ok) return;
     const token = getAccessToken();
     if (!token) return;
-    await deleteCustomGrowType(id, token);
-    refresh();
+    try {
+      await deleteCustomGrowType(id, token);
+      toast.success("Grow type deleted");
+      refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to delete grow type");
+    }
   };
 
   const handleSubmit = async (id: string) => {
     const token = getAccessToken();
     if (!token) return;
-    await submitGrowTypeForReview(id, token);
-    refresh();
+    try {
+      await submitGrowTypeForReview(id, token);
+      toast.success("Submitted for review");
+      refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to submit for review");
+    }
   };
 
   const groupedBuiltIn = builtIn.reduce(
@@ -215,6 +240,9 @@ export default function GrowTypesPage() {
           <TabsList>
             <TabsTrigger value="built-in">Built-in ({builtIn.length})</TabsTrigger>
             <TabsTrigger value="custom">My Custom ({customTypes.length})</TabsTrigger>
+            {reviewQueue.length > 0 && (
+              <TabsTrigger value="review">Review Queue ({reviewQueue.length})</TabsTrigger>
+            )}
           </TabsList>
 
           {/* Built-in types */}
@@ -383,6 +411,37 @@ export default function GrowTypesPage() {
                         </Button>
                       </div>
                     </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Review Queue */}
+          <TabsContent value="review" className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Custom grow types submitted for review by your team members.
+            </p>
+            {reviewQueue.length === 0 ? (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-12">
+                  <p className="text-sm text-muted-foreground">No submissions pending review.</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {reviewQueue.map((item) => (
+                  <Card key={item.id}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="font-medium">{item.name}</p>
+                          <p className="text-xs text-muted-foreground">Submitted by {item.submitted_by}</p>
+                          <p className="text-xs text-muted-foreground">{new Date(item.submitted_at).toLocaleDateString()}</p>
+                        </div>
+                        <Badge variant="secondary" className="text-xs capitalize">{item.status}</Badge>
+                      </div>
+                    </CardContent>
                   </Card>
                 ))}
               </div>

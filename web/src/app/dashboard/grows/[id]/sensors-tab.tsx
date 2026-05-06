@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
 import { formatShortDateTime } from "@/lib/utils";
-import { listSensorReadings, type SensorReadingResponse, type BucketResponse } from "@/lib/api";
+import { listSensorReadings, deleteSensorReading, getSensorDrift, type SensorReadingResponse, type BucketResponse } from "@/lib/api";
+import { useConfirm } from "@/components/confirm-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +15,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Activity, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { Activity, TrendingUp, TrendingDown, Minus, Trash2 } from "lucide-react";
+import { usePreferences } from "@/hooks/use-preferences";
+import { tempUnitLabel } from "@/lib/units";
 import {
   LineChart,
   Line,
@@ -26,18 +29,20 @@ import {
   Legend,
 } from "recharts";
 
-const METRICS = [
-  { key: "ph", label: "pH", color: "#22c55e", unit: "" },
-  { key: "ec", label: "EC", color: "#3b82f6", unit: " mS" },
-  { key: "ppm", label: "PPM", color: "#f59e0b", unit: "" },
-  { key: "water_temp_f", label: "Water Temp", color: "#ef4444", unit: "°F" },
-  { key: "dissolved_oxygen", label: "DO", color: "#8b5cf6", unit: " mg/L" },
-  { key: "water_level_pct", label: "Water Level", color: "#64748b", unit: "%" },
-  { key: "soil_moisture", label: "Soil Moisture", color: "#84cc16", unit: "%" },
-  { key: "soil_temp", label: "Soil Temp", color: "#d946ef", unit: "°F" },
-  { key: "runoff_ph", label: "Runoff pH", color: "#14b8a6", unit: "" },
-  { key: "runoff_ec", label: "Runoff EC", color: "#0ea5e9", unit: " mS" },
-] as const;
+function getMetrics(tu: string) {
+  return [
+    { key: "ph", label: "pH", color: "#22c55e", unit: "" },
+    { key: "ec", label: "EC", color: "#3b82f6", unit: " mS" },
+    { key: "ppm", label: "PPM", color: "#f59e0b", unit: "" },
+    { key: "water_temp_f", label: "Water Temp", color: "#ef4444", unit: tu },
+    { key: "dissolved_oxygen", label: "DO", color: "#8b5cf6", unit: " mg/L" },
+    { key: "water_level_pct", label: "Water Level", color: "#64748b", unit: "%" },
+    { key: "soil_moisture", label: "Soil Moisture", color: "#84cc16", unit: "%" },
+    { key: "soil_temp", label: "Soil Temp", color: "#d946ef", unit: tu },
+    { key: "runoff_ph", label: "Runoff pH", color: "#14b8a6", unit: "" },
+    { key: "runoff_ec", label: "Runoff EC", color: "#0ea5e9", unit: " mS" },
+  ] as const;
+}
 
 const TIME_RANGES = [
   { label: "24h", limit: 96 },
@@ -51,10 +56,14 @@ interface SensorsTabProps {
 }
 
 export function SensorsTab({ buckets }: SensorsTabProps) {
+  const confirm = useConfirm();
+  const { prefs } = usePreferences();
+  const METRICS = getMetrics(tempUnitLabel(prefs.temp_unit));
   const [selectedBucket, setSelectedBucket] = useState<string>(buckets[0]?.id || "");
   const [timeRange, setTimeRange] = useState(0); // index into TIME_RANGES
   const [readings, setReadings] = useState<SensorReadingResponse[]>([]);
   const [loading, setLoading] = useState(false);
+  const [drift, setDrift] = useState<{ bucket_id: string; hours: number; ph: { min: number; max: number; first: number; last: number; delta: number; count: number } | null; ec: { min: number; max: number; first: number; last: number; delta: number; count: number } | null } | null>(null);
 
   const loadReadings = useCallback(async () => {
     if (!selectedBucket) return;
@@ -62,9 +71,13 @@ export function SensorsTab({ buckets }: SensorsTabProps) {
     if (!token) return;
     setLoading(true);
     try {
-      const data = await listSensorReadings(token, selectedBucket, TIME_RANGES[timeRange].limit);
+      const [data, driftData] = await Promise.all([
+        listSensorReadings(token, selectedBucket, TIME_RANGES[timeRange].limit),
+        getSensorDrift(token, selectedBucket, [24, 168, 720, 720][timeRange]).catch(() => null),
+      ]);
       setReadings(data);
-    } catch { setReadings([]); }
+      setDrift(driftData);
+    } catch { setReadings([]); setDrift(null); }
     finally { setLoading(false); }
   }, [selectedBucket, timeRange]);
 
@@ -173,6 +186,53 @@ export function SensorsTab({ buckets }: SensorsTabProps) {
             })}
           </div>
 
+          {/* Sensor Drift Analysis */}
+          {drift && (drift.ph || drift.ec) && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">pH / EC Drift ({drift.hours}h)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {drift.ph && drift.ph.count > 0 && (
+                    <div className="rounded-lg border p-3 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">pH Drift</span>
+                        <Badge variant="outline" className={`text-xs ${drift.ph.delta > 0 ? "text-green-600" : drift.ph.delta < 0 ? "text-red-600" : ""}`}>
+                          {drift.ph.delta >= 0 ? "+" : ""}{drift.ph.delta.toFixed(2)}
+                        </Badge>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                        <span>Min: <strong className="text-foreground">{drift.ph.min.toFixed(2)}</strong></span>
+                        <span>Max: <strong className="text-foreground">{drift.ph.max.toFixed(2)}</strong></span>
+                        <span>First: <strong className="text-foreground">{drift.ph.first.toFixed(2)}</strong></span>
+                        <span>Last: <strong className="text-foreground">{drift.ph.last.toFixed(2)}</strong></span>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">{drift.ph.count} readings</p>
+                    </div>
+                  )}
+                  {drift.ec && drift.ec.count > 0 && (
+                    <div className="rounded-lg border p-3 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">EC Drift</span>
+                        <Badge variant="outline" className={`text-xs ${drift.ec.delta > 0 ? "text-green-600" : drift.ec.delta < 0 ? "text-red-600" : ""}`}>
+                          {drift.ec.delta >= 0 ? "+" : ""}{drift.ec.delta.toFixed(3)}
+                        </Badge>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                        <span>Min: <strong className="text-foreground">{drift.ec.min.toFixed(3)}</strong></span>
+                        <span>Max: <strong className="text-foreground">{drift.ec.max.toFixed(3)}</strong></span>
+                        <span>First: <strong className="text-foreground">{drift.ec.first.toFixed(3)}</strong></span>
+                        <span>Last: <strong className="text-foreground">{drift.ec.last.toFixed(3)}</strong></span>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">{drift.ec.count} readings</p>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Charts - one per metric with data */}
           {metricsWithData.map((m) => (
             <Card key={m.key}>
@@ -215,6 +275,58 @@ export function SensorsTab({ buckets }: SensorsTabProps) {
               </CardContent>
             </Card>
           )}
+
+          {/* Recent Readings Table */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Recent Readings</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b text-muted-foreground">
+                      <th className="p-2 text-left font-medium">Time</th>
+                      {metricsWithData.map((m) => (
+                        <th key={m.key} className="p-2 text-right font-medium">{m.label}</th>
+                      ))}
+                      <th className="p-2 text-right font-medium">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {readings.slice(0, 20).map((r) => (
+                      <tr key={r.id} className="border-b last:border-0 hover:bg-muted/50">
+                        <td className="p-2 text-muted-foreground">{formatShortDateTime(r.recorded_at)}</td>
+                        {metricsWithData.map((m) => {
+                          const val = getMetricValue(r, m.key);
+                          return <td key={m.key} className="p-2 text-right font-mono">{val != null ? val.toFixed(m.key === "ppm" ? 0 : 2) : "—"}</td>;
+                        })}
+                        <td className="p-2 text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0 text-destructive hover:text-destructive"
+                            onClick={async () => {
+                              if (!await confirm({ title: "Delete Reading", description: "Permanently delete this sensor reading?", confirmLabel: "Delete", variant: "destructive" })) return;
+                              const token = getAccessToken();
+                              if (!token) return;
+                              await deleteSensorReading(token, r.id);
+                              loadReadings();
+                            }}
+                          >
+                            <Trash2 className="size-3" />
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {readings.length > 20 && (
+                <p className="mt-2 text-center text-xs text-muted-foreground">Showing 20 of {readings.length} readings</p>
+              )}
+            </CardContent>
+          </Card>
         </>
       )}
     </div>

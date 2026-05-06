@@ -11,6 +11,8 @@ import { listBuckets, quickLogFeeding, type BucketResponse } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { usePreferences } from "@/hooks/use-preferences";
+import { tempUnitLabel } from "@/lib/units";
 
 interface FeedingLogFormProps {
   onSuccess: () => void;
@@ -35,6 +37,7 @@ function saveRecentValues(values: Record<string, string>) {
 
 export function FeedingLogForm({ onSuccess }: FeedingLogFormProps) {
   const { selectedGrow } = useGrow();
+  const { prefs } = usePreferences();
   const [buckets, setBuckets] = useState<BucketResponse[]>([]);
   const [selectedBucketIds, setSelectedBucketIds] = useState<string[]>([]);
   const [ph, setPh] = useState(() => getRecentValues().ph || "");
@@ -181,7 +184,7 @@ export function FeedingLogForm({ onSuccess }: FeedingLogFormProps) {
           />
         </div>
         <div className="space-y-1">
-          <Label htmlFor="ql-temp" className="text-xs">Water Temp (°F)</Label>
+          <Label htmlFor="ql-temp" className="text-xs">Water Temp ({tempUnitLabel(prefs.temp_unit)})</Label>
           <Input
             id="ql-temp"
             type="number"

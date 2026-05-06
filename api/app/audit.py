@@ -1,4 +1,5 @@
 """Audit logging dependency — automatically records mutations for commercial tenants."""
+
 from __future__ import annotations
 
 from uuid import UUID
@@ -43,7 +44,9 @@ async def record_audit(
             ip_address=ip,
             user_agent=ua,
         )
-        session.add(log)
-        # Note: caller is responsible for commit (usually happens with the main transaction)
+        # Use a savepoint so a DB error (e.g. missing table) only rolls back
+        # the audit INSERT, not the caller's pending changes.
+        async with session.begin_nested():
+            session.add(log)
     except Exception:  # noqa: S110
         pass  # Don't fail the main operation if audit logging has issues

@@ -4,9 +4,13 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/v1";
 
 interface FetchOptions extends RequestInit {
   token?: string;
+  /** Number of retry attempts for transient failures (default: 2 for GET, 0 for mutations) */
+  retries?: number;
+  /** Request timeout in ms (default: 15000) */
+  timeout?: number;
 }
 
-class ApiError extends Error {
+export class ApiError extends Error {
   constructor(
     public status: number,
     public detail: string,
@@ -17,17 +21,25 @@ class ApiError extends Error {
 }
 
 const _UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+const _RETRYABLE_STATUSES = new Set([502, 503, 504, 408, 429]);
+const _DEFAULT_TIMEOUT = 15_000;
 
-async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T> {
-  const { token, ...fetchOptions } = options;
+/** Delay helper for exponential backoff */
+function backoff(attempt: number): Promise<void> {
+  const ms = Math.min(1000 * 2 ** attempt, 8000) + Math.random() * 500;
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+export async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T> {
+  const { token, retries: userRetries, timeout: userTimeout, ...fetchOptions } = options;
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
   };
 
-  // Legacy support: if an explicit token is passed, use Authorization header
-  if (token) {
+  // Legacy support: if an explicit token is passed (and it's a real JWT), use Authorization header
+  if (token && token !== "cookie") {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
@@ -41,74 +53,103 @@ async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T>
   }
 
   const url = `${API_BASE}${path}`;
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      ...fetchOptions,
-      headers,
-      credentials: "include",  // Send httpOnly cookies
-    });
-  } catch (networkErr) {
-    console.error("[apiFetch] Network error:", url, fetchOptions.method || "GET", networkErr);
-    const msg = networkErr instanceof Error ? networkErr.message : "Network error";
-    throw new ApiError(0, `Network error on ${fetchOptions.method || "GET"} ${path}: ${msg}`);
-  }
+  const maxRetries = userRetries ?? (_UNSAFE_METHODS.has(method) ? 0 : 2);
+  const timeoutMs = userTimeout ?? _DEFAULT_TIMEOUT;
 
-  // Capture CSRF token from response header (set on login/register/refresh)
-  const csrfHeader = res.headers.get("X-CSRF-Token");
-  if (csrfHeader) {
-    setCsrfToken(csrfHeader);
-  }
+  let lastError: Error | null = null;
 
-  // Auto-refresh on 401
-  if (res.status === 401) {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (attempt > 0) {
+      await backoff(attempt - 1);
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    let res: Response;
     try {
-      const refreshRes = await fetch(`${API_BASE}/auth/refresh`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-        credentials: "include",  // Send refresh_token cookie
+      res = await fetch(url, {
+        ...fetchOptions,
+        headers,
+        credentials: "include",
+        signal: controller.signal,
       });
-      if (refreshRes.ok) {
-        // Capture new CSRF token
-        const newCsrf = refreshRes.headers.get("X-CSRF-Token");
-        if (newCsrf) setCsrfToken(newCsrf);
+    } catch (networkErr) {
+      clearTimeout(timer);
+      lastError = networkErr instanceof Error ? networkErr : new Error("Network error");
+      if (attempt < maxRetries) {
+        console.warn(`[apiFetch] Retry ${attempt + 1}/${maxRetries} for ${method} ${path}:`, lastError.message);
+        continue;
+      }
+      const msg = controller.signal.aborted ? "Request timed out" : lastError.message;
+      throw new ApiError(0, `Network error on ${method} ${path}: ${msg}`);
+    } finally {
+      clearTimeout(timer);
+    }
 
-        // Rebuild headers with new CSRF for retry
-        if (_UNSAFE_METHODS.has(method)) {
-          const csrf = getCsrfToken();
-          if (csrf) headers["X-CSRF-Token"] = csrf;
-        }
+    // Retry on transient server errors for safe methods
+    if (_RETRYABLE_STATUSES.has(res.status) && attempt < maxRetries) {
+      console.warn(`[apiFetch] Retry ${attempt + 1}/${maxRetries} for ${method} ${path}: HTTP ${res.status}`);
+      continue;
+    }
 
-        const retryRes = await fetch(`${API_BASE}${path}`, {
-          ...fetchOptions,
-          headers,
+    // Capture CSRF token from response header (set on login/register/refresh)
+    const csrfHeader = res.headers.get("X-CSRF-Token");
+    if (csrfHeader) {
+      setCsrfToken(csrfHeader);
+    }
+
+    // Auto-refresh on 401
+    if (res.status === 401) {
+      try {
+        const refreshRes = await fetch(`${API_BASE}/auth/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
           credentials: "include",
         });
-        if (retryRes.ok) {
-          if (retryRes.status === 204) return undefined as T;
-          return retryRes.json();
+        if (refreshRes.ok) {
+          const newCsrf = refreshRes.headers.get("X-CSRF-Token");
+          if (newCsrf) setCsrfToken(newCsrf);
+
+          if (_UNSAFE_METHODS.has(method)) {
+            const csrf = getCsrfToken();
+            if (csrf) headers["X-CSRF-Token"] = csrf;
+          }
+
+          const retryRes = await fetch(`${API_BASE}${path}`, {
+            ...fetchOptions,
+            headers,
+            credentials: "include",
+          });
+          if (retryRes.ok) {
+            if (retryRes.status === 204) return undefined as T;
+            return retryRes.json();
+          }
+          const retryBody = await retryRes.json().catch(() => ({ detail: retryRes.statusText }));
+          throw new ApiError(retryRes.status, retryBody.detail || retryRes.statusText);
+        } else {
+          clearAuth();
+          throw new ApiError(401, "Session expired. Please log in again.");
         }
-        const retryBody = await retryRes.json().catch(() => ({ detail: retryRes.statusText }));
-        throw new ApiError(retryRes.status, retryBody.detail || retryRes.statusText);
-      } else {
+      } catch (refreshErr) {
+        if (refreshErr instanceof ApiError) throw refreshErr;
         clearAuth();
         throw new ApiError(401, "Session expired. Please log in again.");
       }
-    } catch (refreshErr) {
-      if (refreshErr instanceof ApiError) throw refreshErr;
-      clearAuth();
-      throw new ApiError(401, "Session expired. Please log in again.");
     }
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new ApiError(res.status, body.detail || res.statusText);
+    }
+
+    if (res.status === 204) return undefined as T;
+    return res.json();
   }
 
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new ApiError(res.status, body.detail || res.statusText);
-  }
-
-  if (res.status === 204) return undefined as T;
-  return res.json();
+  // Should not reach here, but satisfy TypeScript
+  throw lastError ?? new ApiError(0, `Failed after ${maxRetries + 1} attempts: ${method} ${path}`);
 }
 
 // Paginated response envelope from the API
@@ -207,8 +248,8 @@ export function removeTenantMember(token: string, memberId: string) {
 }
 
 // Profile
-export function updateProfile(token: string, data: { display_name?: string; email?: string; layout_mode?: string }) {
-  return apiFetch<{ id: string; email: string; display_name: string | null; role: string; tenant_id: string; is_platform_admin: boolean; is_support: boolean; layout_mode: string }>(
+export function updateProfile(token: string, data: { display_name?: string; email?: string; layout_mode?: string; preferences?: Record<string, unknown> }) {
+  return apiFetch<{ id: string; email: string; display_name: string | null; role: string; tenant_id: string; is_platform_admin: boolean; is_support: boolean; layout_mode: string; preferences: Record<string, unknown> }>(
     "/auth/profile",
     { method: "PATCH", body: JSON.stringify(data), token },
   );
@@ -494,7 +535,7 @@ export function deleteTentCamera(token: string, tentId: string, cameraId: string
 
 export function getCameraSnapshot(token: string, tentId: string, cameraId?: string) {
   const q = cameraId ? `?camera_id=${cameraId}` : "";
-  return apiFetch<{ image_base64: string; timestamp: string }>(`/tents/${tentId}/camera-snapshot${q}`, { token });
+  return apiFetch<{ image_base64: string; timestamp: string }>(`/tents/${tentId}/camera-snapshot-b64${q}`, { token });
 }
 
 // Grows
@@ -607,7 +648,7 @@ export interface SensorReadingResponse {
 export async function listSensorReadings(token: string, bucketId?: string, limit?: number) {
   const qs = new URLSearchParams();
   if (bucketId) qs.set("bucket_id", bucketId);
-  if (limit) qs.set("limit", String(limit));
+  if (limit) qs.set("page_size", String(limit));
   const q = qs.toString();
   const res = await apiFetch<PaginatedResponse<SensorReadingResponse>>(`/sensors${q ? `?${q}` : ""}`, { token });
   return res.items;
@@ -841,8 +882,7 @@ export interface YieldResponse {
 
 export async function listYields(token: string, bucketId?: string) {
   const q = bucketId ? `?bucket_id=${bucketId}` : "";
-  const res = await apiFetch<PaginatedResponse<YieldResponse>>(`/yields${q}`, { token });
-  return res.items;
+  return apiFetch<YieldResponse[]>(`/yields${q}`, { token });
 }
 
 export function createYield(token: string, data: {
@@ -951,7 +991,7 @@ export async function uploadGrowPhoto(
 
 export function growPhotoUrl(token: string, photoId: string) {
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/v1";
-  return `${API_BASE_URL}/photos/grow/file/${photoId}?token=${encodeURIComponent(token)}`;
+  return `${API_BASE_URL}/photos/grow/file/${photoId}`;
 }
 
 export function updateGrowPhoto(token: string, id: string, data: Partial<{ caption: string }>) {
@@ -964,7 +1004,7 @@ export function deleteGrowPhoto(token: string, id: string) {
 
 export function timelapseUrl(token: string, growCycleId: string) {
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/v1";
-  return `${API_BASE_URL}/photos/grow/timelapse/${growCycleId}?token=${encodeURIComponent(token)}`;
+  return `${API_BASE_URL}/photos/grow/timelapse/${growCycleId}`;
 }
 
 // Dose Profiles
@@ -998,6 +1038,23 @@ export function deleteDoseProfile(token: string, id: string) {
 // Data Export
 export function getExportUrl(token: string, bucketId: string) {
   return `${API_BASE}/data/export/bucket/${bucketId}?token=${encodeURIComponent(token)}`;
+}
+
+export function getGrowExportUrl(token: string, growId: string, sections?: string[]) {
+  const params = new URLSearchParams({ token });
+  if (sections) sections.forEach((s) => params.append("include", s));
+  return `${API_BASE}/data/export/grow/${growId}?${params.toString()}`;
+}
+
+export function getAllExportUrl(token: string) {
+  return `${API_BASE}/data/export/all?token=${encodeURIComponent(token)}`;
+}
+
+export function getBucketExportUrl(token: string, bucketId: string, start?: string, end?: string) {
+  const params = new URLSearchParams({ token });
+  if (start) params.set("start", start);
+  if (end) params.set("end", end);
+  return `${API_BASE}/data/export/bucket/${bucketId}?${params.toString()}`;
 }
 
 // Notification Preferences
@@ -1058,13 +1115,103 @@ export interface HealthCheckResult {
 export function runHealthCheck(token: string, data: { grow_id: string; observations: Record<string, string>; image_base64?: string; include_camera?: boolean }) {
   return apiFetch<HealthCheckResult>(
     "/ai/health-check",
-    { method: "POST", body: JSON.stringify(data), token },
+    { method: "POST", body: JSON.stringify(data), token, timeout: 120_000 },
   );
 }
 
 export function getHealthCheckHistory(token: string, growId: string, limit = 10) {
   return apiFetch<{ items: HealthCheckResult[] }>(
     `/ai/health-check/${growId}/history?limit=${limit}`,
+    { token },
+  );
+}
+
+// ─── Plant Photo Diagnosis ─────────────────────────────────────────────────────
+
+export interface DiagnosisIssue {
+  name: string;
+  severity: "low" | "medium" | "high" | "critical";
+  confidence: number;
+  description: string;
+  treatment: string;
+}
+
+export interface DiagnoseResult {
+  overall_score: number;
+  summary: string;
+  issues: DiagnosisIssue[];
+  actions: string[];
+  grow_stage_assessment: string | null;
+}
+
+export function diagnosePlant(token: string, data: { image_base64: string; grow_id?: string; observations?: string }) {
+  return apiFetch<DiagnoseResult>(
+    "/ai/diagnose",
+    { method: "POST", body: JSON.stringify(data), token, timeout: 120_000 },
+  );
+}
+
+// ─── Plant Identification ──────────────────────────────────────────────────────
+
+export interface IdentifyResult {
+  plant_type: string;
+  confidence: number;
+  species: string | null;
+  strain_guess: string | null;
+  strain_confidence: number | null;
+  characteristics: string[];
+  growth_stage: string | null;
+  indica_sativa_ratio: string | null;
+  notes: string;
+}
+
+export function identifyPlant(token: string, data: { image_base64: string }) {
+  return apiFetch<IdentifyResult>(
+    "/ai/identify",
+    { method: "POST", body: JSON.stringify(data), token, timeout: 120_000 },
+  );
+}
+
+// ─── Treatment Database ────────────────────────────────────────────────────────
+
+export interface TreatmentSummary {
+  id: string;
+  category: string;
+  name: string;
+  summary: string;
+}
+
+export interface TreatmentDetail {
+  id: string;
+  category: string;
+  name: string;
+  aka: string[];
+  summary: string;
+  symptoms: string[];
+  identification_tips: string[];
+  causes: string[];
+  severity_criteria: Record<string, string>;
+  treatments: Record<string, string[]>;
+  prevention: string[];
+  recovery_time: string;
+  commonly_confused_with: string[];
+}
+
+export function listTreatments(token: string, params?: { category?: string; query?: string }) {
+  const searchParams = new URLSearchParams();
+  if (params?.category) searchParams.set("category", params.category);
+  if (params?.query) searchParams.set("query", params.query);
+  const qs = searchParams.toString();
+  return apiFetch<{ items: TreatmentSummary[]; total: number }>(
+    `/ai/treatments${qs ? `?${qs}` : ""}`,
+    { token },
+  );
+}
+
+export function getTreatmentDetail(token: string, treatmentId: string, growType?: string) {
+  const qs = growType ? `?grow_type=${growType}` : "";
+  return apiFetch<TreatmentDetail>(
+    `/ai/treatments/${treatmentId}${qs}`,
     { token },
   );
 }
@@ -1216,9 +1363,11 @@ export function pushUnsubscribe(token: string) {
 export interface BillingStatus {
   plan: string;
   plan_name: string;
+  billing_model: string | null;
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
   portal_url: string | null;
+  supported_methods: string[] | null;
 }
 
 export function getBillingStatus(token: string) {
@@ -1270,10 +1419,12 @@ export interface TaskItem {
   due_date: string | null;
   completed_at: string | null;
   recurring: string | null;
+  routine: string | null;
+  estimated_minutes: number | null;
   created_at: string;
 }
 
-export function listTasks(token: string, filters?: { status?: string; assigned_to?: string; category?: string; grow_cycle_id?: string; due_from?: string; due_to?: string }) {
+export async function listTasks(token: string, filters?: { status?: string; assigned_to?: string; category?: string; grow_cycle_id?: string; due_from?: string; due_to?: string }) {
   const params = new URLSearchParams();
   if (filters?.status) params.set("status", filters.status);
   if (filters?.assigned_to) params.set("assigned_to", filters.assigned_to);
@@ -1282,7 +1433,8 @@ export function listTasks(token: string, filters?: { status?: string; assigned_t
   if (filters?.due_from) params.set("due_from", filters.due_from);
   if (filters?.due_to) params.set("due_to", filters.due_to);
   const qs = params.toString();
-  return apiFetch<TaskItem[]>(`/tasks${qs ? `?${qs}` : ""}`, { token });
+  const res = await apiFetch<PaginatedResponse<TaskItem>>(`/tasks${qs ? `?${qs}` : ""}`, { token });
+  return res.items;
 }
 
 export function getCalendarTasks(token: string, start: string, end: string) {
@@ -1766,4 +1918,547 @@ export function quickLogNote(token: string, data: QuickNotePayload) {
 
 export function quickLogBatch(token: string, actions: BatchAction[]) {
   return apiFetch<{ processed: number; succeeded: number; failed: number }>("/quick-log/batch", { method: "POST", body: JSON.stringify({ actions }), token });
+}
+
+// ─── Integrations ─────────────────────────────────────────────────────────────
+
+export interface IntegrationResponse {
+  id: string;
+  type: string;
+  name: string;
+  config: Record<string, unknown>;
+  webhook_secret: string;
+  enabled: boolean;
+  poll_interval_s: number | null;
+  last_synced_at: string | null;
+  error_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DeviceMapResponse {
+  id: string;
+  integration_id: string;
+  external_id: string;
+  external_name: string | null;
+  tent_id: string | null;
+  bucket_id: string | null;
+  sensor_mapping: Record<string, string>;
+  enabled: boolean;
+  created_at: string;
+}
+
+export interface SyncLogResponse {
+  id: string;
+  integration_id: string;
+  status: string;
+  readings_count: number;
+  error_message: string | null;
+  synced_at: string;
+}
+
+export interface DiscoveredDeviceResponse {
+  external_id: string;
+  name: string;
+  device_type: string;
+  latest_reading: Record<string, unknown> | null;
+}
+
+export async function listIntegrations(token: string, type?: string) {
+  const q = type ? `?type=${encodeURIComponent(type)}` : "";
+  const res = await apiFetch<PaginatedResponse<IntegrationResponse>>(`/integrations${q}`, { token });
+  return res.items;
+}
+
+export function getIntegration(token: string, id: string) {
+  return apiFetch<IntegrationResponse>(`/integrations/${id}`, { token });
+}
+
+export function createIntegration(token: string, data: { type: string; name: string; config: Record<string, unknown>; enabled?: boolean; poll_interval_s?: number }) {
+  return apiFetch<IntegrationResponse>("/integrations", { method: "POST", body: JSON.stringify(data), token });
+}
+
+export function updateIntegration(token: string, id: string, data: { name?: string; config?: Record<string, unknown>; enabled?: boolean; poll_interval_s?: number }) {
+  return apiFetch<IntegrationResponse>(`/integrations/${id}`, { method: "PATCH", body: JSON.stringify(data), token });
+}
+
+export function deleteIntegration(token: string, id: string) {
+  return apiFetch<void>(`/integrations/${id}`, { method: "DELETE", token });
+}
+
+export async function listDeviceMaps(token: string, integrationId: string) {
+  const res = await apiFetch<PaginatedResponse<DeviceMapResponse>>(`/integrations/${integrationId}/devices`, { token });
+  return res.items;
+}
+
+export function createDeviceMap(token: string, integrationId: string, data: { external_id: string; external_name?: string; tent_id?: string; bucket_id?: string; sensor_mapping?: Record<string, string>; enabled?: boolean }) {
+  return apiFetch<DeviceMapResponse>(`/integrations/${integrationId}/devices`, { method: "POST", body: JSON.stringify(data), token });
+}
+
+export function updateDeviceMap(token: string, integrationId: string, deviceId: string, data: { external_name?: string; tent_id?: string; bucket_id?: string; sensor_mapping?: Record<string, string>; enabled?: boolean }) {
+  return apiFetch<DeviceMapResponse>(`/integrations/${integrationId}/devices/${deviceId}`, { method: "PATCH", body: JSON.stringify(data), token });
+}
+
+export function deleteDeviceMap(token: string, integrationId: string, deviceId: string) {
+  return apiFetch<void>(`/integrations/${integrationId}/devices/${deviceId}`, { method: "DELETE", token });
+}
+
+export async function listSyncLogs(token: string, integrationId: string) {
+  const res = await apiFetch<PaginatedResponse<SyncLogResponse>>(`/integrations/${integrationId}/logs`, { token });
+  return res.items;
+}
+
+export function triggerSync(token: string, integrationId: string) {
+  return apiFetch<{ status: string; readings_count: number; error_message: string | null }>(`/integrations/${integrationId}/sync`, { method: "POST", token });
+}
+
+export function discoverDevices(token: string, integrationId: string) {
+  return apiFetch<DiscoveredDeviceResponse[]>(`/integrations/${integrationId}/discover`, { method: "POST", token });
+}
+
+// ─── Missing CRUD Helpers ─────────────────────────────────────────────────────
+
+export function deleteSensorReading(token: string, readingId: string) {
+  return apiFetch<void>(`/sensors/${readingId}`, { method: "DELETE", token });
+}
+
+export function deleteTentReading(token: string, readingId: string) {
+  return apiFetch<void>(`/tent-sensors/${readingId}`, { method: "DELETE", token });
+}
+
+export function getTentSensorTrends(token: string, tentId: string) {
+  return apiFetch<{ timestamps: string[]; temps: (number | null)[]; humidities: (number | null)[] }>(`/tent-sensors/trends/${tentId}`, { token });
+}
+
+export function updateNotificationPreference(token: string, id: string, data: { severity_filter?: string; event_types?: string; enabled?: boolean }) {
+  return apiFetch<NotificationPreference>(`/notifications/preferences/${id}`, { method: "PATCH", body: JSON.stringify(data), token });
+}
+
+export function updateSoilTest(token: string, growId: string, testId: string, data: Record<string, unknown>) {
+  return apiFetch<SoilTestResponse>(`/grows/${growId}/soil-tests/${testId}`, { method: "PATCH", body: JSON.stringify(data), token });
+}
+
+export function updateAmendment(token: string, growId: string, amendmentId: string, data: Record<string, unknown>) {
+  return apiFetch<AmendmentResponse>(`/grows/${growId}/amendments/${amendmentId}`, { method: "PATCH", body: JSON.stringify(data), token });
+}
+
+export function updatePestScout(token: string, growId: string, entryId: string, data: Record<string, unknown>) {
+  return apiFetch<PestScoutResponse>(`/grows/${growId}/pest-scouts/${entryId}`, { method: "PATCH", body: JSON.stringify(data), token });
+}
+
+export function updateHarvestYield(token: string, growId: string, yieldId: string, data: Record<string, unknown>) {
+  return apiFetch<HarvestYieldResponse>(`/grows/${growId}/yields/${yieldId}`, { method: "PATCH", body: JSON.stringify(data), token });
+}
+
+export function updateRunoffReading(token: string, growId: string, readingId: string, data: Record<string, unknown>) {
+  return apiFetch<RunoffReadingResponse>(`/grows/${growId}/runoff/${readingId}`, { method: "PATCH", body: JSON.stringify(data), token });
+}
+
+export function listGrowTypeReviewQueue(token: string) {
+  return apiFetch<{ id: string; name: string; submitted_by: string; submitted_at: string; status: string }[]>("/custom-grow-types/review/queue", { token });
+}
+
+// ─── Support / Tickets ────────────────────────────────────────────────────────
+
+export interface SupportTicket {
+  id: string;
+  subject: string;
+  status: string;
+  priority: string;
+  category: string;
+  created_at: string;
+  updated_at: string;
+  message_count?: number;
+}
+
+export interface TicketMessage {
+  id: string;
+  author_id: string;
+  body: string;
+  is_internal: boolean;
+  attachments: unknown[];
+  created_at: string;
+}
+
+export interface TicketDetail extends SupportTicket {
+  due_at: string | null;
+  first_response_at: string | null;
+  resolved_at: string | null;
+  satisfaction_rating: number | null;
+  tags: string[] | null;
+  messages: TicketMessage[];
+}
+
+export function listMyTickets(token: string, params?: { status?: string; page?: number }) {
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set("status", params.status);
+  if (params?.page) qs.set("page", String(params.page));
+  return apiFetch<{ tickets: SupportTicket[]; total: number; page: number }>(`/support/tickets?${qs}`, { token });
+}
+
+export function getTicket(token: string, ticketId: string) {
+  return apiFetch<TicketDetail>(`/support/tickets/${ticketId}`, { token });
+}
+
+export function createTicket(token: string, data: { subject: string; body: string; category?: string; priority?: string }) {
+  return apiFetch<SupportTicket>("/support/tickets", { method: "POST", body: JSON.stringify(data), token });
+}
+
+export function addTicketMessage(token: string, ticketId: string, body: string) {
+  return apiFetch<TicketMessage>(`/support/tickets/${ticketId}/messages`, { method: "POST", body: JSON.stringify({ body }), token });
+}
+
+export function closeTicket(token: string, ticketId: string) {
+  return apiFetch<{ status: string }>(`/support/tickets/${ticketId}/close`, { method: "POST", token });
+}
+
+export function rateTicket(token: string, ticketId: string, rating: number, comment?: string) {
+  return apiFetch<{ rating: number }>(`/support/tickets/${ticketId}/rate`, { method: "POST", body: JSON.stringify({ rating, comment }), token });
+}
+
+// ─── Knowledge Base ───────────────────────────────────────────────────────────
+
+export interface KBCategory {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  icon: string | null;
+  article_count: number;
+}
+
+export interface KBArticle {
+  id: string;
+  title: string;
+  slug: string;
+  body_markdown?: string;
+  tags: string[] | null;
+  views: number;
+  helpful_yes: number;
+  helpful_no: number;
+  created_at: string;
+  updated_at?: string;
+}
+
+export function listKBCategories() {
+  return apiFetch<KBCategory[]>("/support/kb/categories");
+}
+
+export function listKBArticles(params?: { category_slug?: string; page?: number }) {
+  const qs = new URLSearchParams();
+  if (params?.category_slug) qs.set("category_slug", params.category_slug);
+  if (params?.page) qs.set("page", String(params.page));
+  return apiFetch<{ articles: KBArticle[]; total: number; page: number }>(`/support/kb/articles?${qs}`);
+}
+
+export function searchKBArticles(q: string) {
+  return apiFetch<KBArticle[]>(`/support/kb/articles/search?q=${encodeURIComponent(q)}`);
+}
+
+export function getKBArticle(slug: string) {
+  return apiFetch<KBArticle>(`/support/kb/articles/${slug}`);
+}
+
+export function voteKBArticle(slug: string, helpful: boolean) {
+  return apiFetch<{ helpful_yes: number; helpful_no: number }>(`/support/kb/articles/${slug}/vote?helpful=${helpful}`, { method: "POST" });
+}
+
+// ─── Forum ────────────────────────────────────────────────────────────────────
+
+export interface ForumCategory {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  icon: string | null;
+  thread_count: number;
+  post_count: number;
+}
+
+export interface ForumThread {
+  id: string;
+  title: string;
+  author_id: string;
+  status: string;
+  is_pinned: boolean;
+  view_count: number;
+  reply_count: number;
+  upvotes: number;
+  has_solution: boolean;
+  last_activity_at: string;
+  created_at: string;
+}
+
+export interface ForumPost {
+  id: string;
+  author_id: string;
+  body: string;
+  is_solution: boolean;
+  upvotes: number;
+  created_at: string;
+}
+
+export function listForumCategories() {
+  return apiFetch<ForumCategory[]>("/support/forum/categories");
+}
+
+export function listForumThreads(params?: { category_slug?: string; page?: number }) {
+  const qs = new URLSearchParams();
+  if (params?.category_slug) qs.set("category_slug", params.category_slug);
+  if (params?.page) qs.set("page", String(params.page));
+  return apiFetch<{ threads: ForumThread[]; total: number; page: number }>(`/support/forum/threads?${qs}`);
+}
+
+export function getForumThread(threadId: string) {
+  return apiFetch<ForumThread & { body: string; posts: ForumPost[] }>(`/support/forum/threads/${threadId}`);
+}
+
+export function createForumThread(token: string, data: { category_id: string; title: string; body: string }) {
+  return apiFetch<{ id: string; title: string }>("/support/forum/threads", { method: "POST", body: JSON.stringify(data), token });
+}
+
+export function createForumPost(token: string, threadId: string, body: string) {
+  return apiFetch<{ id: string }>(`/support/forum/threads/${threadId}/posts`, { method: "POST", body: JSON.stringify({ body }), token });
+}
+
+export function upvoteThread(token: string, threadId: string) {
+  return apiFetch<{ upvotes: number }>(`/support/forum/threads/${threadId}/upvote`, { method: "POST", token });
+}
+
+export function upvotePost(token: string, postId: string) {
+  return apiFetch<{ upvotes: number }>(`/support/forum/posts/${postId}/upvote`, { method: "POST", token });
+}
+
+// ─── Cost/ROI Tracking ─────────────────────────────────────────────────────────
+
+export interface Expense {
+  id: string;
+  grow_cycle_id: string;
+  category: string;
+  amount_cents: number;
+  currency: string;
+  description: string | null;
+  vendor: string | null;
+  date: string;
+  is_recurring: boolean;
+  recurring_interval: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface HarvestValueEntry {
+  id: string;
+  grow_cycle_id: string;
+  grade: string;
+  weight_g: number;
+  price_per_gram_cents: number;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface ROISummary {
+  grow_cycle_id: string;
+  grow_name: string;
+  total_expenses_cents: number;
+  total_harvest_value_cents: number;
+  total_dry_weight_g: number;
+  cost_per_gram_cents: number | null;
+  roi_percentage: number | null;
+  expense_breakdown: Record<string, number>;
+}
+
+export function listExpenses(token: string, growCycleId?: string, category?: string) {
+  const params = new URLSearchParams();
+  if (growCycleId) params.set("grow_cycle_id", growCycleId);
+  if (category) params.set("category", category);
+  const qs = params.toString();
+  return apiFetch<Expense[]>(`/grows/expenses${qs ? `?${qs}` : ""}`, { token });
+}
+
+export function createExpense(token: string, data: { grow_cycle_id: string; category: string; amount_cents: number; currency?: string; description?: string; vendor?: string; date?: string; is_recurring?: boolean; recurring_interval?: string; notes?: string }) {
+  return apiFetch<Expense>("/grows/expenses", { method: "POST", body: JSON.stringify(data), token });
+}
+
+export function updateExpense(token: string, expenseId: string, data: Record<string, unknown>) {
+  return apiFetch<Expense>(`/grows/expenses/${expenseId}`, { method: "PATCH", body: JSON.stringify(data), token });
+}
+
+export function deleteExpense(token: string, expenseId: string) {
+  return apiFetch<void>(`/grows/expenses/${expenseId}`, { method: "DELETE", token });
+}
+
+export function listHarvestValues(token: string, growCycleId?: string) {
+  const qs = growCycleId ? `?grow_cycle_id=${growCycleId}` : "";
+  return apiFetch<HarvestValueEntry[]>(`/grows/harvest-values${qs}`, { token });
+}
+
+export function createHarvestValue(token: string, data: { grow_cycle_id: string; grade: string; weight_g: number; price_per_gram_cents: number; notes?: string }) {
+  return apiFetch<HarvestValueEntry>("/grows/harvest-values", { method: "POST", body: JSON.stringify(data), token });
+}
+
+export function deleteHarvestValue(token: string, valueId: string) {
+  return apiFetch<void>(`/grows/harvest-values/${valueId}`, { method: "DELETE", token });
+}
+
+export function getGrowROI(token: string, growCycleId: string) {
+  return apiFetch<ROISummary>(`/grows/${growCycleId}/roi`, { token });
+}
+
+export function compareGrowsROI(token: string, growIds?: string[], limit?: number) {
+  const params = new URLSearchParams();
+  if (growIds?.length) growIds.forEach((id) => params.append("grow_ids", id));
+  if (limit) params.set("limit", String(limit));
+  const qs = params.toString();
+  return apiFetch<{ grows: ROISummary[] }>(`/grows/roi-comparison${qs ? `?${qs}` : ""}`, { token });
+}
+
+// ─── Admin Billing Providers ───────────────────────────────────────────────────
+
+export interface PaymentProviderSummary {
+  id: string;
+  provider_type: string;
+  display_name: string;
+  is_active: boolean;
+  is_primary: boolean;
+  supported_methods: string[] | null;
+  created_at: string;
+}
+
+export function adminListProviders(token: string) {
+  return apiFetch<PaymentProviderSummary[]>("/billing/providers", { token });
+}
+
+export function adminCreateProvider(token: string, data: { provider_type: string; display_name: string; config: Record<string, string>; webhook_secret?: string }) {
+  return apiFetch<PaymentProviderSummary>("/billing/providers", { method: "POST", body: JSON.stringify(data), token });
+}
+
+export function adminUpdateProvider(token: string, providerId: string, data: Record<string, unknown>) {
+  return apiFetch<PaymentProviderSummary>(`/billing/providers/${providerId}`, { method: "PATCH", body: JSON.stringify(data), token });
+}
+
+export function adminDeleteProvider(token: string, providerId: string) {
+  return apiFetch<void>(`/billing/providers/${providerId}`, { method: "DELETE", token });
+}
+
+export function adminTestProvider(token: string, providerId: string) {
+  return apiFetch<{ success: boolean; message: string }>(`/billing/providers/${providerId}/test`, { method: "POST", token });
+}
+
+// ─── Invoice History ────────────────────────────────────────────────────────────
+
+export interface InvoiceEntry {
+  id: string;
+  date: string;
+  amount: string;
+  status: string;
+  pdf_url: string | null;
+  hosted_url: string | null;
+  description: string | null;
+}
+
+export function listInvoices(token: string, limit?: number) {
+  const qs = limit ? `?limit=${limit}` : "";
+  return apiFetch<InvoiceEntry[]>(`/billing/invoices${qs}`, { token });
+}
+
+// ─── Cancellation Flow ──────────────────────────────────────────────────────────
+
+export interface RetentionOffer {
+  discount: string;
+  offer_code: string;
+  expires_at: string;
+}
+
+export interface CancelResponse {
+  status: string;
+  retention_offer: RetentionOffer | null;
+  cancellation_date: string | null;
+}
+
+export function cancelSubscription(token: string, data: { reason?: string; feedback?: string; accept_retention_offer?: boolean }) {
+  return apiFetch<CancelResponse>("/billing/cancel", { method: "POST", body: JSON.stringify(data), token });
+}
+
+// ─── Account Deletion ───────────────────────────────────────────────────────────
+
+export interface DeletionStatus {
+  deletion_scheduled: boolean;
+  deletion_date: string | null;
+  days_remaining: number | null;
+}
+
+export function requestAccountDeletion(token: string, confirmEmail: string) {
+  return apiFetch<{ status: string; deletion_date: string | null; message: string }>("/account/delete", { method: "POST", body: JSON.stringify({ confirm_email: confirmEmail }), token });
+}
+
+export function cancelAccountDeletion(token: string) {
+  return apiFetch<{ status: string; message: string }>("/account/delete", { method: "DELETE", token });
+}
+
+export function getAccountDeletionStatus(token: string) {
+  return apiFetch<DeletionStatus>("/account/delete/status", { token });
+}
+
+// ─── Usage Alerts ───────────────────────────────────────────────────────────────
+
+export interface UsageAlert {
+  metric: string;
+  current: number;
+  limit: number;
+  plan: string;
+}
+
+export function getUsageAlerts(token: string) {
+  return apiFetch<{ alerts: UsageAlert[] }>("/billing/usage-alerts", { token });
+}
+
+// ─── Admin: Billing Plans ────────────────────────────────────────────────────────
+
+export interface AdminBillingPlan {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+  is_public: boolean;
+  sort_order: number;
+  billing_model: string;
+  base_price_cents: number;
+  annual_price_cents: number | null;
+  currency: string;
+  max_grows: number | null;
+  max_devices: number | null;
+  max_team_members: number | null;
+  max_ai_analyses_month: number | null;
+  max_storage_gb: number | null;
+  max_automations: number | null;
+  max_integrations: number | null;
+  max_journal_entries_month: number | null;
+  data_retention_days: number | null;
+  included_support_tier: string;
+  features_json: Record<string, unknown>;
+}
+
+export function adminListPlans(token: string) {
+  return apiFetch<AdminBillingPlan[]>("/billing/plans/", { token });
+}
+
+export function adminGetPlan(token: string, planId: string) {
+  return apiFetch<AdminBillingPlan>(`/billing/plans/${planId}`, { token });
+}
+
+export function adminCreatePlan(token: string, data: Partial<AdminBillingPlan>) {
+  return apiFetch<AdminBillingPlan>("/billing/plans/", { method: "POST", body: JSON.stringify(data), token });
+}
+
+export function adminUpdatePlan(token: string, planId: string, data: Partial<AdminBillingPlan>) {
+  return apiFetch<AdminBillingPlan>(`/billing/plans/${planId}`, { method: "PATCH", body: JSON.stringify(data), token });
+}
+
+export function adminArchivePlan(token: string, planId: string) {
+  return apiFetch<void>(`/billing/plans/${planId}`, { method: "DELETE", token });
+}
+
+export function adminSyncPlan(token: string, planId: string) {
+  return apiFetch<{ status: string; external_price_id: string }>(`/billing/plans/${planId}/sync`, { method: "POST", token });
 }

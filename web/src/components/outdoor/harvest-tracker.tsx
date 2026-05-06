@@ -5,6 +5,7 @@ import { getAccessToken } from "@/lib/auth";
 import {
   listHarvestYields,
   createHarvestYield,
+  updateHarvestYield,
   getYieldSummary,
   deleteHarvestYield,
   type HarvestYieldResponse,
@@ -31,7 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Scissors, Plus, Trash2, Scale, Award, BarChart3 } from "lucide-react";
+import { Scissors, Plus, Trash2, Scale, Award, BarChart3, Pencil } from "lucide-react";
 
 interface Props {
   growId: string;
@@ -43,6 +44,7 @@ export function HarvestTracker({ growId, buckets }: Props) {
   const [summary, setSummary] = useState<YieldSummaryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const [form, setForm] = useState({
     bucket_id: "",
@@ -92,6 +94,35 @@ export function HarvestTracker({ growId, buckets }: Props) {
     const token = await getAccessToken();
     if (!token) return;
     await deleteHarvestYield(token, growId, id);
+    refresh();
+  };
+
+  const handleEdit = (y: HarvestYieldResponse) => {
+    setEditingId(y.id);
+    setForm({
+      bucket_id: y.bucket_id, wet_weight_oz: y.wet_weight_oz?.toString() ?? "",
+      dry_weight_oz: y.dry_weight_oz?.toString() ?? "", trim_weight_oz: y.trim_weight_oz?.toString() ?? "",
+      quality_rating: y.quality_rating?.toString() ?? "", trichome_stage: y.trichome_stage || "",
+      notes: y.notes || "",
+    });
+    setShowDialog(true);
+  };
+
+  const handleUpdate = async () => {
+    if (!editingId) return;
+    const token = await getAccessToken();
+    if (!token) return;
+    const data: Record<string, unknown> = {};
+    if (form.wet_weight_oz) data.wet_weight_oz = +form.wet_weight_oz;
+    if (form.dry_weight_oz) data.dry_weight_oz = +form.dry_weight_oz;
+    if (form.trim_weight_oz) data.trim_weight_oz = +form.trim_weight_oz;
+    if (form.quality_rating) data.quality_rating = +form.quality_rating;
+    if (form.trichome_stage) data.trichome_stage = form.trichome_stage;
+    if (form.notes) data.notes = form.notes;
+    await updateHarvestYield(token, growId, editingId, data);
+    setShowDialog(false);
+    setEditingId(null);
+    setForm({ bucket_id: "", wet_weight_oz: "", dry_weight_oz: "", trim_weight_oz: "", quality_rating: "", trichome_stage: "", notes: "" });
     refresh();
   };
 
@@ -166,7 +197,10 @@ export function HarvestTracker({ growId, buckets }: Props) {
                   </div>
                   {y.notes && <p className="text-xs text-muted-foreground">{y.notes}</p>}
                 </div>
-                <Button variant="ghost" size="icon" onClick={() => handleDelete(y.id)}><Trash2 className="size-3" /></Button>
+                <div className="flex gap-1">
+                  <Button variant="ghost" size="icon" onClick={() => handleEdit(y)}><Pencil className="size-3" /></Button>
+                  <Button variant="ghost" size="icon" onClick={() => handleDelete(y.id)}><Trash2 className="size-3" /></Button>
+                </div>
               </div>
             </Card>
           ))}
@@ -213,8 +247,8 @@ export function HarvestTracker({ growId, buckets }: Props) {
             <div><Label>Notes</Label><Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDialog(false)}>Cancel</Button>
-            <Button onClick={handleCreate} disabled={!form.bucket_id}>Save</Button>
+            <Button variant="outline" onClick={() => { setShowDialog(false); setEditingId(null); }}>Cancel</Button>
+            <Button onClick={editingId ? handleUpdate : handleCreate} disabled={!editingId && !form.bucket_id}>{editingId ? "Update" : "Save"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
