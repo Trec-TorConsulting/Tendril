@@ -4,16 +4,11 @@ metadata:
   name: tendril-ingress
   namespace: tendril
   annotations:
-    traefik.ingress.kubernetes.io/router.entrypoints: websecure
-    traefik.ingress.kubernetes.io/router.tls: "true"
-    traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
-    traefik.ingress.kubernetes.io/custom-response-headers: |
-      X-Content-Type-Options: nosniff
-      X-Frame-Options: DENY
-      X-XSS-Protection: 1; mode=block
-      Referrer-Policy: strict-origin-when-cross-origin
-      Strict-Transport-Security: max-age=31536000; includeSubDomains
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    traefik.ingress.kubernetes.io/router.middlewares: traefik-redirect-https@kubernetescrd,tendril-security-headers@kubernetescrd
+    cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
+  ingressClassName: traefik
   rules:
   - host: tendril.maddscientist.com  # Replace with your domain
     http:
@@ -35,3 +30,8 @@ spec:
             name: tendril-api
             port:
               number: 8000
+  tls:
+  - hosts:
+    - tendril.maddscientist.com
+    - api.tendril.maddscientist.com
+    secretName: tendril-maddscientist-com-tls
