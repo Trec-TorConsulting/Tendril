@@ -1,0 +1,9 @@
+{
+  "name": "TendrilPower",
+  "version": "1.0.0",
+  "description": "Battery management, deep sleep, and solar charging for Tendril sensor kits",
+  "keywords": ["tendril", "battery", "deep-sleep", "esp32", "power"],
+  "license": "CERN-OHL-P-2.0",
+  "frameworks": ["arduino"],
+  "platforms": ["espressif32"]
+}
