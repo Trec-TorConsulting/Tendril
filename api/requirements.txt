@@ -4,7 +4,7 @@ uvicorn[standard]>=0.30,<1
 pydantic[email]>=2.0,<3
 
 # Database
-sqlalchemy[asyncio]>=2.0,<3
+sqlalchemy[asyncio]>=2.0.49,<3
 asyncpg>=0.30,<1
 alembic>=1.14,<2
 
