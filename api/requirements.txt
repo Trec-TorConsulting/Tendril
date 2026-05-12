@@ -1,7 +1,7 @@
 # Core
 fastapi>=0.115,<1
 uvicorn[standard]>=0.30,<1
-pydantic[email]>=2.0,<3
+pydantic[email]>=2.13.4,<3
 
 # Database
 sqlalchemy[asyncio]>=2.0,<3
