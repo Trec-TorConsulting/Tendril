@@ -5,16 +5,22 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 
 
+def _require_env(name: str) -> str:
+    """Return an env var or raise with a clear message."""
+    val = os.environ.get(name)
+    if not val:
+        raise RuntimeError(f"{name} environment variable is required")
+    return val
+
+
 @dataclass(frozen=True)
 class Settings:
-    # Database
-    database_url: str = field(
-        default_factory=lambda: os.environ.get(
-            "DATABASE_URL",
-            "postgresql+asyncpg://tendril:tendril@postgresql.postgresql.svc.cluster.local:5432/tendril",
-        )
-    )
+    # Database — required, no default
+    database_url: str = field(default_factory=lambda: _require_env("DATABASE_URL"))
     database_pool_size: int = field(default_factory=lambda: int(os.environ.get("DATABASE_POOL_SIZE", "10")))
+
+    # Redis (optional — middleware falls back to in-memory without it)
+    redis_url: str = field(default_factory=lambda: os.environ.get("REDIS_URL", ""))
 
     # Auth
     jwt_secret: str = field(default_factory=lambda: os.environ["JWT_SECRET"])

@@ -36,3 +36,6 @@ python-multipart>=0.0.9,<1
 
 # S3 / MinIO
 boto3>=1.34,<2
+
+# Redis (optional — middleware state for multi-instance deployments)
+redis>=5.0,<6
