@@ -61,6 +61,10 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     steps:
       - run: |
+          curl -LO "https://dl.k8s.io/release/$(curl -Ls https://dl.k8s.io/release/stable.txt)/bin/linux/arm64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/
+      - run: |
           kubectl rollout restart deployment/tendril-api -n tendril
           kubectl rollout restart deployment/tendril-web -n tendril
           kubectl rollout restart deployment/tendril-mqtt-worker -n tendril
