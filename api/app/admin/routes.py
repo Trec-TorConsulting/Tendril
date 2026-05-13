@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.middleware import CurrentUser, require_platform_admin, require_support_or_admin
 from app.database import async_session_factory
 from app.pagination import PaginatedResponse, PaginationParams
-from app.tenants.models import PlatformRole, Tenant, TenantMembership, User
+from app.tenants.models import Account, PlatformRole, Tenant, TenantMembership, TenantRole, User
 
 router = APIRouter()
 
@@ -57,6 +57,13 @@ class UpdateUserFlags(BaseModel):
 
 class UpdateTenantPlan(BaseModel):
     plan: str
+
+
+class CreateTenantRequest(BaseModel):
+    name: str
+    slug: str
+    plan: str = "free"
+    owner_user_id: UUID | None = None
 
 
 class PlatformStatsResponse(BaseModel):
@@ -105,6 +112,54 @@ async def list_all_tenants(
         for r in rows
     ]
     return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
+
+
+@router.post("/tenants", response_model=TenantSummary, status_code=201)
+async def create_tenant(
+    body: CreateTenantRequest,
+    _admin: Annotated[CurrentUser, Depends(require_platform_admin)],
+    db: Annotated[AsyncSession, Depends(_get_db)],
+):
+    """Create a new organization/tenant (admin only)."""
+    # Check slug uniqueness
+    existing = await db.execute(select(Tenant.id).where(Tenant.slug == body.slug))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="A tenant with this slug already exists")
+
+    # Create an account for the tenant
+    account = Account(name=body.name)
+    db.add(account)
+    await db.flush()
+
+    tenant = Tenant(name=body.name, slug=body.slug, plan=body.plan, account_id=account.id)
+    db.add(tenant)
+    await db.flush()
+
+    # If an owner user is specified, add them as admin member
+    if body.owner_user_id:
+        owner = await db.execute(select(User).where(User.id == body.owner_user_id))
+        owner_user = owner.scalar_one_or_none()
+        if not owner_user:
+            raise HTTPException(status_code=404, detail="Owner user not found")
+        membership = TenantMembership(tenant_id=tenant.id, user_id=owner_user.id, role=TenantRole.admin)
+        db.add(membership)
+
+    await db.commit()
+    await db.refresh(tenant)
+
+    user_count_result = await db.execute(
+        select(func.count(TenantMembership.id)).where(TenantMembership.tenant_id == tenant.id)
+    )
+    user_count = user_count_result.scalar() or 0
+
+    return TenantSummary(
+        id=tenant.id,
+        name=tenant.name,
+        slug=tenant.slug,
+        plan=tenant.plan,
+        user_count=user_count,
+        created_at=tenant.created_at.isoformat(),
+    )
 
 
 @router.get("/tenants/{tenant_id}/users", response_model=list[UserSummary])
