@@ -1,4 +1,4 @@
-FROM node:20-slim AS builder
+FROM --platform=$BUILDPLATFORM node:20-slim AS builder
 WORKDIR /app
 ARG NEXT_PUBLIC_API_URL=https://api.tendril.maddscientist.com/v1
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
