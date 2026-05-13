@@ -4,60 +4,60 @@ updates:
   - package-ecosystem: pip
     directory: /api
     schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 10
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      python-deps:
+        patterns: ["*"]
     labels:
       - dependencies
       - python
-    reviewers:
-      - trector282
 
   # Web frontend dependencies
   - package-ecosystem: npm
     directory: /web
     schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 10
+      interval: monthly
+    open-pull-requests-limit: 5
+    groups:
+      npm-deps:
+        patterns: ["*"]
     labels:
       - dependencies
       - javascript
-    reviewers:
-      - trector282
 
   # GitHub Actions
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      actions:
+        patterns: ["*"]
     labels:
       - dependencies
       - ci
-    reviewers:
-      - trector282
 
   # Docker base images
   - package-ecosystem: docker
     directory: /api
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
+    groups:
+      docker:
+        patterns: ["*"]
     labels:
       - dependencies
       - docker
-    reviewers:
-      - trector282
 
   - package-ecosystem: docker
     directory: /web
     schedule:
-      interval: weekly
-      day: monday
+      interval: monthly
+    groups:
+      docker:
+        patterns: ["*"]
     labels:
       - dependencies
       - docker
-    reviewers:
-      - trector282
