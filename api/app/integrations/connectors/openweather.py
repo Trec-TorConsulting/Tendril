@@ -128,9 +128,7 @@ class OpenWeatherConnector(BaseConnector):
             data["external_id"] = coords
             result.readings.append(data)
 
-    async def _fetch_weather_25(
-        self, client: httpx.AsyncClient, lat: str, lng: str, api_key: str
-    ) -> dict[str, Any]:
+    async def _fetch_weather_25(self, client: httpx.AsyncClient, lat: str, lng: str, api_key: str) -> dict[str, Any]:
         """Fetch using free Weather API 2.5 (current + 5-day forecast)."""
         # Current weather
         resp = await client.get(
@@ -169,9 +167,7 @@ class OpenWeatherConnector(BaseConnector):
             "forecast": forecast,
         }
 
-    async def _fetch_onecall_30(
-        self, client: httpx.AsyncClient, lat: str, lng: str, api_key: str
-    ) -> dict[str, Any]:
+    async def _fetch_onecall_30(self, client: httpx.AsyncClient, lat: str, lng: str, api_key: str) -> dict[str, Any]:
         """Fetch using One Call API 3.0 (current + daily + minutely + alerts)."""
         resp = await client.get(
             "/data/3.0/onecall",
@@ -187,20 +183,24 @@ class OpenWeatherConnector(BaseConnector):
         forecast = []
         for day in data.get("daily", [])[:7]:
             temp = day.get("temp", {})
-            forecast.append({
-                "date": datetime.fromtimestamp(day["dt"], tz=UTC).strftime("%Y-%m-%d") if "dt" in day else None,
-                "temp_max_c": temp.get("max"),
-                "temp_min_c": temp.get("min"),
-                "precipitation_mm": day.get("rain", 0),
-                "wind_max_kmh": (day.get("wind_speed", 0) * 3.6) if day.get("wind_speed") else None,
-                "uv_max": day.get("uvi"),
-                "weather_code": day.get("weather", [{}])[0].get("id") if day.get("weather") else None,
-            })
+            forecast.append(
+                {
+                    "date": datetime.fromtimestamp(day["dt"], tz=UTC).strftime("%Y-%m-%d") if "dt" in day else None,
+                    "temp_max_c": temp.get("max"),
+                    "temp_min_c": temp.get("min"),
+                    "precipitation_mm": day.get("rain", 0),
+                    "wind_max_kmh": (day.get("wind_speed", 0) * 3.6) if day.get("wind_speed") else None,
+                    "uv_max": day.get("uvi"),
+                    "weather_code": day.get("weather", [{}])[0].get("id") if day.get("weather") else None,
+                }
+            )
 
         return {
             "temperature_c": current.get("temp"),
             "humidity_pct": current.get("humidity"),
-            "precipitation_mm": current.get("rain", {}).get("1h", 0.0) if isinstance(current.get("rain"), dict) else 0.0,
+            "precipitation_mm": current.get("rain", {}).get("1h", 0.0)
+            if isinstance(current.get("rain"), dict)
+            else 0.0,
             "wind_speed_kmh": (current.get("wind_speed", 0) * 3.6) if current.get("wind_speed") else None,
             "uv_index": current.get("uvi"),
             "weather_code": weather_code,
@@ -248,7 +248,9 @@ class OpenWeatherConnector(BaseConnector):
     # ── Persistence ─────────────────────────────────────────────
 
     async def persist_readings(
-        self, session: AsyncSession, result: ConnectorResult,
+        self,
+        session: AsyncSession,
+        result: ConnectorResult,
     ) -> int:
         """Write polled readings to WeatherReading."""
         return await write_openweather_readings(session, result.readings)

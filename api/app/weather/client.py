@@ -4,6 +4,7 @@ Retrieves air temperature, humidity, precipitation, wind, UV, pressure,
 dew point and soil temperature at 6 cm depth — everything an outdoor or
 greenhouse grow needs for alerting, GDD tracking, and AI health analysis.
 """
+
 from __future__ import annotations
 
 import logging
@@ -16,27 +17,31 @@ logger = logging.getLogger("tendril.weather")
 OPEN_METEO_BASE = "https://api.open-meteo.com/v1/forecast"
 
 # Current weather variables requested from Open-Meteo
-_CURRENT_VARS = ",".join([
-    "temperature_2m",
-    "relative_humidity_2m",
-    "precipitation",
-    "wind_speed_10m",
-    "uv_index",
-    "weather_code",
-    "dew_point_2m",
-    "surface_pressure",
-    "soil_temperature_6cm",
-])
+_CURRENT_VARS = ",".join(
+    [
+        "temperature_2m",
+        "relative_humidity_2m",
+        "precipitation",
+        "wind_speed_10m",
+        "uv_index",
+        "weather_code",
+        "dew_point_2m",
+        "surface_pressure",
+        "soil_temperature_6cm",
+    ]
+)
 
 # Daily forecast variables requested from Open-Meteo
-_DAILY_VARS = ",".join([
-    "temperature_2m_max",
-    "temperature_2m_min",
-    "precipitation_sum",
-    "wind_speed_10m_max",
-    "uv_index_max",
-    "weather_code",
-])
+_DAILY_VARS = ",".join(
+    [
+        "temperature_2m_max",
+        "temperature_2m_min",
+        "precipitation_sum",
+        "wind_speed_10m_max",
+        "uv_index_max",
+        "weather_code",
+    ]
+)
 
 
 async def fetch_weather(latitude: float, longitude: float) -> dict[str, Any]:
@@ -111,10 +116,12 @@ def evaluate_weather_alerts(current: dict, forecast: list[dict]) -> list[dict]:
     if forecast and len(forecast) > 0:
         tomorrow = forecast[0]
         if tomorrow.get("temp_min_c") is not None and tomorrow["temp_min_c"] < 4:
-            alerts.append({
-                "type": "frost_forecast",
-                "severity": "warning",
-                "message": f"Frost expected tomorrow: min {tomorrow['temp_min_c']}°C",
-            })
+            alerts.append(
+                {
+                    "type": "frost_forecast",
+                    "severity": "warning",
+                    "message": f"Frost expected tomorrow: min {tomorrow['temp_min_c']}°C",
+                }
+            )
 
     return alerts

@@ -172,7 +172,7 @@ export default function PlatformTenantsPage() {
                   </div>
                   <div className="grid gap-2">
                     <Label htmlFor="org-plan">Plan</Label>
-                    <Select value={createPlan} onValueChange={setCreatePlan}>
+                    <Select value={createPlan} onValueChange={(v) => setCreatePlan(v ?? "")}>
                       <SelectTrigger id="org-plan">
                         <SelectValue />
                       </SelectTrigger>

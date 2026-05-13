@@ -158,9 +158,9 @@ function InsightDisplay({ result, type }: { result: unknown; type: string }) {
             </div>
             <div className="mt-1 text-xs">
               <span>Value: <strong>{String(a.value)}</strong></span>
-              {a.expected_range && <span className="ml-2">Expected: {String(a.expected_range)}</span>}
+              {!!a.expected_range && <span className="ml-2">Expected: {String(a.expected_range)}</span>}
             </div>
-            {a.recommendation && <p className="mt-1 text-xs text-muted-foreground">{String(a.recommendation)}</p>}
+            {!!a.recommendation && <p className="mt-1 text-xs text-muted-foreground">{String(a.recommendation)}</p>}
           </div>
         ))}
       </div>
@@ -174,7 +174,7 @@ function InsightDisplay({ result, type }: { result: unknown; type: string }) {
     }
     return (
       <div className="space-y-2">
-        {obj.estimated_date && (
+        {!!obj.estimated_date && (
           <div className="flex items-center gap-2">
             <CalendarIcon className="size-4 text-primary" />
             <span className="font-medium">Estimated harvest:</span>
@@ -187,9 +187,9 @@ function InsightDisplay({ result, type }: { result: unknown; type: string }) {
             <span>{String(obj.days_remaining)} days remaining</span>
           </div>
         )}
-        {obj.confidence && <p className="text-xs text-muted-foreground">Confidence: {String(obj.confidence)}</p>}
-        {obj.notes && <p className="text-xs text-muted-foreground">{String(obj.notes)}</p>}
-        {obj.prediction && typeof obj.prediction === "string" && <p>{obj.prediction}</p>}
+        {!!obj.confidence && <p className="text-xs text-muted-foreground">Confidence: {String(obj.confidence)}</p>}
+        {!!obj.notes && <p className="text-xs text-muted-foreground">{String(obj.notes)}</p>}
+        {!!obj.prediction && typeof obj.prediction === "string" && <p>{obj.prediction}</p>}
       </div>
     );
   }

@@ -1,7 +1,8 @@
 """Container profile API — pot metadata for outdoor container grows."""
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -11,18 +12,21 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
-from app.grows.models import GrowCycle, Bucket, ContainerProfile
+from app.grows.models import Bucket, ContainerProfile, GrowCycle
 
 router = APIRouter()
 
 
 # ---------- Schemas ----------
 
+
 class ContainerProfileUpsert(BaseModel):
     pot_size_gallons: float | None = Field(default=None, ge=0.1, le=200)
     media_type: str | None = Field(default=None, max_length=100)
     pot_color: str | None = Field(default=None, max_length=50)
-    pot_material: str | None = Field(default=None, pattern=r"^(plastic|fabric|ceramic|terracotta|metal|wood|concrete|other)$")
+    pot_material: str | None = Field(
+        default=None, pattern=r"^(plastic|fabric|ceramic|terracotta|metal|wood|concrete|other)$"
+    )
     has_saucer: bool = False
     is_mobile: bool = True
     sun_exposure: str | None = Field(default=None, pattern=r"^(full_sun|partial_sun|partial_shade|full_shade)$")
@@ -49,6 +53,7 @@ class ContainerProfileResponse(BaseModel):
 
 # ---------- Endpoints ----------
 
+
 @router.put("/{grow_id}/containers/{bucket_id}", response_model=ContainerProfileResponse, status_code=200)
 async def upsert_container_profile(
     grow_id: UUID,
@@ -66,9 +71,7 @@ async def upsert_container_profile(
     if bucket is None or bucket.grow_cycle_id != grow_id:
         raise HTTPException(status_code=404, detail="Bucket not found in this grow")
 
-    result = await session.execute(
-        select(ContainerProfile).where(ContainerProfile.bucket_id == bucket_id)
-    )
+    result = await session.execute(select(ContainerProfile).where(ContainerProfile.bucket_id == bucket_id))
     profile = result.scalar_one_or_none()
 
     if profile is None:
@@ -82,7 +85,7 @@ async def upsert_container_profile(
     else:
         for k, v in body.model_dump().items():
             setattr(profile, k, v)
-        profile.updated_at = datetime.now(timezone.utc)
+        profile.updated_at = datetime.now(UTC)
 
     await session.commit()
     await session.refresh(profile)
@@ -96,9 +99,7 @@ async def list_container_profiles(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """List all container profiles for a grow."""
-    result = await session.execute(
-        select(ContainerProfile).where(ContainerProfile.grow_cycle_id == grow_id)
-    )
+    result = await session.execute(select(ContainerProfile).where(ContainerProfile.grow_cycle_id == grow_id))
     return result.scalars().all()
 
 

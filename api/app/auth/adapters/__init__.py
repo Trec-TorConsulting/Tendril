@@ -3,16 +3,17 @@
 Allows plugging in external identity providers (Auth0, Firebase, Supabase)
 while keeping the core auth flow provider-agnostic.
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from uuid import UUID
 
 
 @dataclass
 class ExternalUser:
     """Normalized user info from an external auth provider."""
+
     provider: str
     provider_user_id: str
     email: str

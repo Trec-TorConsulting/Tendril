@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 import pytest_asyncio
+
 from tests.conftest import TenantFactory
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")

@@ -117,7 +117,7 @@ export function HealthCheckForm({ growType, onSubmit }: HealthCheckFormProps) {
           ) : q.type === "select" && q.options ? (
             <Select
               value={answers[q.id] || ""}
-              onValueChange={(val) => setAnswers({ ...answers, [q.id]: val })}
+              onValueChange={(val) => setAnswers({ ...answers, [q.id]: val ?? "" })}
             >
               <SelectTrigger className="max-w-sm">
                 <SelectValue placeholder="Select…" />

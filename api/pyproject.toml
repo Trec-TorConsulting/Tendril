@@ -34,13 +34,24 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["S101", "S106"]  # Allow asserts and hardcoded passwords in tests
+"**/tests/**/*.py" = ["S101", "S106", "E501"]  # Allow asserts, hardcoded passwords, and long lines in tests
 "**/grow_types.py" = ["E501"]  # Data file with long string literals
-"**/grow_type_configs/**" = ["E501"]  # Data files with long string literals
+"**/grow_type_configs/**" = ["E501", "RUF001"]  # Data files with long string literals and unicode chars
 "**/task_generator.py" = ["E501"]  # Task templates with long description strings
 "**/ai/context.py" = ["E501", "RUF001", "N806"]  # AI prompts with long strings and special chars
+"**/ai/reports.py" = ["E501"]  # PDF generation with long binary strings
+"**/ai/tools.py" = ["E501"]  # AI tool definitions with long description strings
+"**/automation/engine.py" = ["E501"]  # Alert templates with long message strings
+"**/automation/models.py" = ["E501"]  # Model definitions with long defaults
+"**/notifications/models.py" = ["E501"]  # Notification model definitions
+"**/integrations/connectors/**" = ["E501"]  # API connector URL strings
 "**/migrations/**/*.py" = ["E501"]  # Migrations contain long SQL strings
 "**/email_service.py" = ["E501"]  # Email HTML templates with long inline styles
+"**/outdoor/**_routes.py" = ["E501"]  # Route handlers with long descriptions
+"**/sensors/routes.py" = ["E501"]  # Sensor route definitions
+"**/sensors/tent_routes.py" = ["E501"]  # Tent sensor routes
+"**/grows/feeding_routes.py" = ["E501"]  # Feeding route definitions
+"**/mqtt/auth_webhook.py" = ["S104"]  # Binds to 0.0.0.0 (required for containers)
 
 [tool.ruff.format]
 quote-style = "double"

@@ -6,6 +6,7 @@ Create Date: 2026-04-17
 Global strains have tenant_id IS NULL and are visible to all tenants.
 Custom strains have a tenant_id and are only visible to that tenant.
 """
+
 from alembic import op
 
 revision = "0010"

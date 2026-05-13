@@ -1,7 +1,9 @@
 """AI chat tools — allow Ollama to make updates on behalf of the user."""
+
 from __future__ import annotations
 
 import logging
+from datetime import UTC
 from uuid import UUID
 
 from sqlalchemy import select
@@ -24,8 +26,13 @@ CHAT_TOOLS = [
                         "type": "string",
                         "description": "The new growth stage",
                         "enum": [
-                            "seedling", "vegetative", "flowering",
-                            "ripening", "harvesting", "drying", "curing",
+                            "seedling",
+                            "vegetative",
+                            "flowering",
+                            "ripening",
+                            "harvesting",
+                            "drying",
+                            "curing",
                         ],
                     },
                 },
@@ -64,8 +71,13 @@ CHAT_TOOLS = [
                         "type": "string",
                         "description": "Type of journal event",
                         "enum": [
-                            "note", "feeding", "water_change", "training",
-                            "transplant", "defoliation", "topping",
+                            "note",
+                            "feeding",
+                            "water_change",
+                            "training",
+                            "transplant",
+                            "defoliation",
+                            "topping",
                         ],
                     },
                     "content": {"type": "string", "description": "Description of what happened"},
@@ -107,8 +119,13 @@ CHAT_TOOLS = [
                         "type": "string",
                         "description": "New growth stage for the bucket",
                         "enum": [
-                            "seedling", "vegetative", "flowering",
-                            "ripening", "harvesting", "drying", "curing",
+                            "seedling",
+                            "vegetative",
+                            "flowering",
+                            "ripening",
+                            "harvesting",
+                            "drying",
+                            "curing",
                         ],
                     },
                 },
@@ -135,6 +152,7 @@ CHAT_TOOLS = [
 
 # ── Tool execution ───────────────────────────────────────────────────
 
+
 async def execute_tool(
     tool_name: str,
     arguments: dict,
@@ -145,7 +163,11 @@ async def execute_tool(
 ) -> str:
     """Execute a tool call and return a human-readable result string."""
     from app.grows.models import (
-        GrowCycle, Bucket, Tent, JournalEntry, FeedingSchedule,
+        Bucket,
+        FeedingSchedule,
+        GrowCycle,
+        JournalEntry,
+        Tent,
     )
 
     grow = await session.get(GrowCycle, grow_id)
@@ -160,8 +182,9 @@ async def execute_tool(
             # Auto-record milestone
             if grow.milestones is None:
                 grow.milestones = {}
-            from datetime import datetime, timezone
-            grow.milestones = {**grow.milestones, stage: datetime.now(timezone.utc).isoformat()}
+            from datetime import datetime
+
+            grow.milestones = {**grow.milestones, stage: datetime.now(UTC).isoformat()}
             await session.commit()
             return f"Updated grow stage from '{old}' to '{stage}'."
 
@@ -180,9 +203,9 @@ async def execute_tool(
             return f"Updated grow: {', '.join(changes)}." if changes else "No changes specified."
 
         elif tool_name == "create_journal_entry":
-            buckets = (await session.execute(
-                select(Bucket).where(Bucket.grow_cycle_id == grow.id).limit(1)
-            )).scalars().all()
+            buckets = (
+                (await session.execute(select(Bucket).where(Bucket.grow_cycle_id == grow.id).limit(1))).scalars().all()
+            )
             if not buckets:
                 return "Error: no buckets found for this grow."
             entry = JournalEntry(
@@ -196,12 +219,18 @@ async def execute_tool(
             return f"Journal entry added: [{arguments.get('event_type', 'note')}] {arguments.get('content', '')}"
 
         elif tool_name == "update_feeding_schedule":
-            schedules = (await session.execute(
-                select(FeedingSchedule).where(
-                    FeedingSchedule.grow_cycle_id == grow.id,
-                    FeedingSchedule.stage == grow.stage,
+            schedules = (
+                (
+                    await session.execute(
+                        select(FeedingSchedule).where(
+                            FeedingSchedule.grow_cycle_id == grow.id,
+                            FeedingSchedule.stage == grow.stage,
+                        )
+                    )
                 )
-            )).scalars().all()
+                .scalars()
+                .all()
+            )
             if not schedules:
                 return f"No feeding schedule found for stage '{grow.stage}'."
             sched = schedules[0]
@@ -220,12 +249,14 @@ async def execute_tool(
 
         elif tool_name == "update_bucket":
             pos = arguments.get("bucket_position", 1)
-            bucket = (await session.execute(
-                select(Bucket).where(
-                    Bucket.grow_cycle_id == grow.id,
-                    Bucket.position == pos,
+            bucket = (
+                await session.execute(
+                    select(Bucket).where(
+                        Bucket.grow_cycle_id == grow.id,
+                        Bucket.position == pos,
+                    )
                 )
-            )).scalar_one_or_none()
+            ).scalar_one_or_none()
             if not bucket:
                 return f"No bucket found at position {pos}."
             changes = []

@@ -1,4 +1,5 @@
 """URL validation utilities to prevent SSRF attacks."""
+
 from __future__ import annotations
 
 import ipaddress
@@ -6,7 +7,6 @@ import socket
 from urllib.parse import urlparse
 
 from fastapi import HTTPException
-
 
 # RFC 1918 and other private/reserved ranges that should never be fetched
 _BLOCKED_NETWORKS = [
@@ -73,9 +73,9 @@ def validate_url_safe(url: str, *, allow_private: bool = False) -> str:
         try:
             resolved = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
         except socket.gaierror:
-            raise HTTPException(status_code=400, detail=f"Cannot resolve hostname: {hostname}")
+            raise HTTPException(status_code=400, detail=f"Cannot resolve hostname: {hostname}") from None
 
-        for family, _type, _proto, _canonname, sockaddr in resolved:
+        for _, _, _, _, sockaddr in resolved:
             ip_str = sockaddr[0]
             if _is_private_ip(ip_str):
                 raise HTTPException(

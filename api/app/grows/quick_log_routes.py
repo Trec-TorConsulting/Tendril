@@ -1,11 +1,12 @@
 """Quick-Log API — fast logging endpoints for mobile-first workflow."""
+
 from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,7 +15,6 @@ from app.auth.middleware import CurrentUser, get_current_user, get_tenant_sessio
 from app.grows.models import (
     Bucket,
     BucketSensorReading,
-    GrowCycle,
     JournalEntry,
     Tent,
     TentSensorReading,
@@ -193,10 +193,12 @@ async def quick_log_note(
     if not bucket_id and body.grow_cycle_id:
         # Get first active bucket in the grow
         result = await session.execute(
-            select(Bucket).where(
+            select(Bucket)
+            .where(
                 Bucket.grow_cycle_id == body.grow_cycle_id,
                 Bucket.status == "active",
-            ).limit(1)
+            )
+            .limit(1)
         )
         bucket = result.scalar_one_or_none()
         if bucket:
@@ -254,19 +256,35 @@ async def quick_log_batch(
                     continue
                 nutrient_payload = [n.model_dump() for n in req.nutrients] if req.nutrients else None
                 for bucket in buckets:
-                    session.add(BucketSensorReading(
-                        tenant_id=user.tenant_id, bucket_id=bucket.id,
-                        ph=req.ph, ec=req.ec, ppm=req.ppm,
-                        water_temp_f=req.water_temp_f, recorded_at=action.client_timestamp,
-                    ))
-                    session.add(JournalEntry(
-                        tenant_id=user.tenant_id, bucket_id=bucket.id,
-                        event_type="feeding", content=req.notes,
-                        payload={"ph": req.ph, "ec": req.ec, "ppm": req.ppm,
-                                 "water_temp_f": req.water_temp_f, "volume_gal": req.volume_gal,
-                                 "nutrients": nutrient_payload, "source": "quick_log"},
-                        created_at=action.client_timestamp,
-                    ))
+                    session.add(
+                        BucketSensorReading(
+                            tenant_id=user.tenant_id,
+                            bucket_id=bucket.id,
+                            ph=req.ph,
+                            ec=req.ec,
+                            ppm=req.ppm,
+                            water_temp_f=req.water_temp_f,
+                            recorded_at=action.client_timestamp,
+                        )
+                    )
+                    session.add(
+                        JournalEntry(
+                            tenant_id=user.tenant_id,
+                            bucket_id=bucket.id,
+                            event_type="feeding",
+                            content=req.notes,
+                            payload={
+                                "ph": req.ph,
+                                "ec": req.ec,
+                                "ppm": req.ppm,
+                                "water_temp_f": req.water_temp_f,
+                                "volume_gal": req.volume_gal,
+                                "nutrients": nutrient_payload,
+                                "source": "quick_log",
+                            },
+                            created_at=action.client_timestamp,
+                        )
+                    )
                 succeeded += 1
 
             elif action.type == "reading":
@@ -275,11 +293,17 @@ async def quick_log_batch(
                 if not tent or tent.tenant_id != user.tenant_id:
                     errors.append(f"Action {i}: tent not found")
                     continue
-                session.add(TentSensorReading(
-                    tenant_id=user.tenant_id, tent_id=req.tent_id, device_id=None,
-                    ambient_temp_f=req.temp_f, ambient_humidity=req.humidity, vpd=req.vpd,
-                    recorded_at=action.client_timestamp,
-                ))
+                session.add(
+                    TentSensorReading(
+                        tenant_id=user.tenant_id,
+                        tent_id=req.tent_id,
+                        device_id=None,
+                        ambient_temp_f=req.temp_f,
+                        ambient_humidity=req.humidity,
+                        vpd=req.vpd,
+                        recorded_at=action.client_timestamp,
+                    )
+                )
                 succeeded += 1
 
             elif action.type == "note":
@@ -287,9 +311,9 @@ async def quick_log_batch(
                 bucket_id = req.bucket_id
                 if not bucket_id and req.grow_cycle_id:
                     result = await session.execute(
-                        select(Bucket).where(
-                            Bucket.grow_cycle_id == req.grow_cycle_id, Bucket.status == "active"
-                        ).limit(1)
+                        select(Bucket)
+                        .where(Bucket.grow_cycle_id == req.grow_cycle_id, Bucket.status == "active")
+                        .limit(1)
                     )
                     b = result.scalar_one_or_none()
                     bucket_id = b.id if b else None
@@ -297,12 +321,16 @@ async def quick_log_batch(
                     errors.append(f"Action {i}: no bucket resolved")
                     continue
                 event_type = req.tags[0] if req.tags else "note"
-                session.add(JournalEntry(
-                    tenant_id=user.tenant_id, bucket_id=bucket_id,
-                    event_type=event_type, content=req.content,
-                    payload={"tags": req.tags, "source": "quick_log"},
-                    created_at=action.client_timestamp,
-                ))
+                session.add(
+                    JournalEntry(
+                        tenant_id=user.tenant_id,
+                        bucket_id=bucket_id,
+                        event_type=event_type,
+                        content=req.content,
+                        payload={"tags": req.tags, "source": "quick_log"},
+                        created_at=action.client_timestamp,
+                    )
+                )
                 succeeded += 1
             else:
                 errors.append(f"Action {i}: unknown type '{action.type}'")

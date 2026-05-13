@@ -13,7 +13,7 @@ from app.database import Base
 # ─── Enums ────────────────────────────────────────────────────────────────────
 
 
-class PlatformRole(str, enum.Enum):
+class PlatformRole(enum.StrEnum):
     """Platform-level roles for cross-tenant access."""
 
     super_admin = "super_admin"
@@ -22,7 +22,7 @@ class PlatformRole(str, enum.Enum):
     user = "user"
 
 
-class TenantRole(str, enum.Enum):
+class TenantRole(enum.StrEnum):
     """Tenant-level roles assigned per membership."""
 
     admin = "admin"
@@ -30,7 +30,7 @@ class TenantRole(str, enum.Enum):
     viewer = "viewer"
 
 
-class AccountRole(str, enum.Enum):
+class AccountRole(enum.StrEnum):
     """Account-level roles for billing/ownership."""
 
     owner = "owner"

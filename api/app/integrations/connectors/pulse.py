@@ -162,7 +162,9 @@ class PulseConnector(BaseConnector):
     # ── Persistence ─────────────────────────────────────────────
 
     async def persist_readings(
-        self, session: AsyncSession, result: ConnectorResult,
+        self,
+        session: AsyncSession,
+        result: ConnectorResult,
     ) -> int:
         """Write polled readings to TentSensorReading / BucketSensorReading."""
         return await write_pulse_readings(session, result.readings)

@@ -24,7 +24,7 @@ if _settings.github_client_id:
         name="github",
         client_id=_settings.github_client_id,
         client_secret=_settings.github_client_secret,
-        access_token_url="https://github.com/login/oauth/access_token",
+        access_token_url="https://github.com/login/oauth/access_token",  # noqa: S106
         authorize_url="https://github.com/login/oauth/authorize",
         api_base_url="https://api.github.com/",
         client_kwargs={"scope": "user:email"},

@@ -5,8 +5,9 @@ Create Date: 2026-04-17
 
 Links buckets to the strains table for rich strain-aware automation.
 """
-from alembic import op
+
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects.postgresql import UUID
 
 revision = "0011"

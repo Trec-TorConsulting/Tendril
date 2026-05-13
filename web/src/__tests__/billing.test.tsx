@@ -5,6 +5,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
   usePathname: () => "/dashboard/billing",
   useParams: () => ({}),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 vi.mock("next/link", () => ({
@@ -93,7 +94,7 @@ describe("BillingPage", () => {
   it("shows plan options", async () => {
     render(<BillingPage />);
     await waitFor(() => {
-      expect(screen.getByText("Grower")).toBeDefined();
+      expect(screen.getByText("Hobby")).toBeDefined();
       expect(screen.getByText("Pro")).toBeDefined();
       expect(screen.getByText("Commercial")).toBeDefined();
     });

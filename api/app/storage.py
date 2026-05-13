@@ -1,10 +1,10 @@
 """S3 / MinIO storage helpers for photo uploads."""
+
 from __future__ import annotations
 
 import logging
 import uuid
 from functools import lru_cache
-from io import BytesIO
 
 import boto3
 from botocore.exceptions import ClientError

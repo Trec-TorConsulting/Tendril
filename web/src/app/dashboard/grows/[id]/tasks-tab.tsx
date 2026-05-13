@@ -343,7 +343,7 @@ export function TasksTab({ growId }: { growId: string }) {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Priority</Label>
-                <Select value={taskForm.priority} onValueChange={(v) => setTaskForm((p) => ({ ...p, priority: v }))}>
+                <Select value={taskForm.priority} onValueChange={(v) => setTaskForm((p) => ({ ...p, priority: v || "" }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="low">Low</SelectItem>
@@ -355,7 +355,7 @@ export function TasksTab({ growId }: { growId: string }) {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Category</Label>
-                <Select value={taskForm.category} onValueChange={(v) => setTaskForm((p) => ({ ...p, category: v }))}>
+                <Select value={taskForm.category} onValueChange={(v) => setTaskForm((p) => ({ ...p, category: v || "" }))}>
                   <SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger>
                   <SelectContent>
                     {Object.entries(CATEGORY_LABELS).map(([k, v]) => (
@@ -370,7 +370,7 @@ export function TasksTab({ growId }: { growId: string }) {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Recurring</Label>
-                <Select value={taskForm.recurring} onValueChange={(v) => setTaskForm((p) => ({ ...p, recurring: v }))}>
+                <Select value={taskForm.recurring} onValueChange={(v) => setTaskForm((p) => ({ ...p, recurring: v || "" }))}>
                   <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="">None</SelectItem>

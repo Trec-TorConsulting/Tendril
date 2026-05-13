@@ -13,7 +13,7 @@ from app.audit import record_audit
 from app.auth.middleware import CurrentUser, get_current_user, require_role
 from app.auth.password import validate_password_strength
 from app.database import get_db
-from app.pagination import PaginatedResponse, PaginationParams, paginate
+from app.pagination import PaginatedResponse, PaginationParams
 from app.tenants.models import PlatformRole, Tenant, TenantMembership, TenantRole, User
 
 router = APIRouter()
@@ -104,13 +104,18 @@ async def list_members(
     return PaginatedResponse(
         items=[
             TenantMemberResponse(
-                id=u.id, email=u.email, display_name=u.display_name,
+                id=u.id,
+                email=u.email,
+                display_name=u.display_name,
                 role=_tenant_role_to_legacy(tr),
-                email_verified=u.email_verified, created_at=u.created_at.isoformat(),
+                email_verified=u.email_verified,
+                created_at=u.created_at.isoformat(),
             )
             for u, tr in rows
         ],
-        total=total, page=pagination.page, page_size=pagination.page_size,
+        total=total,
+        page=pagination.page,
+        page_size=pagination.page_size,
     )
 
 
@@ -173,8 +178,11 @@ async def add_member(
     await record_audit(db, user.tenant_id, user.user_id, "create", "member", str(new_user.id), request=request)
     await db.commit()
     return TenantMemberResponse(
-        id=new_user.id, email=new_user.email, display_name=new_user.display_name,
-        role=body.role, email_verified=new_user.email_verified,
+        id=new_user.id,
+        email=new_user.email,
+        display_name=new_user.display_name,
+        role=body.role,
+        email_verified=new_user.email_verified,
         created_at=new_user.created_at.isoformat(),
     )
 
@@ -192,8 +200,9 @@ async def update_member_role(
 
     # Find the membership
     result = await db.execute(
-        select(TenantMembership)
-        .where(TenantMembership.user_id == member_id, TenantMembership.tenant_id == user.tenant_id)
+        select(TenantMembership).where(
+            TenantMembership.user_id == member_id, TenantMembership.tenant_id == user.tenant_id
+        )
     )
     membership = result.scalar_one_or_none()
     if not membership:
@@ -209,8 +218,11 @@ async def update_member_role(
     user_result = await db.execute(select(User).where(User.id == member_id))
     member = user_result.scalar_one()
     return TenantMemberResponse(
-        id=member.id, email=member.email, display_name=member.display_name,
-        role=body.role, email_verified=member.email_verified,
+        id=member.id,
+        email=member.email,
+        display_name=member.display_name,
+        role=body.role,
+        email_verified=member.email_verified,
         created_at=member.created_at.isoformat(),
     )
 
@@ -224,8 +236,9 @@ async def remove_member(
 ):
     """Remove a member from the tenant. Owner only. Cannot remove yourself."""
     result = await db.execute(
-        select(TenantMembership)
-        .where(TenantMembership.user_id == member_id, TenantMembership.tenant_id == user.tenant_id)
+        select(TenantMembership).where(
+            TenantMembership.user_id == member_id, TenantMembership.tenant_id == user.tenant_id
+        )
     )
     membership = result.scalar_one_or_none()
     if not membership:

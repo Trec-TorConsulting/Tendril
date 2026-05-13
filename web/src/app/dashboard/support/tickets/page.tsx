@@ -51,7 +51,7 @@ export default function TicketsPage() {
           { label: "Support", href: "/dashboard/support" },
           { label: "Tickets" },
         ]}
-        action={
+        actions={
           <Link href="/dashboard/support/tickets/new">
             <Button size="sm"><Plus className="mr-1 size-4" /> New Ticket</Button>
           </Link>

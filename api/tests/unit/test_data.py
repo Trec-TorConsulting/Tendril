@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import pytest
 import pytest_asyncio
+
 from tests.conftest import TenantFactory
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")

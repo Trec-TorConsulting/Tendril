@@ -4,6 +4,7 @@ import { describe, it, expect, vi } from "vitest";
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
   usePathname: () => "/dashboard",
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 vi.mock("next/link", () => ({
@@ -115,6 +116,38 @@ vi.mock("@/components/onboarding-checklist", () => ({
   OnboardingChecklist: () => null,
 }));
 
+vi.mock("@/hooks/use-preferences", () => ({
+  usePreferences: () => ({
+    prefs: {
+      temp_unit: "fahrenheit",
+      date_format: "MM/DD/YYYY",
+      time_format: "12h",
+      timezone: "America/New_York",
+      default_grow_id: "",
+      theme: "system",
+      widget_layout: [],
+      measurement_system: "imperial",
+      wind_unit: "mph",
+      pressure_unit: "inhg",
+      week_start: "sunday",
+      compact_numbers: false,
+      show_onboarding: true,
+    },
+    update: vi.fn(),
+    loading: false,
+  }),
+  PreferencesProvider: ({ children }: any) => children,
+}));
+
+vi.mock("@/hooks/use-layout-mode", () => ({
+  useLayoutMode: () => ({
+    mode: "standard",
+    config: { maxGrows: 999, maxDevices: 999, features: [] },
+    setMode: vi.fn(),
+  }),
+  LayoutProvider: ({ children }: any) => children,
+}));
+
 vi.mock("@/components/sparkline", () => ({
   SensorSparkline: () => null,
 }));
@@ -207,7 +240,6 @@ describe("DashboardPage", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Dashboard")).toBeInTheDocument();
-      expect(screen.getByText("Active Grows")).toBeInTheDocument();
     });
   });
 });

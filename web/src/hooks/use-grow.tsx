@@ -13,6 +13,7 @@ import { listGrows, type GrowResponse } from "@/lib/api";
 
 interface GrowContextValue {
   grows: GrowResponse[];
+  grow: GrowResponse | null;
   selectedGrow: GrowResponse | null;
   setSelectedGrowId: (id: string) => void;
   refreshGrows: () => Promise<void>;
@@ -21,6 +22,7 @@ interface GrowContextValue {
 
 const GrowContext = createContext<GrowContextValue>({
   grows: [],
+  grow: null,
   selectedGrow: null,
   setSelectedGrowId: () => {},
   refreshGrows: async () => {},
@@ -67,6 +69,7 @@ export function GrowProvider({ children, defaultGrowId }: { children: ReactNode;
     <GrowContext.Provider
       value={{
         grows,
+        grow: selectedGrow,
         selectedGrow,
         setSelectedGrowId: setSelectedId,
         refreshGrows,

@@ -1,4 +1,5 @@
 """Pest scouting API — field observations, treatment tracking, IPM for outdoor grows."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -7,7 +8,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select, desc
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
@@ -18,6 +19,7 @@ router = APIRouter()
 
 
 # ---------- Schemas ----------
+
 
 class PestScoutCreate(BaseModel):
     scouted_at: datetime | None = None
@@ -57,6 +59,7 @@ class PestScoutResponse(BaseModel):
 
 
 # ---------- Endpoints ----------
+
 
 @router.post("/{grow_id}/pest-scouts", response_model=PestScoutResponse, status_code=201)
 async def create_pest_scout(

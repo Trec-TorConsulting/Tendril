@@ -3,6 +3,7 @@
 Uses PostgreSQL advisory locks for leader election.
 Only the pod holding the lock runs scheduled tasks.
 """
+
 from __future__ import annotations
 
 import logging

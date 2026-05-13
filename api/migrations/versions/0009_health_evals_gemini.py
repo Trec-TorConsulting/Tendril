@@ -3,8 +3,9 @@
 Revision ID: 0009
 Revises: 0008
 """
-from alembic import op
+
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = "0009"
@@ -24,8 +25,15 @@ def upgrade() -> None:
     op.create_table(
         "health_evals",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("grow_cycle_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("grow_cycles.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+        ),
+        sa.Column(
+            "grow_cycle_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("grow_cycles.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("score", sa.Integer(), nullable=True),
         sa.Column("issues", postgresql.JSON(), nullable=True),
         sa.Column("actions", postgresql.JSON(), nullable=True),

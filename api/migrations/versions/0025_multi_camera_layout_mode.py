@@ -3,12 +3,12 @@
 Revision ID: 0025
 Revises: 0024
 """
+
 from __future__ import annotations
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects.postgresql import UUID
-
 
 revision = "0025"
 down_revision = "0024"

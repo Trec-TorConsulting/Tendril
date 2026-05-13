@@ -1,13 +1,14 @@
 """Tent sensor readings API — ambient temp & humidity at the tent level."""
+
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select, desc, func
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
@@ -56,7 +57,11 @@ async def list_tent_readings(
     tent_id: UUID | None = None,
 ):
     """List tent sensor readings with optional tent filtering."""
-    q = select(TentSensorReading).where(TentSensorReading.tenant_id == user.tenant_id).order_by(desc(TentSensorReading.recorded_at))
+    q = (
+        select(TentSensorReading)
+        .where(TentSensorReading.tenant_id == user.tenant_id)
+        .order_by(desc(TentSensorReading.recorded_at))
+    )
     if tent_id:
         q = q.where(TentSensorReading.tent_id == tent_id)
     items, total = await paginate(session, q, pagination)
@@ -88,7 +93,7 @@ async def get_tent_trends(
     hours: int = Query(default=24, le=168),
 ):
     """Get ambient temp & humidity trends for a tent over the specified hours."""
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    cutoff = datetime.now(UTC) - timedelta(hours=hours)
     result = await session.execute(
         select(TentSensorReading)
         .where(TentSensorReading.tenant_id == user.tenant_id)

@@ -1,9 +1,11 @@
 """Integration tests for Phase 5 — notifications, billing, data export."""
+
 from __future__ import annotations
+
+from uuid import uuid4
 
 import pytest
 import pytest_asyncio
-from uuid import uuid4
 
 from tests.conftest import TenantFactory
 
@@ -17,6 +19,7 @@ async def tenant(db_session):
 
 
 # ---------- Notification Channels ----------
+
 
 class TestNotificationChannels:
     async def test_create_discord_channel(self, client, tenant):
@@ -87,6 +90,7 @@ class TestNotificationChannels:
 
 # ---------- Push Subscriptions ----------
 
+
 class TestPushSubscriptions:
     async def test_subscribe(self, client, tenant):
         resp = await client.post(
@@ -112,6 +116,7 @@ class TestPushSubscriptions:
 
 
 # ---------- Data Export ----------
+
 
 class TestDataExport:
     async def test_export_bucket_not_found(self, client, tenant):
@@ -150,6 +155,7 @@ class TestDataExport:
 
 
 # ---------- Billing ----------
+
 
 class TestBilling:
     async def test_billing_status(self, client, tenant):

@@ -1,7 +1,8 @@
 """Plot grid API — garden bed layout designer for outdoor soil grows."""
+
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -11,12 +12,13 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
-from app.grows.models import GrowCycle, PlotGrid, PlotCell
+from app.grows.models import GrowCycle, PlotCell, PlotGrid
 
 router = APIRouter()
 
 
 # ---------- Schemas ----------
+
 
 class PlotGridUpsert(BaseModel):
     rows: int = Field(ge=1, le=50)
@@ -74,6 +76,7 @@ class PlotGridResponse(BaseModel):
 
 # ---------- Endpoints ----------
 
+
 @router.put("/{grow_id}/plot", response_model=PlotGridResponse, status_code=200)
 async def upsert_plot_grid(
     grow_id: UUID,
@@ -86,9 +89,7 @@ async def upsert_plot_grid(
     if grow is None:
         raise HTTPException(status_code=404, detail="Grow not found")
 
-    result = await session.execute(
-        select(PlotGrid).where(PlotGrid.grow_cycle_id == grow_id)
-    )
+    result = await session.execute(select(PlotGrid).where(PlotGrid.grow_cycle_id == grow_id))
     grid = result.scalar_one_or_none()
 
     if grid is None:
@@ -101,7 +102,7 @@ async def upsert_plot_grid(
     else:
         for k, v in body.model_dump().items():
             setattr(grid, k, v)
-        grid.updated_at = datetime.now(timezone.utc)
+        grid.updated_at = datetime.now(UTC)
         # Remove cells outside new dimensions
         await session.execute(
             delete(PlotCell).where(
@@ -122,9 +123,7 @@ async def get_plot_grid(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Get the garden plot grid with all cells for a grow."""
-    result = await session.execute(
-        select(PlotGrid).where(PlotGrid.grow_cycle_id == grow_id)
-    )
+    result = await session.execute(select(PlotGrid).where(PlotGrid.grow_cycle_id == grow_id))
     grid = result.scalar_one_or_none()
     if grid is None:
         raise HTTPException(status_code=404, detail="Plot grid not found")
@@ -140,9 +139,7 @@ async def batch_update_cells(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Batch create or update cells in the plot grid."""
-    result = await session.execute(
-        select(PlotGrid).where(PlotGrid.grow_cycle_id == grow_id)
-    )
+    result = await session.execute(select(PlotGrid).where(PlotGrid.grow_cycle_id == grow_id))
     grid = result.scalar_one_or_none()
     if grid is None:
         raise HTTPException(status_code=404, detail="Plot grid not found")
@@ -173,7 +170,7 @@ async def batch_update_cells(
                 setattr(cell, k, v)
         updated.append(cell)
 
-    grid.updated_at = datetime.now(timezone.utc)
+    grid.updated_at = datetime.now(UTC)
     await session.commit()
     for c in updated:
         await session.refresh(c)
@@ -187,9 +184,7 @@ async def delete_plot_grid(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Delete the entire plot grid for a grow."""
-    result = await session.execute(
-        select(PlotGrid).where(PlotGrid.grow_cycle_id == grow_id)
-    )
+    result = await session.execute(select(PlotGrid).where(PlotGrid.grow_cycle_id == grow_id))
     grid = result.scalar_one_or_none()
     if grid is None:
         raise HTTPException(status_code=404, detail="Plot grid not found")

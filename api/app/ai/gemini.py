@@ -1,12 +1,12 @@
 """Gemini client — wraps Google Generative AI REST API for health checks."""
+
 from __future__ import annotations
 
 import asyncio
 import base64
-import json
+import contextlib
 import logging
 import os
-from typing import AsyncIterator
 
 import httpx
 
@@ -49,21 +49,25 @@ def _build_contents(
     if contents and contents[-1]["role"] == "user":
         last_parts = contents[-1]["parts"]
         if image_bytes:
-            last_parts.append({
-                "inline_data": {
-                    "mime_type": "image/jpeg",
-                    "data": base64.b64encode(image_bytes).decode("utf-8"),
+            last_parts.append(
+                {
+                    "inline_data": {
+                        "mime_type": "image/jpeg",
+                        "data": base64.b64encode(image_bytes).decode("utf-8"),
+                    }
                 }
-            })
+            )
         if extra_images:
             for label, img in extra_images:
                 last_parts.append({"text": f"\n[Additional image: {label}]"})
-                last_parts.append({
-                    "inline_data": {
-                        "mime_type": "image/jpeg",
-                        "data": base64.b64encode(img).decode("utf-8"),
+                last_parts.append(
+                    {
+                        "inline_data": {
+                            "mime_type": "image/jpeg",
+                            "data": base64.b64encode(img).decode("utf-8"),
+                        }
                     }
-                })
+                )
 
     return contents, system_instruction
 
@@ -102,7 +106,10 @@ async def chat_completion(
             user_messages.append(msg)
 
     contents, system_instruction = _build_contents(
-        user_messages, system_prompt, image_bytes, extra_images,
+        user_messages,
+        system_prompt,
+        image_bytes,
+        extra_images,
     )
     payload = _build_payload(contents, system_instruction)
 
@@ -117,15 +124,17 @@ async def chat_completion(
                         if resp.status_code == 429:
                             retry_after = resp.headers.get("retry-after")
                             if retry_after:
-                                try:
+                                with contextlib.suppress(ValueError):
                                     delay = max(int(retry_after), delay)
-                                except ValueError:
-                                    pass
                             else:
                                 delay = max(delay * 4, 15)
                         logger.warning(
                             "Gemini %s returned %d, retry %d/%d in %ds",
-                            model, resp.status_code, attempt + 1, _MAX_RETRIES, delay,
+                            model,
+                            resp.status_code,
+                            attempt + 1,
+                            _MAX_RETRIES,
+                            delay,
                         )
                         await asyncio.sleep(delay)
                         continue
@@ -146,7 +155,11 @@ async def chat_completion(
                         delay = max(delay * 4, 15)
                     logger.warning(
                         "Gemini %s %d, retry %d/%d in %ds",
-                        model, e.response.status_code, attempt + 1, _MAX_RETRIES, delay,
+                        model,
+                        e.response.status_code,
+                        attempt + 1,
+                        _MAX_RETRIES,
+                        delay,
                     )
                     await asyncio.sleep(delay)
                     continue

@@ -1,4 +1,5 @@
 """MQTT Client — connects to EMQX and subscribes to sensor + status topics."""
+
 from __future__ import annotations
 
 import asyncio

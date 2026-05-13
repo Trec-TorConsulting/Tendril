@@ -185,7 +185,7 @@ def require_grow_access(grow_id_param: str = "grow_id"):
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Invalid grow ID",
-                )
+                ) from None
             if grow_id not in user.grow_scope:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
@@ -204,12 +204,6 @@ def require_role(*allowed_roles: str):
 
     Maintained for backward compatibility during migration.
     """
-    # Map old role sets to appropriate permission level
-    _ROLE_MAP = {
-        "owner": TenantRole.admin,
-        "member": TenantRole.member,
-        "viewer": TenantRole.viewer,
-    }
 
     async def _check(
         user: Annotated[CurrentUser, Depends(get_current_user)],

@@ -1,4 +1,5 @@
 """PDF grow report generation — sensor trends, photos, milestones, yields."""
+
 from __future__ import annotations
 
 import io
@@ -6,7 +7,7 @@ import logging
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select, desc
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger("tendril.ai.reports")
@@ -18,8 +19,12 @@ async def generate_grow_report(session: AsyncSession, grow_cycle_id: UUID) -> by
     Returns the PDF as bytes.
     """
     from app.grows.models import (
-        GrowCycle, Bucket, BucketSensorReading,
-        JournalEntry, BucketPhoto, Yield, Tent,
+        Bucket,
+        BucketPhoto,
+        GrowCycle,
+        JournalEntry,
+        Tent,
+        Yield,
     )
 
     grow = await session.get(GrowCycle, grow_cycle_id)
@@ -29,26 +34,47 @@ async def generate_grow_report(session: AsyncSession, grow_cycle_id: UUID) -> by
     tent = await session.get(Tent, grow.tent_id)
 
     # Gather data
-    buckets = (await session.execute(
-        select(Bucket).where(Bucket.grow_cycle_id == grow.id).order_by(Bucket.position)
-    )).scalars().all()
+    buckets = (
+        (await session.execute(select(Bucket).where(Bucket.grow_cycle_id == grow.id).order_by(Bucket.position)))
+        .scalars()
+        .all()
+    )
 
-    journal = (await session.execute(
-        select(JournalEntry)
-        .where(JournalEntry.bucket_id.in_([b.id for b in buckets]) if buckets else False)
-        .order_by(JournalEntry.created_at)
-    )).scalars().all() if buckets else []
+    journal = (
+        (
+            await session.execute(
+                select(JournalEntry)
+                .where(JournalEntry.bucket_id.in_([b.id for b in buckets]) if buckets else False)
+                .order_by(JournalEntry.created_at)
+            )
+        )
+        .scalars()
+        .all()
+        if buckets
+        else []
+    )
 
-    photos = (await session.execute(
-        select(BucketPhoto)
-        .where(BucketPhoto.bucket_id.in_([b.id for b in buckets]) if buckets else False)
-        .order_by(BucketPhoto.created_at)
-    )).scalars().all() if buckets else []
+    photos = (
+        (
+            await session.execute(
+                select(BucketPhoto)
+                .where(BucketPhoto.bucket_id.in_([b.id for b in buckets]) if buckets else False)
+                .order_by(BucketPhoto.created_at)
+            )
+        )
+        .scalars()
+        .all()
+        if buckets
+        else []
+    )
 
-    yields = (await session.execute(
-        select(Yield)
-        .where(Yield.bucket_id.in_([b.id for b in buckets]) if buckets else False)
-    )).scalars().all() if buckets else []
+    yields = (
+        (await session.execute(select(Yield).where(Yield.bucket_id.in_([b.id for b in buckets]) if buckets else False)))
+        .scalars()
+        .all()
+        if buckets
+        else []
+    )
 
     # Build report as simple text-based PDF using reportlab-style approach
     # Using a lightweight approach without heavy PDF libs
@@ -62,9 +88,9 @@ async def generate_grow_report(session: AsyncSession, grow_cycle_id: UUID) -> by
 def _build_report_text(grow, tent, buckets, journal, photos, yields) -> list[str]:
     """Build report content lines."""
     lines = [
-        f"TENDRIL GROW REPORT",
+        "TENDRIL GROW REPORT",
         f"{'=' * 50}",
-        f"",
+        "",
         f"Grow: {grow.name}",
         f"Type: {grow.grow_type}",
         f"Status: {grow.status}",
@@ -72,7 +98,7 @@ def _build_report_text(grow, tent, buckets, journal, photos, yields) -> list[str
         f"Tent: {tent.name if tent else 'N/A'}",
         f"Started: {grow.started_at.strftime('%Y-%m-%d') if grow.started_at else 'N/A'}",
         f"Ended: {grow.ended_at.strftime('%Y-%m-%d') if grow.ended_at else 'Ongoing'}",
-        f"",
+        "",
         f"BUCKETS ({len(buckets)})",
         f"{'-' * 30}",
     ]
@@ -80,16 +106,16 @@ def _build_report_text(grow, tent, buckets, journal, photos, yields) -> list[str
     for b in buckets:
         lines.append(f"  #{b.position} {b.label or 'Unnamed'} — {b.strain_name or 'No strain'} ({b.growth_stage})")
 
-    lines.extend([f"", f"JOURNAL ENTRIES ({len(journal)})", f"{'-' * 30}"])
+    lines.extend(["", f"JOURNAL ENTRIES ({len(journal)})", f"{'-' * 30}"])
     for j in journal[:20]:  # Cap at 20 entries
         date_str = j.created_at.strftime("%m/%d") if j.created_at else ""
         lines.append(f"  [{date_str}] {j.event_type}: {j.content or ''}")
 
-    lines.extend([f"", f"PHOTOS ({len(photos)})", f"{'-' * 30}"])
+    lines.extend(["", f"PHOTOS ({len(photos)})", f"{'-' * 30}"])
     for p in photos[:10]:
         lines.append(f"  {p.caption or 'No caption'} — {p.url}")
 
-    lines.extend([f"", f"HARVEST DATA ({len(yields)})", f"{'-' * 30}"])
+    lines.extend(["", f"HARVEST DATA ({len(yields)})", f"{'-' * 30}"])
     total_wet = 0.0
     total_dry = 0.0
     for y in yields:
@@ -101,14 +127,16 @@ def _build_report_text(grow, tent, buckets, journal, photos, yields) -> list[str
         lines.append(f"  Wet: {wet}g / Dry: {dry}g{quality}")
 
     if yields:
-        lines.extend([
-            f"",
-            f"  Total Wet: {total_wet}g",
-            f"  Total Dry: {total_dry}g",
-            f"  Dry/Wet Ratio: {(total_dry / total_wet * 100):.1f}%" if total_wet > 0 else "  N/A",
-        ])
+        lines.extend(
+            [
+                "",
+                f"  Total Wet: {total_wet}g",
+                f"  Total Dry: {total_dry}g",
+                f"  Dry/Wet Ratio: {(total_dry / total_wet * 100):.1f}%" if total_wet > 0 else "  N/A",
+            ]
+        )
 
-    lines.extend([f"", f"{'=' * 50}", f"Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}"])
+    lines.extend(["", f"{'=' * 50}", f"Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}"])
     return lines
 
 

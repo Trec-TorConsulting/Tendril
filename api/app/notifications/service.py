@@ -1,4 +1,5 @@
 """Notification dispatch — send alerts via configured channels."""
+
 from __future__ import annotations
 
 import json
@@ -26,12 +27,18 @@ async def dispatch_alert(
     body: str,
 ) -> None:
     """Send a notification through all enabled channels for a tenant."""
-    channels = (await session.execute(
-        select(NotificationChannel).where(
-            NotificationChannel.tenant_id == tenant_id,
-            NotificationChannel.enabled.is_(True),
+    channels = (
+        (
+            await session.execute(
+                select(NotificationChannel).where(
+                    NotificationChannel.tenant_id == tenant_id,
+                    NotificationChannel.enabled.is_(True),
+                )
+            )
         )
-    )).scalars().all()
+        .scalars()
+        .all()
+    )
 
     for channel in channels:
         try:
@@ -44,25 +51,29 @@ async def dispatch_alert(
             elif channel.channel_type == "sms":
                 await _send_sms(channel.config, severity, subject, body)
 
-            session.add(NotificationLog(
-                tenant_id=tenant_id,
-                channel_type=channel.channel_type,
-                severity=severity,
-                subject=subject,
-                body=body,
-                status="sent",
-            ))
+            session.add(
+                NotificationLog(
+                    tenant_id=tenant_id,
+                    channel_type=channel.channel_type,
+                    severity=severity,
+                    subject=subject,
+                    body=body,
+                    status="sent",
+                )
+            )
         except Exception as e:
             logger.exception("Failed to send %s notification for tenant %s", channel.channel_type, tenant_id)
-            session.add(NotificationLog(
-                tenant_id=tenant_id,
-                channel_type=channel.channel_type,
-                severity=severity,
-                subject=subject,
-                body=body,
-                status="failed",
-                error=str(e),
-            ))
+            session.add(
+                NotificationLog(
+                    tenant_id=tenant_id,
+                    channel_type=channel.channel_type,
+                    severity=severity,
+                    subject=subject,
+                    body=body,
+                    status="failed",
+                    error=str(e),
+                )
+            )
 
     # Send Web Push to all subscribed users
     await _send_web_push(session, tenant_id, severity, subject, body)
@@ -78,12 +89,14 @@ async def _send_discord(config: dict, severity: str, subject: str, body: str) ->
 
     color_map = {"critical": 0xFF0000, "warning": 0xFFA500, "info": 0x00FF00}
     payload = {
-        "embeds": [{
-            "title": f"{'🔴' if severity == 'critical' else '🟡' if severity == 'warning' else '🟢'} {subject}",
-            "description": body,
-            "color": color_map.get(severity, 0x808080),
-            "footer": {"text": "Tendril Grow Assistant"},
-        }]
+        "embeds": [
+            {
+                "title": f"{'🔴' if severity == 'critical' else '🟡' if severity == 'warning' else '🟢'} {subject}",
+                "description": body,
+                "color": color_map.get(severity, 0x808080),
+                "footer": {"text": "Tendril Grow Assistant"},
+            }
+        ]
     }
     async with httpx.AsyncClient(timeout=10) as client:
         resp = await client.post(webhook_url, json=payload)
@@ -172,8 +185,9 @@ async def _send_web_push(
     body: str,
 ) -> None:
     """Send Web Push notifications to all subscribed users for this tenant."""
-    from pywebpush import webpush, WebPushException
     import os
+
+    from pywebpush import WebPushException, webpush
 
     vapid_private = os.environ.get("VAPID_PRIVATE_KEY")
     vapid_email = os.environ.get("VAPID_EMAIL", "mailto:admin@tendril.example.com")
@@ -181,16 +195,18 @@ async def _send_web_push(
     if not vapid_private:
         return
 
-    subs = (await session.execute(
-        select(PushSubscription).where(PushSubscription.tenant_id == tenant_id)
-    )).scalars().all()
+    subs = (
+        (await session.execute(select(PushSubscription).where(PushSubscription.tenant_id == tenant_id))).scalars().all()
+    )
 
-    payload = json.dumps({
-        "title": f"[{severity.upper()}] {subject}",
-        "body": body[:200],
-        "icon": "/icons/icon-192x192.png",
-        "badge": "/icons/icon-72x72.png",
-    })
+    payload = json.dumps(
+        {
+            "title": f"[{severity.upper()}] {subject}",
+            "body": body[:200],
+            "icon": "/icons/icon-192x192.png",
+            "badge": "/icons/icon-72x72.png",
+        }
+    )
 
     for sub in subs:
         try:

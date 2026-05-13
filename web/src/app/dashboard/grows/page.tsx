@@ -157,7 +157,7 @@ export default function GrowsPage() {
         </Tabs>
 
         {loading ? (
-          <PageSkeleton variant="card" count={3} />
+          <PageSkeleton rows={3} cards />
         ) : grows.length === 0 ? (
           <Card className="flex flex-col items-center justify-center py-16">
             <Sprout className="size-12 text-muted-foreground/50" />

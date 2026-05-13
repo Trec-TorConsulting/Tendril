@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from jose import JWTError, jwt
+from jose import jwt
 
 from app.config import get_settings
 
@@ -30,7 +30,7 @@ def create_access_token(
       exp  - expiration
     """
     settings = get_settings()
-    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
+    expire = datetime.now(UTC) + timedelta(minutes=settings.access_token_expire_minutes)
     payload: dict = {
         "sub": str(user_id),
         "pr": platform_role,
@@ -51,7 +51,7 @@ def create_access_token(
 def create_refresh_token(user_id: UUID) -> str:
     """Create a refresh token (tenant-agnostic)."""
     settings = get_settings()
-    expire = datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days)
+    expire = datetime.now(UTC) + timedelta(days=settings.refresh_token_expire_days)
     payload = {
         "sub": str(user_id),
         "exp": expire,
@@ -63,7 +63,7 @@ def create_refresh_token(user_id: UUID) -> str:
 def create_email_verification_token(user_id: UUID) -> str:
     """Create a short-lived token for email verification (24h)."""
     settings = get_settings()
-    expire = datetime.now(timezone.utc) + timedelta(hours=24)
+    expire = datetime.now(UTC) + timedelta(hours=24)
     payload = {
         "sub": str(user_id),
         "exp": expire,
@@ -75,7 +75,7 @@ def create_email_verification_token(user_id: UUID) -> str:
 def create_password_reset_token(user_id: UUID) -> str:
     """Create a short-lived token for password reset (1h)."""
     settings = get_settings()
-    expire = datetime.now(timezone.utc) + timedelta(hours=1)
+    expire = datetime.now(UTC) + timedelta(hours=1)
     payload = {
         "sub": str(user_id),
         "exp": expire,

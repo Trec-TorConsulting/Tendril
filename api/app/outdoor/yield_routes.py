@@ -1,4 +1,5 @@
 """Harvest yield API — per-plant yield tracking and analytics for outdoor grows."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -7,17 +8,18 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select, desc, func
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
-from app.grows.models import GrowCycle, Bucket, HarvestYield, PlotGrid
+from app.grows.models import Bucket, GrowCycle, HarvestYield, PlotGrid
 from app.pagination import PaginatedResponse, PaginationParams, paginate
 
 router = APIRouter()
 
 
 # ---------- Schemas ----------
+
 
 class YieldCreate(BaseModel):
     bucket_id: UUID
@@ -67,6 +69,7 @@ class YieldSummary(BaseModel):
 
 # ---------- Endpoints ----------
 
+
 @router.post("/{grow_id}/yields", response_model=YieldResponse, status_code=201)
 async def create_yield(
     grow_id: UUID,
@@ -101,11 +104,7 @@ async def list_yields(
     pagination: Annotated[PaginationParams, Depends()],
 ):
     """List all harvest yields for a grow."""
-    q = (
-        select(HarvestYield)
-        .where(HarvestYield.grow_cycle_id == grow_id)
-        .order_by(desc(HarvestYield.harvested_at))
-    )
+    q = select(HarvestYield).where(HarvestYield.grow_cycle_id == grow_id).order_by(desc(HarvestYield.harvested_at))
     items, total = await paginate(session, q, pagination)
     return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
 
@@ -118,9 +117,7 @@ async def get_yield_summary(
 ):
     """Get aggregated yield stats for a grow."""
     # Count total buckets/plants
-    bucket_count = (await session.execute(
-        select(func.count()).where(Bucket.grow_cycle_id == grow_id)
-    )).scalar() or 0
+    bucket_count = (await session.execute(select(func.count()).where(Bucket.grow_cycle_id == grow_id))).scalar() or 0
 
     # Aggregate yields
     result = await session.execute(
@@ -139,9 +136,7 @@ async def get_yield_summary(
 
     # Calculate yield per sqft if plot grid exists
     yield_per_sqft = None
-    grid_result = await session.execute(
-        select(PlotGrid).where(PlotGrid.grow_cycle_id == grow_id)
-    )
+    grid_result = await session.execute(select(PlotGrid).where(PlotGrid.grow_cycle_id == grow_id))
     grid = grid_result.scalar_one_or_none()
     if grid and dry > 0:
         sqft = (grid.rows * grid.cell_size_inches * grid.cols * grid.cell_size_inches) / 144

@@ -1,9 +1,12 @@
 """Security tests — cross-tenant access, injection, token tampering, RBAC bypass."""
+
 from __future__ import annotations
+
+from datetime import UTC
+from uuid import uuid4
 
 import pytest
 import pytest_asyncio
-from uuid import uuid4
 
 from tests.conftest import TenantFactory
 
@@ -23,6 +26,7 @@ async def tenant_b(db_session):
 
 
 # ---------- Cross-Tenant Isolation ----------
+
 
 class TestTenantIsolation:
     async def test_cannot_read_other_tenant_tents(self, client, tenant_a, tenant_b):
@@ -71,6 +75,7 @@ class TestTenantIsolation:
 
 # ---------- Auth / Token Tampering ----------
 
+
 class TestAuthSecurity:
     async def test_no_auth_rejected(self, client):
         """Endpoints reject unauthenticated requests."""
@@ -85,15 +90,22 @@ class TestAuthSecurity:
 
     async def test_expired_token_rejected(self, client):
         """Expired token is rejected."""
+        from datetime import datetime, timedelta
+
         from app.auth.jwt import jwt
         from app.config import get_settings
-        from datetime import datetime, timedelta, timezone
 
         settings = get_settings()
         expired = jwt.encode(
-            {"sub": str(uuid4()), "tid": str(uuid4()), "role": "owner", "type": "access",
-             "exp": datetime.now(timezone.utc) - timedelta(hours=1)},
-            settings.jwt_secret, algorithm=settings.jwt_algorithm,
+            {
+                "sub": str(uuid4()),
+                "tid": str(uuid4()),
+                "role": "owner",
+                "type": "access",
+                "exp": datetime.now(UTC) - timedelta(hours=1),
+            },
+            settings.jwt_secret,
+            algorithm=settings.jwt_algorithm,
         )
         resp = await client.get("/v1/tents", headers={"Authorization": f"Bearer {expired}"})
         assert resp.status_code in (401, 403)
@@ -101,23 +113,30 @@ class TestAuthSecurity:
     async def test_refresh_token_as_access_rejected(self, client, tenant_a):
         """Refresh tokens cannot be used as access tokens."""
         from app.auth.jwt import create_refresh_token
+
         refresh = create_refresh_token(tenant_a["user"].id)
         resp = await client.get("/v1/tents", headers={"Authorization": f"Bearer {refresh}"})
         assert resp.status_code in (401, 403)
 
     async def test_tampered_tenant_id_rejected(self, client, tenant_a, tenant_b):
         """Forging a different tenant_id in JWT doesn't grant access to another tenant's data."""
+        from datetime import datetime, timedelta
+
         from app.auth.jwt import jwt
         from app.config import get_settings
-        from datetime import datetime, timedelta, timezone
 
         settings = get_settings()
         # Create token with tenant_a's user but tenant_b's tenant_id
         forged = jwt.encode(
-            {"sub": str(tenant_a["user"].id), "tid": str(tenant_b["tenant"].id),
-             "role": "owner", "type": "access",
-             "exp": datetime.now(timezone.utc) + timedelta(minutes=15)},
-            settings.jwt_secret, algorithm=settings.jwt_algorithm,
+            {
+                "sub": str(tenant_a["user"].id),
+                "tid": str(tenant_b["tenant"].id),
+                "role": "owner",
+                "type": "access",
+                "exp": datetime.now(UTC) + timedelta(minutes=15),
+            },
+            settings.jwt_secret,
+            algorithm=settings.jwt_algorithm,
         )
 
         # Create data in tenant_b
@@ -132,12 +151,14 @@ class TestAuthSecurity:
 
 # ---------- RBAC Bypass ----------
 
+
 class TestRBACBypass:
     async def test_viewer_cannot_create_tent(self, client, db_session):
         """Viewer role cannot create resources."""
-        from app.tenants.models import Account, PlatformRole, Tenant, TenantMembership, TenantRole, User
-        from app.auth.jwt import create_access_token
         import bcrypt
+
+        from app.auth.jwt import create_access_token
+        from app.tenants.models import Account, PlatformRole, Tenant, TenantMembership, TenantRole, User
 
         account = Account(name="RBAC Test")
         db_session.add(account)
@@ -165,9 +186,10 @@ class TestRBACBypass:
 
     async def test_member_cannot_delete_channel(self, client, db_session):
         """Member role cannot delete notification channels (owner-only)."""
-        from app.tenants.models import Account, PlatformRole, Tenant, TenantMembership, TenantRole, User
-        from app.auth.jwt import create_access_token
         import bcrypt
+
+        from app.auth.jwt import create_access_token
+        from app.tenants.models import Account, PlatformRole, Tenant, TenantMembership, TenantRole, User
 
         account = Account(name="RBAC Del")
         db_session.add(account)
@@ -198,6 +220,7 @@ class TestRBACBypass:
 
 
 # ---------- Injection Attempts ----------
+
 
 class TestInjection:
     async def test_sql_injection_in_tent_name(self, client, tenant_a):

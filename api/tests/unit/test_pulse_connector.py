@@ -9,6 +9,7 @@ from uuid import uuid4
 import httpx
 import pytest
 import pytest_asyncio
+
 from app.integrations.connectors.base import ConnectorResult, get_connector_class
 from app.integrations.connectors.pulse import (
     DiscoveredDevice,
@@ -157,11 +158,11 @@ class TestPulseConfig:
         assert cfg.base_url == "https://custom.api.com"
 
     def test_missing_api_key(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             PulseConfig()
 
     def test_api_key_too_short(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             PulseConfig(api_key="short")
 
 

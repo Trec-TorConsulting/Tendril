@@ -1,4 +1,5 @@
 """Bucket CRUD API — tenant-scoped, linked to grow cycles."""
+
 from __future__ import annotations
 
 from typing import Annotated
@@ -8,7 +9,6 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
 from app.grows.models import Bucket, Strain

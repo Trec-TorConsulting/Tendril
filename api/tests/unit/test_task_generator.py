@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 from zoneinfo import ZoneInfo
 
 import pytest
+
 from app.scheduler.task_generator import (
     AUTOMATION_SUPPRESSIONS,
     OUTDOOR_TYPES,

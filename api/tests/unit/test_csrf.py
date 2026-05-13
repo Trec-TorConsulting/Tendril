@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import pytest
 import pytest_asyncio
-from app.middleware.csrf import generate_csrf_token
 from httpx import ASGITransport, AsyncClient
+
+from app.middleware.csrf import generate_csrf_token
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 

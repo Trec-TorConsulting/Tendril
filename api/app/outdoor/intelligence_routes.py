@@ -1,18 +1,19 @@
 """Outdoor intelligence API — GDD, frost dates, moon phase, manual weather entry."""
+
 from __future__ import annotations
 
 import math
-from datetime import datetime, timezone, date
+from datetime import UTC, date, datetime
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select, desc, func
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
-from app.grows.models import Tent, GrowCycle, WeatherReading
+from app.grows.models import GrowCycle, Tent, WeatherReading
 
 router = APIRouter()
 
@@ -21,6 +22,7 @@ GDD_BASE_TEMP_F = 50.0
 
 
 # ---------- Schemas ----------
+
 
 class ManualWeatherCreate(BaseModel):
     rainfall_in: float | None = None
@@ -82,10 +84,11 @@ def _lookup_frost_dates(lat: float) -> tuple[str, str, str]:
 
 # ---------- Moon Phase Calculation ----------
 
+
 def _moon_phase(dt: datetime) -> dict:
     """Calculate approximate moon phase using a simple synodic period algorithm."""
     # Known new moon reference: Jan 6, 2000 18:14 UTC
-    ref = datetime(2000, 1, 6, 18, 14, tzinfo=timezone.utc)
+    ref = datetime(2000, 1, 6, 18, 14, tzinfo=UTC)
     synodic = 29.53058867  # days
     days_since = (dt - ref).total_seconds() / 86400
     cycle = days_since / synodic
@@ -120,10 +123,17 @@ def _moon_phase(dt: datetime) -> dict:
         name = "Waning Crescent"
         rec = "Rest period. Plan and prepare. Minimal planting. Good for soil testing."
 
-    return {"phase": name, "illumination_pct": illumination, "days_until_new": days_until_new, "days_until_full": days_until_full, "planting_recommendation": rec}
+    return {
+        "phase": name,
+        "illumination_pct": illumination,
+        "days_until_new": days_until_new,
+        "days_until_full": days_until_full,
+        "planting_recommendation": rec,
+    }
 
 
 # ---------- Endpoints ----------
+
 
 @router.get("/{tent_id}/frost-dates", response_model=FrostDatesResponse)
 async def get_frost_dates(
@@ -139,7 +149,7 @@ async def get_frost_dates(
         raise HTTPException(status_code=400, detail="Tent location (lat/lng) not set")
 
     spring, fall, zone = _lookup_frost_dates(tent.latitude)
-    year = datetime.now(timezone.utc).year
+    year = datetime.now(UTC).year
     spring_date = datetime.strptime(f"{year}-{spring}", "%Y-%m-%d").date()
     fall_date = datetime.strptime(f"{year}-{fall}", "%Y-%m-%d").date()
     frost_free = (fall_date - spring_date).days
@@ -165,7 +175,7 @@ async def get_moon_phase(
     tent = await session.get(Tent, tent_id)
     if tent is None:
         raise HTTPException(status_code=404, detail="Tent not found")
-    return _moon_phase(datetime.now(timezone.utc))
+    return _moon_phase(datetime.now(UTC))
 
 
 @router.post("/{tent_id}/manual", status_code=201)
@@ -243,13 +253,15 @@ async def get_growing_degree_days(
         avg = (high + low) / 2
         gdd = max(0, avg - GDD_BASE_TEMP_F)
         total_gdd += gdd
-        daily_log.append({
-            "date": day.isoformat(),
-            "high_f": round(high, 1),
-            "low_f": round(low, 1),
-            "gdd": round(gdd, 1),
-            "cumulative_gdd": round(total_gdd, 1),
-        })
+        daily_log.append(
+            {
+                "date": day.isoformat(),
+                "high_f": round(high, 1),
+                "low_f": round(low, 1),
+                "gdd": round(gdd, 1),
+                "cumulative_gdd": round(total_gdd, 1),
+            }
+        )
 
     # Target GDD based on strain flowering days (rough: 15 GDD/day avg * flowering_days)
     target_gdd = None

@@ -5,11 +5,10 @@ from __future__ import annotations
 import os
 from uuid import uuid4
 
-import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 # Set test env vars before importing app
 os.environ["JWT_SECRET"] = "test-secret-do-not-use-in-production"  # noqa: S105
@@ -20,26 +19,55 @@ os.environ["INTEGRATION_ENCRYPTION_KEY"] = "m8eWk-kF4nPTdc7Y0wccVuqqEYTUvrAWdVcF
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def _setup_db():
     """One-time DB schema setup. Creates all tables at session start, drops at end."""
+    from app.automation.models import AlertHistory, AutomationRule, EnvironmentSchedule  # noqa: F401
+    from app.commercial.models import ApiKey, AuditLog, CustomGrowType, Task  # noqa: F401
     from app.database import Base
+    from app.grows.models import (  # noqa: F401
+        Bucket,
+        BucketPhoto,
+        BucketSensorReading,
+        ContainerProfile,
+        DoseProfile,
+        FeedingSchedule,
+        GrowCycle,
+        GrowPhoto,
+        GrowTypeProfile,
+        HarvestYield,
+        HealthEval,
+        JournalEntry,
+        NutrientProduct,
+        PestScoutEntry,
+        PlotCell,
+        PlotGrid,
+        ReferenceStrain,
+        RunoffReading,
+        SoilAmendment,
+        SoilTest,
+        Strain,
+        Tent,
+        TentCamera,
+        TentSensorReading,
+        WeatherReading,
+        Yield,
+    )
+    from app.integrations.models import IntegrationConfig, IntegrationDeviceMap, IntegrationSyncLog  # noqa: F401
+    from app.notifications.models import (  # noqa: F401
+        NotificationChannel,
+        NotificationLog,
+        NotificationPreference,
+        PushSubscription,
+    )
 
     # Import ALL models so metadata.create_all picks them up
     from app.tenants.models import (  # noqa: F401
-        Account, AccountMember, Device, MembershipGrowAccess, Tenant, TenantMembership, User,
+        Account,
+        AccountMember,
+        Device,
+        MembershipGrowAccess,
+        Tenant,
+        TenantMembership,
+        User,
     )
-    from app.grows.models import (  # noqa: F401
-        Tent, TentCamera, GrowCycle, Bucket, BucketSensorReading, JournalEntry,
-        BucketPhoto, GrowPhoto, DoseProfile, FeedingSchedule, Strain, Yield,
-        WeatherReading, TentSensorReading, GrowTypeProfile, ReferenceStrain,
-        NutrientProduct, HealthEval, PlotGrid, PlotCell, SoilTest,
-        SoilAmendment, PestScoutEntry, HarvestYield, ContainerProfile,
-        RunoffReading,
-    )
-    from app.automation.models import AutomationRule, AlertHistory, EnvironmentSchedule  # noqa: F401
-    from app.notifications.models import (  # noqa: F401
-        NotificationChannel, NotificationPreference, PushSubscription, NotificationLog,
-    )
-    from app.integrations.models import IntegrationConfig, IntegrationDeviceMap, IntegrationSyncLog  # noqa: F401
-    from app.commercial.models import CustomGrowType, Task, AuditLog, ApiKey  # noqa: F401
 
     engine = create_async_engine(os.environ["DATABASE_URL"], echo=False)
 
@@ -48,15 +76,19 @@ async def _setup_db():
         await conn.run_sync(Base.metadata.create_all)
 
         await conn.execute(text("ALTER TABLE devices ENABLE ROW LEVEL SECURITY"))
-        await conn.execute(text(
-            "CREATE POLICY tenant_isolation_devices ON devices "
-            "USING (tenant_id = current_setting('app.current_tenant')::UUID)"
-        ))
+        await conn.execute(
+            text(
+                "CREATE POLICY tenant_isolation_devices ON devices "
+                "USING (tenant_id = current_setting('app.current_tenant')::UUID)"
+            )
+        )
         await conn.execute(text("ALTER TABLE tenant_memberships ENABLE ROW LEVEL SECURITY"))
-        await conn.execute(text(
-            "CREATE POLICY tenant_isolation_memberships ON tenant_memberships "
-            "USING (tenant_id = current_setting('app.current_tenant')::UUID)"
-        ))
+        await conn.execute(
+            text(
+                "CREATE POLICY tenant_isolation_memberships ON tenant_memberships "
+                "USING (tenant_id = current_setting('app.current_tenant')::UUID)"
+            )
+        )
 
     yield engine
 
@@ -82,12 +114,14 @@ async def _clean_tables(_setup_db):
     from app.database import async_session_factory
 
     async with async_session_factory() as session:
-        await session.execute(text(
-            "DO $$ DECLARE r RECORD; BEGIN "
-            "FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP "
-            "EXECUTE 'TRUNCATE TABLE ' || quote_ident(r.tablename) || ' CASCADE'; "
-            "END LOOP; END $$;"
-        ))
+        await session.execute(
+            text(
+                "DO $$ DECLARE r RECORD; BEGIN "
+                "FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP "
+                "EXECUTE 'TRUNCATE TABLE ' || quote_ident(r.tablename) || ' CASCADE'; "
+                "END LOOP; END $$;"
+            )
+        )
         await session.commit()
 
 
@@ -113,6 +147,7 @@ class TenantFactory:
 
     async def create(self, name: str = "Test Org", plan: str = "free") -> dict:
         import bcrypt
+
         from app.auth.jwt import create_access_token
         from app.tenants.models import (
             Account,
@@ -148,13 +183,17 @@ class TenantFactory:
 
         # Account membership
         account_member = AccountMember(
-            account_id=account.id, user_id=user.id, role=AccountRole.owner,
+            account_id=account.id,
+            user_id=user.id,
+            role=AccountRole.owner,
         )
         self.session.add(account_member)
 
         # Tenant membership
         membership = TenantMembership(
-            tenant_id=tenant.id, user_id=user.id, role=TenantRole.admin,
+            tenant_id=tenant.id,
+            user_id=user.id,
+            role=TenantRole.admin,
         )
         self.session.add(membership)
         await self.session.commit()

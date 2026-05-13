@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import pytest
 import pytest_asyncio
+
 from tests.conftest import TenantFactory
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
@@ -21,6 +22,7 @@ async def tenant(db_session):
 async def viewer_tenant(db_session):
     """Tenant with a viewer-role user for RBAC testing."""
     import bcrypt
+
     from app.auth.jwt import create_access_token
     from app.tenants.models import PlatformRole, TenantMembership, TenantRole, User
 

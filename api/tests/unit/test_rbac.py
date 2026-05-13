@@ -1,9 +1,13 @@
 """RBAC tests — verify role-based access control enforcement."""
+
 from __future__ import annotations
 
-import pytest
-from app.auth.jwt import create_access_token
+from datetime import UTC
 from uuid import uuid4
+
+import pytest
+
+from app.auth.jwt import create_access_token
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
@@ -34,15 +38,16 @@ async def test_invalid_token_rejected(client):
 
 async def test_expired_token_rejected(client):
     """Expired JWT should return 401."""
+    from datetime import datetime, timedelta
+
     from jose import jwt
-    from datetime import datetime, timezone, timedelta
 
     payload = {
         "sub": str(uuid4()),
         "pr": "user",
         "tid": str(uuid4()),
         "tr": "admin",
-        "exp": datetime.now(timezone.utc) - timedelta(hours=1),
+        "exp": datetime.now(UTC) - timedelta(hours=1),
         "type": "access",
     }
     expired_token = jwt.encode(payload, "test-secret-do-not-use-in-production", algorithm="HS256")

@@ -3,8 +3,9 @@
 Revision ID: 0002
 Revises: 0001
 """
-from alembic import op
+
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = "0002"
@@ -18,7 +19,9 @@ def upgrade() -> None:
     op.create_table(
         "tents",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+        ),
         sa.Column("name", sa.String(255), nullable=False),
         sa.Column("environment_type", sa.String(50), server_default="indoor"),
         sa.Column("latitude", sa.Float),
@@ -32,8 +35,12 @@ def upgrade() -> None:
     op.create_table(
         "grow_cycles",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("tent_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tents.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+        ),
+        sa.Column(
+            "tent_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tents.id", ondelete="CASCADE"), nullable=False
+        ),
         sa.Column("name", sa.String(255), nullable=False),
         sa.Column("grow_type", sa.String(50), nullable=False),
         sa.Column("status", sa.String(50), server_default="active"),
@@ -51,8 +58,15 @@ def upgrade() -> None:
     op.create_table(
         "buckets",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("grow_cycle_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("grow_cycles.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+        ),
+        sa.Column(
+            "grow_cycle_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("grow_cycles.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("position", sa.Integer, server_default="1"),
         sa.Column("label", sa.String(255)),
         sa.Column("strain_name", sa.String(255)),
@@ -68,8 +82,12 @@ def upgrade() -> None:
     op.create_table(
         "bucket_sensor_readings",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("bucket_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("buckets.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+        ),
+        sa.Column(
+            "bucket_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("buckets.id", ondelete="CASCADE"), nullable=False
+        ),
         sa.Column("device_id", sa.String(100)),
         sa.Column("water_temp_f", sa.Float),
         sa.Column("ph", sa.Float),
@@ -95,8 +113,12 @@ def upgrade() -> None:
     op.create_table(
         "journal_entries",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("bucket_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("buckets.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+        ),
+        sa.Column(
+            "bucket_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("buckets.id", ondelete="CASCADE"), nullable=False
+        ),
         sa.Column("event_type", sa.String(100), nullable=False),
         sa.Column("content", sa.Text),
         sa.Column("payload", postgresql.JSON),
@@ -109,8 +131,12 @@ def upgrade() -> None:
     op.create_table(
         "bucket_photos",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("bucket_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("buckets.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+        ),
+        sa.Column(
+            "bucket_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("buckets.id", ondelete="CASCADE"), nullable=False
+        ),
         sa.Column("url", sa.String(1024), nullable=False),
         sa.Column("caption", sa.Text),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
@@ -122,8 +148,15 @@ def upgrade() -> None:
     op.create_table(
         "dose_profiles",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("grow_cycle_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("grow_cycles.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+        ),
+        sa.Column(
+            "grow_cycle_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("grow_cycles.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("name", sa.String(255), nullable=False),
         sa.Column("dose_type", sa.String(50), nullable=False),
         sa.Column("dose_ml", sa.Float, nullable=False),
@@ -137,8 +170,15 @@ def upgrade() -> None:
     op.create_table(
         "feeding_schedules",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("grow_cycle_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("grow_cycles.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+        ),
+        sa.Column(
+            "grow_cycle_id",
+            postgresql.UUID(as_uuid=True),
+            sa.ForeignKey("grow_cycles.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         sa.Column("name", sa.String(255), nullable=False),
         sa.Column("stage", sa.String(50), nullable=False),
         sa.Column("nutrients", postgresql.JSON, nullable=False),
@@ -151,7 +191,9 @@ def upgrade() -> None:
     op.create_table(
         "strains",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+        ),
         sa.Column("name", sa.String(255), nullable=False),
         sa.Column("breeder", sa.String(255)),
         sa.Column("genetics", sa.String(255)),
@@ -168,8 +210,12 @@ def upgrade() -> None:
     op.create_table(
         "yields",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("bucket_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("buckets.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+        ),
+        sa.Column(
+            "bucket_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("buckets.id", ondelete="CASCADE"), nullable=False
+        ),
         sa.Column("wet_weight_g", sa.Float),
         sa.Column("dry_weight_g", sa.Float),
         sa.Column("trim_weight_g", sa.Float),
@@ -191,8 +237,12 @@ def upgrade() -> None:
     op.create_table(
         "weather_readings",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("tent_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tents.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False
+        ),
+        sa.Column(
+            "tent_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tents.id", ondelete="CASCADE"), nullable=False
+        ),
         sa.Column("temperature_c", sa.Float),
         sa.Column("humidity_pct", sa.Float),
         sa.Column("precipitation_mm", sa.Float),
@@ -259,9 +309,17 @@ def upgrade() -> None:
 
     # --- RLS Policies for all tenant-scoped tables ---
     tenant_tables = [
-        "tents", "grow_cycles", "buckets", "bucket_sensor_readings",
-        "journal_entries", "bucket_photos", "dose_profiles",
-        "feeding_schedules", "strains", "yields", "weather_readings",
+        "tents",
+        "grow_cycles",
+        "buckets",
+        "bucket_sensor_readings",
+        "journal_entries",
+        "bucket_photos",
+        "dose_profiles",
+        "feeding_schedules",
+        "strains",
+        "yields",
+        "weather_readings",
     ]
     for table in tenant_tables:
         op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
@@ -273,10 +331,20 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     tables = [
-        "nutrient_products", "reference_strains", "grow_type_profiles",
-        "weather_readings", "yields", "strains", "feeding_schedules",
-        "dose_profiles", "bucket_photos", "journal_entries",
-        "bucket_sensor_readings", "buckets", "grow_cycles", "tents",
+        "nutrient_products",
+        "reference_strains",
+        "grow_type_profiles",
+        "weather_readings",
+        "yields",
+        "strains",
+        "feeding_schedules",
+        "dose_profiles",
+        "bucket_photos",
+        "journal_entries",
+        "bucket_sensor_readings",
+        "buckets",
+        "grow_cycles",
+        "tents",
     ]
     for table in tables:
         op.drop_table(table)

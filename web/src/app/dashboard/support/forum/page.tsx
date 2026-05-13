@@ -46,7 +46,7 @@ export default function ForumPage() {
           { label: "Support", href: "/dashboard/support" },
           { label: "Forum" },
         ]}
-        action={
+        actions={
           <Link href="/dashboard/support/forum/new">
             <Button size="sm">New Thread</Button>
           </Link>

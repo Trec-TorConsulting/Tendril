@@ -1,4 +1,5 @@
 """Weather API — current conditions, forecast, history, alerts for outdoor/greenhouse tents."""
+
 from __future__ import annotations
 
 from typing import Annotated

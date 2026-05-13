@@ -1,8 +1,9 @@
 """Ollama client — wraps Ollama HTTP API for chat, vision, and tool-calling."""
+
 from __future__ import annotations
 
 import logging
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 import httpx
 
@@ -83,24 +84,27 @@ async def chat_completion_stream(
         "options": {"num_ctx": 8192},
     }
 
-    async with httpx.AsyncClient(timeout=120) as client:
-        async with client.stream(
+    async with (
+        httpx.AsyncClient(timeout=120) as client,
+        client.stream(
             "POST",
             f"{settings.ollama_base_url}/api/chat",
             json=payload,
-        ) as resp:
-            resp.raise_for_status()
-            import json
-            async for line in resp.aiter_lines():
-                if not line:
-                    continue
-                try:
-                    chunk = json.loads(line)
-                    content = chunk.get("message", {}).get("content", "")
-                    if content:
-                        yield content
-                except json.JSONDecodeError:
-                    continue
+        ) as resp,
+    ):
+        resp.raise_for_status()
+        import json
+
+        async for line in resp.aiter_lines():
+            if not line:
+                continue
+            try:
+                chunk = json.loads(line)
+                content = chunk.get("message", {}).get("content", "")
+                if content:
+                    yield content
+            except json.JSONDecodeError:
+                continue
 
 
 async def vision_analysis(

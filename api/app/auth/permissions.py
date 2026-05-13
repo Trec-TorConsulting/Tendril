@@ -3,10 +3,10 @@
 Permissions follow the pattern: `domain:action`
 Roles are mapped to sets of permissions. Route guards check permissions, not roles directly.
 """
+
 from __future__ import annotations
 
 from app.tenants.models import PlatformRole, TenantRole
-
 
 # ─── Permission Constants ──────────────────────────────────────────────────────
 
@@ -84,57 +84,63 @@ PLATFORM_USERS_MANAGE = "platform:users:manage"
 
 # ─── Tenant Role → Permission Mapping ─────────────────────────────────────────
 
-_VIEWER_PERMISSIONS: frozenset[str] = frozenset({
-    GROW_READ,
-    DEVICE_READ,
-    SENSOR_READ,
-    INTEGRATION_READ,
-    JOURNAL_READ,
-    PHOTO_READ,
-    STRAIN_READ,
-    OUTDOOR_READ,
-    TASK_READ,
-    TENANT_READ,
-    BILLING_READ,
-})
+_VIEWER_PERMISSIONS: frozenset[str] = frozenset(
+    {
+        GROW_READ,
+        DEVICE_READ,
+        SENSOR_READ,
+        INTEGRATION_READ,
+        JOURNAL_READ,
+        PHOTO_READ,
+        STRAIN_READ,
+        OUTDOOR_READ,
+        TASK_READ,
+        TENANT_READ,
+        BILLING_READ,
+    }
+)
 
-_MEMBER_PERMISSIONS: frozenset[str] = _VIEWER_PERMISSIONS | frozenset({
-    GROW_CREATE,
-    GROW_UPDATE,
-    DEVICE_CREATE,
-    DEVICE_UPDATE,
-    SENSOR_CREATE,
-    SENSOR_UPDATE,
-    INTEGRATION_CREATE,
-    INTEGRATION_UPDATE,
-    INTEGRATION_SYNC,
-    JOURNAL_CREATE,
-    JOURNAL_UPDATE,
-    PHOTO_CREATE,
-    PHOTO_UPDATE,
-    STRAIN_CREATE,
-    STRAIN_UPDATE,
-    OUTDOOR_CREATE,
-    OUTDOOR_UPDATE,
-    TASK_CREATE,
-    TASK_UPDATE,
-})
+_MEMBER_PERMISSIONS: frozenset[str] = _VIEWER_PERMISSIONS | frozenset(
+    {
+        GROW_CREATE,
+        GROW_UPDATE,
+        DEVICE_CREATE,
+        DEVICE_UPDATE,
+        SENSOR_CREATE,
+        SENSOR_UPDATE,
+        INTEGRATION_CREATE,
+        INTEGRATION_UPDATE,
+        INTEGRATION_SYNC,
+        JOURNAL_CREATE,
+        JOURNAL_UPDATE,
+        PHOTO_CREATE,
+        PHOTO_UPDATE,
+        STRAIN_CREATE,
+        STRAIN_UPDATE,
+        OUTDOOR_CREATE,
+        OUTDOOR_UPDATE,
+        TASK_CREATE,
+        TASK_UPDATE,
+    }
+)
 
-_ADMIN_PERMISSIONS: frozenset[str] = _MEMBER_PERMISSIONS | frozenset({
-    GROW_DELETE,
-    DEVICE_DELETE,
-    DEVICE_PROVISION,
-    INTEGRATION_DELETE,
-    JOURNAL_DELETE,
-    PHOTO_DELETE,
-    STRAIN_DELETE,
-    OUTDOOR_DELETE,
-    TASK_DELETE,
-    TENANT_MANAGE,
-    TENANT_MEMBERS_READ,
-    TENANT_MEMBERS_MANAGE,
-    BILLING_MANAGE,
-})
+_ADMIN_PERMISSIONS: frozenset[str] = _MEMBER_PERMISSIONS | frozenset(
+    {
+        GROW_DELETE,
+        DEVICE_DELETE,
+        DEVICE_PROVISION,
+        INTEGRATION_DELETE,
+        JOURNAL_DELETE,
+        PHOTO_DELETE,
+        STRAIN_DELETE,
+        OUTDOOR_DELETE,
+        TASK_DELETE,
+        TENANT_MANAGE,
+        TENANT_MEMBERS_READ,
+        TENANT_MEMBERS_MANAGE,
+        BILLING_MANAGE,
+    }
+)
 
 TENANT_ROLE_PERMISSIONS: dict[TenantRole, frozenset[str]] = {
     TenantRole.viewer: _VIEWER_PERMISSIONS,
@@ -145,22 +151,31 @@ TENANT_ROLE_PERMISSIONS: dict[TenantRole, frozenset[str]] = {
 
 # ─── Platform Role → Permission Mapping ───────────────────────────────────────
 
-_READONLY_ADMIN_PERMISSIONS: frozenset[str] = frozenset({
-    PLATFORM_READ,
-    PLATFORM_USERS_READ,
-}) | _VIEWER_PERMISSIONS
+_READONLY_ADMIN_PERMISSIONS: frozenset[str] = (
+    frozenset(
+        {
+            PLATFORM_READ,
+            PLATFORM_USERS_READ,
+        }
+    )
+    | _VIEWER_PERMISSIONS
+)
 
-_SUPPORT_PERMISSIONS: frozenset[str] = _READONLY_ADMIN_PERMISSIONS | frozenset({
-    PLATFORM_USERS_MANAGE,  # Can modify user accounts (reset, unlock)
-    TENANT_MEMBERS_READ,
-})
+_SUPPORT_PERMISSIONS: frozenset[str] = _READONLY_ADMIN_PERMISSIONS | frozenset(
+    {
+        PLATFORM_USERS_MANAGE,  # Can modify user accounts (reset, unlock)
+        TENANT_MEMBERS_READ,
+    }
+)
 
-_SUPER_ADMIN_PERMISSIONS: frozenset[str] = _ADMIN_PERMISSIONS | frozenset({
-    PLATFORM_READ,
-    PLATFORM_MANAGE,
-    PLATFORM_USERS_READ,
-    PLATFORM_USERS_MANAGE,
-})
+_SUPER_ADMIN_PERMISSIONS: frozenset[str] = _ADMIN_PERMISSIONS | frozenset(
+    {
+        PLATFORM_READ,
+        PLATFORM_MANAGE,
+        PLATFORM_USERS_READ,
+        PLATFORM_USERS_MANAGE,
+    }
+)
 
 PLATFORM_ROLE_PERMISSIONS: dict[PlatformRole, frozenset[str]] = {
     PlatformRole.user: frozenset(),  # No platform-level permissions
@@ -185,10 +200,7 @@ def has_permission(
         return True
 
     # Check tenant-level permissions (if user has a tenant context)
-    if tenant_role is not None and required in TENANT_ROLE_PERMISSIONS[tenant_role]:
-        return True
-
-    return False
+    return bool(tenant_role is not None and required in TENANT_ROLE_PERMISSIONS[tenant_role])
 
 
 def get_effective_permissions(

@@ -1,4 +1,5 @@
 """Companion planting database — compatibility checks and suggestions."""
+
 from __future__ import annotations
 
 from typing import Annotated
@@ -34,11 +35,28 @@ class SuggestResponse(BaseModel):
     plant: str
     suggestions: list[CompanionSuggestion]
 
+
 # Built-in companion planting database for cannabis
 # Format: {plant: {beneficial: [...], harmful: [...], notes: str}}
 COMPANION_DB: dict[str, dict] = {
     "cannabis": {
-        "beneficial": ["basil", "marigold", "lavender", "chamomile", "dill", "peppermint", "sunflower", "clover", "alfalfa", "yarrow", "lemon_balm", "chives", "garlic", "beans", "cerastium"],
+        "beneficial": [
+            "basil",
+            "marigold",
+            "lavender",
+            "chamomile",
+            "dill",
+            "peppermint",
+            "sunflower",
+            "clover",
+            "alfalfa",
+            "yarrow",
+            "lemon_balm",
+            "chives",
+            "garlic",
+            "beans",
+            "cerastium",
+        ],
         "harmful": ["fennel", "corn", "walnut"],
         "notes": "Cannabis thrives with aromatic herbs that repel pests and nitrogen-fixing cover crops.",
     },
@@ -130,10 +148,7 @@ async def list_companions(
     _user: Annotated[CurrentUser, Depends(get_current_user)],
 ):
     """Get the full companion planting database."""
-    return [
-        {"plant": plant, **data}
-        for plant, data in COMPANION_DB.items()
-    ]
+    return [{"plant": plant, **data} for plant, data in COMPANION_DB.items()]
 
 
 @router.get("/check", response_model=CompatibilityResponse)
@@ -148,14 +163,34 @@ async def check_compatibility(
 
     plant_data = COMPANION_DB.get(plant_lower)
     if plant_data is None:
-        return {"plant": plant, "neighbor": neighbor, "compatibility": "unknown", "reason": f"'{plant}' not in database"}
+        return {
+            "plant": plant,
+            "neighbor": neighbor,
+            "compatibility": "unknown",
+            "reason": f"'{plant}' not in database",
+        }
 
     if neighbor_lower in plant_data["beneficial"]:
-        return {"plant": plant, "neighbor": neighbor, "compatibility": "beneficial", "reason": f"{neighbor} is beneficial for {plant}"}
+        return {
+            "plant": plant,
+            "neighbor": neighbor,
+            "compatibility": "beneficial",
+            "reason": f"{neighbor} is beneficial for {plant}",
+        }
     if neighbor_lower in plant_data["harmful"]:
-        return {"plant": plant, "neighbor": neighbor, "compatibility": "harmful", "reason": f"{neighbor} is harmful to {plant}"}
+        return {
+            "plant": plant,
+            "neighbor": neighbor,
+            "compatibility": "harmful",
+            "reason": f"{neighbor} is harmful to {plant}",
+        }
 
-    return {"plant": plant, "neighbor": neighbor, "compatibility": "neutral", "reason": "No known positive or negative interaction"}
+    return {
+        "plant": plant,
+        "neighbor": neighbor,
+        "compatibility": "neutral",
+        "reason": "No known positive or negative interaction",
+    }
 
 
 @router.get("/suggest", response_model=SuggestResponse)
@@ -174,9 +209,11 @@ async def suggest_companions(
     suggestions = []
     for companion in plant_data.get("beneficial", []):
         comp_data = COMPANION_DB.get(companion, {})
-        suggestions.append({
-            "plant": companion.replace("_", " ").title(),
-            "notes": comp_data.get("notes", ""),
-        })
+        suggestions.append(
+            {
+                "plant": companion.replace("_", " ").title(),
+                "notes": comp_data.get("notes", ""),
+            }
+        )
 
     return {"plant": plant, "suggestions": suggestions}

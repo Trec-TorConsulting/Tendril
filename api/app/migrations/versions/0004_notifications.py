@@ -3,9 +3,10 @@
 Revision ID: 0004
 Revises: 0003
 """
-from alembic import op
+
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import UUID, JSON
+from alembic import op
+from sqlalchemy.dialects.postgresql import JSON, UUID
 
 revision = "0004_notifications"
 down_revision = "0003_automation"

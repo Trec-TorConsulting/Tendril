@@ -1,9 +1,11 @@
 """Integration tests for Phase 4 AI endpoints — health check, coach tip, insights, report."""
+
 from __future__ import annotations
+
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
-from unittest.mock import AsyncMock, patch
 
 from tests.conftest import TenantFactory
 

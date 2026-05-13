@@ -1,4 +1,5 @@
 """Tenant isolation tests — verify API-level tenant filtering prevents cross-tenant data access."""
+
 from __future__ import annotations
 
 import pytest

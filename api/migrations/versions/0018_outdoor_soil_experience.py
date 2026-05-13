@@ -5,10 +5,9 @@ Revises: 0017
 Create Date: 2026-04-24
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects.postgresql import UUID
-
 
 revision = "0018"
 down_revision = "0017"
@@ -22,7 +21,13 @@ def upgrade() -> None:
         "plot_grids",
         sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
         sa.Column("tenant_id", UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("grow_cycle_id", UUID(as_uuid=True), sa.ForeignKey("grow_cycles.id", ondelete="CASCADE"), nullable=False, unique=True),
+        sa.Column(
+            "grow_cycle_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("grow_cycles.id", ondelete="CASCADE"),
+            nullable=False,
+            unique=True,
+        ),
         sa.Column("rows", sa.Integer, nullable=False),
         sa.Column("cols", sa.Integer, nullable=False),
         sa.Column("cell_size_inches", sa.Integer, nullable=False, server_default="12"),
@@ -38,7 +43,9 @@ def upgrade() -> None:
         "plot_cells",
         sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
         sa.Column("tenant_id", UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("plot_grid_id", UUID(as_uuid=True), sa.ForeignKey("plot_grids.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "plot_grid_id", UUID(as_uuid=True), sa.ForeignKey("plot_grids.id", ondelete="CASCADE"), nullable=False
+        ),
         sa.Column("row", sa.Integer, nullable=False),
         sa.Column("col", sa.Integer, nullable=False),
         sa.Column("cell_type", sa.String(50), nullable=False, server_default="empty"),
@@ -57,7 +64,9 @@ def upgrade() -> None:
         "soil_tests",
         sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
         sa.Column("tenant_id", UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("grow_cycle_id", UUID(as_uuid=True), sa.ForeignKey("grow_cycles.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "grow_cycle_id", UUID(as_uuid=True), sa.ForeignKey("grow_cycles.id", ondelete="CASCADE"), nullable=False
+        ),
         sa.Column("tested_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("ph", sa.Float, nullable=True),
         sa.Column("nitrogen_ppm", sa.Float, nullable=True),
@@ -79,7 +88,9 @@ def upgrade() -> None:
         "soil_amendments",
         sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
         sa.Column("tenant_id", UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("grow_cycle_id", UUID(as_uuid=True), sa.ForeignKey("grow_cycles.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "grow_cycle_id", UUID(as_uuid=True), sa.ForeignKey("grow_cycles.id", ondelete="CASCADE"), nullable=False
+        ),
         sa.Column("applied_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("amendment_type", sa.String(100), nullable=False),
         sa.Column("product_name", sa.String(255), nullable=False),
@@ -95,7 +106,9 @@ def upgrade() -> None:
         "pest_scout_entries",
         sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
         sa.Column("tenant_id", UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("grow_cycle_id", UUID(as_uuid=True), sa.ForeignKey("grow_cycles.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "grow_cycle_id", UUID(as_uuid=True), sa.ForeignKey("grow_cycles.id", ondelete="CASCADE"), nullable=False
+        ),
         sa.Column("scouted_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("pest_type", sa.String(50), nullable=False),
         sa.Column("species", sa.String(255), nullable=False),
@@ -115,7 +128,9 @@ def upgrade() -> None:
         "harvest_yields",
         sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
         sa.Column("tenant_id", UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("grow_cycle_id", UUID(as_uuid=True), sa.ForeignKey("grow_cycles.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "grow_cycle_id", UUID(as_uuid=True), sa.ForeignKey("grow_cycles.id", ondelete="CASCADE"), nullable=False
+        ),
         sa.Column("bucket_id", UUID(as_uuid=True), sa.ForeignKey("buckets.id", ondelete="CASCADE"), nullable=False),
         sa.Column("harvested_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("wet_weight_oz", sa.Float, nullable=True),

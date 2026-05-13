@@ -3,9 +3,10 @@
 Revision ID: 0003
 Revises: 0002
 """
-from alembic import op
+
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import UUID, JSON
+from alembic import op
+from sqlalchemy.dialects.postgresql import JSON, UUID
 
 revision = "0003"
 down_revision = "0002"

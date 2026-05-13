@@ -1,4 +1,5 @@
 """Runoff reading API — input vs runoff pH/EC tracking for container grows."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -7,17 +8,18 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select, desc, func
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
-from app.grows.models import GrowCycle, Bucket, RunoffReading
+from app.grows.models import Bucket, GrowCycle, RunoffReading
 from app.pagination import PaginatedResponse, PaginationParams, paginate
 
 router = APIRouter()
 
 
 # ---------- Schemas ----------
+
 
 class RunoffCreate(BaseModel):
     bucket_id: UUID
@@ -70,6 +72,7 @@ class RunoffStatsResponse(BaseModel):
 
 
 # ---------- Endpoints ----------
+
 
 @router.post("/{grow_id}/runoff", response_model=RunoffResponse, status_code=201)
 async def create_runoff_reading(
@@ -155,20 +158,22 @@ async def get_runoff_stats(
         if row.avg_runoff_ec is not None and row.avg_input_ec is not None:
             avg_ec_delta = round(row.avg_runoff_ec - row.avg_input_ec, 2)
 
-        stats.append(RunoffStatsResponse(
-            bucket_id=row.bucket_id,
-            reading_count=row.reading_count,
-            avg_input_ph=round(row.avg_input_ph, 2) if row.avg_input_ph else None,
-            avg_input_ec=round(row.avg_input_ec, 2) if row.avg_input_ec else None,
-            avg_runoff_ph=round(row.avg_runoff_ph, 2) if row.avg_runoff_ph else None,
-            avg_runoff_ec=round(row.avg_runoff_ec, 2) if row.avg_runoff_ec else None,
-            avg_ph_delta=avg_ph_delta,
-            avg_ec_delta=avg_ec_delta,
-            latest_input_ph=latest.input_ph if latest else None,
-            latest_input_ec=latest.input_ec if latest else None,
-            latest_runoff_ph=latest.runoff_ph if latest else None,
-            latest_runoff_ec=latest.runoff_ec if latest else None,
-        ))
+        stats.append(
+            RunoffStatsResponse(
+                bucket_id=row.bucket_id,
+                reading_count=row.reading_count,
+                avg_input_ph=round(row.avg_input_ph, 2) if row.avg_input_ph else None,
+                avg_input_ec=round(row.avg_input_ec, 2) if row.avg_input_ec else None,
+                avg_runoff_ph=round(row.avg_runoff_ph, 2) if row.avg_runoff_ph else None,
+                avg_runoff_ec=round(row.avg_runoff_ec, 2) if row.avg_runoff_ec else None,
+                avg_ph_delta=avg_ph_delta,
+                avg_ec_delta=avg_ec_delta,
+                latest_input_ph=latest.input_ph if latest else None,
+                latest_input_ec=latest.input_ec if latest else None,
+                latest_runoff_ph=latest.runoff_ph if latest else None,
+                latest_runoff_ec=latest.runoff_ec if latest else None,
+            )
+        )
 
     return stats
 

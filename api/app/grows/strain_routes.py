@@ -1,17 +1,18 @@
 """Strains API — tenant-scoped CRUD + leaderboard."""
+
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select, func, desc
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
-from app.grows.models import Strain, Yield, Bucket, GrowCycle
+from app.grows.models import Bucket, GrowCycle, Strain, Yield
 from app.pagination import PaginatedResponse, PaginationParams, paginate
 
 router = APIRouter()
@@ -53,7 +54,7 @@ class StrainResponse(BaseModel):
     model_config = {"from_attributes": True}
 
     @classmethod
-    def from_strain(cls, strain: "Strain") -> "StrainResponse":
+    def from_strain(cls, strain: Strain) -> StrainResponse:
         return cls(
             id=strain.id,
             name=strain.name,
@@ -93,7 +94,9 @@ async def list_strains(
     items, total = await paginate(session, q, pagination)
     return PaginatedResponse(
         items=[StrainResponse.from_strain(s) for s in items],
-        total=total, page=pagination.page, page_size=pagination.page_size,
+        total=total,
+        page=pagination.page,
+        page_size=pagination.page_size,
     )
 
 
@@ -146,7 +149,6 @@ async def strain_comparison(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Compare a strain's performance across different grows."""
-    from datetime import datetime, timezone
 
     # Get all buckets with this strain_id or matching strain_name
     strain = await session.get(Strain, strain_id)
@@ -177,22 +179,24 @@ async def strain_comparison(
     )
 
     items = []
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for row in result:
         duration = None
         if row.started_at:
             end = row.ended_at or now
             duration = (end - row.started_at).days
-        items.append(StrainGrowComparison(
-            grow_id=row.grow_id,
-            grow_name=row.grow_name,
-            grow_type=row.grow_type,
-            bucket_count=row.bucket_count,
-            avg_dry_weight_g=round(row.avg_dry_weight_g, 1) if row.avg_dry_weight_g else None,
-            total_dry_weight_g=round(row.total_dry_weight_g, 1) if row.total_dry_weight_g else None,
-            avg_quality=round(row.avg_quality, 1) if row.avg_quality else None,
-            grow_duration_days=duration,
-        ))
+        items.append(
+            StrainGrowComparison(
+                grow_id=row.grow_id,
+                grow_name=row.grow_name,
+                grow_type=row.grow_type,
+                bucket_count=row.bucket_count,
+                avg_dry_weight_g=round(row.avg_dry_weight_g, 1) if row.avg_dry_weight_g else None,
+                total_dry_weight_g=round(row.total_dry_weight_g, 1) if row.total_dry_weight_g else None,
+                avg_quality=round(row.avg_quality, 1) if row.avg_quality else None,
+                grow_duration_days=duration,
+            )
+        )
     return items
 
 
@@ -305,7 +309,7 @@ async def get_feeding_suggestions(
         # Terpene-specific late-flower advice
         terps = strain.terpene_profile or {}
         if stage == "late_flower" and terps:
-            dominant = sorted(terps.items(), key=lambda x: x[1] if isinstance(x[1], (int, float)) else 0, reverse=True)
+            dominant = sorted(terps.items(), key=lambda x: x[1] if isinstance(x[1], int | float) else 0, reverse=True)
             if dominant:
                 terp_name = dominant[0][0].lower()
                 if terp_name in ("myrcene", "linalool", "terpinolene"):
@@ -313,11 +317,13 @@ async def get_feeding_suggestions(
                 elif terp_name in ("caryophyllene", "limonene"):
                     extra += f" [Moderate stress (light LST) can boost {dominant[0][0]}]"
 
-        suggestions.append(FeedingSuggestion(
-            stage=stage,
-            target_ec=round(ec, 2),
-            target_ppm=round(ppm),
-            notes=extra,
-        ))
+        suggestions.append(
+            FeedingSuggestion(
+                stage=stage,
+                target_ec=round(ec, 2),
+                target_ppm=round(ppm),
+                notes=extra,
+            )
+        )
 
     return suggestions

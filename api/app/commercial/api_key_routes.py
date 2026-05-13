@@ -1,6 +1,8 @@
 """API key management — generate, list, revoke (Commercial only)."""
+
 from __future__ import annotations
 
+from datetime import UTC
 from typing import Annotated
 from uuid import UUID
 
@@ -18,10 +20,12 @@ router = APIRouter()
 
 # ---------- Schemas ----------
 
+
 class ApiKeyCreate(BaseModel):
     name: str
     scopes: str = "read"  # comma-separated: read, write, admin
     expires_in_days: int | None = None  # None = no expiry
+
 
 class ApiKeyResponse(BaseModel):
     id: str
@@ -33,13 +37,16 @@ class ApiKeyResponse(BaseModel):
     revoked: bool
     created_at: str
 
+
 class ApiKeyCreated(ApiKeyResponse):
     key: str  # only returned on creation
 
 
 def _to_response(k: ApiKey) -> ApiKeyResponse:
     return ApiKeyResponse(
-        id=str(k.id), name=k.name, key_prefix=k.key_prefix,
+        id=str(k.id),
+        name=k.name,
+        key_prefix=k.key_prefix,
         scopes=k.scopes,
         last_used=k.last_used.isoformat() if k.last_used else None,
         expires_at=k.expires_at.isoformat() if k.expires_at else None,
@@ -50,12 +57,14 @@ def _to_response(k: ApiKey) -> ApiKeyResponse:
 
 async def _require_commercial(user: CurrentUser, session: AsyncSession) -> None:
     from app.tenants.models import Tenant
+
     tenant = await session.get(Tenant, user.tenant_id)
     if not tenant or tenant.plan != "commercial":
         raise HTTPException(status_code=403, detail="API keys require Commercial plan")
 
 
 # ---------- Endpoints ----------
+
 
 @router.post("", status_code=201)
 async def create_api_key(
@@ -77,8 +86,9 @@ async def create_api_key(
 
     expires_at = None
     if body.expires_in_days:
-        from datetime import datetime, timedelta, timezone
-        expires_at = datetime.now(timezone.utc) + timedelta(days=body.expires_in_days)
+        from datetime import datetime, timedelta
+
+        expires_at = datetime.now(UTC) + timedelta(days=body.expires_in_days)
 
     api_key = ApiKey(
         tenant_id=user.tenant_id,
@@ -105,10 +115,12 @@ async def list_api_keys(
     """List all active API keys for the current tenant."""
     await _require_commercial(user, session)
     result = await session.execute(
-        select(ApiKey).where(
+        select(ApiKey)
+        .where(
             ApiKey.tenant_id == user.tenant_id,
             ApiKey.revoked.is_(False),
-        ).order_by(ApiKey.created_at.desc())
+        )
+        .order_by(ApiKey.created_at.desc())
     )
     return [_to_response(k) for k in result.scalars().all()]
 

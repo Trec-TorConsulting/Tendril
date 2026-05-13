@@ -464,8 +464,8 @@ export default function DashboardPage() {
                           <div className="flex-1 min-w-0">
                             <div className="flex flex-wrap items-center gap-1.5">
                               <p className="text-sm font-medium leading-tight truncate">{task.title}</p>
-                              {task.source === "auto" && <Zap className="size-3 text-amber-500" title="Auto-generated" />}
-                              {task.source === "ai" && <Bot className="size-3 text-purple-500" title="AI-suggested" />}
+                              {task.source === "auto" && <span title="Auto-generated"><Zap className="size-3 text-amber-500" /></span>}
+                              {task.source === "ai" && <span title="AI-suggested"><Bot className="size-3 text-purple-500" /></span>}
                             </div>
                             {task.description && (
                               <p className="mt-0.5 text-xs text-muted-foreground line-clamp-1">{task.description}</p>

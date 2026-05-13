@@ -7,7 +7,6 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-import httpx
 import pytest
 
 from app.integrations.connectors.base import BaseConnector, ConnectorResult
@@ -53,9 +52,11 @@ def _make_device_map(integration_id, tenant_id, external_id="dev1", **kw) -> Int
 
 def _mock_session_factory(mock_session):
     """Return a callable that yields an async context manager wrapping mock_session."""
+
     @asynccontextmanager
     async def _factory():
         yield mock_session
+
     return _factory
 
 
@@ -102,12 +103,22 @@ class TestPulsePersistReadings:
             device_maps=[],
         )
         result = ConnectorResult()
-        result.readings.extend([
-            {"target": "tent", "external_id": "d1", "tenant_id": str(cfg.tenant_id), "tent_id": str(uuid4()), "ambient_temp_f": 75.0},
-        ])
+        result.readings.extend(
+            [
+                {
+                    "target": "tent",
+                    "external_id": "d1",
+                    "tenant_id": str(cfg.tenant_id),
+                    "tent_id": str(uuid4()),
+                    "ambient_temp_f": 75.0,
+                },
+            ]
+        )
 
         session = AsyncMock()
-        with patch("app.integrations.connectors.pulse.write_pulse_readings", new_callable=AsyncMock, return_value=1) as mock_write:
+        with patch(
+            "app.integrations.connectors.pulse.write_pulse_readings", new_callable=AsyncMock, return_value=1
+        ) as mock_write:
             count = await connector.persist_readings(session, result)
             mock_write.assert_awaited_once_with(session, result.readings)
             assert count == 1
@@ -127,12 +138,16 @@ class TestOpenWeatherPersistReadings:
             device_maps=[],
         )
         result = ConnectorResult()
-        result.readings.extend([
-            {"tenant_id": str(cfg.tenant_id), "tent_id": str(uuid4()), "temperature_c": 22.0},
-        ])
+        result.readings.extend(
+            [
+                {"tenant_id": str(cfg.tenant_id), "tent_id": str(uuid4()), "temperature_c": 22.0},
+            ]
+        )
 
         session = AsyncMock()
-        with patch("app.integrations.connectors.openweather.write_openweather_readings", new_callable=AsyncMock, return_value=1) as mock_write:
+        with patch(
+            "app.integrations.connectors.openweather.write_openweather_readings", new_callable=AsyncMock, return_value=1
+        ) as mock_write:
             count = await connector.persist_readings(session, result)
             mock_write.assert_awaited_once_with(session, result.readings)
             assert count == 1
@@ -152,12 +167,16 @@ class TestEcowittPersistReadings:
             device_maps=[],
         )
         result = ConnectorResult()
-        result.readings.extend([
-            {"target": "weather", "tenant_id": str(cfg.tenant_id), "tent_id": str(uuid4()), "temperature_c": 18.0},
-        ])
+        result.readings.extend(
+            [
+                {"target": "weather", "tenant_id": str(cfg.tenant_id), "tent_id": str(uuid4()), "temperature_c": 18.0},
+            ]
+        )
 
         session = AsyncMock()
-        with patch("app.integrations.connectors.ecowitt.write_ecowitt_readings", new_callable=AsyncMock, return_value=1) as mock_write:
+        with patch(
+            "app.integrations.connectors.ecowitt.write_ecowitt_readings", new_callable=AsyncMock, return_value=1
+        ) as mock_write:
             count = await connector.persist_readings(session, result)
             mock_write.assert_awaited_once_with(session, result.readings)
             assert count == 1

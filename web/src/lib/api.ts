@@ -660,7 +660,7 @@ export function getLatestReading(token: string, bucketId: string) {
 
 export function getSensorDrift(token: string, bucketId: string, hours?: number) {
   const q = hours ? `?hours=${hours}` : "";
-  return apiFetch<{ ph: unknown; ec: unknown }>(`/sensors/drift/${bucketId}${q}`, { token });
+  return apiFetch<{ bucket_id: string; hours: number; ph: { min: number; max: number; first: number; last: number; delta: number; count: number } | null; ec: { min: number; max: number; first: number; last: number; delta: number; count: number } | null }>(`/sensors/drift/${bucketId}${q}`, { token });
 }
 
 export function createSensorReading(token: string, data: {
@@ -1796,8 +1796,6 @@ export function getMoonPhase(token: string, tentId: string) {
 export function logManualWeather(token: string, tentId: string, data: Record<string, unknown>) {
   return apiFetch<{ id: string; recorded_at: string }>(`/outdoor/${tentId}/manual`, { method: "POST", body: JSON.stringify(data), token });
 }
-
-export { apiFetch, ApiError };
 
 // ── Outdoor Container: Container Profiles ───────────────────────────
 

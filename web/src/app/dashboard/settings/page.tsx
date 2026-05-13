@@ -90,7 +90,7 @@ function PrefSelect({
           <p className="text-xs text-muted-foreground">{description}</p>
         )}
       </div>
-      <Select value={value} onValueChange={onValueChange} disabled={disabled}>
+      <Select value={value} onValueChange={(v) => onValueChange(v ?? "")} disabled={disabled}>
         <SelectTrigger className="w-full sm:w-[180px] shrink-0">
           <SelectValue />
         </SelectTrigger>
@@ -597,7 +597,7 @@ function TimezoneSelector({
         <p className="text-sm font-medium">Timezone</p>
         <p className="text-xs text-muted-foreground">Used for scheduling and time displays</p>
       </div>
-      <Select value={value} onValueChange={onValueChange} disabled={disabled}>
+      <Select value={value} onValueChange={(v) => onValueChange(v ?? "")} disabled={disabled}>
         <SelectTrigger className="w-full sm:w-[220px] shrink-0">
           <SelectValue />
         </SelectTrigger>

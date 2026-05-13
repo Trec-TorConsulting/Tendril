@@ -1,4 +1,5 @@
 """Soil health API — soil tests and amendment tracking for outdoor grows."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -7,17 +8,18 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select, desc
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
-from app.grows.models import GrowCycle, SoilTest, SoilAmendment
+from app.grows.models import GrowCycle, SoilAmendment, SoilTest
 from app.pagination import PaginatedResponse, PaginationParams, paginate
 
 router = APIRouter()
 
 
 # ---------- Schemas ----------
+
 
 class SoilTestCreate(BaseModel):
     tested_at: datetime | None = None
@@ -96,6 +98,7 @@ class AmendmentUpdate(BaseModel):
 
 # ---------- Soil Test Endpoints ----------
 
+
 @router.post("/{grow_id}/soil-tests", response_model=SoilTestResponse, status_code=201)
 async def create_soil_test(
     grow_id: UUID,
@@ -124,11 +127,7 @@ async def list_soil_tests(
     pagination: Annotated[PaginationParams, Depends()],
 ):
     """List all soil tests for a grow, newest first."""
-    q = (
-        select(SoilTest)
-        .where(SoilTest.grow_cycle_id == grow_id)
-        .order_by(desc(SoilTest.tested_at))
-    )
+    q = select(SoilTest).where(SoilTest.grow_cycle_id == grow_id).order_by(desc(SoilTest.tested_at))
     items, total = await paginate(session, q, pagination)
     return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
 
@@ -141,10 +140,7 @@ async def get_latest_soil_test(
 ):
     """Get the most recent soil test."""
     result = await session.execute(
-        select(SoilTest)
-        .where(SoilTest.grow_cycle_id == grow_id)
-        .order_by(desc(SoilTest.tested_at))
-        .limit(1)
+        select(SoilTest).where(SoilTest.grow_cycle_id == grow_id).order_by(desc(SoilTest.tested_at)).limit(1)
     )
     test = result.scalar_one_or_none()
     if test is None:
@@ -202,6 +198,7 @@ async def delete_soil_test(
 
 # ---------- Soil Amendment Endpoints ----------
 
+
 @router.post("/{grow_id}/amendments", response_model=AmendmentResponse, status_code=201)
 async def create_amendment(
     grow_id: UUID,
@@ -229,11 +226,7 @@ async def list_amendments(
     pagination: Annotated[PaginationParams, Depends()],
 ):
     """List all soil amendments for a grow, newest first."""
-    q = (
-        select(SoilAmendment)
-        .where(SoilAmendment.grow_cycle_id == grow_id)
-        .order_by(desc(SoilAmendment.applied_at))
-    )
+    q = select(SoilAmendment).where(SoilAmendment.grow_cycle_id == grow_id).order_by(desc(SoilAmendment.applied_at))
     items, total = await paginate(session, q, pagination)
     return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
 

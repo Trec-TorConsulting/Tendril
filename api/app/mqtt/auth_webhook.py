@@ -3,16 +3,17 @@
 EMQX sends HTTP requests to verify device credentials (auth) and
 check topic permissions (ACL). These run inside the mqtt-worker pod.
 """
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import bcrypt
+import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import select, update
-import uvicorn
 
 from app.database import async_session_factory
 from app.tenants.models import Device
@@ -36,9 +37,7 @@ async def emqx_auth(request: Request) -> JSONResponse:
         return JSONResponse({"result": "deny"})
 
     async with async_session_factory() as session:
-        result = await session.execute(
-            select(Device).where(Device.device_id == client_id)
-        )
+        result = await session.execute(select(Device).where(Device.device_id == client_id))
         device = result.scalar_one_or_none()
 
     if device is None:
@@ -60,9 +59,7 @@ async def emqx_auth(request: Request) -> JSONResponse:
     # Update last_seen and status on successful auth
     async with async_session_factory() as session:
         await session.execute(
-            update(Device)
-            .where(Device.device_id == client_id)
-            .values(last_seen=datetime.now(timezone.utc), status="online")
+            update(Device).where(Device.device_id == client_id).values(last_seen=datetime.now(UTC), status="online")
         )
         await session.commit()
 
@@ -85,9 +82,7 @@ async def emqx_acl(request: Request) -> JSONResponse:
 
     # Look up the device to get its tenant
     async with async_session_factory() as session:
-        result = await session.execute(
-            select(Device).where(Device.device_id == client_id)
-        )
+        result = await session.execute(select(Device).where(Device.device_id == client_id))
         device = result.scalar_one_or_none()
 
     if device is None or device.status == "revoked":
@@ -106,7 +101,9 @@ async def emqx_acl(request: Request) -> JSONResponse:
     if topic_tenant_id != str(device.tenant_id) or topic_device_id != device.device_id:
         logger.warning(
             "ACL denied: device %s tried topic %s (tenant=%s)",
-            client_id, topic, device.tenant_id,
+            client_id,
+            topic,
+            device.tenant_id,
         )
         return JSONResponse({"result": "deny"})
 
@@ -136,9 +133,7 @@ async def emqx_status(request: Request) -> JSONResponse:
 
     async with async_session_factory() as session:
         await session.execute(
-            update(Device)
-            .where(Device.device_id == client_id)
-            .values(status=new_status, last_seen=datetime.now(timezone.utc))
+            update(Device).where(Device.device_id == client_id).values(status=new_status, last_seen=datetime.now(UTC))
         )
         await session.commit()
 

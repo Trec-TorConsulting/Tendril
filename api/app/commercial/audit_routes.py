@@ -1,4 +1,5 @@
 """Audit trail routes — filterable, paginated log viewer (Commercial only)."""
+
 from __future__ import annotations
 
 from typing import Annotated
@@ -6,16 +7,17 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
+from app.auth.middleware import CurrentUser, get_tenant_session, require_role
 from app.commercial.models import AuditLog
 
 router = APIRouter()
 
 
 # ---------- Schemas ----------
+
 
 class AuditLogResponse(BaseModel):
     id: str
@@ -28,6 +30,7 @@ class AuditLogResponse(BaseModel):
     ip_address: str | None
     created_at: str
 
+
 class AuditLogPage(BaseModel):
     items: list[AuditLogResponse]
     total: int
@@ -37,16 +40,20 @@ class AuditLogPage(BaseModel):
 
 def _to_response(log: AuditLog) -> AuditLogResponse:
     return AuditLogResponse(
-        id=str(log.id), user_id=str(log.user_id),
-        action=log.action, resource_type=log.resource_type,
+        id=str(log.id),
+        user_id=str(log.user_id),
+        action=log.action,
+        resource_type=log.resource_type,
         resource_id=log.resource_id,
-        before_value=log.before_value, after_value=log.after_value,
+        before_value=log.before_value,
+        after_value=log.after_value,
         ip_address=log.ip_address,
         created_at=log.created_at.isoformat(),
     )
 
 
 # ---------- Query ----------
+
 
 @router.get("")
 async def list_audit_logs(
@@ -60,6 +67,7 @@ async def list_audit_logs(
 ):
     """List audit log entries (paginated, filterable)."""
     from app.tenants.models import Tenant
+
     tenant = await session.get(Tenant, user.tenant_id)
     if not tenant or tenant.plan != "commercial":
         raise HTTPException(status_code=403, detail="Audit trail requires Commercial plan")
@@ -89,6 +97,7 @@ async def list_audit_logs(
 
 
 # ---------- Audit helper (used by other modules) ----------
+
 
 async def record_audit(
     session: AsyncSession,

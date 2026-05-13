@@ -35,7 +35,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.grows.models import BucketSensorReading, TentSensorReading, WeatherReading
 from app.integrations.connectors.base import BaseConnector, ConnectorResult, register_connector
-from app.integrations.models import IntegrationDeviceMap
 
 logger = logging.getLogger("tendril.integrations.ecowitt")
 
@@ -175,10 +174,10 @@ class EcowittConnector(BaseConnector):
                         "api_key": api_key,
                         "mac": mac,
                         "call_back": "all",
-                        "temp_unitid": "1",       # Celsius
-                        "pressure_unitid": "3",    # hPa
+                        "temp_unitid": "1",  # Celsius
+                        "pressure_unitid": "3",  # hPa
                         "wind_speed_unitid": "7",  # km/h
-                        "rainfall_unitid": "12",   # mm
+                        "rainfall_unitid": "12",  # mm
                         "solar_irradiance_unitid": "16",  # W/m²
                     },
                 )
@@ -217,7 +216,9 @@ class EcowittConnector(BaseConnector):
     # ── Persistence ─────────────────────────────────────────────
 
     async def persist_readings(
-        self, session: AsyncSession, result: ConnectorResult,
+        self,
+        session: AsyncSession,
+        result: ConnectorResult,
     ) -> int:
         """Write polled/webhook readings to sensor tables."""
         return await write_ecowitt_readings(session, result.readings)
@@ -231,13 +232,21 @@ class EcowittConnector(BaseConnector):
 
         if mode == "webhook":
             # Can't discover from webhook mode — return common defaults
-            devices.append(DiscoveredDevice(
-                external_id="weather", name="Weather Station", device_type="weather_station",
-            ))
+            devices.append(
+                DiscoveredDevice(
+                    external_id="weather",
+                    name="Weather Station",
+                    device_type="weather_station",
+                )
+            )
             for i in range(1, 9):
-                devices.append(DiscoveredDevice(
-                    external_id=f"soil_ch{i}", name=f"Soil Sensor CH{i}", device_type="soil_sensor",
-                ))
+                devices.append(
+                    DiscoveredDevice(
+                        external_id=f"soil_ch{i}",
+                        name=f"Soil Sensor CH{i}",
+                        device_type="soil_sensor",
+                    )
+                )
             return devices
 
         app_key = self.decrypted_config.get("application_key")
@@ -272,56 +281,68 @@ class EcowittConnector(BaseConnector):
 
         # Weather station is always present
         if data.get("outdoor") or data.get("wind") or data.get("rainfall"):
-            devices.append(DiscoveredDevice(
-                external_id="weather", name="Weather Station", device_type="weather_station",
-            ))
+            devices.append(
+                DiscoveredDevice(
+                    external_id="weather",
+                    name="Weather Station",
+                    device_type="weather_station",
+                )
+            )
 
         # Soil channels
         for i in range(1, 17):
             key = f"soil_ch{i}"
             if data.get(key):
-                devices.append(DiscoveredDevice(
-                    external_id=key,
-                    name=f"Soil Sensor CH{i}",
-                    device_type="soil_sensor",
-                    latest_reading={"soil_moisture_pct": _extract_value(data[key].get("soilmoisture"))},
-                ))
+                devices.append(
+                    DiscoveredDevice(
+                        external_id=key,
+                        name=f"Soil Sensor CH{i}",
+                        device_type="soil_sensor",
+                        latest_reading={"soil_moisture_pct": _extract_value(data[key].get("soilmoisture"))},
+                    )
+                )
 
         # Soil EC + temp channels
         for i in range(1, 17):
             key = f"ch_soil_ec_temp_hum{i}"
             if data.get(key):
                 ch_data = data[key]
-                devices.append(DiscoveredDevice(
-                    external_id=key,
-                    name=f"Soil EC+Temp CH{i}",
-                    device_type="soil_sensor",
-                    latest_reading={
-                        "soil_moisture_pct": _extract_value(ch_data.get("soilmoisture")),
-                        "soil_temp_c": _extract_value(ch_data.get("temperature")),
-                        "ec_us_cm": _extract_value(ch_data.get("ec")),
-                    },
-                ))
+                devices.append(
+                    DiscoveredDevice(
+                        external_id=key,
+                        name=f"Soil EC+Temp CH{i}",
+                        device_type="soil_sensor",
+                        latest_reading={
+                            "soil_moisture_pct": _extract_value(ch_data.get("soilmoisture")),
+                            "soil_temp_c": _extract_value(ch_data.get("temperature")),
+                            "ec_us_cm": _extract_value(ch_data.get("ec")),
+                        },
+                    )
+                )
 
         # Temp & humidity channels
         for i in range(1, 9):
             key = f"temp_and_humidity_ch{i}"
             if data.get(key):
-                devices.append(DiscoveredDevice(
-                    external_id=key,
-                    name=f"Temp & Humidity CH{i}",
-                    device_type="temp_humidity",
-                ))
+                devices.append(
+                    DiscoveredDevice(
+                        external_id=key,
+                        name=f"Temp & Humidity CH{i}",
+                        device_type="temp_humidity",
+                    )
+                )
 
         # Leaf wetness channels
         for i in range(1, 9):
             key = f"leaf_ch{i}"
             if data.get(key):
-                devices.append(DiscoveredDevice(
-                    external_id=key,
-                    name=f"Leaf Wetness CH{i}",
-                    device_type="leaf_wetness",
-                ))
+                devices.append(
+                    DiscoveredDevice(
+                        external_id=key,
+                        name=f"Leaf Wetness CH{i}",
+                        device_type="leaf_wetness",
+                    )
+                )
 
         return devices
 
@@ -359,20 +380,22 @@ class EcowittConnector(BaseConnector):
                 rain_mm = _in_to_mm(rain_mm)
                 press_hpa = _inhg_to_hpa(press_hpa)
 
-            result.readings.append({
-                "target": "weather",
-                "tent_id": str(weather_dm.tent_id),
-                "tenant_id": str(self.config.tenant_id),
-                "external_id": "weather",
-                "temperature_c": temp_c,
-                "humidity_pct": humidity,
-                "precipitation_mm": rain_mm,
-                "wind_speed_kmh": wind_kmh,
-                "uv_index": uvi,
-                "dew_point_c": dew_c,
-                "pressure_hpa": press_hpa,
-                "soil_temp_c": None,
-            })
+            result.readings.append(
+                {
+                    "target": "weather",
+                    "tent_id": str(weather_dm.tent_id),
+                    "tenant_id": str(self.config.tenant_id),
+                    "external_id": "weather",
+                    "temperature_c": temp_c,
+                    "humidity_pct": humidity,
+                    "precipitation_mm": rain_mm,
+                    "wind_speed_kmh": wind_kmh,
+                    "uv_index": uvi,
+                    "dew_point_c": dew_c,
+                    "pressure_hpa": press_hpa,
+                    "soil_temp_c": None,
+                }
+            )
 
         # --- Soil sensors (maps to BucketSensorReading) ---
         for ext_id, dm in dm_by_ext.items():
@@ -386,13 +409,15 @@ class EcowittConnector(BaseConnector):
                     continue
                 moisture = _extract_value(ch_data.get("soilmoisture"))
                 if moisture is not None:
-                    result.readings.append({
-                        "target": "bucket",
-                        "bucket_id": str(dm.bucket_id),
-                        "tenant_id": str(self.config.tenant_id),
-                        "external_id": ext_id,
-                        "soil_moisture": moisture,
-                    })
+                    result.readings.append(
+                        {
+                            "target": "bucket",
+                            "bucket_id": str(dm.bucket_id),
+                            "tenant_id": str(self.config.tenant_id),
+                            "external_id": ext_id,
+                            "soil_moisture": moisture,
+                        }
+                    )
 
             # EC + temp + moisture channels: ch_soil_ec_temp_hum1 .. 16
             elif ext_id.startswith("ch_soil_ec_temp_hum"):
@@ -410,13 +435,15 @@ class EcowittConnector(BaseConnector):
                 if ec_val is not None:
                     fields["ec"] = ec_val
                 if fields:
-                    result.readings.append({
-                        "target": "bucket",
-                        "bucket_id": str(dm.bucket_id),
-                        "tenant_id": str(self.config.tenant_id),
-                        "external_id": ext_id,
-                        **fields,
-                    })
+                    result.readings.append(
+                        {
+                            "target": "bucket",
+                            "bucket_id": str(dm.bucket_id),
+                            "tenant_id": str(self.config.tenant_id),
+                            "external_id": ext_id,
+                            **fields,
+                        }
+                    )
 
             # Leaf wetness mapped to a bucket
             elif ext_id.startswith("leaf_ch"):
@@ -425,13 +452,15 @@ class EcowittConnector(BaseConnector):
                     continue
                 wetness = _extract_value(ch_data.get("leaf_wetness"))
                 if wetness is not None:
-                    result.readings.append({
-                        "target": "bucket",
-                        "bucket_id": str(dm.bucket_id),
-                        "tenant_id": str(self.config.tenant_id),
-                        "external_id": ext_id,
-                        "soil_moisture": wetness,  # Closest BucketSensorReading field
-                    })
+                    result.readings.append(
+                        {
+                            "target": "bucket",
+                            "bucket_id": str(dm.bucket_id),
+                            "tenant_id": str(self.config.tenant_id),
+                            "external_id": ext_id,
+                            "soil_moisture": wetness,  # Closest BucketSensorReading field
+                        }
+                    )
 
         # --- Temp & humidity channels (maps to TentSensorReading) ---
         for ext_id, dm in dm_by_ext.items():
@@ -487,20 +516,22 @@ class EcowittConnector(BaseConnector):
             baro_inhg = self._safe_float(payload.get("baromrelin"))
             dew_f = self._safe_float(payload.get("dewptf"))
 
-            result.readings.append({
-                "target": "weather",
-                "tent_id": str(weather_dm.tent_id),
-                "tenant_id": str(self.config.tenant_id),
-                "external_id": "weather",
-                "temperature_c": _f_to_c(temp_f),
-                "humidity_pct": humidity,
-                "precipitation_mm": _in_to_mm(daily_rain_in),
-                "wind_speed_kmh": _mph_to_kmh(wind_mph),
-                "uv_index": uv_idx,
-                "dew_point_c": _f_to_c(dew_f),
-                "pressure_hpa": _inhg_to_hpa(baro_inhg),
-                "soil_temp_c": None,
-            })
+            result.readings.append(
+                {
+                    "target": "weather",
+                    "tent_id": str(weather_dm.tent_id),
+                    "tenant_id": str(self.config.tenant_id),
+                    "external_id": "weather",
+                    "temperature_c": _f_to_c(temp_f),
+                    "humidity_pct": humidity,
+                    "precipitation_mm": _in_to_mm(daily_rain_in),
+                    "wind_speed_kmh": _mph_to_kmh(wind_mph),
+                    "uv_index": uv_idx,
+                    "dew_point_c": _f_to_c(dew_f),
+                    "pressure_hpa": _inhg_to_hpa(baro_inhg),
+                    "soil_temp_c": None,
+                }
+            )
 
         # --- Soil sensors (webhook uses soilmoisture1..8) ---
         for i in range(1, 9):
@@ -510,13 +541,15 @@ class EcowittConnector(BaseConnector):
                 continue
             moisture = self._safe_float(payload.get(f"soilmoisture{i}"))
             if moisture is not None:
-                result.readings.append({
-                    "target": "bucket",
-                    "bucket_id": str(dm.bucket_id),
-                    "tenant_id": str(self.config.tenant_id),
-                    "external_id": ext_id,
-                    "soil_moisture": moisture,
-                })
+                result.readings.append(
+                    {
+                        "target": "bucket",
+                        "bucket_id": str(dm.bucket_id),
+                        "tenant_id": str(self.config.tenant_id),
+                        "external_id": ext_id,
+                        "soil_moisture": moisture,
+                    }
+                )
 
         # --- Temp & humidity channels (webhook uses temp1f..temp8f, humidity1..humidity8) ---
         for i in range(1, 9):
@@ -547,13 +580,15 @@ class EcowittConnector(BaseConnector):
                 continue
             wetness = self._safe_float(payload.get(f"leafwetness_ch{i}"))
             if wetness is not None:
-                result.readings.append({
-                    "target": "bucket",
-                    "bucket_id": str(dm.bucket_id),
-                    "tenant_id": str(self.config.tenant_id),
-                    "external_id": ext_id,
-                    "soil_moisture": wetness,
-                })
+                result.readings.append(
+                    {
+                        "target": "bucket",
+                        "bucket_id": str(dm.bucket_id),
+                        "tenant_id": str(self.config.tenant_id),
+                        "external_id": ext_id,
+                        "soil_moisture": wetness,
+                    }
+                )
 
     # ── Helpers ──────────────────────────────────────────────────
 

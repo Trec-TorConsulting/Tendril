@@ -5,6 +5,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
   usePathname: () => "/dashboard/automation",
   useParams: () => ({}),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 vi.mock("next/link", () => ({
@@ -15,6 +16,11 @@ vi.mock("next/link", () => ({
 
 vi.mock("@/lib/auth", () => ({
   getAccessToken: () => "test-token",
+}));
+
+vi.mock("@/components/confirm-dialog", () => ({
+  useConfirm: () => vi.fn().mockResolvedValue(true),
+  ConfirmProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
 vi.mock("@/components/ui/sidebar", () => ({

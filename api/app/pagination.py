@@ -1,7 +1,8 @@
 """Shared pagination utilities for list endpoints."""
+
 from __future__ import annotations
 
-from typing import Generic, TypeVar
+from typing import TypeVar
 
 from fastapi import Query
 from pydantic import BaseModel
@@ -24,7 +25,7 @@ class PaginationParams:
         self.offset = (page - 1) * page_size
 
 
-class PaginatedResponse(BaseModel, Generic[T]):
+class PaginatedResponse[T](BaseModel):
     """Standard paginated response envelope."""
 
     items: list[T]

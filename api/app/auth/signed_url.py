@@ -2,6 +2,7 @@
 
 Replaces the insecure pattern of passing JWTs as query parameters.
 """
+
 from __future__ import annotations
 
 import hashlib

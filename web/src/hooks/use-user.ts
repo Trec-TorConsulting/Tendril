@@ -30,7 +30,7 @@ export interface UserData {
   is_platform_admin: boolean;
   is_support: boolean;
   layout_mode: string;
-  preferences: UserPreferences;
+  preferences?: UserPreferences;
 }
 
 export function useUser() {

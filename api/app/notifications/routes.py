@@ -1,10 +1,11 @@
 """Notification API routes — channels, preferences, push subscriptions."""
+
 from __future__ import annotations
 
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,15 +19,18 @@ router = APIRouter()
 
 # ---------- Schemas ----------
 
+
 class ChannelCreate(BaseModel):
     channel_type: str  # discord, slack, email, sms
     name: str
     config: dict
 
+
 class ChannelUpdate(BaseModel):
     name: str | None = None
     config: dict | None = None
     enabled: bool | None = None
+
 
 class ChannelResponse(BaseModel):
     id: str
@@ -35,15 +39,18 @@ class ChannelResponse(BaseModel):
     config: dict
     enabled: bool
 
+
 class PreferenceCreate(BaseModel):
     channel_id: str
     severity_filter: str = "warning,critical"
     event_types: str = "all"
 
+
 class PreferenceUpdate(BaseModel):
     severity_filter: str | None = None
     event_types: str | None = None
     enabled: bool | None = None
+
 
 class PreferenceResponse(BaseModel):
     id: str
@@ -52,10 +59,12 @@ class PreferenceResponse(BaseModel):
     event_types: str
     enabled: bool
 
+
 class PushSubCreate(BaseModel):
     endpoint: str
     p256dh: str
     auth: str
+
 
 class PushSubResponse(BaseModel):
     id: str
@@ -63,6 +72,7 @@ class PushSubResponse(BaseModel):
 
 
 # ---------- Notification Channels ----------
+
 
 @router.post("/channels", status_code=201)
 async def create_channel(
@@ -84,8 +94,11 @@ async def create_channel(
     await session.commit()
     await session.refresh(channel)
     return ChannelResponse(
-        id=str(channel.id), channel_type=channel.channel_type,
-        name=channel.name, config=channel.config, enabled=channel.enabled,
+        id=str(channel.id),
+        channel_type=channel.channel_type,
+        name=channel.name,
+        config=channel.config,
+        enabled=channel.enabled,
     )
 
 
@@ -101,12 +114,17 @@ async def list_channels(
     return PaginatedResponse(
         items=[
             ChannelResponse(
-                id=str(c.id), channel_type=c.channel_type,
-                name=c.name, config=c.config, enabled=c.enabled,
+                id=str(c.id),
+                channel_type=c.channel_type,
+                name=c.name,
+                config=c.config,
+                enabled=c.enabled,
             )
             for c in items
         ],
-        total=total, page=pagination.page, page_size=pagination.page_size,
+        total=total,
+        page=pagination.page,
+        page_size=pagination.page_size,
     )
 
 
@@ -121,8 +139,11 @@ async def get_channel(
     if not channel or channel.tenant_id != user.tenant_id:
         raise HTTPException(status_code=404, detail="Channel not found")
     return ChannelResponse(
-        id=str(channel.id), channel_type=channel.channel_type,
-        name=channel.name, config=channel.config, enabled=channel.enabled,
+        id=str(channel.id),
+        channel_type=channel.channel_type,
+        name=channel.name,
+        config=channel.config,
+        enabled=channel.enabled,
     )
 
 
@@ -148,8 +169,11 @@ async def update_channel(
     await session.commit()
     await session.refresh(channel)
     return ChannelResponse(
-        id=str(channel.id), channel_type=channel.channel_type,
-        name=channel.name, config=channel.config, enabled=channel.enabled,
+        id=str(channel.id),
+        channel_type=channel.channel_type,
+        name=channel.name,
+        config=channel.config,
+        enabled=channel.enabled,
     )
 
 
@@ -169,6 +193,7 @@ async def delete_channel(
 
 # ---------- Test channel ----------
 
+
 @router.post("/channels/{channel_id}/test")
 async def test_channel(
     channel_id: str,
@@ -184,15 +209,19 @@ async def test_channel(
 
     try:
         await dispatch_alert(
-            session, user.tenant_id, "info",
-            "Test Notification", "This is a test notification from Tendril.",
+            session,
+            user.tenant_id,
+            "info",
+            "Test Notification",
+            "This is a test notification from Tendril.",
         )
         return {"status": "sent"}
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Send failed: {e}")
+        raise HTTPException(status_code=502, detail=f"Send failed: {e}") from e
 
 
 # ---------- Preferences ----------
+
 
 @router.get("/preferences", response_model=PaginatedResponse[PreferenceResponse])
 async def list_preferences(
@@ -209,13 +238,17 @@ async def list_preferences(
     return PaginatedResponse(
         items=[
             PreferenceResponse(
-                id=str(p.id), channel_id=str(p.channel_id),
-                severity_filter=p.severity_filter, event_types=p.event_types,
+                id=str(p.id),
+                channel_id=str(p.channel_id),
+                severity_filter=p.severity_filter,
+                event_types=p.event_types,
                 enabled=p.enabled,
             )
             for p in items
         ],
-        total=total, page=pagination.page, page_size=pagination.page_size,
+        total=total,
+        page=pagination.page,
+        page_size=pagination.page_size,
     )
 
 
@@ -237,8 +270,10 @@ async def create_preference(
     await session.commit()
     await session.refresh(pref)
     return PreferenceResponse(
-        id=str(pref.id), channel_id=str(pref.channel_id),
-        severity_filter=pref.severity_filter, event_types=pref.event_types,
+        id=str(pref.id),
+        channel_id=str(pref.channel_id),
+        severity_filter=pref.severity_filter,
+        event_types=pref.event_types,
         enabled=pref.enabled,
     )
 
@@ -254,8 +289,10 @@ async def get_preference(
     if not pref or pref.user_id != user.user_id:
         raise HTTPException(status_code=404, detail="Preference not found")
     return PreferenceResponse(
-        id=str(pref.id), channel_id=str(pref.channel_id),
-        severity_filter=pref.severity_filter, event_types=pref.event_types,
+        id=str(pref.id),
+        channel_id=str(pref.channel_id),
+        severity_filter=pref.severity_filter,
+        event_types=pref.event_types,
         enabled=pref.enabled,
     )
 
@@ -280,8 +317,10 @@ async def update_preference(
     await session.commit()
     await session.refresh(pref)
     return PreferenceResponse(
-        id=str(pref.id), channel_id=str(pref.channel_id),
-        severity_filter=pref.severity_filter, event_types=pref.event_types,
+        id=str(pref.id),
+        channel_id=str(pref.channel_id),
+        severity_filter=pref.severity_filter,
+        event_types=pref.event_types,
         enabled=pref.enabled,
     )
 
@@ -302,6 +341,7 @@ async def delete_preference(
 
 # ---------- Push Subscriptions ----------
 
+
 @router.post("/push/subscribe", status_code=201)
 async def push_subscribe(
     body: PushSubCreate,
@@ -310,12 +350,14 @@ async def push_subscribe(
 ):
     """Subscribe a device for web push notifications."""
     # Upsert: remove old subscriptions for same endpoint
-    existing = (await session.execute(
-        select(PushSubscription).where(
-            PushSubscription.user_id == user.user_id,
-            PushSubscription.endpoint == body.endpoint,
+    existing = (
+        await session.execute(
+            select(PushSubscription).where(
+                PushSubscription.user_id == user.user_id,
+                PushSubscription.endpoint == body.endpoint,
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if existing:
         existing.p256dh = body.p256dh
         existing.auth = body.auth
@@ -338,9 +380,11 @@ async def push_unsubscribe(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Unsubscribe a device from web push notifications."""
-    subs = (await session.execute(
-        select(PushSubscription).where(PushSubscription.user_id == user.user_id)
-    )).scalars().all()
+    subs = (
+        (await session.execute(select(PushSubscription).where(PushSubscription.user_id == user.user_id)))
+        .scalars()
+        .all()
+    )
     for sub in subs:
         await session.delete(sub)
     await session.commit()

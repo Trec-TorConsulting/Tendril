@@ -4,6 +4,7 @@ Runs as a single-replica pod with leader election.
 Tasks: health checks (12h), alert evaluation, data retention, daily reports,
 weather polling (30min for outdoor tents).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -33,7 +34,7 @@ async def main() -> None:
 
     # Leader election — only the leader runs tasks
     from app.database import async_session_factory
-    from app.scheduler.leader import try_acquire_leader, release_leader
+    from app.scheduler.leader import release_leader, try_acquire_leader
 
     async with async_session_factory() as session:
         is_leader = await try_acquire_leader(session)
@@ -44,7 +45,7 @@ async def main() -> None:
                 try:
                     await asyncio.wait_for(shutdown_event.wait(), timeout=30)
                     break
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     is_leader = await try_acquire_leader(session)
 
         if is_leader and not shutdown_event.is_set():

@@ -1,4 +1,5 @@
 """Grow type profiles API — list types, get profile details, stage configs."""
+
 from __future__ import annotations
 
 from typing import Annotated
@@ -6,8 +7,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.auth.middleware import CurrentUser, get_current_user
-from app.grows.grow_types import GROW_TYPE_PROFILES
 from app.grows.grow_type_configs import get_grow_type_config
+from app.grows.grow_types import GROW_TYPE_PROFILES
 
 router = APIRouter()
 

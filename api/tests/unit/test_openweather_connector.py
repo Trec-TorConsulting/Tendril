@@ -8,12 +8,11 @@ from uuid import uuid4
 
 import httpx
 import pytest
+
 from app.integrations.connectors.base import ConnectorResult, get_connector_class
 from app.integrations.connectors.openweather import (
-    DiscoveredDevice,
     OpenWeatherConfig,
     OpenWeatherConnector,
-    write_openweather_readings,
 )
 from app.integrations.models import IntegrationConfig, IntegrationDeviceMap
 
@@ -149,7 +148,7 @@ class TestOpenWeatherConfig:
         assert cfg.use_onecall_30 is False
 
     def test_short_api_key_rejected(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             OpenWeatherConfig(api_key="short")
 
     def test_onecall_flag(self):
@@ -216,9 +215,7 @@ class TestPoll25:
         tid = uuid4()
         cfg = _make_config(tid)
         dm = _make_device_map(tid, cfg.id, external_id="bad-format")
-        connector = OpenWeatherConnector(
-            config=cfg, decrypted_config={"api_key": "test12345678"}, device_maps=[dm]
-        )
+        connector = OpenWeatherConnector(config=cfg, decrypted_config={"api_key": "test12345678"}, device_maps=[dm])
 
         async def mock_get(url, **kwargs):
             return _resp(200, _CURRENT_25)

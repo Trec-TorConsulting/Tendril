@@ -1,4 +1,5 @@
 """Shared password utilities — strength validation and hashing."""
+
 from __future__ import annotations
 
 import re

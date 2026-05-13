@@ -5,6 +5,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
   usePathname: () => "/",
   useParams: () => ({}),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 vi.mock("next/link", () => ({
@@ -33,7 +34,7 @@ describe("LandingPage", () => {
     render(<LandingPage />);
     expect(screen.getByText("Simple, Transparent Pricing")).toBeDefined();
     expect(screen.getByText("Seedling")).toBeDefined();
-    expect(screen.getByText("$14.99")).toBeDefined();
+    expect(screen.getByText("$9.99")).toBeDefined();
     expect(screen.getByText("$29.99")).toBeDefined();
     expect(screen.getByText("$79.99")).toBeDefined();
   });

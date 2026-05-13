@@ -1,13 +1,14 @@
 """Sensor readings API — CRUD + latest + drift analysis."""
+
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select, func, desc
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
@@ -80,7 +81,11 @@ async def list_readings(
     bucket_id: UUID | None = None,
 ):
     """List bucket sensor readings with optional bucket filtering."""
-    q = select(BucketSensorReading).where(BucketSensorReading.tenant_id == user.tenant_id).order_by(desc(BucketSensorReading.recorded_at))
+    q = (
+        select(BucketSensorReading)
+        .where(BucketSensorReading.tenant_id == user.tenant_id)
+        .order_by(desc(BucketSensorReading.recorded_at))
+    )
     if bucket_id:
         q = q.where(BucketSensorReading.bucket_id == bucket_id)
     items, total = await paginate(session, q, pagination)
@@ -112,7 +117,7 @@ async def get_drift(
     hours: int = Query(default=24, le=168),
 ):
     """Get pH and EC drift over the specified hours for a bucket."""
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    cutoff = datetime.now(UTC) - timedelta(hours=hours)
     result = await session.execute(
         select(BucketSensorReading)
         .where(BucketSensorReading.tenant_id == user.tenant_id)

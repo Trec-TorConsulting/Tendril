@@ -1,4 +1,5 @@
 """Integration tests for Phase 6 commercial features — custom grow types, tasks, audit, API keys."""
+
 from __future__ import annotations
 
 import pytest
@@ -28,6 +29,7 @@ async def free_tenant(db_session):
 
 
 # ===================== Custom Grow Types =====================
+
 
 class TestCustomGrowTypes:
     async def test_create_custom_grow_type(self, client, pro_tenant):
@@ -62,7 +64,13 @@ class TestCustomGrowTypes:
     async def test_update_custom_grow_type(self, client, pro_tenant):
         create = await client.post(
             "/v1/custom-grow-types",
-            json={"name": "Old Name", "slug": "update-test", "category": "custom", "description": "Test", "profile": {}},
+            json={
+                "name": "Old Name",
+                "slug": "update-test",
+                "category": "custom",
+                "description": "Test",
+                "profile": {},
+            },
             headers=pro_tenant["headers"],
         )
         gt_id = create.json()["id"]
@@ -118,6 +126,7 @@ class TestCustomGrowTypes:
 
 
 # ===================== Tasks =====================
+
 
 class TestTasks:
     async def test_create_task(self, client, commercial_tenant):
@@ -178,6 +187,7 @@ class TestTasks:
 
 # ===================== Audit Trail =====================
 
+
 class TestAuditTrail:
     async def test_list_empty(self, client, commercial_tenant):
         resp = await client.get("/v1/audit", headers=commercial_tenant["headers"])
@@ -199,6 +209,7 @@ class TestAuditTrail:
 
 
 # ===================== API Keys =====================
+
 
 class TestApiKeys:
     async def test_create_api_key(self, client, commercial_tenant):

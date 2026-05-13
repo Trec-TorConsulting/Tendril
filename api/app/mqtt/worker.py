@@ -3,6 +3,7 @@
 Subscribes to `t/+/d/+/sensor/#` and writes readings to PostgreSQL.
 Also serves EMQX auth/ACL webhook endpoints.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -10,8 +11,8 @@ import logging
 import signal
 
 from app.config import get_settings
-from app.mqtt.client import MQTTClient
 from app.mqtt.auth_webhook import start_webhook_server
+from app.mqtt.client import MQTTClient
 
 logger = logging.getLogger("tendril.mqtt")
 

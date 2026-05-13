@@ -5,10 +5,9 @@ Revises: 0018
 Create Date: 2026-04-24
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects.postgresql import UUID
-
 
 revision = "0019"
 down_revision = "0018"
@@ -22,8 +21,16 @@ def upgrade() -> None:
         "container_profiles",
         sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
         sa.Column("tenant_id", UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("grow_cycle_id", UUID(as_uuid=True), sa.ForeignKey("grow_cycles.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("bucket_id", UUID(as_uuid=True), sa.ForeignKey("buckets.id", ondelete="CASCADE"), nullable=False, unique=True),
+        sa.Column(
+            "grow_cycle_id", UUID(as_uuid=True), sa.ForeignKey("grow_cycles.id", ondelete="CASCADE"), nullable=False
+        ),
+        sa.Column(
+            "bucket_id",
+            UUID(as_uuid=True),
+            sa.ForeignKey("buckets.id", ondelete="CASCADE"),
+            nullable=False,
+            unique=True,
+        ),
         sa.Column("pot_size_gallons", sa.Float, nullable=True),
         sa.Column("media_type", sa.String(100), nullable=True),
         sa.Column("pot_color", sa.String(50), nullable=True),
@@ -43,7 +50,9 @@ def upgrade() -> None:
         "runoff_readings",
         sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
         sa.Column("tenant_id", UUID(as_uuid=True), sa.ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("grow_cycle_id", UUID(as_uuid=True), sa.ForeignKey("grow_cycles.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "grow_cycle_id", UUID(as_uuid=True), sa.ForeignKey("grow_cycles.id", ondelete="CASCADE"), nullable=False
+        ),
         sa.Column("bucket_id", UUID(as_uuid=True), sa.ForeignKey("buckets.id", ondelete="CASCADE"), nullable=False),
         sa.Column("recorded_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("input_ph", sa.Float, nullable=True),

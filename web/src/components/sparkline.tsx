@@ -57,14 +57,16 @@ export function Sparkline({ data, color, height = 32, className }: SparklineProp
 export function SensorSparkline({
   data,
   ranges,
+  color,
   height = 32,
   className,
 }: {
   data: number[];
   ranges?: { min: number; max: number };
+  color?: string;
   height?: number;
   className?: string;
 }) {
-  const lineColor = getColor(data, ranges);
+  const lineColor = color || getColor(data, ranges);
   return <Sparkline data={data} color={lineColor} height={height} className={className} />;
 }

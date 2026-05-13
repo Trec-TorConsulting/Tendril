@@ -24,11 +24,12 @@ import {
 
 interface PageHeaderProps {
   title: string;
+  description?: string;
   breadcrumbs?: { label: string; href?: string }[];
   actions?: React.ReactNode;
 }
 
-export function PageHeader({ title, breadcrumbs, actions }: PageHeaderProps) {
+export function PageHeader({ title, description, breadcrumbs, actions }: PageHeaderProps) {
   const isMobile = useIsMobile();
   const { grows, selectedGrow, setSelectedGrowId } = useGrow();
   const openCommandPalette = () => {

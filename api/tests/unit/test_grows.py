@@ -1,9 +1,11 @@
 """Integration tests for Phase 3 grow APIs — tents, grows, buckets, sensors, strains, yields."""
+
 from __future__ import annotations
+
+from uuid import uuid4
 
 import pytest
 import pytest_asyncio
-from uuid import uuid4
 
 from tests.conftest import TenantFactory
 
@@ -17,6 +19,7 @@ async def tenant(db_session):
 
 
 # ---------- Tents ----------
+
 
 class TestTentCRUD:
     async def test_create_tent(self, client, tenant):
@@ -57,6 +60,7 @@ class TestTentCRUD:
 
 # ---------- Grow Cycles ----------
 
+
 class TestGrowCRUD:
     async def test_create_grow(self, client, tenant):
         t = await client.post("/v1/tents", json={"name": "Tent"}, headers=tenant["headers"])
@@ -75,14 +79,18 @@ class TestGrowCRUD:
     async def test_list_grows_filter_status(self, client, tenant):
         t = await client.post("/v1/tents", json={"name": "T"}, headers=tenant["headers"])
         tid = t.json()["id"]
-        await client.post("/v1/grows", json={"tent_id": tid, "name": "G1", "grow_type": "dwc"}, headers=tenant["headers"])
+        await client.post(
+            "/v1/grows", json={"tent_id": tid, "name": "G1", "grow_type": "dwc"}, headers=tenant["headers"]
+        )
         resp = await client.get("/v1/grows?status=active", headers=tenant["headers"])
         assert resp.status_code == 200
         assert all(g["status"] == "active" for g in resp.json()["items"])
 
     async def test_complete_grow_sets_ended_at(self, client, tenant):
         t = await client.post("/v1/tents", json={"name": "T"}, headers=tenant["headers"])
-        g = await client.post("/v1/grows", json={"tent_id": t.json()["id"], "name": "G", "grow_type": "nft"}, headers=tenant["headers"])
+        g = await client.post(
+            "/v1/grows", json={"tent_id": t.json()["id"], "name": "G", "grow_type": "nft"}, headers=tenant["headers"]
+        )
         gid = g.json()["id"]
         resp = await client.patch(f"/v1/grows/{gid}", json={"status": "completed"}, headers=tenant["headers"])
         assert resp.status_code == 200
@@ -90,17 +98,22 @@ class TestGrowCRUD:
 
     async def test_delete_grow(self, client, tenant):
         t = await client.post("/v1/tents", json={"name": "T"}, headers=tenant["headers"])
-        g = await client.post("/v1/grows", json={"tent_id": t.json()["id"], "name": "G", "grow_type": "soil"}, headers=tenant["headers"])
+        g = await client.post(
+            "/v1/grows", json={"tent_id": t.json()["id"], "name": "G", "grow_type": "soil"}, headers=tenant["headers"]
+        )
         resp = await client.delete(f"/v1/grows/{g.json()['id']}", headers=tenant["headers"])
         assert resp.status_code == 204
 
 
 # ---------- Buckets ----------
 
+
 class TestBucketCRUD:
     async def test_create_bucket(self, client, tenant):
         t = await client.post("/v1/tents", json={"name": "T"}, headers=tenant["headers"])
-        g = await client.post("/v1/grows", json={"tent_id": t.json()["id"], "name": "G", "grow_type": "dwc"}, headers=tenant["headers"])
+        g = await client.post(
+            "/v1/grows", json={"tent_id": t.json()["id"], "name": "G", "grow_type": "dwc"}, headers=tenant["headers"]
+        )
         resp = await client.post(
             "/v1/buckets",
             json={"grow_cycle_id": g.json()["id"], "label": "B1", "strain_name": "Blue Dream"},
@@ -113,7 +126,9 @@ class TestBucketCRUD:
 
     async def test_list_buckets_by_grow(self, client, tenant):
         t = await client.post("/v1/tents", json={"name": "T"}, headers=tenant["headers"])
-        g = await client.post("/v1/grows", json={"tent_id": t.json()["id"], "name": "G", "grow_type": "dwc"}, headers=tenant["headers"])
+        g = await client.post(
+            "/v1/grows", json={"tent_id": t.json()["id"], "name": "G", "grow_type": "dwc"}, headers=tenant["headers"]
+        )
         gid = g.json()["id"]
         await client.post("/v1/buckets", json={"grow_cycle_id": gid, "label": "B1"}, headers=tenant["headers"])
         await client.post("/v1/buckets", json={"grow_cycle_id": gid, "label": "B2"}, headers=tenant["headers"])
@@ -124,10 +139,13 @@ class TestBucketCRUD:
 
 # ---------- Sensor Readings ----------
 
+
 class TestSensorReadings:
     async def test_create_reading(self, client, tenant):
         t = await client.post("/v1/tents", json={"name": "T"}, headers=tenant["headers"])
-        g = await client.post("/v1/grows", json={"tent_id": t.json()["id"], "name": "G", "grow_type": "dwc"}, headers=tenant["headers"])
+        g = await client.post(
+            "/v1/grows", json={"tent_id": t.json()["id"], "name": "G", "grow_type": "dwc"}, headers=tenant["headers"]
+        )
         b = await client.post("/v1/buckets", json={"grow_cycle_id": g.json()["id"]}, headers=tenant["headers"])
         bid = b.json()["id"]
         resp = await client.post(
@@ -142,7 +160,9 @@ class TestSensorReadings:
 
     async def test_latest_reading(self, client, tenant):
         t = await client.post("/v1/tents", json={"name": "T"}, headers=tenant["headers"])
-        g = await client.post("/v1/grows", json={"tent_id": t.json()["id"], "name": "G", "grow_type": "dwc"}, headers=tenant["headers"])
+        g = await client.post(
+            "/v1/grows", json={"tent_id": t.json()["id"], "name": "G", "grow_type": "dwc"}, headers=tenant["headers"]
+        )
         b = await client.post("/v1/buckets", json={"grow_cycle_id": g.json()["id"]}, headers=tenant["headers"])
         bid = b.json()["id"]
         await client.post("/v1/sensors", json={"bucket_id": bid, "ph": 5.8}, headers=tenant["headers"])
@@ -154,7 +174,9 @@ class TestSensorReadings:
 
     async def test_drift_analysis(self, client, tenant):
         t = await client.post("/v1/tents", json={"name": "T"}, headers=tenant["headers"])
-        g = await client.post("/v1/grows", json={"tent_id": t.json()["id"], "name": "G", "grow_type": "dwc"}, headers=tenant["headers"])
+        g = await client.post(
+            "/v1/grows", json={"tent_id": t.json()["id"], "name": "G", "grow_type": "dwc"}, headers=tenant["headers"]
+        )
         b = await client.post("/v1/buckets", json={"grow_cycle_id": g.json()["id"]}, headers=tenant["headers"])
         bid = b.json()["id"]
         await client.post("/v1/sensors", json={"bucket_id": bid, "ph": 6.0, "ec": 1.2}, headers=tenant["headers"])
@@ -167,6 +189,7 @@ class TestSensorReadings:
 
 
 # ---------- Strains ----------
+
 
 class TestStrainCRUD:
     async def test_create_strain(self, client, tenant):
@@ -193,10 +216,13 @@ class TestStrainCRUD:
 
 # ---------- Yields ----------
 
+
 class TestYieldCRUD:
     async def test_create_yield(self, client, tenant):
         t = await client.post("/v1/tents", json={"name": "T"}, headers=tenant["headers"])
-        g = await client.post("/v1/grows", json={"tent_id": t.json()["id"], "name": "G", "grow_type": "dwc"}, headers=tenant["headers"])
+        g = await client.post(
+            "/v1/grows", json={"tent_id": t.json()["id"], "name": "G", "grow_type": "dwc"}, headers=tenant["headers"]
+        )
         b = await client.post("/v1/buckets", json={"grow_cycle_id": g.json()["id"]}, headers=tenant["headers"])
         resp = await client.post(
             "/v1/yields",
@@ -210,6 +236,7 @@ class TestYieldCRUD:
 
 
 # ---------- Grow Types ----------
+
 
 class TestGrowTypes:
     async def test_list_grow_types(self, client, tenant):
@@ -235,10 +262,13 @@ class TestGrowTypes:
 
 # ---------- Journal + Photos ----------
 
+
 class TestJournalAndPhotos:
     async def test_create_journal_entry(self, client, tenant):
         t = await client.post("/v1/tents", json={"name": "T"}, headers=tenant["headers"])
-        g = await client.post("/v1/grows", json={"tent_id": t.json()["id"], "name": "G", "grow_type": "dwc"}, headers=tenant["headers"])
+        g = await client.post(
+            "/v1/grows", json={"tent_id": t.json()["id"], "name": "G", "grow_type": "dwc"}, headers=tenant["headers"]
+        )
         b = await client.post("/v1/buckets", json={"grow_cycle_id": g.json()["id"]}, headers=tenant["headers"])
         resp = await client.post(
             "/v1/journal",
@@ -250,7 +280,9 @@ class TestJournalAndPhotos:
 
     async def test_create_photo(self, client, tenant):
         t = await client.post("/v1/tents", json={"name": "T"}, headers=tenant["headers"])
-        g = await client.post("/v1/grows", json={"tent_id": t.json()["id"], "name": "G", "grow_type": "dwc"}, headers=tenant["headers"])
+        g = await client.post(
+            "/v1/grows", json={"tent_id": t.json()["id"], "name": "G", "grow_type": "dwc"}, headers=tenant["headers"]
+        )
         b = await client.post("/v1/buckets", json={"grow_cycle_id": g.json()["id"]}, headers=tenant["headers"])
         resp = await client.post(
             "/v1/photos",
@@ -263,10 +295,13 @@ class TestJournalAndPhotos:
 
 # ---------- Feeding / Doses ----------
 
+
 class TestFeedingAndDoses:
     async def test_create_dose_profile(self, client, tenant):
         t = await client.post("/v1/tents", json={"name": "T"}, headers=tenant["headers"])
-        g = await client.post("/v1/grows", json={"tent_id": t.json()["id"], "name": "G", "grow_type": "dwc"}, headers=tenant["headers"])
+        g = await client.post(
+            "/v1/grows", json={"tent_id": t.json()["id"], "name": "G", "grow_type": "dwc"}, headers=tenant["headers"]
+        )
         resp = await client.post(
             "/v1/feeding/doses",
             json={"grow_cycle_id": g.json()["id"], "name": "CalMag", "dose_type": "supplement", "dose_ml": 5.0},
@@ -277,7 +312,9 @@ class TestFeedingAndDoses:
 
     async def test_create_feeding_schedule(self, client, tenant):
         t = await client.post("/v1/tents", json={"name": "T"}, headers=tenant["headers"])
-        g = await client.post("/v1/grows", json={"tent_id": t.json()["id"], "name": "G", "grow_type": "dwc"}, headers=tenant["headers"])
+        g = await client.post(
+            "/v1/grows", json={"tent_id": t.json()["id"], "name": "G", "grow_type": "dwc"}, headers=tenant["headers"]
+        )
         resp = await client.post(
             "/v1/feeding/feeding",
             json={

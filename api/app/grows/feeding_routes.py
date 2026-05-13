@@ -1,11 +1,11 @@
 """Dose profiles + feeding schedules API — grow-type-aware."""
+
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +18,7 @@ router = APIRouter()
 
 
 # ---------- Dose Profiles ----------
+
 
 class DoseProfileCreate(BaseModel):
     grow_cycle_id: UUID
@@ -122,6 +123,7 @@ async def delete_dose_profile(
 
 # ---------- Feeding Schedules ----------
 
+
 class FeedingScheduleCreate(BaseModel):
     grow_cycle_id: UUID
     name: str
@@ -182,7 +184,11 @@ async def list_feeding_schedules(
         value=FeedingSchedule.stage,
         else_=99,
     )
-    q = select(FeedingSchedule).where(FeedingSchedule.tenant_id == user.tenant_id).order_by(stage_order, FeedingSchedule.name)
+    q = (
+        select(FeedingSchedule)
+        .where(FeedingSchedule.tenant_id == user.tenant_id)
+        .order_by(stage_order, FeedingSchedule.name)
+    )
     if grow_cycle_id:
         q = q.where(FeedingSchedule.grow_cycle_id == grow_cycle_id)
     items, total = await paginate(session, q, pagination)

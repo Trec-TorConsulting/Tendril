@@ -924,7 +924,7 @@ export function FeedingTab({ growId, growStage, growStartedAt, milestones, setti
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Stage</Label>
-              <Select value={scheduleForm.stage} onValueChange={(v) => setScheduleForm((p) => ({ ...p, stage: v }))}>
+              <Select value={scheduleForm.stage} onValueChange={(v) => setScheduleForm((p) => ({ ...p, stage: v || "" }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {STAGES.map((s) => <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>)}
@@ -1018,7 +1018,7 @@ export function FeedingTab({ growId, growStage, growStartedAt, milestones, setti
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Type</Label>
-              <Select value={doseForm.dose_type} onValueChange={(v) => setDoseForm((p) => ({ ...p, dose_type: v }))}>
+              <Select value={doseForm.dose_type} onValueChange={(v) => setDoseForm((p) => ({ ...p, dose_type: v || "" }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="nutrient">Nutrient</SelectItem>

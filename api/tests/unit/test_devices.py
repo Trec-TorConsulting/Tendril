@@ -1,4 +1,5 @@
 """Integration tests for device registration, pairing, MQTT auth/ACL webhooks."""
+
 from __future__ import annotations
 
 import pytest
@@ -22,6 +23,7 @@ async def tenant_b(db_session):
 
 
 # ---------- Device Registration ----------
+
 
 class TestDeviceRegistration:
     async def test_register_device(self, client: AsyncClient, tenant):
@@ -52,6 +54,7 @@ class TestDeviceRegistration:
 
 
 # ---------- Device Pairing ----------
+
 
 class TestDevicePairing:
     async def test_pair_device(self, client: AsyncClient, tenant):
@@ -95,6 +98,7 @@ class TestDevicePairing:
 
 
 # ---------- Device CRUD ----------
+
 
 class TestDeviceCRUD:
     async def test_list_devices(self, client: AsyncClient, tenant):
@@ -153,7 +157,8 @@ class TestDeviceCRUD:
 
         signed = sign_url(f"http://test/v1/devices/{device_id}/qr", tid)
         # Extract query params from signed URL
-        from urllib.parse import urlparse, parse_qs
+        from urllib.parse import urlparse
+
         parsed = urlparse(signed)
         res = await client.get(
             f"/v1/devices/{device_id}/qr?{parsed.query}",
@@ -165,10 +170,12 @@ class TestDeviceCRUD:
 
 # ---------- MQTT Auth Webhook ----------
 
+
 class TestMQTTAuthWebhook:
     @pytest.fixture
     def webhook_client(self):
         from app.mqtt.auth_webhook import webhook_app
+
         transport = ASGITransport(app=webhook_app)
         return AsyncClient(transport=transport, base_url="http://test")
 
@@ -182,11 +189,14 @@ class TestMQTTAuthWebhook:
             headers=tenant["headers"],
         )
 
-        res = await webhook_client.post("/auth", json={
-            "clientid": data["device_id"],
-            "username": data["device_id"],
-            "password": data["psk"],
-        })
+        res = await webhook_client.post(
+            "/auth",
+            json={
+                "clientid": data["device_id"],
+                "username": data["device_id"],
+                "password": data["psk"],
+            },
+        )
         assert res.json()["result"] == "allow"
 
     async def test_auth_bad_psk(self, client: AsyncClient, webhook_client, tenant):
@@ -198,11 +208,14 @@ class TestMQTTAuthWebhook:
             headers=tenant["headers"],
         )
 
-        res = await webhook_client.post("/auth", json={
-            "clientid": data["device_id"],
-            "username": data["device_id"],
-            "password": "wrong-psk",
-        })
+        res = await webhook_client.post(
+            "/auth",
+            json={
+                "clientid": data["device_id"],
+                "username": data["device_id"],
+                "password": "wrong-psk",
+            },
+        )
         assert res.json()["result"] == "deny"
 
     async def test_auth_revoked_device(self, client: AsyncClient, webhook_client, tenant):
@@ -215,23 +228,30 @@ class TestMQTTAuthWebhook:
         )
         await client.post(f"/v1/devices/{data['device_id']}/revoke", headers=tenant["headers"])
 
-        res = await webhook_client.post("/auth", json={
-            "clientid": data["device_id"],
-            "username": data["device_id"],
-            "password": data["psk"],
-        })
+        res = await webhook_client.post(
+            "/auth",
+            json={
+                "clientid": data["device_id"],
+                "username": data["device_id"],
+                "password": data["psk"],
+            },
+        )
         assert res.json()["result"] == "deny"
 
     async def test_auth_unknown_device(self, webhook_client):
-        res = await webhook_client.post("/auth", json={
-            "clientid": "td-nonexistent",
-            "username": "td-nonexistent",
-            "password": "test",
-        })
+        res = await webhook_client.post(
+            "/auth",
+            json={
+                "clientid": "td-nonexistent",
+                "username": "td-nonexistent",
+                "password": "test",
+            },
+        )
         assert res.json()["result"] == "deny"
 
 
 # ---------- MQTT ACL Webhook ----------
+
 
 class TestMQTTACLWebhook:
     @pytest.fixture
@@ -251,12 +271,15 @@ class TestMQTTACLWebhook:
         )
 
         tenant_id = tenant["tenant"].id
-        res = await webhook_client.post("/acl", json={
-            "clientid": data["device_id"],
-            "username": data["device_id"],
-            "topic": f"t/{tenant_id}/d/{data['device_id']}/sensor/readings",
-            "action": "publish",
-        })
+        res = await webhook_client.post(
+            "/acl",
+            json={
+                "clientid": data["device_id"],
+                "username": data["device_id"],
+                "topic": f"t/{tenant_id}/d/{data['device_id']}/sensor/readings",
+                "action": "publish",
+            },
+        )
         assert res.json()["result"] == "allow"
 
     async def test_acl_other_tenant_topic(self, client: AsyncClient, webhook_client, tenant, tenant_b):
@@ -269,12 +292,15 @@ class TestMQTTACLWebhook:
         )
 
         other_tenant_id = tenant_b["tenant"].id
-        res = await webhook_client.post("/acl", json={
-            "clientid": data["device_id"],
-            "username": data["device_id"],
-            "topic": f"t/{other_tenant_id}/d/{data['device_id']}/sensor/readings",
-            "action": "publish",
-        })
+        res = await webhook_client.post(
+            "/acl",
+            json={
+                "clientid": data["device_id"],
+                "username": data["device_id"],
+                "topic": f"t/{other_tenant_id}/d/{data['device_id']}/sensor/readings",
+                "action": "publish",
+            },
+        )
         assert res.json()["result"] == "deny"
 
     async def test_acl_other_device_topic(self, client: AsyncClient, webhook_client, tenant):
@@ -287,19 +313,25 @@ class TestMQTTACLWebhook:
         )
 
         tenant_id = tenant["tenant"].id
-        res = await webhook_client.post("/acl", json={
-            "clientid": data["device_id"],
-            "username": data["device_id"],
-            "topic": f"t/{tenant_id}/d/td-someone-else/sensor/readings",
-            "action": "publish",
-        })
+        res = await webhook_client.post(
+            "/acl",
+            json={
+                "clientid": data["device_id"],
+                "username": data["device_id"],
+                "topic": f"t/{tenant_id}/d/td-someone-else/sensor/readings",
+                "action": "publish",
+            },
+        )
         assert res.json()["result"] == "deny"
 
     async def test_acl_malformed_topic(self, webhook_client):
-        res = await webhook_client.post("/acl", json={
-            "clientid": "td-test",
-            "username": "td-test",
-            "topic": "invalid/topic",
-            "action": "publish",
-        })
+        res = await webhook_client.post(
+            "/acl",
+            json={
+                "clientid": "td-test",
+                "username": "td-test",
+                "topic": "invalid/topic",
+                "action": "publish",
+            },
+        )
         assert res.json()["result"] == "deny"

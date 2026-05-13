@@ -1,15 +1,13 @@
 """Gather comprehensive grow data for AI prompts."""
+
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
-from uuid import UUID
+from datetime import UTC, datetime, timedelta
 
 import httpx
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.utils.url_validation import validate_url_safe
 
 from app.grows.models import (
     Bucket,
@@ -25,6 +23,7 @@ from app.grows.models import (
     TentSensorReading,
     WeatherReading,
 )
+from app.utils.url_validation import validate_url_safe
 
 logger = logging.getLogger("tendril.ai.gather")
 
@@ -54,12 +53,10 @@ async def gather_grow_data(
 
     # ── Buckets ──────────────────────────────────────────────────
     buckets = (
-        await session.execute(
-            select(Bucket)
-            .where(Bucket.grow_cycle_id == grow.id)
-            .order_by(Bucket.position)
-        )
-    ).scalars().all()
+        (await session.execute(select(Bucket).where(Bucket.grow_cycle_id == grow.id).order_by(Bucket.position)))
+        .scalars()
+        .all()
+    )
 
     bucket_list = []
     for b in buckets:
@@ -102,10 +99,18 @@ async def gather_grow_data(
             bucket_sensors[b.position] = {
                 k: getattr(reading, k)
                 for k in (
-                    "ph", "ec", "ppm", "water_temp_f", "dissolved_oxygen",
+                    "ph",
+                    "ec",
+                    "ppm",
+                    "water_temp_f",
+                    "dissolved_oxygen",
                     "water_level_pct",
-                    "soil_moisture", "soil_temp", "runoff_ph", "runoff_ec",
-                    "flow_rate", "mist_pressure",
+                    "soil_moisture",
+                    "soil_temp",
+                    "runoff_ph",
+                    "runoff_ec",
+                    "flow_rate",
+                    "mist_pressure",
                 )
                 if getattr(reading, k) is not None
             }
@@ -134,22 +139,37 @@ async def gather_grow_data(
 
     # ── Sensor trends (24h from first bucket) ────────────────────
     if buckets:
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=sensor_history_hours)
+        cutoff = datetime.now(UTC) - timedelta(hours=sensor_history_hours)
         trends = (
-            await session.execute(
-                select(BucketSensorReading)
-                .where(
-                    BucketSensorReading.bucket_id == buckets[0].id,
-                    BucketSensorReading.recorded_at >= cutoff,
+            (
+                await session.execute(
+                    select(BucketSensorReading)
+                    .where(
+                        BucketSensorReading.bucket_id == buckets[0].id,
+                        BucketSensorReading.recorded_at >= cutoff,
+                    )
+                    .order_by(BucketSensorReading.recorded_at)
                 )
-                .order_by(BucketSensorReading.recorded_at)
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         if len(trends) > 1:
             trend_data: dict = {"reading_count": len(trends), "period_hours": sensor_history_hours}
-            for field in ("ph", "ec", "ppm", "water_temp_f", "dissolved_oxygen", "water_level_pct",
-                          "soil_moisture", "soil_temp",
-                          "runoff_ph", "runoff_ec", "flow_rate", "mist_pressure"):
+            for field in (
+                "ph",
+                "ec",
+                "ppm",
+                "water_temp_f",
+                "dissolved_oxygen",
+                "water_level_pct",
+                "soil_moisture",
+                "soil_temp",
+                "runoff_ph",
+                "runoff_ec",
+                "flow_rate",
+                "mist_pressure",
+            ):
                 vals = [getattr(r, field) for r in trends if getattr(r, field) is not None]
                 if vals:
                     trend_data[f"{field}_min"] = round(min(vals), 2)
@@ -162,17 +182,21 @@ async def gather_grow_data(
         data["sensor_trends"] = None
 
     # ── Tent ambient trends (24h) ────────────────────────────────
-    cutoff = datetime.now(timezone.utc) - timedelta(hours=sensor_history_hours)
+    cutoff = datetime.now(UTC) - timedelta(hours=sensor_history_hours)
     tent_trends_rows = (
-        await session.execute(
-            select(TentSensorReading)
-            .where(
-                TentSensorReading.tent_id == grow.tent_id,
-                TentSensorReading.recorded_at >= cutoff,
+        (
+            await session.execute(
+                select(TentSensorReading)
+                .where(
+                    TentSensorReading.tent_id == grow.tent_id,
+                    TentSensorReading.recorded_at >= cutoff,
+                )
+                .order_by(TentSensorReading.recorded_at)
             )
-            .order_by(TentSensorReading.recorded_at)
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     if len(tent_trends_rows) > 1:
         ambient_trend: dict = {"reading_count": len(tent_trends_rows), "period_hours": sensor_history_hours}
         for field in ("ambient_temp_f", "ambient_humidity"):
@@ -187,12 +211,14 @@ async def gather_grow_data(
 
     # ── Feeding schedules ────────────────────────────────────────
     feeds = (
-        await session.execute(
-            select(FeedingSchedule)
-            .where(FeedingSchedule.grow_cycle_id == grow.id)
-            .order_by(FeedingSchedule.stage)
+        (
+            await session.execute(
+                select(FeedingSchedule).where(FeedingSchedule.grow_cycle_id == grow.id).order_by(FeedingSchedule.stage)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     data["feeding_schedules"] = [
         {
             "name": f.name,
@@ -206,11 +232,7 @@ async def gather_grow_data(
     ]
 
     # ── Dose profiles ────────────────────────────────────────────
-    doses = (
-        await session.execute(
-            select(DoseProfile).where(DoseProfile.grow_cycle_id == grow.id)
-        )
-    ).scalars().all()
+    doses = (await session.execute(select(DoseProfile).where(DoseProfile.grow_cycle_id == grow.id))).scalars().all()
     data["dose_profiles"] = [
         {
             "name": d.name,
@@ -225,13 +247,17 @@ async def gather_grow_data(
     if buckets:
         bucket_ids = [b.id for b in buckets]
         journals = (
-            await session.execute(
-                select(JournalEntry)
-                .where(JournalEntry.bucket_id.in_(bucket_ids))
-                .order_by(desc(JournalEntry.created_at))
-                .limit(journal_limit)
+            (
+                await session.execute(
+                    select(JournalEntry)
+                    .where(JournalEntry.bucket_id.in_(bucket_ids))
+                    .order_by(desc(JournalEntry.created_at))
+                    .limit(journal_limit)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         data["journal_entries"] = [
             {
                 "event_type": j.event_type,
@@ -247,10 +273,7 @@ async def gather_grow_data(
     # ── Previous health evaluation ───────────────────────────────
     prev = (
         await session.execute(
-            select(HealthEval)
-            .where(HealthEval.grow_cycle_id == grow.id)
-            .order_by(desc(HealthEval.created_at))
-            .limit(1)
+            select(HealthEval).where(HealthEval.grow_cycle_id == grow.id).order_by(desc(HealthEval.created_at)).limit(1)
         )
     ).scalar_one_or_none()
     if prev:
@@ -275,11 +298,11 @@ async def gather_grow_data(
     data["camera_url"] = None
     if tent:
         # Get primary camera from tent_cameras table
-        primary_cam = (await session.execute(
-            select(TentCamera).where(
-                TentCamera.tent_id == tent.id, TentCamera.is_primary.is_(True)
-            ).limit(1)
-        )).scalar_one_or_none()
+        primary_cam = (
+            await session.execute(
+                select(TentCamera).where(TentCamera.tent_id == tent.id, TentCamera.is_primary.is_(True)).limit(1)
+            )
+        ).scalar_one_or_none()
         if primary_cam:
             data["camera_url"] = primary_cam.url
         elif tent.camera_url:
@@ -299,8 +322,11 @@ async def gather_grow_data(
             weather = {
                 k: getattr(w, k)
                 for k in (
-                    "temperature_c", "humidity_pct", "precipitation_mm",
-                    "wind_speed_kmh", "uv_index",
+                    "temperature_c",
+                    "humidity_pct",
+                    "precipitation_mm",
+                    "wind_speed_kmh",
+                    "uv_index",
                 )
                 if getattr(w, k) is not None
             }
@@ -308,17 +334,22 @@ async def gather_grow_data(
 
     # ── Pending tasks ────────────────────────────────────────────
     from app.commercial.models import Task
+
     pending_tasks = (
-        await session.execute(
-            select(Task)
-            .where(
-                Task.grow_cycle_id == grow.id,
-                Task.status.in_(["pending", "in_progress"]),
+        (
+            await session.execute(
+                select(Task)
+                .where(
+                    Task.grow_cycle_id == grow.id,
+                    Task.status.in_(["pending", "in_progress"]),
+                )
+                .order_by(Task.due_date.asc().nullslast())
+                .limit(20)
             )
-            .order_by(Task.due_date.asc().nullslast())
-            .limit(20)
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     data["pending_tasks"] = [
         {
             "title": t.title,
@@ -333,19 +364,24 @@ async def gather_grow_data(
 
     # Recently completed tasks (last 7 days)
     from datetime import timedelta as _td
-    recent_cutoff = datetime.now(timezone.utc) - _td(days=7)
+
+    recent_cutoff = datetime.now(UTC) - _td(days=7)
     completed_tasks = (
-        await session.execute(
-            select(Task)
-            .where(
-                Task.grow_cycle_id == grow.id,
-                Task.status == "completed",
-                Task.completed_at >= recent_cutoff,
+        (
+            await session.execute(
+                select(Task)
+                .where(
+                    Task.grow_cycle_id == grow.id,
+                    Task.status == "completed",
+                    Task.completed_at >= recent_cutoff,
+                )
+                .order_by(Task.completed_at.desc())
+                .limit(10)
             )
-            .order_by(Task.completed_at.desc())
-            .limit(10)
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     data["completed_tasks"] = [
         {
             "title": t.title,
@@ -360,11 +396,11 @@ async def gather_grow_data(
     if include_camera and tent:
         # Resolve camera URL from tent_cameras or legacy field
         cam_url = None
-        primary_cam = (await session.execute(
-            select(TentCamera).where(
-                TentCamera.tent_id == tent.id, TentCamera.is_primary.is_(True)
-            ).limit(1)
-        )).scalar_one_or_none()
+        primary_cam = (
+            await session.execute(
+                select(TentCamera).where(TentCamera.tent_id == tent.id, TentCamera.is_primary.is_(True)).limit(1)
+            )
+        ).scalar_one_or_none()
         if primary_cam:
             cam_url = primary_cam.url
         elif tent.camera_url:

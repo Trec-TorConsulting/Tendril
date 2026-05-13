@@ -15,6 +15,7 @@ interface ConfirmOptions {
   title?: string;
   description: string;
   confirmLabel?: string;
+  confirmText?: string;
   cancelLabel?: string;
   variant?: "default" | "destructive";
 }
@@ -67,7 +68,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
               variant={options.variant === "destructive" ? "destructive" : "default"}
               onClick={() => handleResponse(true)}
             >
-              {options.confirmLabel ?? "Confirm"}
+              {options.confirmText ?? options.confirmLabel ?? "Confirm"}
             </Button>
           </DialogFooter>
         </DialogContent>

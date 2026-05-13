@@ -1,4 +1,5 @@
 """Custom grow types API — create, edit, delete, submit for review (Pro/Commercial)."""
+
 from __future__ import annotations
 
 from typing import Annotated
@@ -26,6 +27,7 @@ def _check_tier(user: CurrentUser, session: AsyncSession) -> None:
 
 # ---------- Schemas ----------
 
+
 class GrowTypeCreate(BaseModel):
     name: str
     slug: str
@@ -34,11 +36,13 @@ class GrowTypeCreate(BaseModel):
     base_type: str | None = None  # seed from built-in type
     profile: dict  # full profile matching GROW_TYPE_PROFILES shape
 
+
 class GrowTypeUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     category: str | None = None
     profile: dict | None = None
+
 
 class GrowTypeResponse(BaseModel):
     id: str
@@ -51,16 +55,17 @@ class GrowTypeResponse(BaseModel):
     submitted_for_review: bool
     approved: bool
 
+
 class SubmitForReviewRequest(BaseModel):
     notes: str | None = None
 
 
 # ---------- Tier check helper ----------
 
-async def _require_pro_or_commercial(
-    user: CurrentUser, session: AsyncSession
-) -> None:
+
+async def _require_pro_or_commercial(user: CurrentUser, session: AsyncSession) -> None:
     from app.tenants.models import Tenant
+
     tenant = await session.get(Tenant, user.tenant_id)
     if not tenant or tenant.plan not in ALLOWED_PLANS:
         raise HTTPException(status_code=403, detail="Custom grow types require Pro or Commercial plan")
@@ -68,13 +73,20 @@ async def _require_pro_or_commercial(
 
 def _to_response(gt: CustomGrowType) -> GrowTypeResponse:
     return GrowTypeResponse(
-        id=str(gt.id), slug=gt.slug, name=gt.name, category=gt.category,
-        description=gt.description, base_type=gt.base_type, profile=gt.profile,
-        submitted_for_review=gt.submitted_for_review, approved=gt.approved,
+        id=str(gt.id),
+        slug=gt.slug,
+        name=gt.name,
+        category=gt.category,
+        description=gt.description,
+        base_type=gt.base_type,
+        profile=gt.profile,
+        submitted_for_review=gt.submitted_for_review,
+        approved=gt.approved,
     )
 
 
 # ---------- CRUD ----------
+
 
 @router.post("", status_code=201)
 async def create_custom_grow_type(
@@ -86,12 +98,14 @@ async def create_custom_grow_type(
     await _require_pro_or_commercial(user, session)
 
     # Check slug uniqueness within tenant
-    existing = (await session.execute(
-        select(CustomGrowType).where(
-            CustomGrowType.tenant_id == user.tenant_id,
-            CustomGrowType.slug == body.slug,
+    existing = (
+        await session.execute(
+            select(CustomGrowType).where(
+                CustomGrowType.tenant_id == user.tenant_id,
+                CustomGrowType.slug == body.slug,
+            )
         )
-    )).scalar_one_or_none()
+    ).scalar_one_or_none()
     if existing:
         raise HTTPException(status_code=409, detail="Slug already exists")
 
@@ -133,8 +147,7 @@ async def list_custom_grow_types(
 ):
     """List all custom grow types for the current tenant."""
     result = await session.execute(
-        select(CustomGrowType).where(CustomGrowType.tenant_id == user.tenant_id)
-        .order_by(CustomGrowType.name)
+        select(CustomGrowType).where(CustomGrowType.tenant_id == user.tenant_id).order_by(CustomGrowType.name)
     )
     return [_to_response(gt) for gt in result.scalars().all()]
 
@@ -194,6 +207,7 @@ async def delete_custom_grow_type(
 
 
 # ---------- Global Registry Submission (6.2) ----------
+
 
 @router.post("/{type_id}/submit", status_code=200)
 async def submit_for_review(

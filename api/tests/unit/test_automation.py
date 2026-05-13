@@ -1,4 +1,5 @@
 """Integration tests for Phase 4 automation — rules, alerts, schedules."""
+
 from __future__ import annotations
 
 import pytest
@@ -26,6 +27,7 @@ async def tent_id(client, tenant):
 
 
 # ---------- Automation Rules ----------
+
 
 class TestAutomationRules:
     async def test_create_rule(self, client, tenant):
@@ -98,6 +100,7 @@ class TestAutomationRules:
 
 # ---------- Alert History ----------
 
+
 class TestAlertHistory:
     async def test_list_alerts_empty(self, client, tenant):
         resp = await client.get("/v1/automation/alerts", headers=tenant["headers"])
@@ -110,6 +113,7 @@ class TestAlertHistory:
 
 
 # ---------- Environment Schedules ----------
+
 
 class TestEnvironmentSchedules:
     async def test_create_schedule(self, client, tenant, tent_id):
@@ -143,7 +147,13 @@ class TestEnvironmentSchedules:
     async def test_filter_schedules_by_tent(self, client, tenant, tent_id):
         await client.post(
             "/v1/automation/schedules",
-            json={"tent_id": tent_id, "name": "Filtered", "schedule_type": "fan", "on_time": "08:00", "off_time": "20:00"},
+            json={
+                "tent_id": tent_id,
+                "name": "Filtered",
+                "schedule_type": "fan",
+                "on_time": "08:00",
+                "off_time": "20:00",
+            },
             headers=tenant["headers"],
         )
         resp = await client.get(f"/v1/automation/schedules?tent_id={tent_id}", headers=tenant["headers"])

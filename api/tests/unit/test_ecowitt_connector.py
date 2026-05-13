@@ -8,9 +8,9 @@ from uuid import uuid4
 
 import httpx
 import pytest
-from app.integrations.connectors.base import ConnectorResult, get_connector_class
+
+from app.integrations.connectors.base import get_connector_class
 from app.integrations.connectors.ecowitt import (
-    DiscoveredDevice,
     EcowittConfig,
     EcowittConnector,
     _extract_value,
@@ -18,7 +18,6 @@ from app.integrations.connectors.ecowitt import (
     _in_to_mm,
     _inhg_to_hpa,
     _mph_to_kmh,
-    write_ecowitt_readings,
 )
 from app.integrations.models import IntegrationConfig, IntegrationDeviceMap
 
