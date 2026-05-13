@@ -14,7 +14,7 @@ concurrency:
 jobs:
   # ── Python API ────────────────────────────────────────────────
   api-lint:
-    name: API Lint & Format
+    name: API Lint & Security
     runs-on: arc-runner-arm64
     defaults:
       run:
@@ -27,6 +27,7 @@ jobs:
       - run: pip install ruff
       - run: ruff check --config pyproject.toml .
       - run: ruff format --check --config pyproject.toml .
+      - run: ruff check --select S --config pyproject.toml .
 
   api-test:
     name: API Tests
@@ -60,23 +61,9 @@ jobs:
           DATABASE_URL: postgresql+asyncpg://tendril:tendril@localhost:5432/tendril_test
           JWT_SECRET: ci-test-secret-not-real
 
-  api-security:
-    name: API Security Scan
-    runs-on: arc-runner-arm64
-    defaults:
-      run:
-        working-directory: api
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - run: pip install ruff
-      - run: ruff check --select S --config pyproject.toml .
-
   # ── Web Frontend ──────────────────────────────────────────────
-  web-lint:
-    name: Web Lint & Type Check
+  web:
+    name: Web Lint, Types & Tests
     runs-on: arc-runner-arm64
     defaults:
       run:
@@ -91,39 +78,36 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run type-check
-
-  web-test:
-    name: Web Tests
-    runs-on: arc-runner-arm64
-    defaults:
-      run:
-        working-directory: web
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      - run: npm ci
       - run: npm run test:run
 
-  # ── Docker Build Validation ──────────────────────────────────
+  # ── Docker Build & Push ───────────────────────────────────────
   docker-build:
-    name: Docker Build Check
+    name: Docker Build
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
         target: [api, web]
         runner: [arc-runner-arm64, arc-runner-x86]
+        include:
+          - runner: arc-runner-arm64
+            platform: linux/arm64
+          - runner: arc-runner-x86
+            platform: linux/amd64
     steps:
       - uses: actions/checkout@v6
       - uses: docker/setup-buildx-action@v4
+        with:
+          buildkitd-config-inline: |
+            [registry."192.168.4.10:30500"]
+              http = true
       - uses: docker/build-push-action@v7
         with:
           context: ./${{ matrix.target }}
-          push: false
-          tags: tendril-${{ matrix.target }}:ci
+          platforms: ${{ matrix.platform }}
+          push: ${{ github.ref == 'refs/heads/main' }}
+          tags: 192.168.4.10:30500/tendril-${{ matrix.target }}:latest
+          cache-from: type=registry,ref=192.168.4.10:30500/tendril-${{ matrix.target }}:buildcache
+          cache-to: ${{ github.ref == 'refs/heads/main' && format('type=registry,ref=192.168.4.10:30500/tendril-{0}:buildcache,mode=max', matrix.target) || '' }}
 
   # ── Pre-commit (secrets, formatting, yaml) ───────────────────
   pre-commit:
