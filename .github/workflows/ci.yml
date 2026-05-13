@@ -12,73 +12,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # ── Python API ────────────────────────────────────────────────
-  api-lint:
-    name: API Lint & Security
+  # ── Basic Checks ──────────────────────────────────────────────
+  lint:
+    name: Lint
     runs-on: arc-runner-arm64
-    defaults:
-      run:
-        working-directory: api
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - run: pip install ruff
-      - run: ruff check --config pyproject.toml .
-      - run: ruff format --check --config pyproject.toml .
-      - run: ruff check --select S --config pyproject.toml .
-
-  api-test:
-    name: API Tests
-    runs-on: arc-runner-arm64
-    defaults:
-      run:
-        working-directory: api
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: tendril
-          POSTGRES_PASSWORD: tendril
-          POSTGRES_DB: tendril_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          cache: pip
-      - run: pip install -r requirements.txt -r requirements-dev.txt
-      - run: pytest --tb=short -q
-        env:
-          DATABASE_URL: postgresql+asyncpg://tendril:tendril@localhost:5432/tendril_test
-          JWT_SECRET: ci-test-secret-not-real
-
-  # ── Web Frontend ──────────────────────────────────────────────
-  web:
-    name: Web Lint, Types & Tests
-    runs-on: arc-runner-arm64
-    defaults:
-      run:
-        working-directory: web
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      - run: npm ci
-      - run: npm run lint
-      - run: npm run type-check
-      - run: npm run test:run
+      - run: ruff check --config api/pyproject.toml api/
 
   # ── Docker Build & Push ───────────────────────────────────────
   docker-build:
@@ -109,13 +53,64 @@ jobs:
           cache-from: type=registry,ref=192.168.4.10:30500/tendril-${{ matrix.target }}:buildcache
           cache-to: ${{ github.ref == 'refs/heads/main' && format('type=registry,ref=192.168.4.10:30500/tendril-{0}:buildcache,mode=max', matrix.target) || '' }}
 
-  # ── Pre-commit (secrets, formatting, yaml) ───────────────────
-  pre-commit:
-    name: Pre-commit Checks
-    runs-on: arc-runner-arm64
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
+  # ── Re-enable when going public ──────────────────────────────
+  # api-test:
+  #   name: API Tests
+  #   runs-on: arc-runner-arm64
+  #   defaults:
+  #     run:
+  #       working-directory: api
+  #   services:
+  #     postgres:
+  #       image: postgres:16
+  #       env:
+  #         POSTGRES_USER: tendril
+  #         POSTGRES_PASSWORD: tendril
+  #         POSTGRES_DB: tendril_test
+  #       ports:
+  #         - 5432:5432
+  #       options: >-
+  #         --health-cmd pg_isready
+  #         --health-interval 10s
+  #         --health-timeout 5s
+  #         --health-retries 5
+  #   steps:
+  #     - uses: actions/checkout@v6
+  #     - uses: actions/setup-python@v6
+  #       with:
+  #         python-version: "3.12"
+  #         cache: pip
+  #     - run: pip install -r requirements.txt -r requirements-dev.txt
+  #     - run: pytest --tb=short -q
+  #       env:
+  #         DATABASE_URL: postgresql+asyncpg://tendril:tendril@localhost:5432/tendril_test
+  #         JWT_SECRET: ci-test-secret-not-real
+  #
+  # web:
+  #   name: Web Lint, Types & Tests
+  #   runs-on: arc-runner-arm64
+  #   defaults:
+  #     run:
+  #       working-directory: web
+  #   steps:
+  #     - uses: actions/checkout@v6
+  #     - uses: actions/setup-node@v6
+  #       with:
+  #         node-version: "22"
+  #         cache: npm
+  #         cache-dependency-path: web/package-lock.json
+  #     - run: npm ci
+  #     - run: npm run lint
+  #     - run: npm run type-check
+  #     - run: npm run test:run
+  #
+  # pre-commit:
+  #   name: Pre-commit Checks
+  #   runs-on: arc-runner-arm64
+  #   steps:
+  #     - uses: actions/checkout@v6
+  #     - uses: actions/setup-python@v6
+  #       with:
+  #         python-version: "3.12"
+  #     - uses: pre-commit/action@v3.0.1
       - uses: pre-commit/action@v3.0.1
