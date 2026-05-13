@@ -2,13 +2,20 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
-import { adminListTenants, adminListTenantUsers } from "@/lib/api";
-import type { AdminTenantSummary, AdminUserSummary } from "@/lib/api";
+import { adminListTenants, adminListTenantUsers, adminUpdateTenantPlan, adminListPlans } from "@/lib/api";
+import type { AdminTenantSummary, AdminUserSummary, AdminBillingPlan } from "@/lib/api";
 import { cn, formatDate } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -26,6 +33,7 @@ import { Building2, ChevronDown, CheckCircle, XCircle } from "lucide-react";
 
 export default function PlatformTenantsPage() {
   const [tenants, setTenants] = useState<AdminTenantSummary[]>([]);
+  const [plans, setPlans] = useState<AdminBillingPlan[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedUsers, setExpandedUsers] = useState<AdminUserSummary[]>([]);
   const [error, setError] = useState("");
@@ -34,7 +42,12 @@ export default function PlatformTenantsPage() {
     const token = getAccessToken();
     if (!token) return;
     try {
-      setTenants(await adminListTenants(token));
+      const [t, p] = await Promise.all([
+        adminListTenants(token),
+        adminListPlans(token),
+      ]);
+      setTenants(t);
+      setPlans(p.filter((pl) => pl.is_active));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load");
     }
@@ -58,6 +71,20 @@ export default function PlatformTenantsPage() {
       setExpandedId(tenantId);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load users");
+    }
+  };
+
+  const changePlan = async (tenantId: string, newPlan: string) => {
+    const token = getAccessToken();
+    if (!token) return;
+    try {
+      await adminUpdateTenantPlan(token, tenantId, { plan: newPlan });
+      setTenants((prev) =>
+        prev.map((t) => (t.id === tenantId ? { ...t, plan: newPlan } : t)),
+      );
+      setError("");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to update plan");
     }
   };
 
@@ -115,9 +142,27 @@ export default function PlatformTenantsPage() {
                       <span className="text-sm text-muted-foreground">{t.slug}</span>
                     </div>
                     <div className="flex items-center gap-3">
-                      <Badge variant="outline" className="capitalize">
-                        {t.plan}
-                      </Badge>
+                      <Select
+                        value={t.plan}
+                        onValueChange={(value) => { if (value) changePlan(t.id, value); }}
+                      >
+                        <SelectTrigger className="h-7 w-[130px] text-xs" onClick={(e) => e.stopPropagation()}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {plans.map((p) => (
+                            <SelectItem key={p.slug} value={p.slug}>
+                              {p.name}
+                            </SelectItem>
+                          ))}
+                          {/* Always show current plan even if not in active plans */}
+                          {!plans.some((p) => p.slug === t.plan) && (
+                            <SelectItem value={t.plan}>
+                              {t.plan} (current)
+                            </SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
                       <span className="text-sm text-muted-foreground">{t.user_count} users</span>
                       <span className="text-sm text-muted-foreground">
                         {formatDate(t.created_at)}

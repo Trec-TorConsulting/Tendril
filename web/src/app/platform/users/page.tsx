@@ -49,7 +49,14 @@ export default function PlatformUsersPage() {
     const token = getAccessToken();
     if (!token) return;
     try {
-      await adminUpdateUserFlags(token, userId, { [flag]: !current });
+      // Map boolean flag toggles to platform_role values
+      let newRole: string;
+      if (flag === "is_platform_admin") {
+        newRole = current ? "user" : "super_admin";
+      } else {
+        newRole = current ? "user" : "support";
+      }
+      await adminUpdateUserFlags(token, userId, { platform_role: newRole });
       refresh();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to update");

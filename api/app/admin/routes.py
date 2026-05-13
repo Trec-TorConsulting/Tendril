@@ -1,4 +1,5 @@
 """Platform admin routes — cross-tenant management for super admins and support."""
+
 from __future__ import annotations
 
 from typing import Annotated
@@ -23,6 +24,7 @@ async def _get_db():
 
 
 # ---------- Response models ----------
+
 
 class TenantSummary(BaseModel):
     id: UUID
@@ -53,6 +55,10 @@ class UpdateUserFlags(BaseModel):
     platform_role: str | None = None
 
 
+class UpdateTenantPlan(BaseModel):
+    plan: str
+
+
 class PlatformStatsResponse(BaseModel):
     total_tenants: int
     total_users: int
@@ -60,6 +66,7 @@ class PlatformStatsResponse(BaseModel):
 
 
 # ---------- Tenant endpoints (support + admin) ----------
+
 
 @router.get("/tenants", response_model=PaginatedResponse[TenantSummary])
 async def list_all_tenants(
@@ -70,7 +77,11 @@ async def list_all_tenants(
     """List all tenants across the platform (paginated)."""
     stmt = (
         select(
-            Tenant.id, Tenant.name, Tenant.slug, Tenant.plan, Tenant.created_at,
+            Tenant.id,
+            Tenant.name,
+            Tenant.slug,
+            Tenant.plan,
+            Tenant.created_at,
             func.count(TenantMembership.id).label("user_count"),
         )
         .outerjoin(TenantMembership, TenantMembership.tenant_id == Tenant.id)
@@ -84,8 +95,12 @@ async def list_all_tenants(
     rows = (await db.execute(stmt)).all()
     items = [
         TenantSummary(
-            id=r.id, name=r.name, slug=r.slug, plan=r.plan,
-            user_count=r.user_count, created_at=r.created_at.isoformat(),
+            id=r.id,
+            name=r.name,
+            slug=r.slug,
+            plan=r.plan,
+            user_count=r.user_count,
+            created_at=r.created_at.isoformat(),
         )
         for r in rows
     ]
@@ -109,10 +124,15 @@ async def list_tenant_users(
     rows = (await db.execute(stmt)).all()
     return [
         UserSummary(
-            id=u.id, email=u.email, display_name=u.display_name,
+            id=u.id,
+            email=u.email,
+            display_name=u.display_name,
             platform_role=u.platform_role.value,
-            tenant_id=tenant_id, tenant_name=tn, tenant_role=tr.value,
-            email_verified=u.email_verified, created_at=u.created_at.isoformat(),
+            tenant_id=tenant_id,
+            tenant_name=tn,
+            tenant_role=tr.value,
+            email_verified=u.email_verified,
+            created_at=u.created_at.isoformat(),
             role=tr.value,
             is_platform_admin=u.platform_role == PlatformRole.super_admin,
             is_support=u.platform_role == PlatformRole.support,
@@ -121,7 +141,40 @@ async def list_tenant_users(
     ]
 
 
+@router.patch("/tenants/{tenant_id}", response_model=TenantSummary)
+async def update_tenant_plan(
+    tenant_id: UUID,
+    body: UpdateTenantPlan,
+    _admin: Annotated[CurrentUser, Depends(require_platform_admin)],
+    db: Annotated[AsyncSession, Depends(_get_db)],
+):
+    """Override a tenant's plan without billing (admin only)."""
+    result = await db.execute(select(Tenant).where(Tenant.id == tenant_id))
+    tenant = result.scalar_one_or_none()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    tenant.plan = body.plan
+    await db.commit()
+    await db.refresh(tenant)
+
+    user_count_result = await db.execute(
+        select(func.count(TenantMembership.id)).where(TenantMembership.tenant_id == tenant_id)
+    )
+    user_count = user_count_result.scalar() or 0
+
+    return TenantSummary(
+        id=tenant.id,
+        name=tenant.name,
+        slug=tenant.slug,
+        plan=tenant.plan,
+        user_count=user_count,
+        created_at=tenant.created_at.isoformat(),
+    )
+
+
 # ---------- User management (admin only) ----------
+
 
 @router.get("/users", response_model=PaginatedResponse[UserSummary])
 async def list_all_users(
@@ -132,18 +185,16 @@ async def list_all_users(
     """List all users across the platform (paginated)."""
     count_stmt = select(func.count(User.id))
     total = (await db.execute(count_stmt)).scalar() or 0
-    stmt = (
-        select(User)
-        .order_by(User.created_at.desc())
-        .offset(pagination.offset)
-        .limit(pagination.page_size)
-    )
+    stmt = select(User).order_by(User.created_at.desc()).offset(pagination.offset).limit(pagination.page_size)
     users = (await db.execute(stmt)).scalars().all()
     items = [
         UserSummary(
-            id=u.id, email=u.email, display_name=u.display_name,
+            id=u.id,
+            email=u.email,
+            display_name=u.display_name,
             platform_role=u.platform_role.value,
-            email_verified=u.email_verified, created_at=u.created_at.isoformat(),
+            email_verified=u.email_verified,
+            created_at=u.created_at.isoformat(),
             is_platform_admin=u.platform_role == PlatformRole.super_admin,
             is_support=u.platform_role == PlatformRole.support,
         )
@@ -169,11 +220,11 @@ async def update_user_flags(
         # Validate enum value
         try:
             new_role = PlatformRole(body.platform_role)
-        except ValueError:
+        except ValueError as err:
             raise HTTPException(
                 status_code=400,
                 detail=f"Invalid platform_role. Must be one of: {[r.value for r in PlatformRole]}",
-            )
+            ) from err
 
         # Prevent self-demotion from super_admin
         if user.id == admin.user_id and new_role != PlatformRole.super_admin:
@@ -185,15 +236,19 @@ async def update_user_flags(
     await db.refresh(user)
 
     return UserSummary(
-        id=user.id, email=user.email, display_name=user.display_name,
+        id=user.id,
+        email=user.email,
+        display_name=user.display_name,
         platform_role=user.platform_role.value,
-        email_verified=user.email_verified, created_at=user.created_at.isoformat(),
+        email_verified=user.email_verified,
+        created_at=user.created_at.isoformat(),
         is_platform_admin=user.platform_role == PlatformRole.super_admin,
         is_support=user.platform_role == PlatformRole.support,
     )
 
 
 # ---------- Stats (support + admin) ----------
+
 
 @router.get("/stats", response_model=PlatformStatsResponse)
 async def platform_stats(
@@ -203,12 +258,7 @@ async def platform_stats(
     """Platform-wide statistics."""
     tenant_count = (await db.execute(select(func.count(Tenant.id)))).scalar() or 0
     user_count = (await db.execute(select(func.count(User.id)))).scalar() or 0
-    plan_counts = (
-        await db.execute(
-            select(Tenant.plan, func.count(Tenant.id))
-            .group_by(Tenant.plan)
-        )
-    ).all()
+    plan_counts = (await db.execute(select(Tenant.plan, func.count(Tenant.id)).group_by(Tenant.plan))).all()
 
     return {
         "total_tenants": tenant_count,

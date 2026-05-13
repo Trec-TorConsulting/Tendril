@@ -24,13 +24,15 @@ import {
 } from "@/components/ui/sidebar";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
-import { Shield, BarChart3, Building2, Users, ArrowLeft, LogOut, ShieldAlert, CreditCard } from "lucide-react";
+import { Shield, BarChart3, Building2, Users, ArrowLeft, LogOut, ShieldAlert, CreditCard, Wallet, TrendingUp } from "lucide-react";
 
 const PLATFORM_NAV = [
   { href: "/platform", label: "Overview", icon: BarChart3 },
   { href: "/platform/tenants", label: "Organizations", icon: Building2 },
   { href: "/platform/users", label: "Users", icon: Users },
   { href: "/platform/billing", label: "Billing Plans", icon: CreditCard },
+  { href: "/platform/providers", label: "Providers", icon: Wallet },
+  { href: "/platform/metrics", label: "Metrics", icon: TrendingUp },
 ];
 
 export default function PlatformLayout({ children }: { children: React.ReactNode }) {

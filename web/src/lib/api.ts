@@ -1499,20 +1499,26 @@ export interface AdminUserSummary {
   created_at: string;
 }
 
-export function adminListTenants(token: string) {
-  return apiFetch<AdminTenantSummary[]>("/admin/tenants", { token });
+export async function adminListTenants(token: string) {
+  const res = await apiFetch<{ items: AdminTenantSummary[]; total: number }>("/admin/tenants?page_size=200", { token });
+  return res.items;
 }
 
-export function adminListUsers(token: string) {
-  return apiFetch<AdminUserSummary[]>("/admin/users", { token });
+export async function adminListUsers(token: string) {
+  const res = await apiFetch<{ items: AdminUserSummary[]; total: number }>("/admin/users?page_size=200", { token });
+  return res.items;
 }
 
 export function adminListTenantUsers(token: string, tenantId: string) {
   return apiFetch<AdminUserSummary[]>(`/admin/tenants/${tenantId}/users`, { token });
 }
 
-export function adminUpdateUserFlags(token: string, userId: string, data: { is_platform_admin?: boolean; is_support?: boolean; role?: string }) {
+export function adminUpdateUserFlags(token: string, userId: string, data: { platform_role?: string }) {
   return apiFetch<AdminUserSummary>(`/admin/users/${userId}`, { method: "PATCH", body: JSON.stringify(data), token });
+}
+
+export function adminUpdateTenantPlan(token: string, tenantId: string, data: { plan: string }) {
+  return apiFetch<AdminTenantSummary>(`/admin/tenants/${tenantId}`, { method: "PATCH", body: JSON.stringify(data), token });
 }
 
 export function adminGetStats(token: string) {
