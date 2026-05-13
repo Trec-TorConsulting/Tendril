@@ -1504,6 +1504,17 @@ export async function adminListTenants(token: string) {
   return res.items;
 }
 
+export interface AdminCreateTenantRequest {
+  name: string;
+  slug: string;
+  plan?: string;
+  owner_user_id?: string;
+}
+
+export function adminCreateTenant(token: string, data: AdminCreateTenantRequest) {
+  return apiFetch<AdminTenantSummary>("/admin/tenants", { method: "POST", body: JSON.stringify(data), token });
+}
+
 export async function adminListUsers(token: string) {
   const res = await apiFetch<{ items: AdminUserSummary[]; total: number }>("/admin/users?page_size=200", { token });
   return res.items;

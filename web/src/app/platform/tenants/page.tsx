@@ -2,13 +2,25 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
-import { adminListTenants, adminListTenantUsers, adminUpdateTenantPlan, adminListPlans } from "@/lib/api";
+import { adminListTenants, adminListTenantUsers, adminUpdateTenantPlan, adminListPlans, adminCreateTenant } from "@/lib/api";
 import type { AdminTenantSummary, AdminUserSummary, AdminBillingPlan } from "@/lib/api";
 import { cn, formatDate } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -29,7 +41,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Building2, ChevronDown, CheckCircle, XCircle } from "lucide-react";
+import { Building2, ChevronDown, CheckCircle, XCircle, Plus } from "lucide-react";
 
 export default function PlatformTenantsPage() {
   const [tenants, setTenants] = useState<AdminTenantSummary[]>([]);
@@ -37,6 +49,11 @@ export default function PlatformTenantsPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedUsers, setExpandedUsers] = useState<AdminUserSummary[]>([]);
   const [error, setError] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createName, setCreateName] = useState("");
+  const [createSlug, setCreateSlug] = useState("");
+  const [createPlan, setCreatePlan] = useState("free");
+  const [creating, setCreating] = useState(false);
 
   const refresh = useCallback(async () => {
     const token = getAccessToken();
@@ -88,6 +105,28 @@ export default function PlatformTenantsPage() {
     }
   };
 
+  const handleCreate = async () => {
+    const token = getAccessToken();
+    if (!token) return;
+    setCreating(true);
+    try {
+      await adminCreateTenant(token, { name: createName, slug: createSlug, plan: createPlan });
+      setCreateOpen(false);
+      setCreateName("");
+      setCreateSlug("");
+      setCreatePlan("free");
+      setError("");
+      await refresh();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to create organization");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const slugify = (value: string) =>
+    value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
   return (
     <>
       <PageHeader
@@ -97,7 +136,64 @@ export default function PlatformTenantsPage() {
           { label: "Organizations" },
         ]}
         actions={
-          <Badge variant="secondary">{tenants.length} total</Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary">{tenants.length} total</Badge>
+            <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+              <DialogTrigger render={<Button size="sm"><Plus className="mr-1 size-4" />Add Organization</Button>} />
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Create Organization</DialogTitle>
+                  <DialogDescription>
+                    Add a new organization (tenant) to the platform.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="org-name">Name</Label>
+                    <Input
+                      id="org-name"
+                      placeholder="Acme Corp"
+                      value={createName}
+                      onChange={(e) => {
+                        setCreateName(e.target.value);
+                        setCreateSlug(slugify(e.target.value));
+                      }}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="org-slug">Slug</Label>
+                    <Input
+                      id="org-slug"
+                      placeholder="acme-corp"
+                      value={createSlug}
+                      onChange={(e) => setCreateSlug(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">URL-friendly identifier. Must be unique.</p>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="org-plan">Plan</Label>
+                    <Select value={createPlan} onValueChange={setCreatePlan}>
+                      <SelectTrigger id="org-plan">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {plans.map((p) => (
+                          <SelectItem key={p.slug} value={p.slug}>{p.name}</SelectItem>
+                        ))}
+                        {plans.length === 0 && <SelectItem value="free">Free</SelectItem>}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
+                  <Button onClick={handleCreate} disabled={creating || !createName || !createSlug}>
+                    {creating ? "Creating…" : "Create"}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
         }
       />
       <div className="flex flex-1 flex-col gap-6 p-4 lg:p-6">
