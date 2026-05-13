@@ -15,7 +15,7 @@ jobs:
   # ── Python API ────────────────────────────────────────────────
   api-lint:
     name: API Lint & Format
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-arm64
     defaults:
       run:
         working-directory: api
@@ -30,7 +30,7 @@ jobs:
 
   api-test:
     name: API Tests
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-arm64
     defaults:
       run:
         working-directory: api
@@ -62,7 +62,7 @@ jobs:
 
   api-security:
     name: API Security Scan
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-arm64
     defaults:
       run:
         working-directory: api
@@ -77,7 +77,7 @@ jobs:
   # ── Web Frontend ──────────────────────────────────────────────
   web-lint:
     name: Web Lint & Type Check
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-arm64
     defaults:
       run:
         working-directory: web
@@ -94,7 +94,7 @@ jobs:
 
   web-test:
     name: Web Tests
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-arm64
     defaults:
       run:
         working-directory: web
@@ -111,10 +111,11 @@ jobs:
   # ── Docker Build Validation ──────────────────────────────────
   docker-build:
     name: Docker Build Check
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
         target: [api, web]
+        runner: [arc-runner-arm64, arc-runner-x86]
     steps:
       - uses: actions/checkout@v6
       - uses: docker/setup-buildx-action@v4
@@ -123,13 +124,11 @@ jobs:
           context: ./${{ matrix.target }}
           push: false
           tags: tendril-${{ matrix.target }}:ci
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
   # ── Pre-commit (secrets, formatting, yaml) ───────────────────
   pre-commit:
     name: Pre-commit Checks
-    runs-on: ubuntu-latest
+    runs-on: arc-runner-arm64
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
