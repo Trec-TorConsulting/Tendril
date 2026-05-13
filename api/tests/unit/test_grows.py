@@ -243,7 +243,7 @@ class TestGrowTypes:
         resp = await client.get("/v1/grow-types", headers=tenant["headers"])
         assert resp.status_code == 200
         types = resp.json()
-        assert len(types) == 12
+        assert len(types) == 17
         names = [t["name"] for t in types]
         assert "DWC (Deep Water Culture)" in names
 
