@@ -20,6 +20,14 @@ os.environ["INTEGRATION_ENCRYPTION_KEY"] = "m8eWk-kF4nPTdc7Y0wccVuqqEYTUvrAWdVcF
 async def _setup_db():
     """One-time DB schema setup. Creates all tables at session start, drops at end."""
     from app.automation.models import AlertHistory, AutomationRule, EnvironmentSchedule  # noqa: F401
+    from app.billing.models import (  # noqa: F401
+        BillingOverageRate,
+        BillingPaygRate,
+        BillingPlan,
+        BillingPlanPrice,
+        BillingUsageRecord,
+        PaymentProvider,
+    )
     from app.commercial.models import ApiKey, AuditLog, CustomGrowType, Task  # noqa: F401
     from app.database import Base
     from app.grows.models import (  # noqa: F401
