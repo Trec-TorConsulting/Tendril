@@ -53,6 +53,24 @@ jobs:
           cache-from: type=registry,ref=192.168.4.10:30500/tendril-${{ matrix.target }}:buildcache
           cache-to: ${{ github.ref == 'refs/heads/main' && format('type=registry,ref=192.168.4.10:30500/tendril-{0}:buildcache,mode=max', matrix.target) || '' }}
 
+  # ── Deploy (rolling restart after successful build on main) ──
+  deploy:
+    name: Deploy
+    runs-on: arc-runner-arm64
+    needs: [lint, docker-build]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    steps:
+      - run: |
+          kubectl rollout restart deployment/tendril-api -n tendril
+          kubectl rollout restart deployment/tendril-web -n tendril
+          kubectl rollout restart deployment/tendril-mqtt-worker -n tendril
+          kubectl rollout restart deployment/tendril-scheduler -n tendril
+      - run: |
+          kubectl rollout status deployment/tendril-api -n tendril --timeout=120s
+          kubectl rollout status deployment/tendril-web -n tendril --timeout=120s
+          kubectl rollout status deployment/tendril-mqtt-worker -n tendril --timeout=120s
+          kubectl rollout status deployment/tendril-scheduler -n tendril --timeout=120s
+
   # ── Re-enable when going public ──────────────────────────────
   # api-test:
   #   name: API Tests
