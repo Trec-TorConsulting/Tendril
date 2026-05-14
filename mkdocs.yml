@@ -1,0 +1,64 @@
+site_name: Tendril Documentation
+site_url: https://trec-torconsulting.github.io/Tendril/
+repo_url: https://github.com/Trec-TorConsulting/Tendril
+repo_name: Trec-TorConsulting/Tendril
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: green
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: green
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Self-Hosting: self-hosting.md
+      - Configuration: configuration.md
+  - Guides:
+      - ESP32 Hardware: esp32-hardware.md
+      - Billing & Plans: billing.md
+      - Disaster Recovery: disaster-recovery.md
+  - Architecture:
+      - System Overview: architecture.md
+      - API Reference: api-reference.md
+  - Development:
+      - Developer Guide: development.md
+      - Contributing: contributing.md
