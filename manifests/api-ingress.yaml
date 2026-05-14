@@ -1,26 +1,27 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: tendril-web-ingress
+  name: tendril-api-ingress
   namespace: tendril
   annotations:
     traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
     traefik.ingress.kubernetes.io/router.middlewares: traefik-redirect-https@kubernetescrd,tendril-security-headers@kubernetescrd
+    traefik.ingress.kubernetes.io/service.serverstransport: tendril-api-transport@kubernetescrd
     cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
   ingressClassName: traefik
   rules:
-  - host: tendril.maddscientist.com
+  - host: api.tendril.maddscientist.com
     http:
       paths:
       - path: /
         pathType: Prefix
         backend:
           service:
-            name: tendril-web
+            name: tendril-api
             port:
-              number: 3000
+              number: 8000
   tls:
   - hosts:
-    - tendril.maddscientist.com
+    - api.tendril.maddscientist.com
     secretName: tendril-maddscientist-com-tls

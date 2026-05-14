@@ -8,7 +8,6 @@ import {
   updateGrow,
   getTent,
   getCoachTip,
-  getAiInsight,
   getGrowReportUrl,
   type HealthCheckResult,
   type GrowResponse,
@@ -21,7 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
-import { Heart, AlertTriangle, CheckCircle2, Loader2, History, Clock, Camera, Upload, X, Lightbulb, Brain, FileText, Download, RefreshCw, Calendar as CalendarIcon } from "lucide-react";
+import { Heart, AlertTriangle, CheckCircle2, Loader2, History, Clock, Camera, Upload, X, Lightbulb, FileText, Download, RefreshCw, Calendar as CalendarIcon } from "lucide-react";
 import { cn, formatDateTime } from "@/lib/utils";
 
 function ScoreBadge({ score }: { score: number | null }) {
@@ -117,109 +116,6 @@ interface HealthTabProps {
   onRefresh: () => void;
 }
 
-const SEVERITY_COLORS: Record<string, string> = {
-  critical: "text-red-600 bg-red-50 border-red-200 dark:bg-red-950/30 dark:border-red-800",
-  warning: "text-yellow-600 bg-yellow-50 border-yellow-200 dark:bg-yellow-950/30 dark:border-yellow-800",
-  caution: "text-amber-600 bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-800",
-  normal: "text-green-600 bg-green-50 border-green-200 dark:bg-green-950/30 dark:border-green-800",
-};
-
-function InsightDisplay({ result, type }: { result: unknown; type: string }) {
-  if (!result) return <p className="text-muted-foreground">No insights available</p>;
-
-  if (typeof result === "string") {
-    // Render simple markdown bold and line breaks
-    const parts = result.split(/(\*\*.*?\*\*)/g);
-    return (
-      <p className="whitespace-pre-line">
-        {parts.map((part, i) =>
-          part.startsWith("**") && part.endsWith("**")
-            ? <strong key={i}>{part.slice(2, -2)}</strong>
-            : part
-        )}
-      </p>
-    );
-  }
-
-  if (typeof result !== "object") return <p className="text-muted-foreground">No insights available</p>;
-
-  const obj = result as Record<string, unknown>;
-
-  // Anomaly scan: { anomalies: [...] }
-  if (type === "anomaly_scan" && Array.isArray(obj.anomalies)) {
-    if (obj.anomalies.length === 0) return <p className="text-green-600">No anomalies detected. All sensors are within expected ranges.</p>;
-    return (
-      <div className="space-y-2">
-        {obj.anomalies.map((a: Record<string, unknown>, i: number) => (
-          <div key={i} className={cn("rounded-md border p-2.5", SEVERITY_COLORS[String(a.severity)] || "")}>
-            <div className="flex items-center justify-between">
-              <span className="font-medium capitalize">{String(a.sensor).replace(/_/g, " ")}</span>
-              <Badge variant="outline" className="text-[10px] capitalize">{String(a.severity)}</Badge>
-            </div>
-            <div className="mt-1 text-xs">
-              <span>Value: <strong>{String(a.value)}</strong></span>
-              {!!a.expected_range && <span className="ml-2">Expected: {String(a.expected_range)}</span>}
-            </div>
-            {!!a.recommendation && <p className="mt-1 text-xs text-muted-foreground">{String(a.recommendation)}</p>}
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  // Harvest prediction: { estimated_date, days_remaining, confidence, notes }
-  if (type === "harvest_predict") {
-    if (!obj.estimated_date && !obj.days_remaining && !obj.prediction) {
-      return <p className="text-muted-foreground">Not enough data yet to predict harvest. Continue logging sensor readings and health checks.</p>;
-    }
-    return (
-      <div className="space-y-2">
-        {!!obj.estimated_date && (
-          <div className="flex items-center gap-2">
-            <CalendarIcon className="size-4 text-primary" />
-            <span className="font-medium">Estimated harvest:</span>
-            <span>{String(obj.estimated_date)}</span>
-          </div>
-        )}
-        {obj.days_remaining != null && (
-          <div className="flex items-center gap-2">
-            <Clock className="size-4 text-muted-foreground" />
-            <span>{String(obj.days_remaining)} days remaining</span>
-          </div>
-        )}
-        {!!obj.confidence && <p className="text-xs text-muted-foreground">Confidence: {String(obj.confidence)}</p>}
-        {!!obj.notes && <p className="text-xs text-muted-foreground">{String(obj.notes)}</p>}
-        {!!obj.prediction && typeof obj.prediction === "string" && <p>{obj.prediction}</p>}
-      </div>
-    );
-  }
-
-  // Nutrient advice or generic: render flat key-value pairs nicely
-  return (
-    <div className="space-y-1.5">
-      {Object.entries(obj).map(([k, v]) => {
-        if (v == null) return null;
-        if (Array.isArray(v)) {
-          return (
-            <div key={k}>
-              <span className="font-medium capitalize">{k.replace(/_/g, " ")}:</span>
-              <ul className="mt-0.5 ml-4 list-disc space-y-0.5 text-muted-foreground">
-                {v.map((item, i) => <li key={i}>{typeof item === "object" ? JSON.stringify(item) : String(item)}</li>)}
-              </ul>
-            </div>
-          );
-        }
-        return (
-          <div key={k}>
-            <span className="font-medium capitalize">{k.replace(/_/g, " ")}:</span>{" "}
-            <span className="text-muted-foreground">{typeof v === "object" ? JSON.stringify(v) : String(v)}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 export function HealthTab({ grow, onRefresh }: HealthTabProps) {
   const [tent, setTent] = useState<TentResponse | null>(null);
   const [result, setResult] = useState<HealthCheckResult | null>(null);
@@ -232,12 +128,9 @@ export function HealthTab({ grow, onRefresh }: HealthTabProps) {
   const [autoCheck, setAutoCheck] = useState(grow.auto_health_check);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // AI Coach & Insights
+  // AI Coach
   const [coachTip, setCoachTip] = useState<string | null>(null);
   const [coachLoading, setCoachLoading] = useState(false);
-  const [insightResult, setInsightResult] = useState<{ insight_type: string; result: unknown } | null>(null);
-  const [insightLoading, setInsightLoading] = useState(false);
-  const [insightType, setInsightType] = useState<string>("harvest_predict");
 
   const COACH_CACHE_KEY = `tendril_coach_tip_${grow.id}`;
   const COACH_TTL = 60 * 60 * 1000; // 1 hour
@@ -362,17 +255,7 @@ export function HealthTab({ grow, onRefresh }: HealthTabProps) {
 
   const loadCoachTip = () => { fetchAndCacheCoachTip(); };
 
-  const loadInsight = async (type: string) => {
-    const token = getAccessToken();
-    if (!token) return;
-    setInsightType(type);
-    setInsightLoading(true);
-    try {
-      const res = await getAiInsight(token, grow.id, type);
-      setInsightResult(res);
-    } catch { setInsightResult(null); }
-    finally { setInsightLoading(false); }
-  };
+
 
   const downloadReport = () => {
     const token = getAccessToken();
@@ -399,66 +282,28 @@ export function HealthTab({ grow, onRefresh }: HealthTabProps) {
         </Button>
       </div>
 
-      {/* AI Coach Tip + Insights */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                <Lightbulb className="size-4 text-amber-500" /> Coach Tip
-              </CardTitle>
-              <Button variant="outline" size="sm" className="h-7 text-xs" onClick={loadCoachTip} disabled={coachLoading}>
-                {coachLoading ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            {coachLoading ? (
-              <p className="text-sm text-muted-foreground">Getting tip...</p>
-            ) : coachTip ? (
-              <p className="text-sm">{coachTip}</p>
-            ) : (
-              <p className="text-sm text-muted-foreground">Loading your personalized growing tip...</p>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between">
-              <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                <Brain className="size-4 text-purple-500" /> AI Insights
-              </CardTitle>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex flex-wrap gap-1.5">
-              {[
-                { type: "harvest_predict", label: "Harvest Prediction" },
-                { type: "nutrient_advice", label: "Nutrient Advice" },
-                { type: "anomaly_scan", label: "Anomaly Scan" },
-              ].map(({ type, label }) => (
-                <Button
-                  key={type}
-                  variant={insightType === type && insightResult ? "default" : "outline"}
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={() => loadInsight(type)}
-                  disabled={insightLoading}
-                >
-                  {insightLoading && insightType === type && <Loader2 className="mr-1 size-3 animate-spin" />}
-                  {label}
-                </Button>
-              ))}
-            </div>
-            {insightResult && !insightLoading && (
-              <div className="rounded-md border bg-muted/30 p-3 text-sm">
-                <InsightDisplay result={insightResult.result} type={insightResult.insight_type} />
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      {/* AI Coach Tip */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <Lightbulb className="size-4 text-amber-500" /> Coach Tip
+            </CardTitle>
+            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={loadCoachTip} disabled={coachLoading}>
+              {coachLoading ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {coachLoading ? (
+            <p className="text-sm text-muted-foreground">Getting tip...</p>
+          ) : coachTip ? (
+            <p className="text-sm">{coachTip}</p>
+          ) : (
+            <p className="text-sm text-muted-foreground">Loading your personalized growing tip...</p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Observations form + image options */}
       <Card>

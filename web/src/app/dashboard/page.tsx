@@ -135,7 +135,7 @@ export default function DashboardPage() {
         listDevices(token).catch(() => [] as DeviceResponse[]),
         getHarvestCountdown(token).catch(() => [] as HarvestCountdownItem[]),
         listBuckets(token, growId).catch(() => [] as BucketResponse[]),
-        listTasks(token, { status: "pending", grow_cycle_id: growId }).catch(() => [] as TaskItem[]),
+        listTasks(token, { status: "pending" }).catch(() => [] as TaskItem[]),
         // Sensor readings will be filtered client-side by bucket IDs
         listSensorReadings(token, undefined, 50).catch(() => [] as SensorReadingResponse[]),
         listTentReadings(token, tentId, 50).catch(() => [] as TentReadingResponse[]),
@@ -145,6 +145,10 @@ export default function DashboardPage() {
       setBuckets(b);
       setTasks(
         [...tk].sort((a, b) => {
+          // Prioritize selected grow's tasks, then overdue, then by due date
+          const aIsCurrentGrow = a.grow_cycle_id === growId ? 0 : 1;
+          const bIsCurrentGrow = b.grow_cycle_id === growId ? 0 : 1;
+          if (aIsCurrentGrow !== bIsCurrentGrow) return aIsCurrentGrow - bIsCurrentGrow;
           if (!a.due_date && !b.due_date) return 0;
           if (!a.due_date) return 1;
           if (!b.due_date) return -1;
@@ -471,6 +475,11 @@ export default function DashboardPage() {
                               <p className="mt-0.5 text-xs text-muted-foreground line-clamp-1">{task.description}</p>
                             )}
                             <div className="mt-1 flex flex-wrap items-center gap-2">
+                              {task.grow_cycle_id && task.grow_cycle_id !== selectedGrow?.id && (
+                                <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground">
+                                  {grows.find((g) => g.id === task.grow_cycle_id)?.name || "Other grow"}
+                                </Badge>
+                              )}
                               {task.category && (
                                 <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
                                   {CATEGORY_LABELS[task.category] || task.category.replace(/_/g, " ")}
