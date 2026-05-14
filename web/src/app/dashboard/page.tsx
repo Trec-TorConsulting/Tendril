@@ -34,7 +34,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Sprout, Droplets, Thermometer, Wind, CheckCircle2, TrendingUp, Zap, Bot, CalendarIcon, FlaskConical } from "lucide-react";
+import { Sprout, Droplets, Thermometer, Wind, CheckCircle2, TrendingUp, CalendarIcon, FlaskConical, AlertTriangle, Wrench } from "lucide-react";
 import { cn, formatCalendarDate } from "@/lib/utils";
 import { PullToRefresh } from "@/components/pull-to-refresh";
 import {
@@ -143,22 +143,41 @@ export default function DashboardPage() {
       setDevices(d);
       setCountdown(hc.filter((h) => h.grow_id === growId));
       setBuckets(b);
-      setTasks(
-        [...tk].sort((a, b) => {
-          // Sort by due date (overdue first, then soonest)
+      // Separate tasks into tiers: alerts → health actions → daily routines
+      const alertTasks = tk.filter((t) => t.category === "alert_response");
+      const healthTasks = tk.filter((t) => t.source === "ai" || t.category === "health_response");
+      const routineTasks = [...tk]
+        .filter((t) => t.source === "auto" && t.category !== "alert_response")
+        .sort((a, b) => {
           if (!a.due_date && !b.due_date) return 0;
           if (!a.due_date) return 1;
           if (!b.due_date) return -1;
           return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
         })
-        // Deduplicate auto-generated recurring tasks — show only the next occurrence per category
+        // Deduplicate recurring routines — only show next occurrence per category
         .filter((task, _i, arr) => {
-          if (task.source !== "auto" || !task.category) return true;
-          const first = arr.find((t) => t.source === "auto" && t.category === task.category && t.grow_cycle_id === task.grow_cycle_id);
+          if (!task.category) return true;
+          const first = arr.find((t) => t.category === task.category);
           return first?.id === task.id;
-        })
-        .slice(0, 6)
-      );
+        });
+
+      // Priority sort: alerts by priority, health by due date
+      const sortedAlerts = [...alertTasks].sort((a, b) => {
+        const prio = { urgent: 0, high: 1, medium: 2, low: 3 };
+        return (prio[a.priority as keyof typeof prio] ?? 3) - (prio[b.priority as keyof typeof prio] ?? 3);
+      });
+      const sortedHealth = [...healthTasks].sort((a, b) => {
+        if (!a.due_date && !b.due_date) return 0;
+        if (!a.due_date) return 1;
+        if (!b.due_date) return -1;
+        return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+      });
+
+      setTasks([
+        ...sortedAlerts,
+        ...sortedHealth.slice(0, 1), // Only the NEXT health action
+        ...routineTasks.slice(0, 4),
+      ]);
 
       // Filter sensor readings to only this grow's buckets
       const bucketIds = new Set(b.map((bk) => bk.id));
@@ -447,7 +466,7 @@ export default function DashboardPage() {
                     </Button>
                   </div>
                 </CardHeader>
-                <CardContent className="flex flex-col gap-2">
+                <CardContent className="flex flex-col gap-3">
                   {tasks.length === 0 && (
                     <p className="text-sm text-muted-foreground py-4 text-center">
                       All caught up! No pending tasks.
@@ -455,7 +474,11 @@ export default function DashboardPage() {
                   )}
                   <AnimatePresence mode="popLayout">
                     {tasks.map((task) => {
+                      const isAlert = task.category === "alert_response";
+                      const isHealth = task.source === "ai" || task.category === "health_response";
+                      const isRoutine = task.source === "auto" && !isAlert;
                       const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== "completed";
+
                       return (
                         <motion.div
                           key={task.id}
@@ -463,36 +486,53 @@ export default function DashboardPage() {
                           {...fadeUp}
                           transition={{ duration: 0.2 }}
                           className={cn(
-                            "flex items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50",
-                            isOverdue ? "border-red-500/50" : "border-border/50",
+                            "flex items-start gap-3 rounded-lg border p-3 transition-colors",
+                            isAlert ? "border-red-500/60 bg-red-500/5" :
+                            isHealth ? "border-amber-500/50 bg-amber-500/5" :
+                            "border-border/30 bg-transparent opacity-75 hover:opacity-100",
                           )}
                         >
                           <button
                             onClick={() => handleCompleteTask(task.id)}
-                            className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border-2 border-muted-foreground/40 transition hover:border-green-500 hover:bg-green-500/10"
+                            className={cn(
+                              "mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border-2 transition",
+                              isAlert ? "border-red-500/60 hover:border-red-500 hover:bg-red-500/10" :
+                              isHealth ? "border-amber-500/60 hover:border-amber-500 hover:bg-amber-500/10" :
+                              "border-muted-foreground/30 hover:border-green-500 hover:bg-green-500/10",
+                            )}
                             aria-label={`Complete task: ${task.title}`}
                           >
                             <CheckCircle2 className="size-3 text-transparent" />
                           </button>
                           <div className="flex-1 min-w-0">
                             <div className="flex flex-wrap items-center gap-1.5">
-                              <p className="text-sm font-medium leading-tight truncate">{task.title}</p>
-                              {task.source === "auto" && <span title="Auto-generated"><Zap className="size-3 text-amber-500" /></span>}
-                              {task.source === "ai" && <span title="AI-suggested"><Bot className="size-3 text-purple-500" /></span>}
+                              {isAlert && <AlertTriangle className="size-3.5 text-red-500 shrink-0" />}
+                              {isHealth && <Wrench className="size-3 text-amber-500 shrink-0" />}
+                              <p className={cn(
+                                "text-sm leading-tight truncate",
+                                isAlert ? "font-semibold" : isHealth ? "font-medium" : "font-normal text-muted-foreground",
+                              )}>{task.title}</p>
                             </div>
-                            {task.description && (
-                              <p className="mt-0.5 text-xs text-muted-foreground line-clamp-1">{task.description}</p>
+                            {(isAlert || isHealth) && task.description && (
+                              <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">{task.description}</p>
                             )}
                             <div className="mt-1 flex flex-wrap items-center gap-2">
-                              {task.category && (
-                                <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+                              {isAlert && (
+                                <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                                  Action Required
+                                </Badge>
+                              )}
+                              {isHealth && (
+                                <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-500/50 text-amber-600">
+                                  Fix Issue
+                                </Badge>
+                              )}
+                              {isRoutine && task.category && (
+                                <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-muted-foreground border-border/50">
                                   {CATEGORY_LABELS[task.category] || task.category.replace(/_/g, " ")}
                                 </Badge>
                               )}
-                              <Badge variant={PRIORITY_VARIANT[task.priority] || "outline"} className="text-[10px] px-1.5 py-0">
-                                {task.priority}
-                              </Badge>
-                              {task.due_date && (
+                              {(isAlert || isHealth) && task.due_date && (
                                 <span className={cn("flex items-center gap-0.5 text-[10px]", isOverdue ? "text-red-500 font-medium" : "text-muted-foreground")}>
                                   <CalendarIcon className="size-2.5" />
                                   {isOverdue ? "Overdue" : formatCalendarDate(task.due_date)}
@@ -643,13 +683,6 @@ function PlantCard({ plant }: { plant: PlantCardData }) {
     </motion.div>
   );
 }
-
-const PRIORITY_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-  low: "secondary",
-  medium: "outline",
-  high: "default",
-  urgent: "destructive",
-};
 
 const CATEGORY_LABELS: Record<string, string> = {
   ph_check: "pH Check",
