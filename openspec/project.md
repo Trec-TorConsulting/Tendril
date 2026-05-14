@@ -6,11 +6,11 @@ Tendril is an open-source, multi-tenant SaaS platform for grow monitoring and au
 ## Repository
 - **GitHub**: `https://github.com/Trec-TorConsulting/Tendril.git`
 - **License**: AGPL-3.0 (server/web), MIT (ESP32 firmware)
-- **Status**: Open-source, enterprise-grade quality standard
+- **Status**: Public (switched from private on 2026-05-14), open-source, enterprise-grade quality standard
 
 ## Tech Stack
 - **API**: Python 3.12+, FastAPI, SQLAlchemy 2.0 async, asyncpg, Alembic, PostgreSQL with RLS
-- **Web**: TypeScript, Next.js 16, React 19, Tailwind CSS 4, shadcn/ui, PWA via next-pwa
+- **Web**: TypeScript, Next.js 16, React 19, Tailwind CSS 4, shadcn/ui, custom service worker PWA
 - **Firmware**: C++ (ESP32-WROOM-32), PlatformIO, Arduino, MQTT via PubSubClient
 - **AI**: Google Gemini, Ollama (local LLM), LangChain-style tool calls
 - **Infrastructure**: Docker (arm64 builds), k3s, Traefik ingress, Let's Encrypt TLS
