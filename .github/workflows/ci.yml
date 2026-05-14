@@ -35,8 +35,10 @@ jobs:
         include:
           - runner: arc-runner-arm64
             platform: linux/arm64
+            arch: arm64
           - runner: arc-runner-x86
             platform: linux/amd64
+            arch: amd64
     steps:
       - uses: actions/checkout@v6
       - uses: docker/setup-buildx-action@v4
@@ -49,15 +51,31 @@ jobs:
           context: ./${{ matrix.target }}
           platforms: ${{ matrix.platform }}
           push: ${{ github.ref == 'refs/heads/main' }}
-          tags: 192.168.4.10:30500/tendril-${{ matrix.target }}:latest
-          cache-from: type=registry,ref=192.168.4.10:30500/tendril-${{ matrix.target }}:buildcache
-          cache-to: ${{ github.ref == 'refs/heads/main' && format('type=registry,ref=192.168.4.10:30500/tendril-{0}:buildcache,mode=max', matrix.target) || '' }}
+          tags: 192.168.4.10:30500/tendril-${{ matrix.target }}:${{ matrix.arch }}
+          cache-from: type=registry,ref=192.168.4.10:30500/tendril-${{ matrix.target }}:buildcache-${{ matrix.arch }}
+          cache-to: ${{ github.ref == 'refs/heads/main' && format('type=registry,ref=192.168.4.10:30500/tendril-{0}:buildcache-{1},mode=max', matrix.target, matrix.arch) || '' }}
+
+  # ── Create multi-arch manifest ───────────────────────────────
+  manifest:
+    name: Multi-arch Manifest
+    runs-on: arc-runner-arm64
+    needs: [docker-build]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    strategy:
+      matrix:
+        target: [api, web]
+    steps:
+      - run: |
+          docker manifest create 192.168.4.10:30500/tendril-${{ matrix.target }}:latest \
+            192.168.4.10:30500/tendril-${{ matrix.target }}:arm64 \
+            192.168.4.10:30500/tendril-${{ matrix.target }}:amd64 --insecure
+          docker manifest push 192.168.4.10:30500/tendril-${{ matrix.target }}:latest --insecure
 
   # ── Deploy (rolling restart after successful build on main) ──
   deploy:
     name: Deploy
     runs-on: arc-runner-arm64
-    needs: [lint, docker-build]
+    needs: [lint, manifest]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     steps:
       - run: |
