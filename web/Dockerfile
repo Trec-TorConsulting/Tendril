@@ -11,6 +11,7 @@ RUN npm run build
 FROM node:26-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+RUN npm cache clean --force && rm -rf /usr/local/lib/node_modules/npm
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
