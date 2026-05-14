@@ -36,8 +36,8 @@ class OpenSprinklerConnector(BaseConnector):
         pw = self.decrypted_config.get("password_hash", "")
         if pw and len(pw) == 32:
             return pw
-        # If raw password provided, hash it
-        return hashlib.md5(pw.encode()).hexdigest()  # noqa: S324
+        # If raw password provided, hash it (OpenSprinkler API requires MD5)
+        return hashlib.md5(pw.encode(), usedforsecurity=False).hexdigest()
 
     async def _get(self, endpoint: str) -> dict:
         """Make GET request to OpenSprinkler API."""

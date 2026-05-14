@@ -143,6 +143,6 @@ async def emqx_status(request: Request) -> JSONResponse:
 
 async def start_webhook_server() -> None:
     """Run the auth webhook server on port 8081."""
-    config = uvicorn.Config(webhook_app, host="0.0.0.0", port=8081, log_level="info")
+    config = uvicorn.Config(webhook_app, host="0.0.0.0", port=8081, log_level="info")  # nosec B104 — runs in container
     server = uvicorn.Server(config)
     await server.serve()
