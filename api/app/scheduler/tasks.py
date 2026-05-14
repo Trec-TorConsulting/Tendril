@@ -622,10 +622,9 @@ class TaskRunner:
                         continue
 
                     # Set RLS context for this tenant
-                    from sqlalchemy import text
+                    from app.database import set_rls_tenant
 
-                    tid_str = str(cfg.tenant_id)
-                    await session.execute(text(f"SET app.current_tenant = '{tid_str}'"))
+                    await set_rls_tenant(session, cfg.tenant_id)
 
                     dm_result = await session.execute(
                         select(IntegrationDeviceMap).where(

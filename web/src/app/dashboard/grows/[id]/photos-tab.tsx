@@ -115,7 +115,9 @@ export function PhotosTab({ growId, buckets }: PhotosTabProps) {
     }
     setSelectedFile(file);
     if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setPreviewUrl(URL.createObjectURL(file));
+    const objectUrl = URL.createObjectURL(file);
+    // Only allow blob: URLs to prevent injection via crafted URLs
+    setPreviewUrl(objectUrl.startsWith("blob:") ? objectUrl : "");
   };
 
   const handleDrop = (e: React.DragEvent) => {

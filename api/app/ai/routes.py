@@ -72,14 +72,11 @@ async def websocket_chat(ws: WebSocket):
     grow_uuid = None
     if grow_id:
         try:
-            from sqlalchemy import text
-
-            from app.database import async_session_factory
+            from app.database import async_session_factory, set_rls_tenant
             from app.grows.models import GrowCycle
 
             async with async_session_factory() as session:
-                tid = str(tenant_id)
-                await session.execute(text(f"SET app.current_tenant = '{tid}'"))
+                await set_rls_tenant(session, tenant_id)
                 grow = await session.get(GrowCycle, UUID(grow_id))
                 if grow and grow.tenant_id == tenant_id:
                     grow_uuid = grow.id
@@ -128,13 +125,10 @@ async def websocket_chat(ws: WebSocket):
                         fn_args = fn.get("arguments", {})
 
                         try:
-                            from sqlalchemy import text
-
-                            from app.database import async_session_factory
+                            from app.database import async_session_factory, set_rls_tenant
 
                             async with async_session_factory() as tool_session:
-                                tid = str(tenant_id)
-                                await tool_session.execute(text(f"SET app.current_tenant = '{tid}'"))
+                                await set_rls_tenant(tool_session, tenant_id)
                                 tool_result = await execute_tool(
                                     fn_name,
                                     fn_args,

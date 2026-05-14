@@ -7,7 +7,6 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 from pydantic import BaseModel
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.jwt import decode_token
@@ -268,10 +267,9 @@ async def get_tenant_session(
         )
     session = async_session_factory()
     try:
-        # SET doesn't support parameterized queries in asyncpg;
-        # user.tenant_id is a validated UUID so safe to interpolate.
-        tid = str(user.tenant_id)
-        await session.execute(text(f"SET app.current_tenant = '{tid}'"))
+        from app.database import set_rls_tenant
+
+        await set_rls_tenant(session, user.tenant_id)
         yield session  # type: ignore[misc]
     finally:
         await session.close()

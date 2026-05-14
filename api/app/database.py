@@ -41,12 +41,16 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 async def tenant_session(tenant_id: UUID) -> AsyncGenerator[AsyncSession, None]:
     """Context manager that sets RLS tenant context for the session."""
     async with async_session_factory() as session:
-        # Use text() with bindparam for safety even though tenant_id is a validated UUID.
-        # SET doesn't support $1 placeholders in asyncpg, so we use format_map
-        # after explicitly validating the UUID to prevent injection.
-        tid = str(UUID(str(tenant_id)))  # Re-validate UUID to guarantee format
-        await session.execute(text(f"SET app.current_tenant = '{tid}'"))
+        await set_rls_tenant(session, tenant_id)
         yield session
+
+
+async def set_rls_tenant(session: AsyncSession, tenant_id: UUID) -> None:
+    """Set the RLS tenant context using parameterized set_config()."""
+    await session.execute(
+        text("SELECT set_config('app.current_tenant', :tid, false)"),
+        {"tid": str(tenant_id)},
+    )
 
 
 async def get_tenant_db(tenant_id: UUID) -> AsyncGenerator[AsyncSession, None]:

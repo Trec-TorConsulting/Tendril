@@ -172,10 +172,10 @@ def create_app() -> FastAPI:
             async with async_session_factory() as session:
                 await session.execute(text("SELECT 1"))
             return {"status": "ok", "db": "connected"}
-        except Exception as exc:
+        except Exception:
             return JSONResponse(
                 status_code=503,
-                content={"status": "degraded", "db": "unreachable", "error": str(exc)},
+                content={"status": "degraded", "db": "unreachable"},
             )
 
     return app

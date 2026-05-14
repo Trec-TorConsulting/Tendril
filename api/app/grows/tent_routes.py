@@ -10,7 +10,7 @@ import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import record_audit
@@ -154,8 +154,9 @@ async def camera_snapshot(
     tenant_id = verify_signed_url(request.url.path, sig, exp, tid)
 
     async with async_session_factory() as session:
-        tid_str = str(tenant_id)
-        await session.execute(text(f"SET app.current_tenant = '{tid_str}'"))
+        from app.database import set_rls_tenant
+
+        await set_rls_tenant(session, tenant_id)
         tent = await session.get(Tent, tent_id)
         if tent is None:
             raise HTTPException(status_code=404, detail="Tent not found")

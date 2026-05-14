@@ -11,7 +11,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
-from sqlalchemy import desc, select, text
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
@@ -223,7 +223,9 @@ async def serve_grow_photo(
             raise HTTPException(status_code=403, detail="No tenant context")
 
     async with async_session_factory() as session:
-        await session.execute(text(f"SET app.current_tenant = '{tenant_id}'"))
+        from app.database import set_rls_tenant
+
+        await set_rls_tenant(session, UUID(tenant_id))
         photo = await session.get(GrowPhoto, photo_id)
 
     if photo is None:
@@ -368,7 +370,9 @@ async def get_timelapse(
             raise HTTPException(status_code=403, detail="No tenant context")
 
     async with async_session_factory() as session:
-        await session.execute(text(f"SET app.current_tenant = '{tenant_id}'"))
+        from app.database import set_rls_tenant
+
+        await set_rls_tenant(session, UUID(tenant_id))
 
         photos = (
             (
