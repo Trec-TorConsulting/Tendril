@@ -23,7 +23,7 @@ aiomqtt>=2.0,<3
 pywebpush>=2.0,<3
 
 # Image processing
-Pillow>=10.0,<11
+Pillow>=12.0,<13
 
 # QR code generation
 qrcode>=8.0,<9
