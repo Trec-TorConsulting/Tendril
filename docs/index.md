@@ -22,8 +22,8 @@ Welcome to the Tendril documentation. Whether you're self-hosting, contributing 
 
 | Document | Description |
 |----------|-------------|
-| [Contributing](../CONTRIBUTING.md) | How to submit PRs and the OpenSpec workflow |
-| [Code of Conduct](../CODE_OF_CONDUCT.md) | Community behavior standards |
-| [Security Policy](../SECURITY.md) | How to report vulnerabilities |
-| [Changelog](../CHANGELOG.md) | Version history and release notes |
-| [License](../LICENSE) | AGPL-3.0 (server) / MIT (firmware) |
+| [Contributing](https://github.com/Trec-TorConsulting/Tendril/blob/main/CONTRIBUTING.md) | How to submit PRs and the OpenSpec workflow |
+| [Code of Conduct](https://github.com/Trec-TorConsulting/Tendril/blob/main/CODE_OF_CONDUCT.md) | Community behavior standards |
+| [Security Policy](https://github.com/Trec-TorConsulting/Tendril/blob/main/SECURITY.md) | How to report vulnerabilities |
+| [Changelog](https://github.com/Trec-TorConsulting/Tendril/blob/main/CHANGELOG.md) | Version history and release notes |
+| [License](https://github.com/Trec-TorConsulting/Tendril/blob/main/LICENSE) | AGPL-3.0 (server) / MIT (firmware) |

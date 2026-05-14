@@ -352,7 +352,7 @@ For larger changes (new features, architecture changes, breaking changes), use t
 4. **Implement** once approved
 5. **Archive** after deployment: move to `openspec/changes/archive/`
 
-See [openspec/AGENTS.md](../openspec/AGENTS.md) for the full specification.
+See [openspec/AGENTS.md](https://github.com/Trec-TorConsulting/Tendril/blob/main/openspec/AGENTS.md) for the full specification.
 
 ## Useful Commands
 
