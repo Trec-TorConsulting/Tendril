@@ -34,7 +34,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Sprout, Droplets, Thermometer, Wind, CheckCircle2, TrendingUp, Clock, Zap, Bot, CalendarIcon, FlaskConical } from "lucide-react";
+import { Sprout, Droplets, Thermometer, Wind, CheckCircle2, TrendingUp, Zap, Bot, CalendarIcon, FlaskConical } from "lucide-react";
 import { cn, formatCalendarDate } from "@/lib/utils";
 import { PullToRefresh } from "@/components/pull-to-refresh";
 import {
@@ -153,7 +153,14 @@ export default function DashboardPage() {
           if (!a.due_date) return 1;
           if (!b.due_date) return -1;
           return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
-        }).slice(0, 6)
+        })
+        // Deduplicate auto-generated recurring tasks — show only the next occurrence per category
+        .filter((task, _i, arr) => {
+          if (task.source !== "auto" || !task.category) return true;
+          const first = arr.find((t) => t.source === "auto" && t.category === task.category && t.grow_cycle_id === task.grow_cycle_id);
+          return first?.id === task.id;
+        })
+        .slice(0, 6)
       );
 
       // Filter sensor readings to only this grow's buckets
@@ -429,14 +436,19 @@ export default function DashboardPage() {
               )}
             </div>
 
-            {/* ─── Right Sidebar: Task Management ──────────────────── */}
+            {/* ─── Right Sidebar: Tasks ──────────────────── */}
             <motion.aside {...fadeUp} transition={{ duration: 0.4, delay: 0.15 }} className="flex flex-col gap-4">
               <Card className="border-border/50 backdrop-blur-sm">
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <Clock className="size-4 text-primary" />
-                    Pending Maintenance
-                  </CardTitle>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <CheckCircle2 className="size-4 text-primary" />
+                      Tasks
+                    </CardTitle>
+                    <Button variant="ghost" size="sm" className="text-xs text-muted-foreground" render={<Link href="/dashboard/tasks" />}>
+                      View all
+                    </Button>
+                  </div>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-2">
                   {tasks.length === 0 && (
@@ -500,16 +512,6 @@ export default function DashboardPage() {
                       );
                     })}
                   </AnimatePresence>
-                  {tasks.length > 0 && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="mt-2 w-full text-muted-foreground"
-                      render={<Link href="/dashboard/tasks" />}
-                    >
-                      View all tasks
-                    </Button>
-                  )}
                 </CardContent>
               </Card>
 
