@@ -49,7 +49,7 @@ jobs:
           push: false
           tags: tendril-api:scan
           load: true
-      - uses: aquasecurity/trivy-action@0.28.0
+      - uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: tendril-api:scan
           format: sarif
@@ -73,7 +73,7 @@ jobs:
           push: false
           tags: tendril-web:scan
           load: true
-      - uses: aquasecurity/trivy-action@0.28.0
+      - uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: tendril-web:scan
           format: sarif
