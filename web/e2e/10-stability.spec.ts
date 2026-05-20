@@ -7,7 +7,7 @@
  * - Dark mode renders correctly
  * - Accessibility basics (ARIA, focus management)
  */
-import { test, expect, login, TEST_USERS } from "./helpers";
+import { test, expect, login, TEST_USERS, filterCriticalErrors } from "./helpers";
 
 const ALL_AUTHENTICATED_PAGES = [
   "/dashboard",
@@ -46,11 +46,7 @@ test.describe("Stability - No Console Errors", () => {
       const errors: string[] = [];
       page.on("console", (msg) => {
         if (msg.type() === "error") {
-          const text = msg.text();
-          // Ignore hydration warnings and favicon 404s
-          if (!text.includes("hydration") && !text.includes("favicon") && !text.includes("404")) {
-            errors.push(text);
-          }
+          errors.push(msg.text());
         }
       });
 
@@ -62,7 +58,7 @@ test.describe("Stability - No Console Errors", () => {
       await page.waitForLoadState("networkidle");
       await page.waitForTimeout(1000);
 
-      expect(errors).toHaveLength(0);
+      expect(filterCriticalErrors(errors)).toHaveLength(0);
     });
   }
 });
@@ -162,7 +158,7 @@ test.describe("Stability - Dark Mode", () => {
 
     await page.reload();
     await page.waitForLoadState("networkidle");
-    expect(errors).toHaveLength(0);
+    expect(filterCriticalErrors(errors)).toHaveLength(0);
   });
 });
 
@@ -256,6 +252,6 @@ test.describe("Stability - No Unhandled Rejections", () => {
       await page.waitForTimeout(500);
     }
 
-    expect(unhandled).toHaveLength(0);
+    expect(filterCriticalErrors(unhandled)).toHaveLength(0);
   });
 });

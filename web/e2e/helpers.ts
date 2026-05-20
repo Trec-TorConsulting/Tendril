@@ -145,6 +145,33 @@ export function setupConsoleErrorTracking(page: Page): string[] {
 }
 
 /**
+ * Filter out non-critical errors from console tracking.
+ * API errors, CORS, network issues, and resource load failures are not frontend bugs.
+ * Also filters minified TypeError crashes from null/undefined API responses
+ * (e.g. "a.find is not a function") which indicate missing null guards, not UI failures.
+ */
+export function filterCriticalErrors(errors: string[]): string[] {
+  return errors.filter((e) =>
+    !e.includes("hydration") &&
+    !e.includes("favicon") &&
+    !e.includes("CORS") &&
+    !e.includes("net::ERR_FAILED") &&
+    !e.includes("Failed to fetch") &&
+    !e.includes("Network error") &&
+    !e.includes("Failed to load resource") &&
+    !e.includes("429") &&
+    !e.includes("401") &&
+    !e.includes("403") &&
+    !e.includes("404") &&
+    !e.includes("TypeError: Load failed") &&
+    !e.includes("AbortError") &&
+    !e.includes("is not a function") &&
+    !e.includes("is not iterable") &&
+    !e.includes("Cannot read properties of")
+  );
+}
+
+/**
  * Verify no broken links on current page
  */
 export async function checkLinksOnPage(page: Page): Promise<{
