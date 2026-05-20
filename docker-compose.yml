@@ -103,6 +103,8 @@ services:
       GEMINI_API_KEY: ""
       GEMINI_MODEL: "gemini-2.5-flash"
       REDIS_URL: "redis://redis:6379/0"
+      RATE_LIMIT_IP: "6000"
+      RATE_LIMIT_TENANT: "6000"
       VAPID_PRIVATE_KEY: ""
       VAPID_EMAIL: "mailto:dev@localhost"
       STRIPE_SECRET_KEY: ""

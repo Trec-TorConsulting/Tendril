@@ -40,7 +40,7 @@ export const LAYOUT_CONFIGS: Record<LayoutMode, LayoutModeConfig> = {
     tabs: [
       { id: "home", label: "Home", icon: LayoutDashboard, href: "/dashboard" },
       { id: "log", label: "Log", icon: PenLine, href: "/dashboard/quick-log" },
-      { id: "camera", label: "Camera", icon: Camera, href: "/dashboard/cameras" },
+      { id: "camera", label: "Camera", icon: Camera, href: "/dashboard/devices?tab=cameras" },
       { id: "guide", label: "Guide", icon: BookOpen, href: "/dashboard/guide" },
     ],
     showFab: false,
@@ -55,7 +55,7 @@ export const LAYOUT_CONFIGS: Record<LayoutMode, LayoutModeConfig> = {
     tabs: [
       { id: "home", label: "Home", icon: LayoutDashboard, href: "/dashboard" },
       { id: "log", label: "Log", icon: PenLine, href: "/dashboard/quick-log" },
-      { id: "camera", label: "Camera", icon: Camera, href: "/dashboard/cameras" },
+      { id: "camera", label: "Camera", icon: Camera, href: "/dashboard/devices?tab=cameras" },
       { id: "alerts", label: "Alerts", icon: Bell, href: "/dashboard/notifications" },
       { id: "more", label: "More", icon: MoreHorizontal, href: "#more" },
     ],
@@ -88,7 +88,7 @@ export const LAYOUT_CONFIGS: Record<LayoutMode, LayoutModeConfig> = {
       { id: "home", label: "Home", icon: LayoutDashboard, href: "/dashboard" },
       { id: "grows", label: "Grows", icon: Sprout, href: "/dashboard/grows" },
       { id: "log", label: "Log", icon: PenLine, href: "/dashboard/quick-log" },
-      { id: "cameras", label: "Cameras", icon: Camera, href: "/dashboard/cameras" },
+      { id: "cameras", label: "Cameras", icon: Camera, href: "/dashboard/devices?tab=cameras" },
       { id: "more", label: "More", icon: MoreHorizontal, href: "#more" },
     ],
     showFab: true,

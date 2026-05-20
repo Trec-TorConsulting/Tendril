@@ -1,15 +1,14 @@
 "use client";
 
-import { PageHeader } from "@/components/page-header";
-import { CameraGrid } from "@/components/camera-grid";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 export default function CamerasPage() {
-  return (
-    <>
-      <PageHeader title="Cameras" />
-      <div className="p-4">
-        <CameraGrid />
-      </div>
-    </>
-  );
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace("/dashboard/devices?tab=cameras");
+  }, [router]);
+
+  return null;
 }

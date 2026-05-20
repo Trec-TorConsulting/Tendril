@@ -22,14 +22,13 @@ import {
   Bell,
   CheckSquare,
   Dna,
-  ClipboardList,
-  KeyRound,
   CreditCard,
   Settings,
   Moon,
   Sun,
   Monitor,
   Search,
+  Plug,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "next-themes";
@@ -49,20 +48,20 @@ const FAB_ACTIONS = [
 
 /* ── More menu items ── */
 const MORE_ITEMS = [
-  { href: "/dashboard/ai", label: "AI Chat", icon: MessageSquare },
+  { href: "/dashboard/ai", label: "AI Assistant", icon: MessageSquare },
   { href: "/dashboard/tasks", label: "Tasks", icon: CheckSquare },
-  { href: "/dashboard/devices", label: "Devices", icon: Cpu },
-  { href: "/dashboard/automation", label: "Automation", icon: Bot },
-  { href: "/dashboard/schedules", label: "Schedules", icon: Clock },
   { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/dashboard/cost-roi", label: "Cost & ROI", icon: CreditCard },
+  { href: "/dashboard/automation", label: "Rules", icon: Bot },
+  { href: "/dashboard/schedules", label: "Schedules", icon: Clock },
+  { href: "/dashboard/notifications", label: "Notifications", icon: Bell },
+  { href: "/dashboard/devices", label: "Devices", icon: Cpu },
+  { href: "/dashboard/integrations", label: "Integrations", icon: Plug },
   { href: "/dashboard/strains", label: "Strains", icon: Dna },
   { href: "/dashboard/tents", label: "Grow Spaces", icon: Warehouse },
   { href: "/dashboard/grow-types", label: "Grow Types", icon: FlaskConical },
-  { href: "/dashboard/notifications", label: "Notifications", icon: Bell },
-  { href: "/dashboard/audit", label: "Audit Trail", icon: ClipboardList },
-  { href: "/dashboard/api-keys", label: "API Keys", icon: KeyRound },
-  { href: "/dashboard/billing", label: "Billing", icon: CreditCard },
-  { href: "/dashboard/settings", label: "Settings", icon: Settings },
+  { href: "/dashboard/support", label: "Support", icon: Search },
+  { href: "/dashboard/settings-hub", label: "All Settings", icon: Settings },
 ];
 
 /* ── Tabs are now driven by layout config ── */

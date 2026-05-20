@@ -603,6 +603,7 @@ export interface BucketResponse {
   status: string;
   volume_gallons: number | null;
   settings: Record<string, unknown> | null;
+  last_water_change_at: string | null;
 }
 
 export async function listBuckets(token: string, growCycleId?: string) {
@@ -780,6 +781,27 @@ export function deleteJournalEntry(token: string, id: string) {
 
 export function updateJournalEntry(token: string, id: string, data: Partial<{ event_type: string; content: string; payload: object }>) {
   return apiFetch<JournalEntryResponse>(`/journal/${id}`, { method: "PATCH", body: JSON.stringify(data), token });
+}
+
+export interface QuickJournalCreate {
+  bucket_id: string;
+  event_type: string;
+  content?: string;
+  payload?: object;
+  ph?: number;
+  ec?: number;
+  ppm?: number;
+  water_temp_f?: number;
+  volume_gallons?: number;
+}
+
+export interface QuickJournalResponse {
+  journal: JournalEntryResponse;
+  reading_id: string | null;
+}
+
+export function createQuickJournalEntry(token: string, data: QuickJournalCreate) {
+  return apiFetch<QuickJournalResponse>("/journal/quick", { method: "POST", body: JSON.stringify(data), token });
 }
 
 // Strains

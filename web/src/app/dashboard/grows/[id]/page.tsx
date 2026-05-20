@@ -24,6 +24,7 @@ import {
   listDevices,
   listSensorReadings,
   listTentReadings,
+  listTasks,
   type GrowResponse,
   type BucketResponse,
   type SensorReadingResponse,
@@ -91,29 +92,17 @@ import { SensorSparkline } from "@/components/sparkline";
 import { CameraGrid } from "@/components/camera-grid";
 import { useChat } from "@/components/chat-provider";
 
-// Brand selection is now handled inside FeedingTab
 import { formatCalendarDate, formatDateTime } from "@/lib/utils";
 import { BucketsTab } from "./buckets-tab";
-import { FeedingTab } from "./feeding-tab";
-import { JournalTab } from "./journal-tab";
-import { HarvestTab } from "./harvest-tab";
-import { SensorsTab } from "./sensors-tab";
-import { PhotosTab } from "./photos-tab";
 import { TasksTab } from "./tasks-tab";
-import { HealthTab } from "./health-tab";
+import { ActivityTab } from "./activity-tab";
+import { NutritionYieldTab } from "./nutrition-yield-tab";
+import { HealthPhotosTab } from "./health-photos-tab";
+import { FieldTab } from "./field-tab";
 import { WeatherCard } from "./weather-card";
-import { isOutdoorSoil, isOutdoorContainer, isOutdoor, t } from "@/lib/terminology";
-import { PlotDesigner } from "@/components/outdoor/plot-designer";
+import { isOutdoor, t } from "@/lib/terminology";
 import { usePreferences } from "@/hooks/use-preferences";
 import { formatTemp, tempUnitLabel } from "@/lib/units";
-import { SoilDashboard } from "@/components/outdoor/soil-dashboard";
-import { PestScout } from "@/components/outdoor/pest-scout";
-import { OutdoorIntelligence } from "@/components/outdoor/intelligence";
-import { SeasonTimeline } from "@/components/outdoor/season-timeline";
-import { IrrigationPlanner } from "@/components/outdoor/irrigation-planner";
-import ContainerManager from "@/components/outdoor/container-manager";
-import RunoffTracker from "@/components/outdoor/runoff-tracker";
-import { HarvestTracker } from "@/components/outdoor/harvest-tracker";
 
 const STAGES = ["seedling", "vegetative", "flowering", "ripening", "drying", "curing"];
 const STAGE_DURATIONS: Record<string, number> = { seedling: 14, vegetative: 30, flowering: 56, ripening: 14, drying: 10, curing: 21 };
@@ -183,6 +172,7 @@ export default function GrowDetailPage() {
 
   // Health score
   const [healthScore, setHealthScore] = useState<number | null>(null);
+  const [openTaskCount, setOpenTaskCount] = useState(0);
 
   // Sensor trends for overview sparklines
   const [sensorTrends, setSensorTrends] = useState<{ ph: number[]; ec: number[]; temp: number[]; humidity: number[] }>({ ph: [], ec: [], temp: [], humidity: [] });
@@ -228,6 +218,11 @@ export default function GrowDetailPage() {
       const hist = await getHealthCheckHistory(token, id, 1);
       setHealthScore(hist.items.length > 0 ? hist.items[0].score : null);
     } catch { setHealthScore(null); }
+
+    try {
+      const tasks = await listTasks(token, { grow_cycle_id: id, status: "pending" });
+      setOpenTaskCount(tasks.length);
+    } catch { setOpenTaskCount(0); }
 
     // Fetch sensor trends for overview sparklines
     try {
@@ -464,22 +459,11 @@ export default function GrowDetailPage() {
           <TabsList className="w-max">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="buckets">{t(grow.grow_type, "Buckets")} ({buckets.length})</TabsTrigger>
-            {isOutdoorSoil(grow.grow_type) && <TabsTrigger value="plot">Garden Plot</TabsTrigger>}
-            {isOutdoorContainer(grow.grow_type) && <TabsTrigger value="containers">Containers</TabsTrigger>}
-            <TabsTrigger value="tasks">Tasks</TabsTrigger>
-            <TabsTrigger value="feeding">Feeding</TabsTrigger>
-            {isOutdoorSoil(grow.grow_type) && <TabsTrigger value="soil">Soil Health</TabsTrigger>}
-            {isOutdoorContainer(grow.grow_type) && <TabsTrigger value="runoff">Runoff</TabsTrigger>}
-            {isOutdoor(grow.grow_type) && <TabsTrigger value="scouts">Field Scout</TabsTrigger>}
-            <TabsTrigger value="journal">Journal</TabsTrigger>
-            <TabsTrigger value="harvest">Harvest</TabsTrigger>
-            {isOutdoor(grow.grow_type) && <TabsTrigger value="outdoor-yields">Yields</TabsTrigger>}
-            {isOutdoor(grow.grow_type) && <TabsTrigger value="intelligence">Intelligence</TabsTrigger>}
-            {isOutdoor(grow.grow_type) && <TabsTrigger value="irrigation">Irrigation</TabsTrigger>}
-            {isOutdoor(grow.grow_type) && <TabsTrigger value="season">Season</TabsTrigger>}
-            <TabsTrigger value="sensors">Sensors</TabsTrigger>
-            <TabsTrigger value="photos">Photos</TabsTrigger>
-            <TabsTrigger value="health">Health</TabsTrigger>
+            <TabsTrigger value="activity">Activity</TabsTrigger>
+            <TabsTrigger value="tasks">Tasks{openTaskCount > 0 && <Badge variant="secondary" className="ml-1 h-4 min-w-4 px-1 text-[10px]">{openTaskCount}</Badge>}</TabsTrigger>
+            <TabsTrigger value="nutrition">Nutrition & Yield</TabsTrigger>
+            <TabsTrigger value="health-photos">Health & Photos{healthScore != null && healthScore < 50 && <span className="ml-1 inline-block size-2 rounded-full bg-destructive" />}</TabsTrigger>
+            {isOutdoor(grow.grow_type) && <TabsTrigger value="field">Field</TabsTrigger>}
             {settingsSchema.length > 0 && <TabsTrigger value="settings">Settings</TabsTrigger>}
           </TabsList>
         </div>
@@ -761,42 +745,21 @@ export default function GrowDetailPage() {
             />
           </TabsContent>
 
-          {isOutdoorSoil(grow.grow_type) && (
-            <TabsContent value="plot" className="mt-0">
-              <PlotDesigner growId={id} buckets={buckets} devices={devices} onBucketCreated={refresh} />
-            </TabsContent>
-          )}
-
-          {isOutdoorContainer(grow.grow_type) && (
-            <TabsContent value="containers" className="mt-0">
-              <ContainerManager growId={id} tentId={grow.tent_id} />
-            </TabsContent>
-          )}
-
-          {isOutdoorSoil(grow.grow_type) && (
-            <TabsContent value="soil" className="mt-0">
-              <SoilDashboard growId={id} />
-            </TabsContent>
-          )}
-
-          {isOutdoorContainer(grow.grow_type) && (
-            <TabsContent value="runoff" className="mt-0">
-              <RunoffTracker growId={id} tentId={grow.tent_id} />
-            </TabsContent>
-          )}
-
-          {isOutdoor(grow.grow_type) && (
-            <TabsContent value="scouts" className="mt-0">
-              <PestScout growId={id} />
-            </TabsContent>
-          )}
+          <TabsContent value="activity" className="mt-0">
+            <ActivityTab
+              buckets={buckets}
+              journalEntries={journalEntries}
+              bucketLabelMap={bucketLabelMap}
+              onRefresh={refresh}
+            />
+          </TabsContent>
 
           <TabsContent value="tasks" className="mt-0">
             <TasksTab growId={id} />
           </TabsContent>
 
-          <TabsContent value="feeding" className="mt-0">
-            <FeedingTab
+          <TabsContent value="nutrition" className="mt-0">
+            <NutritionYieldTab
               growId={id}
               growStage={grow.stage}
               growStartedAt={grow.started_at}
@@ -807,54 +770,23 @@ export default function GrowDetailPage() {
             />
           </TabsContent>
 
-          <TabsContent value="journal" className="mt-0">
-            <JournalTab
-              buckets={buckets}
-              journalEntries={journalEntries}
-              bucketLabelMap={bucketLabelMap}
-              onRefresh={refresh}
-            />
-          </TabsContent>
-
-          <TabsContent value="harvest" className="mt-0">
-            <HarvestTab growId={id} buckets={buckets} />
+          <TabsContent value="health-photos" className="mt-0">
+            <HealthPhotosTab grow={grow} growId={id} buckets={buckets} onRefresh={refresh} />
           </TabsContent>
 
           {isOutdoor(grow.grow_type) && (
-            <TabsContent value="outdoor-yields" className="mt-0">
-              <HarvestTracker growId={id} buckets={buckets} />
+            <TabsContent value="field" className="mt-0">
+              <FieldTab
+                growId={id}
+                growType={grow.grow_type}
+                tentId={grow.tent_id}
+                buckets={buckets}
+                devices={devices}
+                growStartDate={grow.started_at}
+                onRefresh={refresh}
+              />
             </TabsContent>
           )}
-
-          {isOutdoor(grow.grow_type) && (
-            <TabsContent value="intelligence" className="mt-0">
-              <OutdoorIntelligence growId={id} tentId={grow.tent_id} />
-            </TabsContent>
-          )}
-
-          {isOutdoor(grow.grow_type) && (
-            <TabsContent value="irrigation" className="mt-0">
-              <IrrigationPlanner growId={id} />
-            </TabsContent>
-          )}
-
-          {isOutdoor(grow.grow_type) && (
-            <TabsContent value="season" className="mt-0">
-              <SeasonTimeline growId={id} buckets={buckets} growStartDate={grow.started_at} />
-            </TabsContent>
-          )}
-
-          <TabsContent value="sensors" className="mt-0">
-            <SensorsTab buckets={buckets} />
-          </TabsContent>
-
-          <TabsContent value="photos" className="mt-0">
-            <PhotosTab growId={id} buckets={buckets} />
-          </TabsContent>
-
-          <TabsContent value="health" className="mt-0">
-            {grow && <HealthTab grow={grow} onRefresh={refresh} />}
-          </TabsContent>
 
           {settingsSchema.length > 0 && (
             <TabsContent value="settings" className="mt-0">

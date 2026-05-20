@@ -33,7 +33,11 @@ class RateLimiter(BaseHTTPMiddleware):
 
     EXEMPT_PATHS = {"/health", "/v1/billing/webhook"}
 
-    def __init__(self, app, ip_rate: int = 60, tenant_rate: int = 300, window: int = 60):
+    def __init__(self, app, ip_rate: int | None = None, tenant_rate: int | None = None, window: int = 60):
+        import os
+
+        ip_rate = ip_rate or int(os.environ.get("RATE_LIMIT_IP", "60"))
+        tenant_rate = tenant_rate or int(os.environ.get("RATE_LIMIT_TENANT", "300"))
         super().__init__(app)
         self.ip_rate = ip_rate
         self.tenant_rate = tenant_rate

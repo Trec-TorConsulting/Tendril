@@ -32,11 +32,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Droplets, Pencil, Loader2, Dna } from "lucide-react";
+import { Plus, Trash2, Droplets, Pencil, Loader2, Dna, FlaskConical, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { ReferenceStrainSearch } from "@/components/reference-search";
 import { usePreferences } from "@/hooks/use-preferences";
 import { formatTemp } from "@/lib/units";
+import { createQuickJournalEntry } from "@/lib/api";
 
 interface BucketsTabProps {
   growId: string;
@@ -58,6 +59,11 @@ export function BucketsTab({ growId, buckets, latestReadings, onRefresh, onOpenS
   const [editId, setEditId] = useState("");
   const [editForm, setEditForm] = useState({ label: "", strain_id: "", volume_gallons: "" });
   const [editSaving, setEditSaving] = useState(false);
+
+  // Water change / Feed quick action dialog
+  const [quickActionDialog, setQuickActionDialog] = useState<{ type: "water_change" | "feeding"; bucketId: string; bucketLabel: string } | null>(null);
+  const [quickForm, setQuickForm] = useState({ ph: "", ec: "", ppm: "", water_temp_f: "", notes: "" });
+  const [quickSaving, setQuickSaving] = useState(false);
 
   useEffect(() => {
     const token = getAccessToken();
@@ -111,6 +117,32 @@ export function BucketsTab({ growId, buckets, latestReadings, onRefresh, onOpenS
     } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to update bucket"); } finally { setEditSaving(false); }
   };
 
+  const handleQuickAction = async () => {
+    if (!quickActionDialog) return;
+    const token = getAccessToken();
+    if (!token) return;
+    setQuickSaving(true);
+    try {
+      await createQuickJournalEntry(token, {
+        bucket_id: quickActionDialog.bucketId,
+        event_type: quickActionDialog.type,
+        content: quickForm.notes || undefined,
+        ph: quickForm.ph ? parseFloat(quickForm.ph) : undefined,
+        ec: quickForm.ec ? parseFloat(quickForm.ec) : undefined,
+        ppm: quickForm.ppm ? parseFloat(quickForm.ppm) : undefined,
+        water_temp_f: quickForm.water_temp_f ? parseFloat(quickForm.water_temp_f) : undefined,
+      });
+      toast.success(quickActionDialog.type === "water_change" ? "Water change logged" : "Feeding logged");
+      setQuickActionDialog(null);
+      setQuickForm({ ph: "", ec: "", ppm: "", water_temp_f: "", notes: "" });
+      onRefresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to log action");
+    } finally {
+      setQuickSaving(false);
+    }
+  };
+
   return (
     <>
       <div className="mb-4 flex items-center justify-between">
@@ -128,12 +160,21 @@ export function BucketsTab({ growId, buckets, latestReadings, onRefresh, onOpenS
         {buckets.map((b) => {
           const reading = latestReadings[b.id];
           const strain = b.strain_id ? strainMap[b.strain_id] : null;
+          const daysSinceWater = b.last_water_change_at
+            ? Math.floor((Date.now() - new Date(b.last_water_change_at).getTime()) / 86400000)
+            : null;
+          const waterBadgeVariant = daysSinceWater === null ? "outline" : daysSinceWater > 10 ? "destructive" : daysSinceWater > 7 ? "secondary" : "default";
           return (
             <Card key={b.id}>
               <CardContent className="p-4">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="font-medium">#{b.position} {b.label || "Unnamed"}</span>
-                  <Badge variant="outline" className="text-xs">{b.growth_stage}</Badge>
+                  <div className="flex items-center gap-1.5">
+                    <Badge variant={waterBadgeVariant} className="text-[10px]">
+                      {daysSinceWater === null ? "No water change" : `${daysSinceWater}d since change`}
+                    </Badge>
+                    <Badge variant="outline" className="text-xs">{b.growth_stage}</Badge>
+                  </div>
                 </div>
                 {(b.strain_name || strain) && (
                   <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -157,16 +198,28 @@ export function BucketsTab({ growId, buckets, latestReadings, onRefresh, onOpenS
                   </div>
                 )}
                 {!reading && <p className="mt-2 text-xs text-muted-foreground">No readings yet</p>}
-                <div className="mt-3 flex items-center gap-2">
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <Button variant="default" size="sm" className="h-7 text-xs" onClick={() => {
+                    setQuickForm({ ph: "", ec: "", ppm: "", water_temp_f: "", notes: "" });
+                    setQuickActionDialog({ type: "water_change", bucketId: b.id, bucketLabel: `#${b.position} ${b.label || "Unnamed"}` });
+                  }}>
+                    <RefreshCw className="mr-1 size-3" /> Water Change
+                  </Button>
+                  <Button variant="secondary" size="sm" className="h-7 text-xs" onClick={() => {
+                    setQuickForm({ ph: "", ec: "", ppm: "", water_temp_f: "", notes: "" });
+                    setQuickActionDialog({ type: "feeding", bucketId: b.id, bucketLabel: `#${b.position} ${b.label || "Unnamed"}` });
+                  }}>
+                    <FlaskConical className="mr-1 size-3" /> Feed
+                  </Button>
+                  <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => onOpenSensorDialog(b.id, `#${b.position} ${b.label || "Unnamed"}`)}>
+                    <Droplets className="mr-1 size-3" /> Log Reading
+                  </Button>
                   <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => {
                     setEditId(b.id);
                     setEditForm({ label: b.label || "", strain_id: b.strain_id || "", volume_gallons: b.volume_gallons?.toString() || "" });
                     setEditDialog(true);
                   }}>
                     <Pencil className="mr-1 size-3" /> Edit
-                  </Button>
-                  <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => onOpenSensorDialog(b.id, `#${b.position} ${b.label || "Unnamed"}`)}>
-                    <Droplets className="mr-1 size-3" /> Log Reading
                   </Button>
                   <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive hover:text-destructive" onClick={() => handleDelete(b.id)}>
                     <Trash2 className="mr-1 size-3" /> Remove
@@ -262,6 +315,51 @@ export function BucketsTab({ growId, buckets, latestReadings, onRefresh, onOpenS
             <Button type="button" onClick={handleEditSubmit} disabled={editSaving}>
               {editSaving && <Loader2 className="mr-2 size-4 animate-spin" />}
               Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Quick Action Dialog (Water Change / Feed) */}
+      <Dialog open={!!quickActionDialog} onOpenChange={(open) => !open && setQuickActionDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {quickActionDialog?.type === "water_change" ? "Log Water Change" : "Log Feeding"}
+            </DialogTitle>
+            <DialogDescription>
+              {quickActionDialog?.bucketLabel} — record readings and create a journal entry
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label className="text-xs">pH</Label>
+                <Input type="number" step="0.1" placeholder="e.g. 5.8" value={quickForm.ph} onChange={(e) => setQuickForm((p) => ({ ...p, ph: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">EC (mS/cm)</Label>
+                <Input type="number" step="0.01" placeholder="e.g. 1.2" value={quickForm.ec} onChange={(e) => setQuickForm((p) => ({ ...p, ec: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">PPM</Label>
+                <Input type="number" step="1" placeholder="e.g. 800" value={quickForm.ppm} onChange={(e) => setQuickForm((p) => ({ ...p, ppm: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Water Temp ({prefs.temp_unit === "celsius" ? "°C" : "°F"})</Label>
+                <Input type="number" step="0.1" placeholder="e.g. 68" value={quickForm.water_temp_f} onChange={(e) => setQuickForm((p) => ({ ...p, water_temp_f: e.target.value }))} />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Notes (optional)</Label>
+              <Input placeholder="e.g. Added CalMag, full flush" value={quickForm.notes} onChange={(e) => setQuickForm((p) => ({ ...p, notes: e.target.value }))} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" type="button" onClick={() => setQuickActionDialog(null)}>Cancel</Button>
+            <Button type="button" onClick={handleQuickAction} disabled={quickSaving}>
+              {quickSaving && <Loader2 className="mr-2 size-4 animate-spin" />}
+              {quickActionDialog?.type === "water_change" ? "Log Water Change" : "Log Feeding"}
             </Button>
           </DialogFooter>
         </DialogContent>
