@@ -8,6 +8,11 @@
  */
 import { test, expect, login, TEST_USERS, isMobileLayout, setupConsoleErrorTracking, checkLinksOnPage } from "./helpers";
 
+/** Escape all regex special characters in a string */
+function escapeRegExp(s: string) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 test.describe("Navigation - Sidebar (Desktop)", () => {
   test.beforeEach(async ({ page }) => {
     await login(page, TEST_USERS.standard.email, TEST_USERS.standard.password);
@@ -45,7 +50,7 @@ test.describe("Navigation - Sidebar (Desktop)", () => {
       }
 
       await page.waitForLoadState("networkidle");
-      await expect(page).toHaveURL(new RegExp(route.path.replace(/\//g, "\\/")));
+      await expect(page).toHaveURL(new RegExp(escapeRegExp(route.path)));
 
       // No unexpected JS errors on page (ignore known non-critical errors)
       const critical = errors.filter((e) =>
@@ -81,7 +86,7 @@ test.describe("Navigation - Settings Pages", () => {
     test(`settings page loads: ${path}`, async ({ page }) => {
       await page.goto(path);
       await page.waitForLoadState("networkidle");
-      await expect(page).toHaveURL(new RegExp(path.replace(/\//g, "\\/")));
+      await expect(page).toHaveURL(new RegExp(escapeRegExp(path)));
       // Page should have rendered content
       await expect(page.locator("body")).not.toBeEmpty();
     });
