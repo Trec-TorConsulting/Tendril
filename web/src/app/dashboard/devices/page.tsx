@@ -51,6 +51,7 @@ import {
   Check,
   Loader2,
   MapPin,
+  Camera,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -60,6 +61,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CameraGrid } from "@/components/camera-grid";
 
 type ModalState =
   | { type: "none" }
@@ -188,6 +191,18 @@ export default function DevicesPage() {
         }
       />
       <div className="flex flex-1 flex-col gap-4 p-4 lg:p-6">
+        <Tabs defaultValue="sensors" className="w-full">
+          <TabsList>
+            <TabsTrigger value="sensors">
+              <Cpu className="mr-1.5 size-3.5" />
+              Sensors
+            </TabsTrigger>
+            <TabsTrigger value="cameras">
+              <Camera className="mr-1.5 size-3.5" />
+              Cameras
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="sensors" className="mt-4">
         {loading ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {[1, 2, 3].map((i) => (
@@ -296,6 +311,11 @@ export default function DevicesPage() {
             ))}
           </div>
         )}
+          </TabsContent>
+          <TabsContent value="cameras" className="mt-4">
+            <CameraGrid />
+          </TabsContent>
+        </Tabs>
       </div>
 
       {/* Register Dialog */}

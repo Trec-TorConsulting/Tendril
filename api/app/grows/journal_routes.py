@@ -44,6 +44,26 @@ class JournalResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class QuickJournalCreate(BaseModel):
+    """Combined journal entry + optional sensor reading in one action."""
+
+    bucket_id: UUID
+    event_type: str
+    content: str | None = None
+    payload: dict | None = None
+    # Optional sensor fields — if any are provided, a reading is also created
+    ph: float | None = None
+    ec: float | None = None
+    ppm: float | None = None
+    water_temp_f: float | None = None
+    volume_gallons: float | None = None
+
+
+class QuickJournalResponse(BaseModel):
+    journal: JournalResponse
+    reading_id: UUID | None = None
+
+
 @router.post(
     "",
     response_model=JournalResponse,
@@ -86,6 +106,77 @@ async def create_entry(
             logger.debug("journal followup task failed", exc_info=True)
 
     return entry
+
+
+@router.post(
+    "/quick",
+    response_model=QuickJournalResponse,
+    status_code=201,
+    dependencies=[Depends(require_usage_limit("journal_entries"))],
+)
+async def create_quick_entry(
+    body: QuickJournalCreate,
+    user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Create a journal entry with optional sensor reading in one atomic action."""
+    from app.billing.metering import record_usage
+    from app.grows.models import Bucket, BucketSensorReading
+
+    # Create journal entry
+    entry = JournalEntry(
+        tenant_id=user.tenant_id,
+        bucket_id=body.bucket_id,
+        event_type=body.event_type,
+        content=body.content,
+        payload=body.payload,
+    )
+    session.add(entry)
+    await record_usage(session, user.tenant_id, "journal_entries")
+
+    # Create sensor reading if any sensor fields are provided
+    reading_id = None
+    has_reading = any([body.ph, body.ec, body.ppm, body.water_temp_f])
+    if has_reading:
+        reading = BucketSensorReading(
+            tenant_id=user.tenant_id,
+            bucket_id=body.bucket_id,
+            ph=body.ph,
+            ec=body.ec,
+            ppm=body.ppm,
+            water_temp_f=body.water_temp_f,
+        )
+        session.add(reading)
+
+    await session.commit()
+    await session.refresh(entry)
+    if has_reading:
+        await session.refresh(reading)
+        reading_id = reading.id
+
+    # Create follow-up tasks based on event type
+    if body.event_type in ("feeding", "water_change", "training", "topping", "defoliation", "transplant"):
+        try:
+            bucket = await session.get(Bucket, body.bucket_id)
+            grow_cycle_id = bucket.grow_cycle_id if bucket else None
+            from app.scheduler.task_generator import create_journal_followup_tasks
+
+            await create_journal_followup_tasks(
+                session,
+                tenant_id=user.tenant_id,
+                grow_cycle_id=grow_cycle_id,
+                bucket_id=body.bucket_id,
+                event_type=body.event_type,
+                content=body.content,
+                payload=body.payload,
+            )
+        except Exception:
+            logger.debug("journal followup task failed", exc_info=True)
+
+    return QuickJournalResponse(
+        journal=JournalResponse.model_validate(entry),
+        reading_id=reading_id,
+    )
 
 
 @router.get("", response_model=PaginatedResponse[JournalResponse])

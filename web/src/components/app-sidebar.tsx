@@ -28,6 +28,10 @@ import {
   Leaf,
   BookOpen,
   Plug,
+  Brain,
+  DollarSign,
+  LifeBuoy,
+  User,
 } from "lucide-react";
 import {
   Sidebar,
@@ -73,31 +77,37 @@ const MAIN_NAV = [
   { href: "/dashboard/grows", label: "Grows", icon: Sprout, children: [
     { href: "/dashboard/tents", label: "Grow Spaces", icon: Warehouse },
     { href: "/dashboard/grow-types", label: "Grow Types", icon: FlaskConical },
+    { href: "/dashboard/tasks", label: "Tasks", icon: CheckSquare },
   ] },
-  { href: "/dashboard/devices", label: "Devices", icon: Cpu },
 ];
 
 const INSIGHTS_NAV = [
   { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/dashboard/ai", label: "AI Assistant", icon: Brain },
+  { href: "/dashboard/cost-roi", label: "Cost & ROI", icon: DollarSign },
 ];
 
 const AUTOMATION_NAV = [
-  { href: "/dashboard/automation", label: "Automation", icon: Bot },
+  { href: "/dashboard/automation", label: "Rules", icon: Bot },
   { href: "/dashboard/schedules", label: "Schedules", icon: Clock },
   { href: "/dashboard/notifications", label: "Notifications", icon: Bell },
-  { href: "/dashboard/tasks", label: "Tasks", icon: CheckSquare },
+  { href: "/dashboard/devices", label: "Devices", icon: Cpu },
+  { href: "/dashboard/integrations", label: "Integrations", icon: Plug },
 ];
 
 const LIBRARY_NAV = [
   { href: "/dashboard/strains", label: "Strains", icon: Dna },
   { href: "/dashboard/reference", label: "Reference", icon: BookOpen },
-  { href: "/dashboard/integrations", label: "Integrations", icon: Plug },
 ];
 
 const ACCOUNT_NAV = [
-  { href: "/dashboard/audit", label: "Audit Trail", icon: ClipboardList },
-  { href: "/dashboard/api-keys", label: "API Keys", icon: KeyRound },
+  { href: "/dashboard/settings", label: "Profile & Preferences", icon: User },
+  { href: "/dashboard/settings/security", label: "Security", icon: Lock },
+  { href: "/dashboard/settings/team", label: "Team", icon: Users },
   { href: "/dashboard/billing", label: "Billing", icon: CreditCard },
+  { href: "/dashboard/api-keys", label: "API Keys", icon: KeyRound },
+  { href: "/dashboard/support", label: "Support", icon: LifeBuoy },
+  { href: "/dashboard/audit", label: "Audit Trail", icon: ClipboardList },
 ];
 
 interface AppSidebarProps {
@@ -175,22 +185,11 @@ export function AppSidebar({ user, onLogout }: AppSidebarProps) {
         <NavGroup label="Insights" items={INSIGHTS_NAV} pathname={pathname} />
         <NavGroup label="Automation" items={AUTOMATION_NAV} pathname={pathname} />
         <NavGroup label="Library" items={LIBRARY_NAV} pathname={pathname} />
-        <NavGroup label="Account" items={ACCOUNT_NAV} pathname={pathname} />
-
-        {/* Settings */}
-        <SidebarSeparator />
-        <SidebarGroup>
-          <SidebarGroupLabel>Settings</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <NavItem href="/dashboard/settings" label="Profile" icon={Settings} pathname={pathname} />
-              <NavItem href="/dashboard/settings/security" label="Security" icon={Lock} pathname={pathname} />
-              {isOwner && (
-                <NavItem href="/dashboard/settings/team" label="Team" icon={Users} pathname={pathname} />
-              )}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        <NavGroup label="Account" items={ACCOUNT_NAV.filter((item) => {
+          if (item.href === "/dashboard/audit" && !isOwner) return false;
+          if (item.href === "/dashboard/settings/team" && !isOwner) return false;
+          return true;
+        })} pathname={pathname} />
 
         {/* Platform Admin */}
         {isPlatformUser && (

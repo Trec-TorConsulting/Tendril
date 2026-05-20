@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -11,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
-from app.grows.models import Bucket, Strain
+from app.grows.models import Bucket, JournalEntry, Strain
 from app.pagination import PaginatedResponse, PaginationParams, paginate
 
 router = APIRouter()
@@ -63,6 +64,7 @@ class BucketResponse(BaseModel):
     status: str
     volume_gallons: float | None
     settings: dict | None
+    last_water_change_at: datetime | None = None
     model_config = {"from_attributes": True}
 
 
@@ -98,7 +100,17 @@ async def list_buckets(
     if grow_cycle_id:
         q = q.where(Bucket.grow_cycle_id == grow_cycle_id)
     items, total = await paginate(session, q, pagination)
-    return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
+
+    # Batch-fetch last water change timestamps for all returned buckets
+    bucket_ids = [b.id for b in items]
+    water_change_map = await _get_last_water_changes(session, bucket_ids)
+    results = []
+    for bucket in items:
+        data = BucketResponse.model_validate(bucket)
+        data.last_water_change_at = water_change_map.get(bucket.id)
+        results.append(data)
+
+    return PaginatedResponse(items=results, total=total, page=pagination.page, page_size=pagination.page_size)
 
 
 @router.get("/{bucket_id}", response_model=BucketResponse)
@@ -111,7 +123,10 @@ async def get_bucket(
     bucket = await session.get(Bucket, bucket_id)
     if bucket is None:
         raise HTTPException(status_code=404, detail="Bucket not found")
-    return bucket
+    water_change_map = await _get_last_water_changes(session, [bucket_id])
+    data = BucketResponse.model_validate(bucket)
+    data.last_water_change_at = water_change_map.get(bucket_id)
+    return data
 
 
 @router.patch("/{bucket_id}", response_model=BucketResponse)
@@ -150,3 +165,24 @@ async def delete_bucket(
         raise HTTPException(status_code=404, detail="Bucket not found")
     await session.delete(bucket)
     await session.commit()
+
+
+async def _get_last_water_changes(session: AsyncSession, bucket_ids: list[UUID]) -> dict[UUID, datetime | None]:
+    """Batch-fetch the most recent water_change/flushing journal timestamp per bucket."""
+    if not bucket_ids:
+        return {}
+    from sqlalchemy import func
+
+    subq = (
+        select(
+            JournalEntry.bucket_id,
+            func.max(JournalEntry.created_at).label("last_change"),
+        )
+        .where(
+            JournalEntry.bucket_id.in_(bucket_ids),
+            JournalEntry.event_type.in_(["water_change", "flushing"]),
+        )
+        .group_by(JournalEntry.bucket_id)
+    )
+    result = await session.execute(subq)
+    return {row.bucket_id: row.last_change for row in result}
