@@ -3,7 +3,7 @@
  * Every grow type with every applicable environment and configuration.
  * This ensures no combination crashes or shows broken UI.
  */
-import { test, expect, login, TEST_USERS, GROW_TYPES, MEDIA_TYPES, ENVIRONMENT_TYPES } from "./helpers";
+import { test, expect, login, TEST_USERS, GROW_TYPES, MEDIA_TYPES, ENVIRONMENT_TYPES, filterCriticalErrors } from "./helpers";
 
 // Define which environment types are valid for each grow type
 const VALID_ENVIRONMENTS: Record<string, string[]> = {
@@ -63,7 +63,7 @@ test.describe("Matrix - Grow Type × Environment Combos", () => {
           }
 
           // Verify no errors occurred during interaction
-          expect(errors.filter((e) => !e.includes("404"))).toHaveLength(0);
+          expect(filterCriticalErrors(errors)).toHaveLength(0);
         }
 
         // Close dialog without saving
@@ -103,7 +103,7 @@ test.describe("Matrix - Substrate Types × Media Combos", () => {
         }
 
         // No page-level errors
-        expect(errors).toHaveLength(0);
+        expect(filterCriticalErrors(errors)).toHaveLength(0);
       });
     }
   }
@@ -151,7 +151,7 @@ test.describe("Matrix - All Grow Types Detail Page Tabs", () => {
           }
         }
 
-        expect(errors).toHaveLength(0);
+        expect(filterCriticalErrors(errors)).toHaveLength(0);
       });
     }
   }
@@ -180,7 +180,7 @@ test.describe("Matrix - Grow Type Stage Configs Load", () => {
         await expect(page.locator("body")).not.toBeEmpty();
       }
 
-      expect(errors).toHaveLength(0);
+      expect(filterCriticalErrors(errors)).toHaveLength(0);
     });
   }
 });

@@ -6,6 +6,7 @@ in-memory tracking for local development.
 
 from __future__ import annotations
 
+import os
 import time
 from collections import defaultdict
 from dataclasses import dataclass
@@ -28,7 +29,7 @@ class BruteForceProtection(BaseHTTPMiddleware):
     5 failed attempts in 5 minutes → 15 minute lockout.
     """
 
-    MAX_ATTEMPTS = 5
+    MAX_ATTEMPTS = int(os.environ.get("BRUTE_FORCE_MAX_ATTEMPTS", "5"))
     WINDOW = 300  # 5 minutes
     LOCKOUT = 900  # 15 minutes
     LOGIN_PATHS = {"/v1/auth/login", "/v1/auth/token"}

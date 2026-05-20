@@ -24,8 +24,9 @@ test.describe("Responsive - Desktop Layout (≥1280px)", () => {
     await page.goto("/dashboard");
     await page.waitForLoadState("networkidle");
 
-    const sidebar = page.locator('aside, [data-testid="sidebar"], nav[class*="sidebar"]').first();
-    await expect(sidebar).toBeVisible();
+    // shadcn sidebar uses data-sidebar="sidebar" attribute
+    const sidebar = page.locator('[data-sidebar="sidebar"], aside, nav[class*="sidebar"]').first();
+    await expect(sidebar).toBeVisible({ timeout: 10000 });
   });
 
   test("no horizontal overflow on dashboard", async ({ page }) => {

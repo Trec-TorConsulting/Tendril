@@ -105,6 +105,7 @@ services:
       REDIS_URL: "redis://redis:6379/0"
       RATE_LIMIT_IP: "6000"
       RATE_LIMIT_TENANT: "6000"
+      BRUTE_FORCE_MAX_ATTEMPTS: "99999"
       VAPID_PRIVATE_KEY: ""
       VAPID_EMAIL: "mailto:dev@localhost"
       STRIPE_SECRET_KEY: ""
