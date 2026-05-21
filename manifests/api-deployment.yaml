@@ -45,6 +45,10 @@ spec:
           value: "INFO"
         - name: CORS_ORIGINS
           value: "https://tendril.maddscientist.com"
+        - name: RATE_LIMIT_IP
+          value: "120"
+        - name: RATE_LIMIT_TENANT
+          value: "600"
         resources:
           requests:
             cpu: 100m
