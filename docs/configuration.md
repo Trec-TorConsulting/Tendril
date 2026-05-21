@@ -82,6 +82,20 @@ JWT settings (not configurable via env, set in code):
 | `CORS_ORIGINS` | No | `https://tendril.example.com` | Comma-separated list of allowed CORS origins. |
 | `LOG_LEVEL` | No | `INFO` | Logging level: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. |
 
+### Rate Limiting & Security
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `RATE_LIMIT_IP` | No | `60` | Maximum requests per IP per 60-second window. |
+| `RATE_LIMIT_TENANT` | No | `300` | Maximum requests per tenant per 60-second window. |
+| `BRUTE_FORCE_MAX_ATTEMPTS` | No | `5` | Max failed login attempts before lockout. Set high (e.g., `99999`) for local dev. |
+
+### Redis
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `REDIS_URL` | No | `redis://localhost:6379` | Redis connection URL for rate limiting state. Falls back to in-memory if unavailable. |
+
 ### Web Frontend
 
 The Next.js app uses build-time environment variables:

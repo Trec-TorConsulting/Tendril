@@ -9,6 +9,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Notification tables** — Migration 0004 creates `notification_channels`, `notification_preferences`, `push_subscriptions`, and `notification_log` tables
+- **Knowledge Base** — Auto-seeded 5 categories and 21 support articles on startup (`kb_seed.py`)
+- **Reference data seeding** — Auto-seeds 20 strains and 34 nutrient products on startup
+- **Feeding mixing order** — Products displayed in correct application order (Cal-Mag → Micro → Gro → Bloom → pH → Hydroguard)
+- **Rate limiting configuration** — Added `RATE_LIMIT_IP` and `RATE_LIMIT_TENANT` env vars to production manifest (120/600 per minute)
+- **Configuration docs** — Added rate limiting, brute-force, and Redis env var documentation
+
+### Fixed
+- **Scheduler tasks** — Fixed `_dunning_check` and `_account_purge` passing sessions to functions that create their own
+- **Scheduler daily report** — Fixed missing `notification_log` and `notification_channels` tables causing errors
+- **Support routes** — Fixed `user.id` → `user.user_id` across all support ticket endpoints
+- **Team page** — Fixed `listTenantMembers` to extract `.items` from paginated API response
+- **Analytics page** — Fixed API shape mismatch causing frontend crash
+- **Reference search** — Fixed empty results by auto-seeding strains and nutrients on startup
+
+### Changed
+- Production rate limits increased from defaults (60 IP / 300 tenant) to 120 IP / 600 tenant per minute
+
+---
+
+## [Unreleased — Previous]
+
+### Added
 - **Enterprise RBAC** — Full role-based access control overhaul with three-tier model:
   - **Platform roles**: `super_admin`, `support`, `readonly_admin`, `user` — controls SaaS-wide access
   - **Tenant roles**: `admin`, `member`, `viewer` — per-organization permissions via `tenant_memberships` table
