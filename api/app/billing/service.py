@@ -24,7 +24,7 @@ def _get_fernet() -> Fernet:
     # Use first 32 bytes of secret key as Fernet key (base64 encoded)
     import base64
 
-    key_bytes = settings.secret_key.encode()[:32].ljust(32, b"\0")
+    key_bytes = settings.jwt_secret.encode()[:32].ljust(32, b"\0")
     key = base64.urlsafe_b64encode(key_bytes)
     return Fernet(key)
 
