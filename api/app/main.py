@@ -71,10 +71,13 @@ async def lifespan(app: FastAPI):
         from app.database import async_session_factory
         from app.reference.nutrient_sync import sync_seed_nutrients
         from app.reference.strain_sync import sync_seed_strains
+        from app.support.kb_seed import sync_kb_seed
 
         async with async_session_factory() as session:
             await sync_seed_strains(session)
             await sync_seed_nutrients(session)
+        async with async_session_factory() as session:
+            await sync_kb_seed(session)
         logger.info("Reference data seeding complete")
     except Exception as e:
         logger.warning("Reference data seeding failed (non-fatal): %s", e)

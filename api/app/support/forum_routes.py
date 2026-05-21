@@ -177,7 +177,7 @@ async def create_thread(
 
     thread = ForumThread(
         category_id=body.category_id,
-        author_id=user.id,
+        author_id=user.user_id,
         title=body.title,
         body=body.body,
     )
@@ -208,7 +208,7 @@ async def create_post(
 
     post = ForumPost(
         thread_id=thread.id,
-        author_id=user.id,
+        author_id=user.user_id,
         body=body.body,
     )
     session.add(post)

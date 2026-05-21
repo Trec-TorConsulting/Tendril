@@ -231,8 +231,9 @@ export interface TenantMember {
   created_at: string;
 }
 
-export function listTenantMembers(token: string) {
-  return apiFetch<TenantMember[]>("/tenants/members", { token });
+export async function listTenantMembers(token: string) {
+  const res = await apiFetch<PaginatedResponse<TenantMember>>("/tenants/members", { token });
+  return res.items;
 }
 
 export function addTenantMember(token: string, data: { email: string; display_name?: string; password: string; role?: string }) {

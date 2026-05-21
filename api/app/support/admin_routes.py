@@ -240,7 +240,7 @@ async def add_admin_message(
 
     message = TicketMessage(
         ticket_id=ticket.id,
-        author_id=user.id,
+        author_id=user.user_id,
         body=body.body,
         is_internal=body.is_internal,
         attachments=body.attachments or [],
@@ -407,7 +407,7 @@ async def create_canned_response(
         body=body.body,
         category=body.category,
         shortcut=body.shortcut,
-        created_by_id=user.id,
+        created_by_id=user.user_id,
     )
     session.add(cr)
     await session.commit()

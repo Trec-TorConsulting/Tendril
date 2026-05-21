@@ -128,7 +128,7 @@ async def create_ticket(
 
     ticket = SupportTicket(
         tenant_id=user.tenant_id,
-        created_by_id=user.id,
+        created_by_id=user.user_id,
         subject=body.subject,
         status=TicketStatus.open,
         priority=pri,
@@ -141,7 +141,7 @@ async def create_ticket(
     # Add initial message
     message = TicketMessage(
         ticket_id=ticket.id,
-        author_id=user.id,
+        author_id=user.user_id,
         body=body.body,
         attachments=body.attachments or [],
     )
@@ -170,7 +170,7 @@ async def list_my_tickets(
     per_page: int = 20,
 ) -> dict:
     """List the current user's support tickets."""
-    query = select(SupportTicket).where(SupportTicket.created_by_id == user.id)
+    query = select(SupportTicket).where(SupportTicket.created_by_id == user.user_id)
 
     if status:
         query = query.where(SupportTicket.status == status)
@@ -219,7 +219,7 @@ async def get_ticket(
     ticket = (
         await session.execute(
             select(SupportTicket)
-            .where(SupportTicket.id == ticket_id, SupportTicket.created_by_id == user.id)
+            .where(SupportTicket.id == ticket_id, SupportTicket.created_by_id == user.user_id)
             .options(selectinload(SupportTicket.messages))
         )
     ).scalar_one_or_none()
@@ -268,7 +268,7 @@ async def add_message(
     """Add a message to an existing ticket."""
     ticket = (
         await session.execute(
-            select(SupportTicket).where(SupportTicket.id == ticket_id, SupportTicket.created_by_id == user.id)
+            select(SupportTicket).where(SupportTicket.id == ticket_id, SupportTicket.created_by_id == user.user_id)
         )
     ).scalar_one_or_none()
 
@@ -280,7 +280,7 @@ async def add_message(
 
     message = TicketMessage(
         ticket_id=ticket.id,
-        author_id=user.id,
+        author_id=user.user_id,
         body=body.body,
         attachments=body.attachments or [],
     )
@@ -312,7 +312,7 @@ async def close_ticket(
     """Close a ticket (user action)."""
     ticket = (
         await session.execute(
-            select(SupportTicket).where(SupportTicket.id == ticket_id, SupportTicket.created_by_id == user.id)
+            select(SupportTicket).where(SupportTicket.id == ticket_id, SupportTicket.created_by_id == user.user_id)
         )
     ).scalar_one_or_none()
 
@@ -337,7 +337,7 @@ async def rate_ticket(
         await session.execute(
             select(SupportTicket).where(
                 SupportTicket.id == ticket_id,
-                SupportTicket.created_by_id == user.id,
+                SupportTicket.created_by_id == user.user_id,
                 SupportTicket.status.in_([TicketStatus.resolved, TicketStatus.closed]),
             )
         )
