@@ -683,23 +683,19 @@ class TaskRunner:
     async def _dunning_check(self) -> None:
         """Check for expired grace periods and downgrade accounts to free."""
         from app.billing.dunning import check_expired_grace_periods
-        from app.database import async_session_factory
 
         try:
-            async with async_session_factory() as session:
-                await check_expired_grace_periods(session)
-                logger.debug("Dunning check complete")
+            await check_expired_grace_periods()
+            logger.debug("Dunning check complete")
         except Exception:
             logger.exception("Dunning check failed")
 
     async def _account_purge(self) -> None:
         """Purge accounts whose deletion retention period has expired."""
         from app.billing.account_deletion import purge_expired_accounts
-        from app.database import async_session_factory
 
         try:
-            async with async_session_factory() as session:
-                await purge_expired_accounts(session)
-                logger.debug("Account purge check complete")
+            await purge_expired_accounts()
+            logger.debug("Account purge check complete")
         except Exception:
             logger.exception("Account purge check failed")
