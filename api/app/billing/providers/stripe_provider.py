@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import functools
 from typing import Any
 
 import stripe
@@ -35,14 +37,19 @@ class StripeProvider(BasePaymentProvider):
         super().__init__(config)
         self._api_key = config["secret_key"]
 
-    @property
-    def _stripe(self) -> Any:
-        """Configure stripe module with our key."""
-        stripe.api_key = self._api_key
-        return stripe
+    def _call_sync(self, resource_method, *args, **kwargs):
+        """Call a Stripe API method synchronously with the instance's API key."""
+        kwargs.setdefault("api_key", self._api_key)
+        return resource_method(*args, **kwargs)
+
+    async def _call(self, resource_method, *args, **kwargs):
+        """Call a Stripe API method in a thread pool (non-blocking)."""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, functools.partial(self._call_sync, resource_method, *args, **kwargs))
 
     async def create_customer(self, email: str, metadata: dict[str, Any] | None = None) -> CustomerResult:
-        customer = self._stripe.Customer.create(
+        customer = await self._call(
+            stripe.Customer.create,
             email=email,
             metadata=metadata or {},
         )
@@ -80,7 +87,7 @@ class StripeProvider(BasePaymentProvider):
             checkout_params["automatic_tax"] = {"enabled": True}
             checkout_params["customer_update"] = {"address": "auto"}
 
-        session = self._stripe.checkout.Session.create(**checkout_params)
+        session = await self._call(stripe.checkout.Session.create, **checkout_params)
         return CheckoutResult(
             url=session.url,
             session_id=session.id,
@@ -88,14 +95,16 @@ class StripeProvider(BasePaymentProvider):
         )
 
     async def create_portal_session(self, customer_id: str, return_url: str) -> PortalResult:
-        session = self._stripe.billing_portal.Session.create(
+        session = await self._call(
+            stripe.billing_portal.Session.create,
             customer=customer_id,
             return_url=return_url,
         )
         return PortalResult(url=session.url)
 
     async def create_subscription(self, customer_id: str, price_id: str) -> SubscriptionResult:
-        sub = self._stripe.Subscription.create(
+        sub = await self._call(
+            stripe.Subscription.create,
             customer=customer_id,
             items=[{"price": price_id}],
         )
@@ -109,12 +118,13 @@ class StripeProvider(BasePaymentProvider):
 
     async def cancel_subscription(self, subscription_id: str, at_period_end: bool = True) -> SubscriptionResult:
         if at_period_end:
-            sub = self._stripe.Subscription.modify(
+            sub = await self._call(
+                stripe.Subscription.modify,
                 subscription_id,
                 cancel_at_period_end=True,
             )
         else:
-            sub = self._stripe.Subscription.cancel(subscription_id)
+            sub = await self._call(stripe.Subscription.cancel, subscription_id)
         return SubscriptionResult(
             subscription_id=sub.id,
             status=sub.status,
@@ -122,8 +132,9 @@ class StripeProvider(BasePaymentProvider):
         )
 
     async def update_subscription(self, subscription_id: str, new_price_id: str) -> SubscriptionResult:
-        sub = self._stripe.Subscription.retrieve(subscription_id)
-        updated = self._stripe.Subscription.modify(
+        sub = await self._call(stripe.Subscription.retrieve, subscription_id)
+        updated = await self._call(
+            stripe.Subscription.modify,
             subscription_id,
             items=[{"id": sub["items"]["data"][0]["id"], "price": new_price_id}],
             proration_behavior="create_prorations",
@@ -164,16 +175,17 @@ class StripeProvider(BasePaymentProvider):
         existing_product_id: str | None = None,
         existing_price_id: str | None = None,
     ) -> PlanSyncResult:
-        s = self._stripe
-
         # Create or update product
         if existing_product_id:
-            product = s.Product.modify(existing_product_id, name=name, description=description or "")
+            product = await self._call(
+                stripe.Product.modify, existing_product_id, name=name, description=description or ""
+            )
         else:
-            product = s.Product.create(name=name, description=description or "")
+            product = await self._call(stripe.Product.create, name=name, description=description or "")
 
         # Create new price (Stripe prices are immutable — always create new)
-        price = s.Price.create(
+        price = await self._call(
+            stripe.Price.create,
             product=product.id,
             unit_amount=price_cents,
             currency=currency,
@@ -182,7 +194,7 @@ class StripeProvider(BasePaymentProvider):
 
         # Archive old price if replaced
         if existing_price_id and existing_price_id != price.id:
-            s.Price.modify(existing_price_id, active=False)
+            await self._call(stripe.Price.modify, existing_price_id, active=False)
 
         return PlanSyncResult(
             external_product_id=product.id,
@@ -190,8 +202,8 @@ class StripeProvider(BasePaymentProvider):
         )
 
     async def get_payment_methods(self, customer_id: str) -> list[PaymentMethodInfo]:
-        methods = self._stripe.PaymentMethod.list(customer=customer_id, type="card")
-        customer = self._stripe.Customer.retrieve(customer_id)
+        methods = await self._call(stripe.PaymentMethod.list, customer=customer_id, type="card")
+        customer = await self._call(stripe.Customer.retrieve, customer_id)
         default_pm = (customer.get("invoice_settings") or {}).get("default_payment_method")
 
         return [
@@ -214,11 +226,12 @@ class StripeProvider(BasePaymentProvider):
         """Report metered usage via Stripe Usage Records (for metered billing items)."""
         import time
 
-        sub = self._stripe.Subscription.retrieve(subscription_id)
+        sub = await self._call(stripe.Subscription.retrieve, subscription_id)
         # Find the metered subscription item
         for item in sub["items"]["data"]:
             if item["price"].get("recurring", {}).get("usage_type") == "metered":
-                self._stripe.SubscriptionItem.create_usage_record(
+                await self._call(
+                    stripe.SubscriptionItem.create_usage_record,
                     item["id"],
                     quantity=quantity,
                     timestamp=int(time.time()),
@@ -230,7 +243,7 @@ class StripeProvider(BasePaymentProvider):
     async def test_connection(self) -> bool:
         """Verify Stripe credentials by fetching account info."""
         try:
-            self._stripe.Account.retrieve()
+            await self._call(stripe.Account.retrieve)
             return True
         except Exception:
             return False

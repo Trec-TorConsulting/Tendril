@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
-from app.billing.models import BillingPlan, PaymentProvider
+from app.billing.models import BillingPlan, BillingPlanPrice, PaymentProvider
 from app.billing.providers.base import get_provider_class
 from app.billing.service import decrypt_provider_config, get_primary_provider
 from app.config import get_settings
@@ -138,13 +138,28 @@ async def create_checkout(
             email=user.email or "",
             metadata={"account_id": str(account.id), "tenant_id": str(tenant.id)},
         )
-        account.stripe_customer_id = customer_result.customer_id
+        account.stripe_customer_id = customer_result.external_id
         await session.commit()
+
+    # Resolve plan slug to external price ID
+    price_mapping = (
+        await session.execute(
+            select(BillingPlanPrice).where(
+                BillingPlanPrice.plan_id == plan_row.id,
+                BillingPlanPrice.provider_id == _provider_row.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not price_mapping or not price_mapping.external_price_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Plan has not been synced to the payment provider. Sync the plan first.",
+        )
 
     # Create checkout session
     checkout_result = await adapter.create_checkout_session(
         customer_id=account.stripe_customer_id,
-        plan_id=body.plan,
+        price_id=price_mapping.external_price_id,
         success_url=f"https://{settings.domain}/dashboard/settings?billing=success",
         cancel_url=f"https://{settings.domain}/dashboard/settings?billing=cancelled",
         metadata={"tenant_id": str(tenant.id), "plan": body.plan},
@@ -355,7 +370,8 @@ async def _handle_subscription_updated(session: AsyncSession, data: dict) -> Non
     if plan and tenant:
         tenant.plan = plan
 
-    subscription_id = data.get("subscription_id")
+    # In Stripe webhook data, the subscription object IS the data — its ID is at "id"
+    subscription_id = data.get("id")
     if subscription_id:
         account.stripe_subscription_id = subscription_id
 
