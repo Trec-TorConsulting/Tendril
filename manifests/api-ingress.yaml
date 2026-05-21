@@ -24,4 +24,4 @@ spec:
   tls:
   - hosts:
     - api.tendrilgrow.com
-    secretName: tendrilgrow-com-tls
+    secretName: api-tendrilgrow-com-tls

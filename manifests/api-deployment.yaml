@@ -7,6 +7,11 @@ metadata:
     app: tendril-api
 spec:
   replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: tendril-api
@@ -15,6 +20,13 @@ spec:
       labels:
         app: tendril-api
     spec:
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app: tendril-api
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -24,6 +36,14 @@ spec:
                 operator: NotIn
                 values:
                 - node05
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: tendril-api
+              topologyKey: kubernetes.io/hostname
       containers:
       - name: api
         image: 192.168.4.10:30500/tendril-api:latest  # Replace with your registry
@@ -41,6 +61,8 @@ spec:
         - secretRef:
             name: tendril-secrets
         env:
+        - name: DOMAIN
+          value: "tendrilgrow.com"
         - name: LOG_LEVEL
           value: "INFO"
         - name: CORS_ORIGINS

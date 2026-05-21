@@ -1,0 +1,26 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tendril-www-redirect
+  namespace: tendril
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    traefik.ingress.kubernetes.io/router.middlewares: traefik-redirect-https@kubernetescrd,tendril-redirect-www@kubernetescrd
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: traefik
+  rules:
+  - host: www.tendrilgrow.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: tendril-web
+            port:
+              number: 3000
+  tls:
+  - hosts:
+    - www.tendrilgrow.com
+    secretName: tendrilgrow-com-www-tls

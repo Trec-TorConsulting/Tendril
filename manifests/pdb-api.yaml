@@ -1,0 +1,10 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: tendril-api-pdb
+  namespace: tendril
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: tendril-api

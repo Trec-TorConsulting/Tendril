@@ -13,9 +13,11 @@ logger = logging.getLogger("tendril.mqtt.client")
 # Topic patterns:
 #   t/{tenant_id}/d/{device_id}/sensor/#  — sensor readings
 #   t/{tenant_id}/d/{device_id}/status    — online/offline (last-will)
+# Using EMQX shared subscriptions ($share/group/topic) so multiple worker
+# replicas load-balance messages instead of each receiving every message.
 SUBSCRIBE_TOPICS = [
-    "t/+/d/+/sensor/#",
-    "t/+/d/+/status",
+    "$share/tendril-workers/t/+/d/+/sensor/#",
+    "$share/tendril-workers/t/+/d/+/status",
 ]
 
 

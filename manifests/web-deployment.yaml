@@ -7,6 +7,11 @@ metadata:
     app: tendril-web
 spec:
   replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: tendril-web
@@ -15,6 +20,13 @@ spec:
       labels:
         app: tendril-web
     spec:
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app: tendril-web
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -24,6 +36,14 @@ spec:
                 operator: NotIn
                 values:
                 - node05
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: tendril-web
+              topologyKey: kubernetes.io/hostname
       containers:
       - name: web
         image: 192.168.4.10:30500/tendril-web:latest  # Replace with your registry
