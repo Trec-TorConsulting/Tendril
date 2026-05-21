@@ -65,6 +65,20 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     setup_logging(settings.log_level)
     logger.info("Tendril API starting up")
+
+    # Auto-seed reference data
+    try:
+        from app.database import async_session_factory
+        from app.reference.nutrient_sync import sync_seed_nutrients
+        from app.reference.strain_sync import sync_seed_strains
+
+        async with async_session_factory() as session:
+            await sync_seed_strains(session)
+            await sync_seed_nutrients(session)
+        logger.info("Reference data seeding complete")
+    except Exception as e:
+        logger.warning("Reference data seeding failed (non-fatal): %s", e)
+
     yield
     logger.info("Tendril API shutting down")
 
