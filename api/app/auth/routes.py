@@ -139,11 +139,11 @@ def _cookie_domain() -> str | None:
     domain = os.environ.get("DOMAIN", "").strip()
     if not domain or domain == "localhost":
         return None
-    # e.g. "tendril.maddscientist.com" → ".maddscientist.com"
+    # e.g. "tendrilgrow.com" → ".tendrilgrow.com"
     parts = domain.split(".")
     if len(parts) >= 3:
         return "." + ".".join(parts[-2:])
-    # e.g. "maddscientist.com" → ".maddscientist.com"
+    # e.g. "tendrilgrow.com" → ".tendrilgrow.com"
     if len(parts) == 2:
         return "." + domain
     return None

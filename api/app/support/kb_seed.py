@@ -101,7 +101,7 @@ Tendril is built for home growers, commercial cultivators, and everyone in betwe
 
 ## How to Sign Up
 
-1. Visit [tendril.maddscientist.com](https://tendril.maddscientist.com)
+1. Visit [tendrilgrow.com](https://tendrilgrow.com)
 2. Click **Sign Up** on the login page
 3. Enter your email address, display name, and create a password
 4. Verify your email address via the confirmation link
@@ -937,7 +937,7 @@ Ask questions and help others in **Support → Community Forum**. Community mode
 
 ## Emergency Issues
 
-For service outages or security concerns, email security@tendril.maddscientist.com directly.
+For service outages or security concerns, email security@tendrilgrow.com directly.
 """,
     },
 ]

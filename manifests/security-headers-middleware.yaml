@@ -14,7 +14,7 @@ spec:
       style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
       img-src 'self' data: blob: https:;
       font-src 'self' https://fonts.gstatic.com;
-      connect-src 'self' https://api.tendril.maddscientist.com wss: ws:;
+      connect-src 'self' https://api.tendrilgrow.com wss: ws:;
       frame-ancestors 'none';
       base-uri 'self';
       form-action 'self'

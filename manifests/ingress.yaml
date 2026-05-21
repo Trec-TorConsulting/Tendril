@@ -10,7 +10,7 @@ metadata:
 spec:
   ingressClassName: traefik
   rules:
-  - host: tendril.maddscientist.com
+  - host: tendrilgrow.com
     http:
       paths:
       - path: /
@@ -22,5 +22,5 @@ spec:
               number: 3000
   tls:
   - hosts:
-    - tendril.maddscientist.com
-    secretName: tendril-maddscientist-com-tls
+    - tendrilgrow.com
+    secretName: tendrilgrow-com-tls

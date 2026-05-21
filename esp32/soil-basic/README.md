@@ -181,7 +181,7 @@ Copy `src/config.example.h` to `src/config.h` and edit:
 #define WIFI_PASS     "YourPassword"
 
 // MQTT
-#define MQTT_HOST     "api.tendril.maddscientist.com"
+#define MQTT_HOST     "api.tendrilgrow.com"
 #define MQTT_PORT     8883
 #define MQTT_DEVICE_ID "td-XXXXXXXXXXXX"   // From Tendril dashboard
 #define MQTT_PSK       "your-psk-here"     // From device registration
