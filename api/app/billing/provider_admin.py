@@ -60,7 +60,7 @@ class ProviderUpdateRequest(BaseModel):
 # ─── Routes ───────────────────────────────────────────────────────────────────
 
 
-@router.get("/", dependencies=[Depends(require_platform_admin)])
+@router.get("", dependencies=[Depends(require_platform_admin)])
 async def list_providers(
     session: Annotated[AsyncSession, Depends(_get_db)],
 ) -> list[ProviderListResponse]:
@@ -69,7 +69,7 @@ async def list_providers(
     return [ProviderListResponse.model_validate(p) for p in providers]
 
 
-@router.post("/", dependencies=[Depends(require_platform_admin)], status_code=201)
+@router.post("", dependencies=[Depends(require_platform_admin)], status_code=201)
 async def create_provider(
     body: ProviderCreateRequest,
     session: Annotated[AsyncSession, Depends(_get_db)],

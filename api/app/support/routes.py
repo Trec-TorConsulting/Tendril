@@ -161,7 +161,7 @@ async def create_ticket(
     )
 
 
-@router.get("/")
+@router.get("")
 async def list_my_tickets(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
