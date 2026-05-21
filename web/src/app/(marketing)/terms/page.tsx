@@ -28,7 +28,7 @@ export default function TermsOfServicePage() {
 
         <h2>1. Definitions</h2>
         <ul>
-          <li><strong>&ldquo;Service&rdquo;</strong> means the Tendril web application, API, mobile experience, and related services at tendril.trector.com.</li>
+          <li><strong>&ldquo;Service&rdquo;</strong> means the Tendril web application, API, mobile experience, and related services at tendrilgrow.com.</li>
           <li><strong>&ldquo;User&rdquo;</strong> or <strong>&ldquo;You&rdquo;</strong> means any individual or entity accessing the Service.</li>
           <li><strong>&ldquo;Account&rdquo;</strong> means your registered Tendril account including all associated Tenants and data.</li>
           <li><strong>&ldquo;Content&rdquo;</strong> means any data, images, sensor readings, grow logs, or other information you submit.</li>

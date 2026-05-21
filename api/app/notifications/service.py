@@ -138,7 +138,7 @@ async def _send_email(config: dict, severity: str, subject: str, body: str) -> N
 
     msg = EmailMessage()
     msg["Subject"] = f"[Tendril {severity.upper()}] {subject}"
-    msg["From"] = config.get("smtp_from", "noreply@tendril.example.com")
+    msg["From"] = config.get("smtp_from", "noreply@tendrilgrow.com")
     msg["To"] = email_to
     msg.set_content(body)
 
@@ -190,7 +190,7 @@ async def _send_web_push(
     from pywebpush import WebPushException, webpush
 
     vapid_private = os.environ.get("VAPID_PRIVATE_KEY")
-    vapid_email = os.environ.get("VAPID_EMAIL", "mailto:admin@tendril.example.com")
+    vapid_email = os.environ.get("VAPID_EMAIL", "mailto:admin@tendrilgrow.com")
 
     if not vapid_private:
         return

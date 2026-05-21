@@ -67,13 +67,11 @@ class Settings:
 
     # Web Push (VAPID)
     vapid_private_key: str = field(default_factory=lambda: os.environ.get("VAPID_PRIVATE_KEY", ""))
-    vapid_email: str = field(default_factory=lambda: os.environ.get("VAPID_EMAIL", "mailto:admin@tendril.example.com"))
+    vapid_email: str = field(default_factory=lambda: os.environ.get("VAPID_EMAIL", "mailto:admin@tendrilgrow.com"))
 
     # Email (Resend)
     resend_api_key: str = field(default_factory=lambda: os.environ.get("RESEND_API_KEY", ""))
-    email_from: str = field(
-        default_factory=lambda: os.environ.get("EMAIL_FROM", "Tendril <noreply@tendril.trector.com>")
-    )
+    email_from: str = field(default_factory=lambda: os.environ.get("EMAIL_FROM", "Tendril <noreply@tendrilgrow.com>"))
 
     # Stripe Tax
     stripe_tax_enabled: bool = field(
@@ -88,10 +86,10 @@ class Settings:
 
     # App
     app_name: str = "Tendril"
-    domain: str = field(default_factory=lambda: os.environ.get("DOMAIN", "tendril.example.com"))
+    domain: str = field(default_factory=lambda: os.environ.get("DOMAIN", "tendrilgrow.com"))
     api_prefix: str = "/v1"
     cors_origins: list[str] = field(
-        default_factory=lambda: os.environ.get("CORS_ORIGINS", "https://tendril.example.com").split(",")
+        default_factory=lambda: os.environ.get("CORS_ORIGINS", "https://tendrilgrow.com").split(",")
     )
     log_level: str = field(default_factory=lambda: os.environ.get("LOG_LEVEL", "INFO"))
 

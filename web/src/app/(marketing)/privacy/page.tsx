@@ -23,7 +23,7 @@ export default function PrivacyPolicyPage() {
         <h1>Privacy Policy</h1>
         <p className="text-neutral-400"><strong>Last updated:</strong> May 6, 2026</p>
 
-        <p><strong>Geek Info LLC</strong> (managed by Trec-Tor Consulting, &ldquo;we&rdquo;, &ldquo;us&rdquo;, &ldquo;our&rdquo;) operates the Tendril platform at tendril.trector.com. This Privacy Policy explains how we collect, use, and protect your information.</p>
+        <p><strong>Geek Info LLC</strong> (managed by Trec-Tor Consulting, &ldquo;we&rdquo;, &ldquo;us&rdquo;, &ldquo;our&rdquo;) operates the Tendril platform at tendrilgrow.com. This Privacy Policy explains how we collect, use, and protect your information.</p>
 
         <h2>1. Information We Collect</h2>
 

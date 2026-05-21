@@ -72,7 +72,7 @@ _BASE_STYLE = """
   {content}
   <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #333; font-size: 12px; color: #737373;">
     <p>Tendril — Managed by Trec-Tor Consulting for Geek Info LLC</p>
-    <p>New Jersey, USA · <a href="https://tendril.trector.com" style="color: #22c55e;">tendril.trector.com</a></p>
+    <p>New Jersey, USA · <a href="https://tendrilgrow.com" style="color: #22c55e;">tendrilgrow.com</a></p>
   </div>
 </div>
 """
@@ -88,7 +88,7 @@ async def send_welcome_email(email: str, name: str) -> bool:
     <h2 style="color: #fff; margin-bottom: 8px;">Welcome to Tendril, {name}! 🌱</h2>
     <p>Your account is ready. Start tracking your grows with AI-powered insights, IoT sensors, and smart automation.</p>
     <div style="margin: 24px 0;">
-      <a href="https://tendril.trector.com/dashboard" style="display: inline-block; background: #22c55e; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;">Go to Dashboard</a>
+      <a href="https://tendrilgrow.com/dashboard" style="display: inline-block; background: #22c55e; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;">Go to Dashboard</a>
     </div>
     <p style="color: #a3a3a3;">You're on the <strong>Seedling (Free)</strong> plan. Upgrade anytime to unlock more grows, devices, and AI analyses.</p>
     """)
@@ -104,7 +104,7 @@ async def send_subscription_confirmed(email: str, plan_name: str, amount: str) -
       <p style="margin: 0;"><strong>Amount:</strong> {amount}/month</p>
       <p style="margin: 8px 0 0;"><strong>Plan:</strong> {plan_name}</p>
     </div>
-    <p style="color: #a3a3a3;">Manage your subscription anytime from <a href="https://tendril.trector.com/dashboard/billing" style="color: #22c55e;">Dashboard → Billing</a>.</p>
+    <p style="color: #a3a3a3;">Manage your subscription anytime from <a href="https://tendrilgrow.com/dashboard/billing" style="color: #22c55e;">Dashboard → Billing</a>.</p>
     """)
     return await send_email(
         email, f"Subscription Confirmed — {plan_name}", html, tags=[{"name": "category", "value": "billing"}]
@@ -122,7 +122,7 @@ async def send_payment_failed(email: str, retry_date: str, grace_days: int) -> b
     </div>
     <p>To avoid interruption, please update your payment method:</p>
     <div style="margin: 16px 0;">
-      <a href="https://tendril.trector.com/dashboard/billing" style="display: inline-block; background: #22c55e; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;">Update Payment Method</a>
+      <a href="https://tendrilgrow.com/dashboard/billing" style="display: inline-block; background: #22c55e; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;">Update Payment Method</a>
     </div>
     <p style="color: #a3a3a3; font-size: 13px;">If payment isn't resolved within {grace_days} days, your account will be downgraded to the Free plan.</p>
     """)
@@ -138,7 +138,7 @@ async def send_subscription_cancelled(email: str, end_date: str) -> bool:
     <p>Your subscription has been cancelled. You'll retain access to your current plan features until <strong>{end_date}</strong>.</p>
     <p>After that date, your account will revert to the <strong>Seedling (Free)</strong> plan. Your data will be preserved.</p>
     <div style="margin: 16px 0;">
-      <a href="https://tendril.trector.com/dashboard/billing" style="display: inline-block; border: 1px solid #525252; color: #e5e5e5; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;">Resubscribe</a>
+      <a href="https://tendrilgrow.com/dashboard/billing" style="display: inline-block; border: 1px solid #525252; color: #e5e5e5; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;">Resubscribe</a>
     </div>
     <p style="color: #a3a3a3; font-size: 13px;">We'd love to have you back. If you have feedback, reply to this email.</p>
     """)
@@ -146,7 +146,7 @@ async def send_subscription_cancelled(email: str, end_date: str) -> bool:
         email,
         "Subscription Cancelled",
         html,
-        reply_to="info@trector.com",
+        reply_to="info@tendrilgrow.com",
         tags=[{"name": "category", "value": "billing"}],
     )
 
@@ -166,7 +166,7 @@ async def send_approaching_limit(email: str, metric: str, current: int, limit: i
     </div>
     <p>Upgrade your plan for higher limits:</p>
     <div style="margin: 16px 0;">
-      <a href="https://tendril.trector.com/dashboard/billing" style="display: inline-block; background: #22c55e; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;">Upgrade Plan</a>
+      <a href="https://tendrilgrow.com/dashboard/billing" style="display: inline-block; background: #22c55e; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;">Upgrade Plan</a>
     </div>
     """)
     return await send_email(
@@ -202,7 +202,7 @@ async def send_account_deletion_scheduled(email: str, deletion_date: str) -> boo
       <p style="margin: 0; color: #fbbf24;">⚠️ This action is irreversible after {deletion_date}.</p>
     </div>
     <div style="margin: 16px 0;">
-      <a href="https://tendril.trector.com/login" style="display: inline-block; border: 1px solid #525252; color: #e5e5e5; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;">Cancel Deletion</a>
+      <a href="https://tendrilgrow.com/login" style="display: inline-block; border: 1px solid #525252; color: #e5e5e5; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;">Cancel Deletion</a>
     </div>
     """)
     return await send_email(email, "Account Deletion Scheduled", html, tags=[{"name": "category", "value": "account"}])
@@ -218,7 +218,7 @@ async def send_retention_offer(email: str, discount: str, offer_code: str) -> bo
       <p style="margin: 4px 0 0; color: #a3a3a3; font-size: 13px;">Code: {offer_code}</p>
     </div>
     <div style="margin: 16px 0;">
-      <a href="https://tendril.trector.com/dashboard/billing" style="display: inline-block; background: #22c55e; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;">Keep My Subscription</a>
+      <a href="https://tendrilgrow.com/dashboard/billing" style="display: inline-block; background: #22c55e; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;">Keep My Subscription</a>
     </div>
     <p style="color: #a3a3a3; font-size: 13px;">This offer expires in 48 hours. After that, your cancellation will proceed as scheduled.</p>
     """)

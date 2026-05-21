@@ -41,8 +41,8 @@ JWT_SECRET=change-me-to-a-random-64-char-string
 DATABASE_URL=postgresql+asyncpg://tendril:tendril@postgres:5432/tendril
 
 # Domain — your hostname
-DOMAIN=tendril.example.com
-CORS_ORIGINS=https://tendril.example.com
+DOMAIN=tendrilgrow.com
+CORS_ORIGINS=https://tendrilgrow.com
 
 # MinIO / S3 (defaults work with bundled MinIO)
 S3_ENDPOINT=http://minio:9000
@@ -121,10 +121,10 @@ Put Tendril behind a reverse proxy with TLS:
 ```nginx
 server {
     listen 443 ssl http2;
-    server_name tendril.example.com;
+    server_name tendrilgrow.com;
 
-    ssl_certificate     /etc/letsencrypt/live/tendril.example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/tendril.example.com/privkey.pem;
+    ssl_certificate     /etc/letsencrypt/live/tendrilgrow.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/tendrilgrow.com/privkey.pem;
 
     # Web frontend
     location / {
@@ -159,7 +159,7 @@ server {
 # Redirect HTTP to HTTPS
 server {
     listen 80;
-    server_name tendril.example.com;
+    server_name tendrilgrow.com;
     return 301 https://$host$request_uri;
 }
 ```

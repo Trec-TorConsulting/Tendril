@@ -6,7 +6,7 @@ If you discover a security vulnerability in Tendril, **please report it responsi
 
 ### How to Report
 
-Email: **info@trector.com**
+Email: **security@tendrilgrow.com**
 
 Include:
 - Description of the vulnerability

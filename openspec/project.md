@@ -21,7 +21,7 @@ Tendril is an open-source, multi-tenant SaaS platform for grow monitoring and au
 - **Production**: k3s Kubernetes cluster with manifests in `manifests/`
 - **Local Dev**: Docker Compose (`docker-compose.yml`) with full stack
 - **Container Registry**: Configurable via `TENDRIL_REGISTRY` env var in `scripts/build.sh`
-- **Domains**: Configurable via `DOMAIN` env var (defaults to `tendril.example.com`)
+- **Domains**: Configurable via `DOMAIN` env var (defaults to `tendrilgrow.com`)
 
 ## Project Conventions
 
