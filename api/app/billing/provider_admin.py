@@ -55,6 +55,7 @@ class ProviderUpdateRequest(BaseModel):
     webhook_secret: str | None = None
     is_active: bool | None = None
     set_primary: bool | None = None
+    is_primary: bool | None = None  # alias accepted from frontend
 
 
 # ─── Routes ───────────────────────────────────────────────────────────────────
@@ -146,7 +147,7 @@ async def update_provider(
     if body.is_active is not None:
         provider.is_active = body.is_active
 
-    if body.set_primary:
+    if body.set_primary or body.is_primary:
         # Unset other primaries
         existing = (
             (
