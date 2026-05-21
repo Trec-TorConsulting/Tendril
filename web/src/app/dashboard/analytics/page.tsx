@@ -454,7 +454,7 @@ export default function AnalyticsPage() {
           </Card>
 
           {/* Tent Sensor Trends */}
-          {tentTrends && tentTrends.timestamps.length > 0 && (
+          {tentTrends && Array.isArray(tentTrends.timestamps) && tentTrends.timestamps.length > 0 && (
             <Card className="lg:col-span-2">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-sm">

@@ -103,25 +103,10 @@ async def get_tent_trends(
     )
     readings = result.scalars().all()
 
-    def stats(values: list[float]) -> dict | None:
-        if not values:
-            return None
-        return {
-            "min": round(min(values), 1),
-            "max": round(max(values), 1),
-            "avg": round(sum(values) / len(values), 1),
-            "count": len(values),
-        }
-
-    temps = [r.ambient_temp_f for r in readings if r.ambient_temp_f is not None]
-    humids = [r.ambient_humidity for r in readings if r.ambient_humidity is not None]
-
     return {
-        "tent_id": str(tent_id),
-        "hours": hours,
-        "reading_count": len(readings),
-        "ambient_temp_f": stats(temps),
-        "ambient_humidity": stats(humids),
+        "timestamps": [r.recorded_at.isoformat() for r in readings],
+        "temps": [r.ambient_temp_f for r in readings],
+        "humidities": [r.ambient_humidity for r in readings],
     }
 
 
