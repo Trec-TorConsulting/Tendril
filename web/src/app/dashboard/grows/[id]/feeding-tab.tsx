@@ -65,6 +65,72 @@ import { cn } from "@/lib/utils";
 const STAGES = ["seedling", "vegetative", "flowering", "ripening", "drying", "curing"];
 const STAGE_ORDER: Record<string, number> = Object.fromEntries(STAGES.map((s, i) => [s, i]));
 
+/**
+ * Mixing order priority — lower number = add to reservoir first.
+ * Reflects correct application sequence to avoid nutrient lockout.
+ */
+const MIXING_ORDER: Record<string, number> = {
+  // Silicate (must go first, raises pH significantly)
+  "gh-armor-si": 0,
+  // Cal-Mag (add before base nutrients)
+  "gh-calimagic": 10,
+  "botanicare-calmag-plus": 10,
+  // Base nutrients — Micro always before Gro/Bloom
+  "gh-micro": 20,
+  "gh-gro": 30,
+  "gh-bloom": 40,
+  // AN pH Perfect series
+  "an-micro": 20,
+  "an-grow": 30,
+  "an-bloom": 40,
+  // Jack's
+  "jacks-a": 20,
+  "jacks-calcium-nitrate": 25,
+  "jacks-epsom": 30,
+  // Fox Farm
+  "ff-grow-big": 20,
+  "ff-big-bloom": 30,
+  "ff-tiger-bloom": 40,
+  // Canna
+  "canna-a": 20,
+  "canna-b": 30,
+  // Athena
+  "athena-core": 15,
+  "athena-grow-a": 20,
+  "athena-grow-b": 25,
+  "athena-bloom-a": 20,
+  "athena-bloom-b": 25,
+  // Supplements (after base nutrients)
+  "gh-koolbloom": 50,
+  "an-big-bud": 50,
+  "an-overdrive": 50,
+  "canna-pk1314": 50,
+  "canna-cannazym": 50,
+  // Enzymes / root cleaners
+  "slf100": 55,
+  "gh-florakleen": 55,
+  // pH adjustment step
+  "gh-ph-down": 60,
+  "gh-ph-up": 60,
+  // Microbial inoculants / beneficials (add LAST, after pH is set)
+  "gh-rapidstart": 70,
+  "mammoth-p": 80,
+  "recharge": 80,
+  "botanicare-hydroguard": 90,
+};
+
+const DEFAULT_MIXING_PRIORITY = 45; // Products not in map go after base nutrients, before pH
+
+type MixingItem =
+  | { type: "product"; id: string; name: string; ml_per_gallon: number }
+  | { type: "additive"; id: string; name: string; brand: string; ml_per_gallon: number };
+
+function sortByMixingOrder(items: MixingItem[]): MixingItem[] {
+  return [...items].sort(
+    (a, b) => (MIXING_ORDER[a.id] ?? DEFAULT_MIXING_PRIORITY) - (MIXING_ORDER[b.id] ?? DEFAULT_MIXING_PRIORITY),
+  );
+}
+
 interface FeedingTabProps {
   growId: string;
   growStage: string;
@@ -453,16 +519,29 @@ export function FeedingTab({ growId, growStage, growStartedAt, milestones, setti
     return null;
   }
 
-  function renderAdditiveRow(a: StandaloneAdditive, vol: number) {
-    return (
-      <span key={a.id} className="text-muted-foreground">
-        {a.name}: <span className="text-foreground font-medium">{(a.ml_per_gallon * vol).toFixed(1)} ml</span>
-      </span>
-    );
+  /** Build a combined sorted list of products + additives in correct mixing order */
+  function buildMixingList(phase: FeedChartPhase): MixingItem[] {
+    const items: MixingItem[] = [
+      ...phase.products.map((p) => ({
+        type: "product" as const,
+        id: p.productId,
+        name: productNameMap[p.productId] || p.productId,
+        ml_per_gallon: p.ml_per_gallon,
+      })),
+      ...selectedAdditives.map((a) => ({
+        type: "additive" as const,
+        id: a.id,
+        name: a.name,
+        brand: a.brand,
+        ml_per_gallon: a.ml_per_gallon,
+      })),
+    ];
+    return sortByMixingOrder(items);
   }
 
   function renderDosesPerBucket(phase: FeedChartPhase) {
     if (activeBuckets.length === 0) return null;
+    const sortedItems = buildMixingList(phase);
     return (
       <div className="mt-3 rounded-md border bg-muted/30 p-2">
         <p className="mb-1 text-xs font-medium text-muted-foreground">Per Bucket</p>
@@ -470,12 +549,11 @@ export function FeedingTab({ growId, growStage, growStartedAt, milestones, setti
           {activeBuckets.map((b) => (
             <div key={b.id} className="flex flex-wrap items-baseline gap-x-3 text-xs">
               <span className="font-medium min-w-[5rem]">#{b.position} {b.label || "Unnamed"} ({b.volume_gallons}g)</span>
-              {phase.products.map((p) => (
-                <span key={p.productId} className="text-muted-foreground">
-                  {productNameMap[p.productId] || p.productId}: <span className="text-foreground font-medium">{(p.ml_per_gallon * (b.volume_gallons || 0)).toFixed(1)} ml</span>
+              {sortedItems.map((item) => (
+                <span key={item.id} className={item.type === "additive" ? "text-blue-600 dark:text-blue-400" : "text-muted-foreground"}>
+                  {item.name}: <span className={item.type === "additive" ? "font-medium" : "text-foreground font-medium"}>{(item.ml_per_gallon * (b.volume_gallons || 0)).toFixed(1)} ml</span>
                 </span>
               ))}
-              {selectedAdditives.map((a) => renderAdditiveRow(a, b.volume_gallons || 0))}
             </div>
           ))}
         </div>
@@ -772,16 +850,14 @@ export function FeedingTab({ growId, growStage, growStartedAt, milestones, setti
           </CardHeader>
           <CardContent>
             <div className="grid gap-1.5 sm:grid-cols-2">
-              {currentPhase.products.map((p) => (
-                <div key={p.productId} className="flex items-baseline justify-between rounded-md bg-muted/40 px-3 py-1.5 text-sm">
-                  <span className="font-medium">{productNameMap[p.productId] || p.productId}</span>
-                  <span className="text-muted-foreground">{p.ml_per_gallon} <span className="text-xs">ml/gal</span></span>
-                </div>
-              ))}
-              {selectedAdditives.map((a) => (
-                <div key={a.id} className="flex items-baseline justify-between rounded-md bg-blue-500/10 px-3 py-1.5 text-sm">
-                  <span className="font-medium">{a.name} <span className="text-xs text-muted-foreground">({a.brand})</span></span>
-                  <span className="text-muted-foreground">{a.ml_per_gallon} <span className="text-xs">ml/gal</span></span>
+              {buildMixingList(currentPhase).map((item, idx) => (
+                <div key={item.id} className={`flex items-baseline justify-between rounded-md px-3 py-1.5 text-sm ${item.type === "additive" ? "bg-blue-500/10" : "bg-muted/40"}`}>
+                  <span className="font-medium">
+                    <span className="text-xs text-muted-foreground mr-1.5">{idx + 1}.</span>
+                    {item.name}
+                    {item.type === "additive" && <span className="text-xs text-muted-foreground ml-1">({(item as { brand: string }).brand})</span>}
+                  </span>
+                  <span className="text-muted-foreground">{item.ml_per_gallon} <span className="text-xs">ml/gal</span></span>
                 </div>
               ))}
             </div>
@@ -840,14 +916,9 @@ export function FeedingTab({ growId, growStage, growStartedAt, milestones, setti
                 </div>
 
                 <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1">
-                  {phase.products.map((p) => (
-                    <span key={p.productId} className="text-xs text-muted-foreground">
-                      {productNameMap[p.productId] || p.productId}: <span className="font-medium text-foreground">{p.ml_per_gallon} ml/gal</span>
-                    </span>
-                  ))}
-                  {selectedAdditives.map((a) => (
-                    <span key={a.id} className="text-xs text-blue-600 dark:text-blue-400">
-                      {a.name}: <span className="font-medium">{a.ml_per_gallon} ml/gal</span>
+                  {buildMixingList(phase).map((item) => (
+                    <span key={item.id} className={`text-xs ${item.type === "additive" ? "text-blue-600 dark:text-blue-400" : "text-muted-foreground"}`}>
+                      {item.name}: <span className={`font-medium ${item.type === "additive" ? "" : "text-foreground"}`}>{item.ml_per_gallon} ml/gal</span>
                     </span>
                   ))}
                 </div>
