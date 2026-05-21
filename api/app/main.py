@@ -94,6 +94,7 @@ def create_app() -> FastAPI:
         docs_url=f"{settings.api_prefix}/docs",
         openapi_url=f"{settings.api_prefix}/openapi.json",
         lifespan=lifespan,
+        redirect_slashes=False,
     )
 
     # Security middleware
