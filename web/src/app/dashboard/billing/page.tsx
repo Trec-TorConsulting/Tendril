@@ -209,7 +209,7 @@ export default function BillingPage() {
                     </Badge>
                   ) : "contact" in plan && plan.contact ? (
                     <Button size="sm" variant="outline" className="w-full" asChild>
-                      <a href="mailto:sales@tendril.dev">Contact Sales</a>
+                      <a href="mailto:info@tendrilgrow.com">Contact Sales</a>
                     </Button>
                   ) : plan.key === "free" ? (
                     <span className="text-sm text-muted-foreground">Free tier</span>

@@ -103,7 +103,7 @@ const TIERS = [
       "On-premise option",
     ],
     cta: "Contact Sales",
-    href: "mailto:info@trector.com",
+    href: "mailto:info@tendrilgrow.com",
     highlighted: false,
   },
 ];
@@ -263,9 +263,9 @@ export default function LandingPage() {
             <span>·</span>
             <Link href="/privacy" className="hover:text-neutral-300">Privacy Policy</Link>
             <span>·</span>
-            <a href="mailto:info@trector.com" className="hover:text-neutral-300">Contact</a>
+            <a href="mailto:info@tendrilgrow.com" className="hover:text-neutral-300">Contact</a>
           </p>
-          <p className="mt-2 text-neutral-600">Geek Info LLC · Managed by Trec-Tor Consulting · New Jersey, USA</p>
+          <p className="mt-2 text-neutral-600">Powered by <a href="https://www.trector.com" target="_blank" rel="noopener noreferrer" className="hover:text-neutral-300">Trec-Tor Consulting</a></p>
         </div>
       </footer>
     </div>

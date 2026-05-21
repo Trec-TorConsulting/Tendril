@@ -102,10 +102,10 @@ export default function TermsOfServicePage() {
         <p>These Terms are governed by the laws of the State of New Jersey, USA, without regard to conflict of law principles. Any disputes shall be resolved in the courts of New Jersey.</p>
 
         <h2>15. Contact</h2>
-        <p>For questions about these Terms, contact us at <a href="mailto:info@trector.com" className="text-green-500">info@trector.com</a>.</p>
+        <p>For questions about these Terms, contact us at <a href="mailto:legal@tendrilgrow.com" className="text-green-500">legal@tendrilgrow.com</a>.</p>
 
         <div className="mt-12 border-t border-neutral-800 pt-6 text-sm text-neutral-500">
-          <p>Geek Info LLC · Managed by Trec-Tor Consulting · New Jersey, USA</p>
+          <p>Powered by <a href="https://www.trector.com" target="_blank" rel="noopener noreferrer" className="hover:text-neutral-300">Trec-Tor Consulting</a></p>
         </div>
       </article>
     </div>

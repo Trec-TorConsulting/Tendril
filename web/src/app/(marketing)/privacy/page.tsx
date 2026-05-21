@@ -116,7 +116,7 @@ export default function PrivacyPolicyPage() {
           <li><strong>Portability:</strong> Export data in JSON format via the API or dashboard</li>
           <li><strong>Objection:</strong> Opt out of non-essential communications from notification preferences</li>
         </ul>
-        <p>To exercise these rights, use the in-app tools or contact <a href="mailto:info@trector.com" className="text-green-500">info@trector.com</a>.</p>
+        <p>To exercise these rights, use the in-app tools or contact <a href="mailto:privacy@tendrilgrow.com" className="text-green-500">privacy@tendrilgrow.com</a>.</p>
 
         <h2>8. Cookies</h2>
         <ul>
@@ -138,12 +138,12 @@ export default function PrivacyPolicyPage() {
         <h2>12. Contact</h2>
         <p>For privacy-related questions or data requests:</p>
         <ul>
-          <li>Email: <a href="mailto:info@trector.com" className="text-green-500">info@trector.com</a></li>
+          <li>Email: <a href="mailto:privacy@tendrilgrow.com" className="text-green-500">privacy@tendrilgrow.com</a></li>
           <li>Entity: Geek Info LLC, New Jersey, USA</li>
         </ul>
 
         <div className="mt-12 border-t border-neutral-800 pt-6 text-sm text-neutral-500">
-          <p>Geek Info LLC · Managed by Trec-Tor Consulting · New Jersey, USA</p>
+          <p>Powered by <a href="https://www.trector.com" target="_blank" rel="noopener noreferrer" className="hover:text-neutral-300">Trec-Tor Consulting</a></p>
         </div>
       </article>
     </div>
