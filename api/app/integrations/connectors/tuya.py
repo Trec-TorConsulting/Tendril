@@ -360,36 +360,77 @@ class TuyaConnector(BaseConnector):
     # ── Discovery ────────────────────────────────────────────────
 
     async def discover_devices(self) -> list[DiscoveredDevice]:
-        """Discover all Tuya devices linked to the cloud project."""
+        """Discover all Tuya devices linked to the cloud project.
+
+        Tries multiple API endpoints since the correct one depends on
+        the Tuya Cloud project type (Smart Home vs Industry).
+        """
         devices: list[DiscoveredDevice] = []
 
         async with httpx.AsyncClient(timeout=15) as client:
+            # Strategy 1: Get linked app user's devices (Smart Home projects)
+            uid = self.decrypted_config.get("uid")
+            if not uid:
+                uid = await self._get_app_user_uid(client)
+
+            if uid:
+                data = await self._api_get(client, f"/v1.0/users/{uid}/devices")
+                if data.get("success"):
+                    for dev in data.get("result", []):
+                        devices.append(self._device_to_discovered(dev))
+                    if devices:
+                        return devices
+
+            # Strategy 2: Direct device list (Industry / custom projects)
             try:
                 data = await self._api_get(client, "/v1.0/devices")
-                if not data.get("success"):
-                    logger.warning("Tuya discover failed: %s", data.get("msg"))
-                    return devices
-
-                for dev in data.get("result", {}).get("list", []):
-                    # Determine device type from category
-                    category = dev.get("category", "")
-                    device_type = _TUYA_CATEGORY_MAP.get(category, category or "unknown")
-
-                    devices.append(
-                        DiscoveredDevice(
-                            external_id=dev.get("id", ""),
-                            name=dev.get("name", dev.get("id", "Unknown")),
-                            device_type=device_type,
-                        )
-                    )
-            except httpx.RequestError as exc:
-                logger.warning("Tuya discovery network error: %s", exc)
-                raise
+                if data.get("success"):
+                    result = data.get("result", {})
+                    dev_list = result.get("list", []) if isinstance(result, dict) else result
+                    for dev in dev_list:
+                        devices.append(self._device_to_discovered(dev))
+                    if devices:
+                        return devices
             except Exception as exc:
-                logger.warning("Tuya discovery error: %s", exc)
-                raise
+                logger.debug("Tuya /v1.0/devices fallback failed: %s", exc)
+
+            # Strategy 3: IoT Core endpoint
+            try:
+                data = await self._api_get(client, "/v2.0/cloud/thing/device?page_no=1&page_size=50")
+                if data.get("success"):
+                    for dev in data.get("result", {}).get("list", []):
+                        devices.append(self._device_to_discovered(dev))
+            except Exception as exc:
+                if not devices:
+                    logger.warning("Tuya discovery failed all endpoints: %s", exc)
+                    raise
 
         return devices
+
+    async def _get_app_user_uid(self, client: httpx.AsyncClient) -> str | None:
+        """Get the UID of the linked Tuya app user."""
+        try:
+            data = await self._api_get(client, "/v1.0/token?grant_type=1")
+            # UID is returned with the token; check cached token response
+            # Try the users endpoint instead
+            data = await self._api_get(client, "/v1.0/apps/users?page_no=1&page_size=1")
+            if data.get("success"):
+                users = data.get("result", {}).get("list", [])
+                if users:
+                    return users[0].get("uid")
+        except Exception as exc:
+            logger.debug("Failed to fetch Tuya app user UID: %s", exc)
+        return None
+
+    def _device_to_discovered(self, dev: dict[str, Any]) -> DiscoveredDevice:
+        """Convert a Tuya API device dict to a DiscoveredDevice."""
+        category = dev.get("category", "")
+        device_type = _TUYA_CATEGORY_MAP.get(category, category or "unknown")
+        return DiscoveredDevice(
+            external_id=dev.get("id", ""),
+            name=dev.get("name", dev.get("id", "Unknown")),
+            device_type=device_type,
+        )
 
     # ── Device Control ───────────────────────────────────────────
 
