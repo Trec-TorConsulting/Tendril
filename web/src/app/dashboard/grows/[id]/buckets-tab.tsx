@@ -204,6 +204,8 @@ export function BucketsTab({ growId, growType, buckets, latestReadings, onRefres
                     {reading.ec != null && <div><span className="text-muted-foreground">EC</span><p className="font-medium">{reading.ec.toFixed(2)}</p></div>}
                     {reading.ppm != null && <div><span className="text-muted-foreground">PPM</span><p className="font-medium">{Math.round(reading.ppm)}</p></div>}
                     {reading.water_temp_f != null && <div><span className="text-muted-foreground">Water {prefs.temp_unit === "celsius" ? "°C" : "°F"}</span><p className="font-medium">{formatTemp(reading.water_temp_f, "f", prefs.temp_unit)}</p></div>}
+                    {reading.orp != null && <div><span className="text-muted-foreground">ORP</span><p className="font-medium">{Math.round(reading.orp)} mV</p></div>}
+                    {reading.battery_pct != null && <div><span className="text-muted-foreground">Battery</span><p className="font-medium">{Math.round(reading.battery_pct)}%</p></div>}
                   </div>
                 )}
                 {!reading && <p className="mt-2 text-xs text-muted-foreground">No readings yet</p>}

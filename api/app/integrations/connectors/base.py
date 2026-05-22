@@ -163,6 +163,7 @@ async def propagate_header_bucket_readings(
             ppm=reading_row.ppm,
             water_level_pct=reading_row.water_level_pct,
             dissolved_oxygen=reading_row.dissolved_oxygen,
+            orp=reading_row.orp,
             flow_rate=reading_row.flow_rate,
             recorded_at=reading_row.recorded_at,
         )

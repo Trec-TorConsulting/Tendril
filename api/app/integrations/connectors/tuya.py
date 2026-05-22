@@ -51,6 +51,7 @@ _WATER_DP_MAP: dict[str, str] = {
     # Water temperature (Tuya sends deg C scaled x10)
     "water_temp": "water_temp_c",
     "temp_value": "water_temp_c",
+    "temp_current": "water_temp_c",
     # Water level percentage
     "water_level": "water_level_pct",
     "level_percent": "water_level_pct",
@@ -59,6 +60,12 @@ _WATER_DP_MAP: dict[str, str] = {
     "water_flow": "flow_rate",
     # Dissolved oxygen
     "dissolved_oxygen": "dissolved_oxygen",
+    # ORP (Oxidation Reduction Potential, mV)
+    "orp_value": "orp",
+    "orp": "orp",
+    # Battery
+    "battery_percentage": "battery_pct",
+    "battery_state": "battery_pct",
 }
 
 
@@ -258,7 +265,7 @@ class TuyaConnector(BaseConnector):
                 reading["energy_kwh"] = value / 1000 if isinstance(value, int | float) else None
 
             # Ambient temp / humidity
-            elif code in ("va_temperature", "temp_current"):
+            elif code == "va_temperature":
                 reading["temperature_c"] = value / 10 if isinstance(value, int | float) else None
             elif code in ("va_humidity", "humidity_value"):
                 reading["humidity_pct"] = value
@@ -334,6 +341,8 @@ class TuyaConnector(BaseConnector):
                     water_level_pct=reading.get("water_level_pct"),
                     flow_rate=reading.get("flow_rate"),
                     dissolved_oxygen=reading.get("dissolved_oxygen"),
+                    orp=reading.get("orp"),
+                    battery_pct=reading.get("battery_pct"),
                     recorded_at=now,
                 )
                 session.add(row)
