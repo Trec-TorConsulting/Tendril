@@ -82,6 +82,7 @@ const INTEGRATION_TYPES = [
   { value: "home_assistant", label: "Home Assistant" },
   { value: "ecowitt", label: "Ecowitt" },
   { value: "pulse", label: "Pulse (Autopot)" },
+  { value: "tuya", label: "Tuya Smart" },
   { value: "vivosun", label: "VIVOSUN GrowHub" },
   { value: "mqtt_bridge", label: "MQTT Bridge" },
   { value: "generic_webhook", label: "Generic Webhook" },
@@ -111,6 +112,11 @@ const CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
   ecowitt: [
     { key: "api_key", label: "API Key", type: "password", placeholder: "Ecowitt API key" },
     { key: "app_key", label: "Application Key", type: "password", placeholder: "Ecowitt application key" },
+  ],
+  tuya: [
+    { key: "access_id", label: "Access ID", type: "password", placeholder: "Tuya Cloud project Access ID", required: true },
+    { key: "access_secret", label: "Access Secret", type: "password", placeholder: "Tuya Cloud project Access Secret", required: true },
+    { key: "region", label: "Region", type: "text", placeholder: "us (us, eu, cn, in)" },
   ],
   mqtt_bridge: [
     { key: "host", label: "MQTT Broker Host", type: "text", placeholder: "mqtt.example.com", required: true },
