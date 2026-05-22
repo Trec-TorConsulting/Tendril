@@ -26,6 +26,7 @@ class BucketCreate(BaseModel):
     strain_id: UUID | None = None
     growth_stage: str = "seedling"
     volume_gallons: float | None = None
+    role: str = "site"  # site | header
     settings: dict | None = None
 
 
@@ -37,6 +38,7 @@ class BucketUpdate(BaseModel):
     status: str | None = None
     position: int | None = None
     volume_gallons: float | None = None
+    role: str | None = None
     settings: dict | None = None
 
 
@@ -63,6 +65,7 @@ class BucketResponse(BaseModel):
     growth_stage: str
     status: str
     volume_gallons: float | None
+    role: str = "site"
     settings: dict | None
     last_water_change_at: datetime | None = None
     model_config = {"from_attributes": True}

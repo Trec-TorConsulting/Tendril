@@ -603,6 +603,7 @@ export interface BucketResponse {
   growth_stage: string;
   status: string;
   volume_gallons: number | null;
+  role: string;
   settings: Record<string, unknown> | null;
   last_water_change_at: string | null;
 }
@@ -613,11 +614,11 @@ export async function listBuckets(token: string, growCycleId?: string) {
   return res.items;
 }
 
-export function createBucket(token: string, data: { grow_cycle_id: string; label?: string; strain_name?: string; strain_id?: string; position?: number; volume_gallons?: number }) {
+export function createBucket(token: string, data: { grow_cycle_id: string; label?: string; strain_name?: string; strain_id?: string; position?: number; volume_gallons?: number; role?: string }) {
   return apiFetch<BucketResponse>("/buckets", { method: "POST", body: JSON.stringify(data), token });
 }
 
-export function updateBucket(token: string, id: string, data: Partial<{ label: string; strain_name: string; strain_id: string; growth_stage: string; status: string; volume_gallons: number }>) {
+export function updateBucket(token: string, id: string, data: Partial<{ label: string; strain_name: string; strain_id: string; growth_stage: string; status: string; volume_gallons: number; role: string }>) {
   return apiFetch<BucketResponse>(`/buckets/${id}`, { method: "PATCH", body: JSON.stringify(data), token });
 }
 

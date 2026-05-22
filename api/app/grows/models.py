@@ -126,6 +126,7 @@ class Bucket(Base):
     growth_stage: Mapped[str] = mapped_column(String(50), default="seedling")
     status: Mapped[str] = mapped_column(String(50), default="active")  # active | harvested | removed
     volume_gallons: Mapped[float | None] = mapped_column(Float)
+    role: Mapped[str] = mapped_column(String(20), default="site")  # site | header
     # Grow-type-specific fields stored as JSON
     settings: Mapped[dict | None] = mapped_column(JSON)
     # Outdoor grid placement

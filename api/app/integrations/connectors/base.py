@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import abc
+import uuid
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.models import IntegrationConfig, IntegrationDeviceMap, IntegrationSyncLog
@@ -77,6 +79,16 @@ class BaseConnector(abc.ABC):
         """
         return 0
 
+    async def propagate_header_readings(
+        self,
+        session: AsyncSession,
+        header_bucket_id: str,
+        reading_row: Any,
+    ) -> int:
+        """For RDWC header buckets, duplicate the reading to all site buckets
+        in the same grow cycle. Returns the number of extra rows written."""
+        return await propagate_header_bucket_readings(session, header_bucket_id, reading_row)
+
     async def write_sync_log(
         self,
         session: AsyncSession,
@@ -108,3 +120,52 @@ def register_connector(connector_cls: type[BaseConnector]) -> type[BaseConnector
 def get_connector_class(integration_type: str) -> type[BaseConnector] | None:
     """Look up a registered connector class by type string."""
     return _registry.get(integration_type)
+
+
+# ---- RDWC header bucket propagation ----
+
+
+async def propagate_header_bucket_readings(
+    session: AsyncSession,
+    header_bucket_id: str,
+    reading_row: Any,
+) -> int:
+    """For RDWC header buckets, duplicate the reading to all site buckets
+    in the same grow cycle. Returns the number of extra rows written."""
+    from app.grows.models import Bucket, BucketSensorReading
+
+    # Look up the header bucket and verify its role
+    header = await session.get(Bucket, uuid.UUID(header_bucket_id))
+    if not header or header.role != "header":
+        return 0
+
+    # Find all site buckets in the same grow cycle
+    stmt_result = await session.execute(
+        select(Bucket).where(
+            Bucket.grow_cycle_id == header.grow_cycle_id,
+            Bucket.role == "site",
+            Bucket.id != header.id,
+        )
+    )
+    site_buckets = stmt_result.scalars().all()
+    if not site_buckets:
+        return 0
+
+    count = 0
+    for site in site_buckets:
+        row = BucketSensorReading(
+            tenant_id=reading_row.tenant_id,
+            bucket_id=site.id,
+            device_id=reading_row.device_id,
+            water_temp_f=reading_row.water_temp_f,
+            ph=reading_row.ph,
+            ec=reading_row.ec,
+            ppm=reading_row.ppm,
+            water_level_pct=reading_row.water_level_pct,
+            dissolved_oxygen=reading_row.dissolved_oxygen,
+            flow_rate=reading_row.flow_rate,
+            recorded_at=reading_row.recorded_at,
+        )
+        session.add(row)
+        count += 1
+    return count

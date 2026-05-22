@@ -164,6 +164,7 @@ export default function IntegrationsPage() {
   const [syncing, setSyncing] = useState(false);
   const [discovering, setDiscovering] = useState(false);
   const [showDeviceMapCreate, setShowDeviceMapCreate] = useState(false);
+  const [editDeviceMap, setEditDeviceMap] = useState<DeviceMapResponse | null>(null);
   const confirm = useConfirm();
 
   const refresh = useCallback(async () => {
@@ -401,9 +402,20 @@ export default function IntegrationsPage() {
                                   </Badge>
                                 </TableCell>
                                 <TableCell>
-                                  <Button variant="ghost" size="sm" className="size-7 p-0" onClick={() => handleDeleteDeviceMap(dm.id)}>
-                                    <Trash2 className="size-4 text-muted-foreground" />
-                                  </Button>
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger render={<Button variant="ghost" size="sm" className="size-7 p-0" />}>
+                                      <MoreHorizontal className="size-4" />
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end">
+                                      <DropdownMenuItem onClick={() => setEditDeviceMap(dm)}>
+                                        <Pencil className="mr-2 size-4" /> Edit Target
+                                      </DropdownMenuItem>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteDeviceMap(dm.id)}>
+                                        <Trash2 className="mr-2 size-4" /> Remove
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
                                 </TableCell>
                               </TableRow>
                             ))}
@@ -512,6 +524,19 @@ export default function IntegrationsPage() {
           tents={tents}
           buckets={buckets}
           onCreated={() => loadDetail(selectedIntegration)}
+        />
+      )}
+
+      {/* Edit Device Map Dialog */}
+      {selectedIntegration && editDeviceMap && (
+        <EditDeviceMapDialog
+          open={!!editDeviceMap}
+          onOpenChange={(open) => { if (!open) setEditDeviceMap(null); }}
+          integrationId={selectedIntegration.id}
+          deviceMap={editDeviceMap}
+          tents={tents}
+          buckets={buckets}
+          onUpdated={() => { loadDetail(selectedIntegration); setEditDeviceMap(null); }}
         />
       )}
     </>
@@ -705,6 +730,76 @@ function EditIntegrationDialog({ integration, open, onOpenChange, onUpdated }: {
               />
             </div>
           )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={handleSubmit} disabled={saving}>{saving ? "Saving..." : "Save"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditDeviceMapDialog({ open, onOpenChange, integrationId, deviceMap, tents, buckets, onUpdated }: { open: boolean; onOpenChange: (o: boolean) => void; integrationId: string; deviceMap: DeviceMapResponse; tents: TentResponse[]; buckets: BucketResponse[]; onUpdated: () => void }) {
+  const [form, setForm] = useState({ tent_id: deviceMap.tent_id || "", bucket_id: deviceMap.bucket_id || "", enabled: deviceMap.enabled });
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async () => {
+    const token = getAccessToken();
+    if (!token) return;
+    setSaving(true);
+    try {
+      await updateDeviceMap(token, integrationId, deviceMap.id, {
+        tent_id: form.tent_id || undefined,
+        bucket_id: form.bucket_id || undefined,
+        enabled: form.enabled,
+      });
+      toast.success("Device mapping updated");
+      onUpdated();
+    } catch {
+      toast.error("Failed to update mapping");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit Device Target</DialogTitle>
+        </DialogHeader>
+        <div className="grid gap-4 py-4">
+          <div className="grid gap-1">
+            <Label className="text-xs text-muted-foreground">Device</Label>
+            <p className="text-sm font-medium">{deviceMap.external_name || deviceMap.external_id}</p>
+          </div>
+          <div className="grid gap-2">
+            <Label>Target Tent</Label>
+            <Select value={form.tent_id} onValueChange={(v) => setForm((f) => ({ ...f, tent_id: v ?? "", bucket_id: "" }))}>
+              <SelectTrigger><SelectValue placeholder="Select tent" /></SelectTrigger>
+              <SelectContent>
+                {tents.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-2">
+            <Label>Target Bucket <span className="text-xs text-muted-foreground">(optional)</span></Label>
+            <Select value={form.bucket_id} onValueChange={(v) => setForm((f) => ({ ...f, bucket_id: v ?? "" }))}>
+              <SelectTrigger><SelectValue placeholder="Select bucket" /></SelectTrigger>
+              <SelectContent>
+                {buckets.map((b) => (
+                  <SelectItem key={b.id} value={b.id}>{b.label || b.strain_name || `Position ${b.position}`}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-center gap-3">
+            <Switch checked={form.enabled} onCheckedChange={(v) => setForm((f) => ({ ...f, enabled: v }))} />
+            <Label>Enabled</Label>
+          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>

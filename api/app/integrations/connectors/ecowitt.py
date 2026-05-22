@@ -34,7 +34,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.grows.models import BucketSensorReading, TentSensorReading, WeatherReading
-from app.integrations.connectors.base import BaseConnector, ConnectorResult, register_connector
+from app.integrations.connectors.base import (
+    BaseConnector,
+    ConnectorResult,
+    propagate_header_bucket_readings,
+    register_connector,
+)
 
 logger = logging.getLogger("tendril.integrations.ecowitt")
 
@@ -681,5 +686,8 @@ async def write_ecowitt_readings(
             )
             session.add(row)
             count += 1
+
+            # RDWC: propagate header bucket readings to all site buckets
+            count += await propagate_header_bucket_readings(session, bucket_id, row)
 
     return count

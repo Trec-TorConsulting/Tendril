@@ -735,6 +735,7 @@ export default function GrowDetailPage() {
           <TabsContent value="buckets" className="mt-0">
             <BucketsTab
               growId={id}
+              growType={grow.grow_type}
               buckets={buckets}
               latestReadings={latestReadings}
               onRefresh={refresh}

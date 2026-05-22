@@ -41,23 +41,25 @@ import { createQuickJournalEntry } from "@/lib/api";
 
 interface BucketsTabProps {
   growId: string;
+  growType: string;
   buckets: BucketResponse[];
   latestReadings: Record<string, SensorReadingResponse | null>;
   onRefresh: () => void;
   onOpenSensorDialog: (bucketId: string, bucketLabel: string) => void;
 }
 
-export function BucketsTab({ growId, buckets, latestReadings, onRefresh, onOpenSensorDialog }: BucketsTabProps) {
+export function BucketsTab({ growId, growType, buckets, latestReadings, onRefresh, onOpenSensorDialog }: BucketsTabProps) {
   const { prefs } = usePreferences();
   const [addLabel, setAddLabel] = useState("");
   const [addStrainId, setAddStrainId] = useState("");
   const [addVolume, setAddVolume] = useState("");
+  const [addRole, setAddRole] = useState("site");
   const [addDialog, setAddDialog] = useState(false);
   const [strains, setStrains] = useState<StrainResponse[]>([]);
 
   const [editDialog, setEditDialog] = useState(false);
   const [editId, setEditId] = useState("");
-  const [editForm, setEditForm] = useState({ label: "", strain_id: "", volume_gallons: "" });
+  const [editForm, setEditForm] = useState({ label: "", strain_id: "", volume_gallons: "", role: "site" });
   const [editSaving, setEditSaving] = useState(false);
 
   // Water change / Feed quick action dialog
@@ -82,10 +84,12 @@ export function BucketsTab({ growId, buckets, latestReadings, onRefresh, onOpenS
       strain_id: addStrainId || undefined,
       volume_gallons: addVolume ? parseFloat(addVolume) : undefined,
       position: buckets.length + 1,
+      role: addRole !== "site" ? addRole : undefined,
     });
     setAddLabel("");
     setAddStrainId("");
     setAddVolume("");
+    setAddRole("site");
     setAddDialog(false);
     onRefresh();
   };
@@ -111,6 +115,7 @@ export function BucketsTab({ growId, buckets, latestReadings, onRefresh, onOpenS
         label: editForm.label || undefined,
         strain_id: editForm.strain_id || undefined,
         volume_gallons: editForm.volume_gallons ? parseFloat(editForm.volume_gallons) : undefined,
+        role: editForm.role,
       });
       setEditDialog(false);
       onRefresh();
@@ -151,6 +156,7 @@ export function BucketsTab({ growId, buckets, latestReadings, onRefresh, onOpenS
           setAddLabel("");
           setAddStrainId("");
           setAddVolume("");
+          setAddRole("site");
           setAddDialog(true);
         }}>
           <Plus className="mr-1 size-3" /> Add Bucket
@@ -170,6 +176,9 @@ export function BucketsTab({ growId, buckets, latestReadings, onRefresh, onOpenS
                 <div className="mb-2 flex items-center justify-between">
                   <span className="font-medium">#{b.position} {b.label || "Unnamed"}</span>
                   <div className="flex items-center gap-1.5">
+                    {b.role === "header" && (
+                      <Badge variant="default" className="text-[10px] bg-blue-600">Header</Badge>
+                    )}
                     <Badge variant={waterBadgeVariant} className="text-[10px]">
                       {daysSinceWater === null ? "No water change" : `${daysSinceWater}d since change`}
                     </Badge>
@@ -216,7 +225,7 @@ export function BucketsTab({ growId, buckets, latestReadings, onRefresh, onOpenS
                   </Button>
                   <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => {
                     setEditId(b.id);
-                    setEditForm({ label: b.label || "", strain_id: b.strain_id || "", volume_gallons: b.volume_gallons?.toString() || "" });
+                    setEditForm({ label: b.label || "", strain_id: b.strain_id || "", volume_gallons: b.volume_gallons?.toString() || "", role: b.role || "site" });
                     setEditDialog(true);
                   }}>
                     <Pencil className="mr-1 size-3" /> Edit
@@ -268,6 +277,19 @@ export function BucketsTab({ growId, buckets, latestReadings, onRefresh, onOpenS
               <Label className="text-xs">Bucket Size (gallons)</Label>
               <Input type="number" step="0.5" placeholder="e.g. 5" value={addVolume} onChange={(e) => setAddVolume(e.target.value)} />
             </div>
+            {growType === "rdwc" && (
+              <div className="space-y-1">
+                <Label className="text-xs">Role</Label>
+                <Select value={addRole} onValueChange={(v) => setAddRole(v || "site")}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="site">Site Bucket</SelectItem>
+                    <SelectItem value="header">Header / Control Bucket</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">The header bucket&apos;s readings propagate to all site buckets in the system.</p>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" type="button" onClick={() => setAddDialog(false)}>Cancel</Button>
@@ -309,6 +331,18 @@ export function BucketsTab({ growId, buckets, latestReadings, onRefresh, onOpenS
               <Label className="text-xs">Bucket Size (gallons)</Label>
               <Input type="number" step="0.5" placeholder="e.g. 5" value={editForm.volume_gallons} onChange={(e) => setEditForm((p) => ({ ...p, volume_gallons: e.target.value }))} />
             </div>
+            {growType === "rdwc" && (
+              <div className="space-y-1">
+                <Label className="text-xs">Role</Label>
+                <Select value={editForm.role} onValueChange={(v) => setEditForm((p) => ({ ...p, role: v || "site" }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="site">Site Bucket</SelectItem>
+                    <SelectItem value="header">Header / Control Bucket</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" type="button" onClick={() => setEditDialog(false)}>Cancel</Button>

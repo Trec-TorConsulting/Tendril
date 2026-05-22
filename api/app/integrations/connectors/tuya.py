@@ -339,6 +339,9 @@ class TuyaConnector(BaseConnector):
                 session.add(row)
                 count += 1
 
+                # RDWC: propagate header bucket readings to all site buckets
+                count += await self.propagate_header_readings(session, bucket_id, row)
+
             elif target == "tent":
                 tent_id = reading.get("tent_id")
                 if not tent_id or not tenant_id:
