@@ -63,6 +63,13 @@ _WATER_DP_MAP: dict[str, str] = {
     # ORP (Oxidation Reduction Potential, mV)
     "orp_value": "orp",
     "orp": "orp",
+    # Salinity (ppt)
+    "salinity_value": "salinity",
+    "salinity": "salinity",
+    "salt_value": "salinity",
+    # Specific Gravity
+    "sg_value": "specific_gravity",
+    "specific_gravity": "specific_gravity",
     # Battery
     "battery_percentage": "battery_pct",
     "battery_state": "battery_pct",
@@ -342,6 +349,8 @@ class TuyaConnector(BaseConnector):
                     flow_rate=reading.get("flow_rate"),
                     dissolved_oxygen=reading.get("dissolved_oxygen"),
                     orp=reading.get("orp"),
+                    salinity=reading.get("salinity"),
+                    specific_gravity=reading.get("specific_gravity"),
                     battery_pct=reading.get("battery_pct"),
                     recorded_at=now,
                 )

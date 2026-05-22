@@ -28,6 +28,8 @@ class SensorReadingCreate(BaseModel):
     water_level_pct: float | None = None
     dissolved_oxygen: float | None = None
     orp: float | None = None
+    salinity: float | None = None
+    specific_gravity: float | None = None
     battery_pct: float | None = None
     flow_rate: float | None = None
     mist_pressure: float | None = None
@@ -50,6 +52,8 @@ class SensorReadingResponse(BaseModel):
     water_level_pct: float | None
     dissolved_oxygen: float | None
     orp: float | None
+    salinity: float | None
+    specific_gravity: float | None
     battery_pct: float | None
     flow_rate: float | None
     mist_pressure: float | None
