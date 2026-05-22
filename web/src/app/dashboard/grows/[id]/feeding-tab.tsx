@@ -263,6 +263,13 @@ export function FeedingTab({ growId, growStage, growStartedAt, milestones, setti
     [buckets],
   );
 
+  // RDWC: if a header bucket exists, use its volume as system total
+  const headerBucket = useMemo(
+    () => buckets.find((b) => b.role === "header"),
+    [buckets],
+  );
+  const isSharedReservoir = !!headerBucket;
+
   // Load AI advice
   const loadAdvice = useCallback(async () => {
     const token = getAccessToken();
@@ -542,6 +549,24 @@ export function FeedingTab({ growId, growStage, growStartedAt, milestones, setti
   function renderDosesPerBucket(phase: FeedChartPhase) {
     if (activeBuckets.length === 0) return null;
     const sortedItems = buildMixingList(phase);
+
+    // RDWC shared reservoir: show single system total using header bucket volume
+    if (isSharedReservoir && headerBucket?.volume_gallons) {
+      const totalGal = headerBucket.volume_gallons;
+      return (
+        <div className="mt-3 rounded-md border bg-muted/30 p-2">
+          <p className="mb-1 text-xs font-medium text-muted-foreground">System Total ({totalGal} gal reservoir)</p>
+          <div className="flex flex-wrap items-baseline gap-x-3 text-xs">
+            {sortedItems.map((item) => (
+              <span key={item.id} className={item.type === "additive" ? "text-blue-600 dark:text-blue-400" : "text-muted-foreground"}>
+                {item.name}: <span className={item.type === "additive" ? "font-medium" : "text-foreground font-medium"}>{(item.ml_per_gallon * totalGal).toFixed(1)} ml</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="mt-3 rounded-md border bg-muted/30 p-2">
         <p className="mb-1 text-xs font-medium text-muted-foreground">Per Bucket</p>

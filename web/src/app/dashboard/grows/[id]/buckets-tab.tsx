@@ -212,18 +212,23 @@ export function BucketsTab({ growId, growType, buckets, latestReadings, onRefres
                 )}
                 {!reading && <p className="mt-2 text-xs text-muted-foreground">No readings yet</p>}
                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <Button variant="default" size="sm" className="h-7 text-xs" onClick={() => {
-                    setQuickForm({ ph: "", ec: "", ppm: "", water_temp_f: "", notes: "" });
-                    setQuickActionDialog({ type: "water_change", bucketId: b.id, bucketLabel: `#${b.position} ${b.label || "Unnamed"}` });
-                  }}>
-                    <RefreshCw className="mr-1 size-3" /> Water Change
-                  </Button>
-                  <Button variant="secondary" size="sm" className="h-7 text-xs" onClick={() => {
-                    setQuickForm({ ph: "", ec: "", ppm: "", water_temp_f: "", notes: "" });
-                    setQuickActionDialog({ type: "feeding", bucketId: b.id, bucketLabel: `#${b.position} ${b.label || "Unnamed"}` });
-                  }}>
-                    <FlaskConical className="mr-1 size-3" /> Feed
-                  </Button>
+                  {/* RDWC: only show Water Change / Feed on header bucket (shared reservoir) */}
+                  {(b.role === "header" || !buckets.some((bkt) => bkt.role === "header")) && (
+                    <>
+                      <Button variant="default" size="sm" className="h-7 text-xs" onClick={() => {
+                        setQuickForm({ ph: "", ec: "", ppm: "", water_temp_f: "", notes: "" });
+                        setQuickActionDialog({ type: "water_change", bucketId: b.id, bucketLabel: `#${b.position} ${b.label || "Unnamed"}` });
+                      }}>
+                        <RefreshCw className="mr-1 size-3" /> Water Change
+                      </Button>
+                      <Button variant="secondary" size="sm" className="h-7 text-xs" onClick={() => {
+                        setQuickForm({ ph: "", ec: "", ppm: "", water_temp_f: "", notes: "" });
+                        setQuickActionDialog({ type: "feeding", bucketId: b.id, bucketLabel: `#${b.position} ${b.label || "Unnamed"}` });
+                      }}>
+                        <FlaskConical className="mr-1 size-3" /> Feed
+                      </Button>
+                    </>
+                  )}
                   <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => onOpenSensorDialog(b.id, `#${b.position} ${b.label || "Unnamed"}`)}>
                     <Droplets className="mr-1 size-3" /> Log Reading
                   </Button>
