@@ -34,7 +34,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Sprout, Droplets, Thermometer, Wind, CheckCircle2, TrendingUp, CalendarIcon, FlaskConical, AlertTriangle, Wrench } from "lucide-react";
+import { Sprout, Droplets, Thermometer, Wind, CheckCircle2, TrendingUp, CalendarIcon, FlaskConical, AlertTriangle, Wrench, Waves, Gauge } from "lucide-react";
 import { cn, formatCalendarDate } from "@/lib/utils";
 import { PullToRefresh } from "@/components/pull-to-refresh";
 import {
@@ -116,9 +116,12 @@ export default function DashboardPage() {
   const [sensorTrends, setSensorTrends] = useState<{
     ph: number[];
     ec: number[];
+    ppm: number[];
+    waterTemp: number[];
     temp: number[];
     humidity: number[];
-  }>({ ph: [], ec: [], temp: [], humidity: [] });
+    soilMoisture: number[];
+  }>({ ph: [], ec: [], ppm: [], waterTemp: [], temp: [], humidity: [], soilMoisture: [] });
   const [lastReadingAt, setLastReadingAt] = useState<string | null>(null);
   const [bucketLastReading, setBucketLastReading] = useState<Map<string, string>>(new Map());
   const [climateData, setClimateData] = useState<ClimateDataPoint[]>([]);
@@ -171,9 +174,12 @@ export default function DashboardPage() {
 
       const phVals = growSensorReadings.map((r) => r.ph).filter((v): v is number => v != null).reverse();
       const ecVals = growSensorReadings.map((r) => r.ec).filter((v): v is number => v != null).reverse();
+      const ppmVals = growSensorReadings.map((r) => r.ppm).filter((v): v is number => v != null).reverse();
+      const waterTempVals = growSensorReadings.map((r) => r.water_temp_f).filter((v): v is number => v != null).reverse();
       const tempVals = tentReadings.map((r) => r.ambient_temp_f).filter((v): v is number => v != null).reverse();
       const humVals = tentReadings.map((r) => r.ambient_humidity).filter((v): v is number => v != null).reverse();
-      setSensorTrends({ ph: phVals, ec: ecVals, temp: tempVals, humidity: humVals });
+      const soilVals = growSensorReadings.map((r) => r.soil_moisture).filter((v): v is number => v != null).reverse();
+      setSensorTrends({ ph: phVals, ec: ecVals, ppm: ppmVals, waterTemp: waterTempVals, temp: tempVals, humidity: humVals, soilMoisture: soilVals });
       // Track when the latest ambient reading was recorded
       const latestTentReading = tentReadings[0];
       setLastReadingAt(latestTentReading?.recorded_at ?? null);
@@ -230,8 +236,17 @@ export default function DashboardPage() {
   // Derive environment stats from latest readings
   const latestTemp = sensorTrends.temp[sensorTrends.temp.length - 1];
   const latestHumidity = sensorTrends.humidity[sensorTrends.humidity.length - 1];
-  const latestCO2 = null; // Placeholder — CO2 sensor not yet in data model
+  const latestPh = sensorTrends.ph[sensorTrends.ph.length - 1];
+  const latestEc = sensorTrends.ec[sensorTrends.ec.length - 1];
+  const latestPpm = sensorTrends.ppm[sensorTrends.ppm.length - 1];
+  const latestWaterTemp = sensorTrends.waterTemp[sensorTrends.waterTemp.length - 1];
+  const latestSoilMoisture = sensorTrends.soilMoisture[sensorTrends.soilMoisture.length - 1];
   const updatedAgo = lastReadingAt ? timeAgo(lastReadingAt) : null;
+
+  // Determine which metrics to show based on grow type
+  const growType = selectedGrow?.grow_type || "";
+  const isHydro = ["rdwc", "dwc", "deep_water_culture", "nft", "nutrient_film", "ebb_flow", "ebb_and_flow", "drip", "aeroponics", "kratky"].includes(growType);
+  const isSoil = ["soil", "outdoor_soil", "outdoor_container", "coco", "rockwool"].includes(growType);
 
   // Build plant cards from selected grow's buckets
   const maxCards = mode === "pro" || mode === "commercial" ? 16 : mode === "beginner" ? 4 : 8;
@@ -297,6 +312,7 @@ export default function DashboardPage() {
           {/* ─── Environment Health Header ─────────────────────────── */}
           <motion.section {...fadeUp} transition={{ duration: 0.4 }}>
             <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
+              {/* Ambient: always show temp + humidity */}
               <EnvironmentBadgeCard
                 label="Temperature"
                 value={latestTemp != null ? formatTemp(latestTemp, "f", prefs.temp_unit, 0) : "—"}
@@ -311,21 +327,79 @@ export default function DashboardPage() {
                 icon={<Droplets className="size-5" />}
                 updatedAgo={updatedAgo}
               />
-              <EnvironmentBadgeCard
-                label="CO₂"
-                value={latestCO2 != null ? `${latestCO2} ppm` : "—"}
-                status="unknown"
-                icon={<Wind className="size-5" />}
-                updatedAgo={updatedAgo}
-              />
-              <EnvironmentBadgeCard
-                label="pH"
-                value={sensorTrends.ph.length > 0 ? sensorTrends.ph[sensorTrends.ph.length - 1].toFixed(1) : "—"}
-                status={sensorTrends.ph.length > 0 ? (sensorTrends.ph[sensorTrends.ph.length - 1] >= 5.5 && sensorTrends.ph[sensorTrends.ph.length - 1] <= 6.5 ? "optimal" : "warning") : "unknown"}
-                icon={<FlaskConical className="size-5" />}
-                updatedAgo={updatedAgo}
-              />
+              {/* Grow-type-specific metrics */}
+              {isHydro ? (
+                <>
+                  <EnvironmentBadgeCard
+                    label="pH"
+                    value={latestPh != null ? latestPh.toFixed(1) : "—"}
+                    status={latestPh != null ? (latestPh >= 5.5 && latestPh <= 6.5 ? "optimal" : "warning") : "unknown"}
+                    icon={<FlaskConical className="size-5" />}
+                    updatedAgo={updatedAgo}
+                  />
+                  <EnvironmentBadgeCard
+                    label="Water Temp"
+                    value={latestWaterTemp != null ? formatTemp(latestWaterTemp, "f", prefs.temp_unit, 0) : "—"}
+                    status={latestWaterTemp != null ? (latestWaterTemp >= 62 && latestWaterTemp <= 72 ? "optimal" : "warning") : "unknown"}
+                    icon={<Waves className="size-5" />}
+                    updatedAgo={updatedAgo}
+                  />
+                </>
+              ) : isSoil ? (
+                <>
+                  <EnvironmentBadgeCard
+                    label="Soil Moisture"
+                    value={latestSoilMoisture != null ? `${latestSoilMoisture.toFixed(0)}%` : "—"}
+                    status={latestSoilMoisture != null ? (latestSoilMoisture >= 30 && latestSoilMoisture <= 70 ? "optimal" : "warning") : "unknown"}
+                    icon={<Droplets className="size-5" />}
+                    updatedAgo={updatedAgo}
+                  />
+                  <EnvironmentBadgeCard
+                    label="pH"
+                    value={latestPh != null ? latestPh.toFixed(1) : "—"}
+                    status={latestPh != null ? (latestPh >= 6.0 && latestPh <= 7.0 ? "optimal" : "warning") : "unknown"}
+                    icon={<FlaskConical className="size-5" />}
+                    updatedAgo={updatedAgo}
+                  />
+                </>
+              ) : (
+                <>
+                  <EnvironmentBadgeCard
+                    label="CO₂"
+                    value="—"
+                    status="unknown"
+                    icon={<Wind className="size-5" />}
+                    updatedAgo={updatedAgo}
+                  />
+                  <EnvironmentBadgeCard
+                    label="pH"
+                    value={latestPh != null ? latestPh.toFixed(1) : "—"}
+                    status={latestPh != null ? (latestPh >= 5.5 && latestPh <= 6.5 ? "optimal" : "warning") : "unknown"}
+                    icon={<FlaskConical className="size-5" />}
+                    updatedAgo={updatedAgo}
+                  />
+                </>
+              )}
             </div>
+            {/* Hydro: secondary row with EC + PPM */}
+            {isHydro && (latestEc != null || latestPpm != null) && (
+              <div className="grid gap-4 grid-cols-2 sm:grid-cols-4 mt-4">
+                <EnvironmentBadgeCard
+                  label="EC"
+                  value={latestEc != null ? `${latestEc.toFixed(2)} mS` : "—"}
+                  status={latestEc != null ? (latestEc >= 0.8 && latestEc <= 2.5 ? "optimal" : "warning") : "unknown"}
+                  icon={<Gauge className="size-5" />}
+                  updatedAgo={updatedAgo}
+                />
+                <EnvironmentBadgeCard
+                  label="PPM"
+                  value={latestPpm != null ? `${Math.round(latestPpm)}` : "—"}
+                  status={latestPpm != null ? (latestPpm >= 400 && latestPpm <= 1400 ? "optimal" : "warning") : "unknown"}
+                  icon={<FlaskConical className="size-5" />}
+                  updatedAgo={updatedAgo}
+                />
+              </div>
+            )}
           </motion.section>
 
           {/* ─── Main Content: Grid + Sidebar ─────────────────────── */}
@@ -516,6 +590,23 @@ export default function DashboardPage() {
               </Card>
 
               {/* Quick sensor stats sidebar cards */}
+              {isHydro && sensorTrends.ph.length >= 2 && (
+                <Card className="border-border/50 backdrop-blur-sm">
+                  <CardContent className="pt-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-muted-foreground">pH Trend</span>
+                      <span className="text-lg font-bold">
+                        {sensorTrends.ph[sensorTrends.ph.length - 1]?.toFixed(1)}
+                      </span>
+                    </div>
+                    <SensorSparkline
+                      data={sensorTrends.ph}
+                      ranges={{ min: 5.5, max: 6.5 }}
+                      height={36}
+                    />
+                  </CardContent>
+                </Card>
+              )}
               {sensorTrends.ec.length >= 2 && (
                 <Card className="border-border/50 backdrop-blur-sm">
                   <CardContent className="pt-4">
@@ -528,6 +619,23 @@ export default function DashboardPage() {
                     <SensorSparkline
                       data={sensorTrends.ec}
                       ranges={{ min: 1.0, max: 2.5 }}
+                      height={36}
+                    />
+                  </CardContent>
+                </Card>
+              )}
+              {isHydro && sensorTrends.waterTemp.length >= 2 && (
+                <Card className="border-border/50 backdrop-blur-sm">
+                  <CardContent className="pt-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-muted-foreground">Water Temp</span>
+                      <span className="text-lg font-bold">
+                        {formatTemp(sensorTrends.waterTemp[sensorTrends.waterTemp.length - 1], "f", prefs.temp_unit, 0)}
+                      </span>
+                    </div>
+                    <SensorSparkline
+                      data={sensorTrends.waterTemp}
+                      ranges={{ min: 62, max: 72 }}
                       height={36}
                     />
                   </CardContent>
