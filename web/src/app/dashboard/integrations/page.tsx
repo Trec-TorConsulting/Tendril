@@ -19,11 +19,13 @@ import {
   triggerSync,
   discoverDevices,
   listTents,
+  listBuckets,
   type IntegrationResponse,
   type DeviceMapResponse,
   type SyncLogResponse,
   type DiscoveredDeviceResponse,
   type TentResponse,
+  type BucketResponse,
 } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -152,6 +154,7 @@ export default function IntegrationsPage() {
   const [integrations, setIntegrations] = useState<IntegrationResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [tents, setTents] = useState<TentResponse[]>([]);
+  const [buckets, setBuckets] = useState<BucketResponse[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [editIntegration, setEditIntegration] = useState<IntegrationResponse | null>(null);
   const [selectedIntegration, setSelectedIntegration] = useState<IntegrationResponse | null>(null);
@@ -167,12 +170,14 @@ export default function IntegrationsPage() {
     const token = getAccessToken();
     if (!token) return;
     try {
-      const [ints, t] = await Promise.all([
+      const [ints, t, b] = await Promise.all([
         listIntegrations(token),
         listTents(token).catch(() => [] as TentResponse[]),
+        listBuckets(token).catch(() => [] as BucketResponse[]),
       ]);
       setIntegrations(ints);
       setTents(t);
+      setBuckets(b);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to load integrations");
     } finally {
@@ -388,7 +393,7 @@ export default function IntegrationsPage() {
                                 <TableCell className="font-mono text-xs">{dm.external_id}</TableCell>
                                 <TableCell>{dm.external_name || "—"}</TableCell>
                                 <TableCell className="text-xs text-muted-foreground">
-                                  {dm.tent_id ? tents.find((t) => t.id === dm.tent_id)?.name || "Tent" : dm.bucket_id ? "Bucket" : "—"}
+                                  {dm.tent_id ? tents.find((t) => t.id === dm.tent_id)?.name || "Unknown tent" : dm.bucket_id ? buckets.find((b) => b.id === dm.bucket_id)?.label || "Unknown bucket" : "—"}
                                 </TableCell>
                                 <TableCell>
                                   <Badge variant={dm.enabled ? "default" : "secondary"}>
@@ -505,6 +510,7 @@ export default function IntegrationsPage() {
           onOpenChange={setShowDeviceMapCreate}
           integrationId={selectedIntegration.id}
           tents={tents}
+          buckets={buckets}
           onCreated={() => loadDetail(selectedIntegration)}
         />
       )}
@@ -709,8 +715,8 @@ function EditIntegrationDialog({ integration, open, onOpenChange, onUpdated }: {
   );
 }
 
-function CreateDeviceMapDialog({ open, onOpenChange, integrationId, tents, onCreated }: { open: boolean; onOpenChange: (o: boolean) => void; integrationId: string; tents: TentResponse[]; onCreated: () => void }) {
-  const [form, setForm] = useState({ external_id: "", external_name: "", tent_id: "" });
+function CreateDeviceMapDialog({ open, onOpenChange, integrationId, tents, buckets, onCreated }: { open: boolean; onOpenChange: (o: boolean) => void; integrationId: string; tents: TentResponse[]; buckets: BucketResponse[]; onCreated: () => void }) {
+  const [form, setForm] = useState({ external_id: "", external_name: "", tent_id: "", bucket_id: "" });
   const [saving, setSaving] = useState(false);
 
   const handleSubmit = async () => {
@@ -722,11 +728,12 @@ function CreateDeviceMapDialog({ open, onOpenChange, integrationId, tents, onCre
         external_id: form.external_id,
         external_name: form.external_name || undefined,
         tent_id: form.tent_id || undefined,
+        bucket_id: form.bucket_id || undefined,
         enabled: true,
       });
       toast.success("Device mapped");
       onOpenChange(false);
-      setForm({ external_id: "", external_name: "", tent_id: "" });
+      setForm({ external_id: "", external_name: "", tent_id: "", bucket_id: "" });
       onCreated();
     } catch {
       toast.error("Failed to create mapping");
@@ -752,11 +759,22 @@ function CreateDeviceMapDialog({ open, onOpenChange, integrationId, tents, onCre
           </div>
           <div className="grid gap-2">
             <Label>Target Tent</Label>
-            <Select value={form.tent_id} onValueChange={(v) => setForm((f) => ({ ...f, tent_id: v ?? "" }))}>
+            <Select value={form.tent_id} onValueChange={(v) => setForm((f) => ({ ...f, tent_id: v ?? "", bucket_id: "" }))}>
               <SelectTrigger><SelectValue placeholder="Select tent" /></SelectTrigger>
               <SelectContent>
                 {tents.map((t) => (
                   <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid gap-2">
+            <Label>Target Bucket <span className="text-xs text-muted-foreground">(optional)</span></Label>
+            <Select value={form.bucket_id} onValueChange={(v) => setForm((f) => ({ ...f, bucket_id: v ?? "" }))}>
+              <SelectTrigger><SelectValue placeholder="Select bucket" /></SelectTrigger>
+              <SelectContent>
+                {buckets.map((b) => (
+                  <SelectItem key={b.id} value={b.id}>{b.label || b.strain_name || `Position ${b.position}`}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
