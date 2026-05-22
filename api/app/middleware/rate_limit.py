@@ -11,9 +11,31 @@ from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
 
+import jwt as pyjwt
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
+
+# Common bot/scanner paths — reject immediately without consuming rate limit
+_BOT_PATH_PREFIXES = (
+    "/wp-",
+    "/xmlrpc",
+    "/.env",
+    "/config",
+    "/admin",
+    "/cgi-bin",
+    "/vendor",
+    "/telescope",
+    "/debug",
+    "/actuator",
+    "/solr",
+    "/.git",
+    "/assets/js/",
+    "/static/style/",
+    "/js/",
+    "/css/support",
+    "/bot-connect",
+)
 
 
 @dataclass
@@ -29,6 +51,7 @@ class RateLimiter(BaseHTTPMiddleware):
     - Per-IP: 60 requests/minute for unauthenticated
     - Per-tenant: 300 requests/minute for authenticated
     - Stripe webhooks and health checks are exempt
+    - Bot scanner paths are rejected immediately
     """
 
     EXEMPT_PATHS = {"/health", "/v1/billing/webhook"}
@@ -79,27 +102,61 @@ class RateLimiter(BaseHTTPMiddleware):
         result = await redis.eval(lua, 1, key, max_tokens, self.window, time.time())
         return result == 1
 
-    # ── Dispatch ───────────────────────────────────────────────
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        if request.url.path in self.EXEMPT_PATHS:
-            return await call_next(request)
+    @staticmethod
+    def _get_real_ip(request: Request) -> str:
+        """Extract the real client IP from proxy headers."""
+        # X-Forwarded-For: client, proxy1, proxy2
+        forwarded_for = request.headers.get("x-forwarded-for", "")
+        if forwarded_for:
+            # First IP in the chain is the original client
+            return forwarded_for.split(",")[0].strip()
+        real_ip = request.headers.get("x-real-ip", "")
+        if real_ip:
+            return real_ip.strip()
+        return request.client.host if request.client else "unknown"
 
-        # Identify client
-        client_ip = request.client.host if request.client else "unknown"
-        tenant_id = None
+    @staticmethod
+    def _extract_tenant_id(request: Request) -> str | None:
+        """Extract tenant_id from Bearer token or session cookie.
 
-        # Check for tenant from Authorization header (JWT) or session cookie
+        Uses options={"verify_exp": False} so that expired access tokens
+        still route to the per-tenant bucket (avoids IP-bucket starvation
+        when cookies haven't been refreshed yet).
+        """
+        from app.config import get_settings
+
         auth_header = request.headers.get("authorization", "")
         token_str = auth_header[7:] if auth_header.startswith("Bearer ") else request.cookies.get("access_token", "")
 
-        if token_str:
-            try:
-                from app.auth.jwt import decode_token
+        if not token_str:
+            return None
 
-                payload = decode_token(token_str)
-                tenant_id = payload.get("tid")
-            except Exception:  # noqa: S110
-                pass
+        try:
+            settings = get_settings()
+            payload = pyjwt.decode(
+                token_str,
+                settings.jwt_secret,
+                algorithms=[settings.jwt_algorithm],
+                options={"verify_exp": False},
+            )
+            return payload.get("tid")
+        except Exception:
+            return None
+
+    # ── Dispatch ───────────────────────────────────────────────
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        path = request.url.path
+
+        if path in self.EXEMPT_PATHS:
+            return await call_next(request)
+
+        # Block known bot/scanner paths immediately (no rate limit cost)
+        if any(path.startswith(prefix) for prefix in _BOT_PATH_PREFIXES):
+            return JSONResponse(status_code=404, content={"detail": "Not found"})
+
+        # Identify client by real IP (behind proxy)
+        client_ip = self._get_real_ip(request)
+        tenant_id = self._extract_tenant_id(request)
 
         # Try Redis first, fallback to in-memory
         from app.middleware.redis_store import get_redis
