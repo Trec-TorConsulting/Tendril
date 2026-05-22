@@ -117,9 +117,13 @@ class TuyaConnector(BaseConnector):
     def access_secret(self) -> str:
         return self.decrypted_config["access_secret"]
 
-    def _sign(self, method: str, path: str, timestamp: str, token: str = "") -> str:
+    # SHA256 of empty string — used as Content-SHA256 for GET requests / empty bodies
+    _EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
+
+    def _sign(self, method: str, path: str, timestamp: str, token: str = "", body: str = "") -> str:
         """Generate Tuya API HMAC-SHA256 signature."""
-        string_to_sign = f"{self.access_id}{token}{timestamp}{method}\n\n\n{path}"
+        content_sha256 = hashlib.sha256(body.encode()).hexdigest() if body else self._EMPTY_SHA256
+        string_to_sign = f"{self.access_id}{token}{timestamp}{method}\n{content_sha256}\n\n{path}"
         return (
             hmac.HMAC(
                 self.access_secret.encode(),
@@ -436,11 +440,14 @@ class TuyaConnector(BaseConnector):
 
     async def toggle_device(self, device_id: str, on: bool) -> dict:
         """Turn a Tuya device on or off. Used by Tendril automation."""
+        import json as _json
+
         async with httpx.AsyncClient(timeout=10) as client:
             token = await self._get_token(client)
             timestamp = str(int(time.time() * 1000))
             path = f"/v1.0/devices/{device_id}/commands"
-            sign = self._sign("POST", path, timestamp, token)
+            body = _json.dumps({"commands": [{"code": "switch_1", "value": on}]})
+            sign = self._sign("POST", path, timestamp, token, body=body)
 
             resp = await client.post(
                 f"{self.base_url}{path}",
@@ -452,7 +459,7 @@ class TuyaConnector(BaseConnector):
                     "sign_method": "HMAC-SHA256",
                     "Content-Type": "application/json",
                 },
-                json={"commands": [{"code": "switch_1", "value": on}]},
+                content=body,
             )
             resp.raise_for_status()
             return resp.json()
