@@ -88,13 +88,15 @@ class RateLimiter(BaseHTTPMiddleware):
         client_ip = request.client.host if request.client else "unknown"
         tenant_id = None
 
-        # Check for tenant from Authorization header (JWT)
+        # Check for tenant from Authorization header (JWT) or session cookie
         auth_header = request.headers.get("authorization", "")
-        if auth_header.startswith("Bearer "):
+        token_str = auth_header[7:] if auth_header.startswith("Bearer ") else request.cookies.get("access_token", "")
+
+        if token_str:
             try:
                 from app.auth.jwt import decode_token
 
-                payload = decode_token(auth_header[7:])
+                payload = decode_token(token_str)
                 tenant_id = payload.get("tid")
             except Exception:  # noqa: S110
                 pass
