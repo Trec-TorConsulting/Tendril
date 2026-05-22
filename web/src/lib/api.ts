@@ -2001,6 +2001,7 @@ export interface SyncLogResponse {
   status: string;
   readings_count: number;
   error_message: string | null;
+  raw_data: Record<string, unknown>[] | null;
   synced_at: string;
 }
 

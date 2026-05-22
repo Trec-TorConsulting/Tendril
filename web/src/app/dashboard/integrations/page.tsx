@@ -434,6 +434,7 @@ export default function IntegrationsPage() {
                               <TableHead>Time</TableHead>
                               <TableHead>Status</TableHead>
                               <TableHead>Readings</TableHead>
+                              <TableHead>Data</TableHead>
                               <TableHead>Error</TableHead>
                             </TableRow>
                           </TableHeader>
@@ -445,6 +446,18 @@ export default function IntegrationsPage() {
                                   <SyncStatusBadge status={log.status} />
                                 </TableCell>
                                 <TableCell>{log.readings_count}</TableCell>
+                                <TableCell className="text-xs max-w-64">
+                                  {log.raw_data ? (
+                                    <details>
+                                      <summary className="cursor-pointer text-muted-foreground hover:text-foreground">View data</summary>
+                                      <pre className="mt-1 whitespace-pre-wrap break-all text-[11px] bg-muted p-2 rounded max-h-40 overflow-auto">
+                                        {JSON.stringify(log.raw_data, null, 2)}
+                                      </pre>
+                                    </details>
+                                  ) : (
+                                    <span className="text-muted-foreground">—</span>
+                                  )}
+                                </TableCell>
                                 <TableCell className="text-xs text-muted-foreground max-w-48 truncate">
                                   {log.error_message || "—"}
                                 </TableCell>
