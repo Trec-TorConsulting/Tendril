@@ -117,6 +117,7 @@ const CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
     { key: "access_id", label: "Access ID", type: "password", placeholder: "Tuya Cloud project Access ID", required: true },
     { key: "access_secret", label: "Access Secret", type: "password", placeholder: "Tuya Cloud project Access Secret", required: true },
     { key: "region", label: "Region", type: "text", placeholder: "us (us, eu, cn, in)" },
+    { key: "uid", label: "App User UID", type: "text", placeholder: "Linked Tuya Smart app user UID (from Devices tab)" },
   ],
   mqtt_bridge: [
     { key: "host", label: "MQTT Broker Host", type: "text", placeholder: "mqtt.example.com", required: true },
