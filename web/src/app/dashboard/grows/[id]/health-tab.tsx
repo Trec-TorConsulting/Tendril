@@ -141,8 +141,9 @@ export function HealthTab({ grow, onRefresh }: HealthTabProps) {
     setCoachLoading(true);
     try {
       const res = await getCoachTip(token, grow.id);
-      setCoachTip(res.tip);
-      localStorage.setItem(COACH_CACHE_KEY, JSON.stringify({ tip: res.tip, ts: Date.now() }));
+      const tip = typeof res.tip === "string" ? res.tip : String(res.tip ?? "");
+      setCoachTip(tip);
+      localStorage.setItem(COACH_CACHE_KEY, JSON.stringify({ tip, ts: Date.now() }));
     } catch (e) {
       setCoachTip(`⚠️ ${e instanceof Error ? e.message : "Unable to get tip. Try again."}`);
     } finally { setCoachLoading(false); }
@@ -154,11 +155,13 @@ export function HealthTab({ grow, onRefresh }: HealthTabProps) {
     if (cached) {
       try {
         const { tip, ts } = JSON.parse(cached);
-        if (Date.now() - ts < COACH_TTL) {
+        if (typeof tip === "string" && Date.now() - ts < COACH_TTL) {
           setCoachTip(tip);
           return;
         }
       } catch { /* invalid cache, refetch */ }
+      // Clear corrupt/stale cache
+      localStorage.removeItem(COACH_CACHE_KEY);
     }
     fetchAndCacheCoachTip();
   }, [grow.id, COACH_CACHE_KEY, COACH_TTL, fetchAndCacheCoachTip]);

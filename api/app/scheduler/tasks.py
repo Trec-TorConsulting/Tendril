@@ -64,13 +64,17 @@ class TaskRunner:
         interval: float,
         func,
     ) -> None:
+        error_retry_delay = min(interval, 300)  # Retry after 5 min on error (capped at interval)
         while not shutdown_event.is_set():
+            failed = False
             try:
                 await func()
             except Exception:
                 logger.exception("Error in task %s", name)
+                failed = True
+            wait = error_retry_delay if failed else interval
             try:
-                await asyncio.wait_for(shutdown_event.wait(), timeout=interval)
+                await asyncio.wait_for(shutdown_event.wait(), timeout=wait)
                 break
             except TimeoutError:
                 pass
