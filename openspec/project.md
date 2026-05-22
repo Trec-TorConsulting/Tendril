@@ -52,8 +52,11 @@ Tendril is an open-source, multi-tenant SaaS platform for grow monitoring and au
 - Pre-commit hooks enforce lint and format checks
 
 ### Git Workflow
-- `main` branch is the primary branch
-- Feature branches with conventional commit messages
+- `main` branch is the primary branch (protected: require PR, 1 approval, status checks, enforced for admins)
+- **All changes** must go through a feature branch + pull request — never commit directly to main
+- Branch naming: `feat/`, `fix/`, `chore/`, `security/` prefix with kebab-case description
+- Conventional commit messages on all commits
+- AI assistants creating commits must: create a branch, commit, push, and open a PR
 - OpenSpec proposals for larger changes
 - No secrets, credentials, or PII in tracked files (enforced via .gitignore + pre-commit)
 
