@@ -79,6 +79,15 @@ class BaseConnector(abc.ABC):
         """
         return 0
 
+    @staticmethod
+    def _sanitize_readings(readings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Strip internal IDs from readings for human-readable sync log storage."""
+        skip_keys = {"tenant_id", "bucket_id", "tent_id"}
+        sanitized = []
+        for r in readings:
+            sanitized.append({k: v for k, v in r.items() if k not in skip_keys and v is not None})
+        return sanitized or None  # type: ignore[return-value]
+
     async def propagate_header_readings(
         self,
         session: AsyncSession,
@@ -101,6 +110,7 @@ class BaseConnector(abc.ABC):
             status=result.status,
             readings_count=result.readings_count,
             error_message=result.error_message,
+            raw_data=self._sanitize_readings(result.readings),
         )
         session.add(log)
         return log
@@ -163,6 +173,9 @@ async def propagate_header_bucket_readings(
             ppm=reading_row.ppm,
             water_level_pct=reading_row.water_level_pct,
             dissolved_oxygen=reading_row.dissolved_oxygen,
+            orp=reading_row.orp,
+            salinity=reading_row.salinity,
+            specific_gravity=reading_row.specific_gravity,
             flow_rate=reading_row.flow_rate,
             recorded_at=reading_row.recorded_at,
         )

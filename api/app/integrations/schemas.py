@@ -90,6 +90,7 @@ class SyncLogResponse(BaseModel):
     status: str
     readings_count: int
     error_message: str | None
+    raw_data: list | dict | None = None
     synced_at: datetime
 
     model_config = {"from_attributes": True}

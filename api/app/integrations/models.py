@@ -88,6 +88,7 @@ class IntegrationSyncLog(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False)  # success | error | partial
     readings_count: Mapped[int] = mapped_column(Integer, default=0)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw_data: Mapped[dict | list | None] = mapped_column(JSON, nullable=True)
     synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
     integration: Mapped[IntegrationConfig] = relationship(back_populates="sync_logs")

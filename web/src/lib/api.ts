@@ -637,6 +637,10 @@ export interface SensorReadingResponse {
   ppm: number | null;
   water_level_pct: number | null;
   dissolved_oxygen: number | null;
+  orp: number | null;
+  salinity: number | null;
+  specific_gravity: number | null;
+  battery_pct: number | null;
   flow_rate: number | null;
   mist_pressure: number | null;
   soil_moisture: number | null;
@@ -674,6 +678,10 @@ export function createSensorReading(token: string, data: {
   water_temp_f?: number;
   water_level_pct?: number;
   dissolved_oxygen?: number;
+  orp?: number;
+  salinity?: number;
+  specific_gravity?: number;
+  battery_pct?: number;
   flow_rate?: number;
   mist_pressure?: number;
   soil_moisture?: number;
@@ -1993,6 +2001,7 @@ export interface SyncLogResponse {
   status: string;
   readings_count: number;
   error_message: string | null;
+  raw_data: Record<string, unknown>[] | null;
   synced_at: string;
 }
 

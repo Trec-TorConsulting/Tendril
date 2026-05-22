@@ -170,6 +170,12 @@ class BucketSensorReading(Base):
     ppm: Mapped[float | None] = mapped_column(Float)
     water_level_pct: Mapped[float | None] = mapped_column(Float)
     dissolved_oxygen: Mapped[float | None] = mapped_column(Float)
+    orp: Mapped[float | None] = mapped_column(Float)  # Oxidation Reduction Potential (mV)
+    salinity: Mapped[float | None] = mapped_column(Float)  # ppt
+    specific_gravity: Mapped[float | None] = mapped_column(Float)  # S.G.
+
+    # Device status
+    battery_pct: Mapped[float | None] = mapped_column(Float)
 
     # Flow / pressure sensors
     flow_rate: Mapped[float | None] = mapped_column(Float)

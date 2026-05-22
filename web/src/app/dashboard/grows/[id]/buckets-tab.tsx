@@ -204,22 +204,31 @@ export function BucketsTab({ growId, growType, buckets, latestReadings, onRefres
                     {reading.ec != null && <div><span className="text-muted-foreground">EC</span><p className="font-medium">{reading.ec.toFixed(2)}</p></div>}
                     {reading.ppm != null && <div><span className="text-muted-foreground">PPM</span><p className="font-medium">{Math.round(reading.ppm)}</p></div>}
                     {reading.water_temp_f != null && <div><span className="text-muted-foreground">Water {prefs.temp_unit === "celsius" ? "°C" : "°F"}</span><p className="font-medium">{formatTemp(reading.water_temp_f, "f", prefs.temp_unit)}</p></div>}
+                    {reading.orp != null && <div><span className="text-muted-foreground">ORP</span><p className="font-medium">{Math.round(reading.orp)} mV</p></div>}
+                    {reading.salinity != null && <div><span className="text-muted-foreground">Salinity</span><p className="font-medium">{reading.salinity.toFixed(2)} ppt</p></div>}
+                    {reading.specific_gravity != null && <div><span className="text-muted-foreground">S.G.</span><p className="font-medium">{reading.specific_gravity.toFixed(3)}</p></div>}
+                    {reading.battery_pct != null && <div><span className="text-muted-foreground">Battery</span><p className="font-medium">{Math.round(reading.battery_pct)}%</p></div>}
                   </div>
                 )}
                 {!reading && <p className="mt-2 text-xs text-muted-foreground">No readings yet</p>}
                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <Button variant="default" size="sm" className="h-7 text-xs" onClick={() => {
-                    setQuickForm({ ph: "", ec: "", ppm: "", water_temp_f: "", notes: "" });
-                    setQuickActionDialog({ type: "water_change", bucketId: b.id, bucketLabel: `#${b.position} ${b.label || "Unnamed"}` });
-                  }}>
-                    <RefreshCw className="mr-1 size-3" /> Water Change
-                  </Button>
-                  <Button variant="secondary" size="sm" className="h-7 text-xs" onClick={() => {
-                    setQuickForm({ ph: "", ec: "", ppm: "", water_temp_f: "", notes: "" });
-                    setQuickActionDialog({ type: "feeding", bucketId: b.id, bucketLabel: `#${b.position} ${b.label || "Unnamed"}` });
-                  }}>
-                    <FlaskConical className="mr-1 size-3" /> Feed
-                  </Button>
+                  {/* RDWC: only show Water Change / Feed on header bucket (shared reservoir) */}
+                  {(b.role === "header" || !buckets.some((bkt) => bkt.role === "header")) && (
+                    <>
+                      <Button variant="default" size="sm" className="h-7 text-xs" onClick={() => {
+                        setQuickForm({ ph: "", ec: "", ppm: "", water_temp_f: "", notes: "" });
+                        setQuickActionDialog({ type: "water_change", bucketId: b.id, bucketLabel: `#${b.position} ${b.label || "Unnamed"}` });
+                      }}>
+                        <RefreshCw className="mr-1 size-3" /> Water Change
+                      </Button>
+                      <Button variant="secondary" size="sm" className="h-7 text-xs" onClick={() => {
+                        setQuickForm({ ph: "", ec: "", ppm: "", water_temp_f: "", notes: "" });
+                        setQuickActionDialog({ type: "feeding", bucketId: b.id, bucketLabel: `#${b.position} ${b.label || "Unnamed"}` });
+                      }}>
+                        <FlaskConical className="mr-1 size-3" /> Feed
+                      </Button>
+                    </>
+                  )}
                   <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => onOpenSensorDialog(b.id, `#${b.position} ${b.label || "Unnamed"}`)}>
                     <Droplets className="mr-1 size-3" /> Log Reading
                   </Button>

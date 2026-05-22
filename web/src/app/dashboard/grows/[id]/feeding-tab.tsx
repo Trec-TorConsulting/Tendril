@@ -263,6 +263,16 @@ export function FeedingTab({ growId, growStage, growStartedAt, milestones, setti
     [buckets],
   );
 
+  // RDWC: if a header bucket exists, use its volume as system total
+  const headerBucket = useMemo(
+    () => buckets.find((b) => b.role === "header"),
+    [buckets],
+  );
+  const isSharedReservoir = !!headerBucket;
+
+  // Mixing bucket size for batch splitting (gallons)
+  const [mixingBucketSize, setMixingBucketSize] = useState<number | null>(null);
+
   // Load AI advice
   const loadAdvice = useCallback(async () => {
     const token = getAccessToken();
@@ -542,20 +552,108 @@ export function FeedingTab({ growId, growStage, growStartedAt, milestones, setti
   function renderDosesPerBucket(phase: FeedChartPhase) {
     if (activeBuckets.length === 0) return null;
     const sortedItems = buildMixingList(phase);
-    return (
-      <div className="mt-3 rounded-md border bg-muted/30 p-2">
-        <p className="mb-1 text-xs font-medium text-muted-foreground">Per Bucket</p>
-        <div className="space-y-1">
-          {activeBuckets.map((b) => (
-            <div key={b.id} className="flex flex-wrap items-baseline gap-x-3 text-xs">
-              <span className="font-medium min-w-[5rem]">#{b.position} {b.label || "Unnamed"} ({b.volume_gallons}g)</span>
+
+    // Determine total system volume
+    const totalGal = isSharedReservoir && headerBucket?.volume_gallons
+      ? headerBucket.volume_gallons
+      : null;
+
+    // RDWC or any grow with a known total: show system total + optional batch splitting
+    if (totalGal) {
+      const batches = mixingBucketSize ? Math.ceil(totalGal / mixingBucketSize) : 1;
+      const galPerBatch = mixingBucketSize ? Math.min(mixingBucketSize, totalGal / batches) : totalGal;
+
+      return (
+        <div className="mt-3 rounded-md border bg-muted/30 p-2 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-medium text-muted-foreground">System Total ({totalGal} gal reservoir)</p>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-muted-foreground whitespace-nowrap">Mix in:</span>
+              <Select value={mixingBucketSize?.toString() || "full"} onValueChange={(v) => setMixingBucketSize(v === "full" ? null : parseFloat(v))}>
+                <SelectTrigger className="h-6 w-[7rem] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="full">Full batch</SelectItem>
+                  <SelectItem value="1">1 gal bucket</SelectItem>
+                  <SelectItem value="2">2 gal bucket</SelectItem>
+                  <SelectItem value="3">3 gal bucket</SelectItem>
+                  <SelectItem value="5">5 gal bucket</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {!mixingBucketSize ? (
+            <div className="flex flex-wrap items-baseline gap-x-3 text-xs">
               {sortedItems.map((item) => (
                 <span key={item.id} className={item.type === "additive" ? "text-blue-600 dark:text-blue-400" : "text-muted-foreground"}>
-                  {item.name}: <span className={item.type === "additive" ? "font-medium" : "text-foreground font-medium"}>{(item.ml_per_gallon * (b.volume_gallons || 0)).toFixed(1)} ml</span>
+                  {item.name}: <span className={item.type === "additive" ? "font-medium" : "text-foreground font-medium"}>{(item.ml_per_gallon * totalGal).toFixed(1)} ml</span>
                 </span>
               ))}
             </div>
-          ))}
+          ) : (
+            <div className="space-y-1.5">
+              <p className="text-[11px] text-muted-foreground">{batches} batch{batches > 1 ? "es" : ""} × {galPerBatch.toFixed(1)} gal each</p>
+              <div className="rounded border bg-background p-1.5">
+                <p className="text-[11px] font-medium text-muted-foreground mb-1">Per {galPerBatch.toFixed(1)} gal batch:</p>
+                <div className="flex flex-wrap items-baseline gap-x-3 text-xs">
+                  {sortedItems.map((item) => (
+                    <span key={item.id} className={item.type === "additive" ? "text-blue-600 dark:text-blue-400" : "text-muted-foreground"}>
+                      {item.name}: <span className={item.type === "additive" ? "font-medium" : "text-foreground font-medium"}>{(item.ml_per_gallon * galPerBatch).toFixed(1)} ml</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div className="mt-3 rounded-md border bg-muted/30 p-2 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs font-medium text-muted-foreground">Per Bucket</p>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-muted-foreground whitespace-nowrap">Mix in:</span>
+            <Select value={mixingBucketSize?.toString() || "full"} onValueChange={(v) => setMixingBucketSize(v === "full" ? null : parseFloat(v))}>
+              <SelectTrigger className="h-6 w-[7rem] text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="full">Full batch</SelectItem>
+                <SelectItem value="1">1 gal bucket</SelectItem>
+                <SelectItem value="2">2 gal bucket</SelectItem>
+                <SelectItem value="3">3 gal bucket</SelectItem>
+                <SelectItem value="5">5 gal bucket</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <div className="space-y-1">
+          {activeBuckets.map((b) => {
+            const bucketGal = b.volume_gallons || 0;
+            const batches = mixingBucketSize ? Math.ceil(bucketGal / mixingBucketSize) : 1;
+            const galPerBatch = mixingBucketSize ? Math.min(mixingBucketSize, bucketGal / batches) : bucketGal;
+            return (
+              <div key={b.id} className="text-xs">
+                <div className="flex flex-wrap items-baseline gap-x-3">
+                  <span className="font-medium min-w-[5rem]">
+                    #{b.position} {b.label || "Unnamed"} ({bucketGal}g)
+                    {mixingBucketSize && bucketGal > mixingBucketSize && (
+                      <span className="text-muted-foreground font-normal"> — {batches} batches × {galPerBatch.toFixed(1)}g</span>
+                    )}
+                  </span>
+                  {sortedItems.map((item) => (
+                    <span key={item.id} className={item.type === "additive" ? "text-blue-600 dark:text-blue-400" : "text-muted-foreground"}>
+                      {item.name}: <span className={item.type === "additive" ? "font-medium" : "text-foreground font-medium"}>{(item.ml_per_gallon * galPerBatch).toFixed(1)} ml</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     );
