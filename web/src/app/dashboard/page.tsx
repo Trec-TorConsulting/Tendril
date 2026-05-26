@@ -172,6 +172,22 @@ export default function DashboardPage() {
       const bucketIds = new Set(b.map((bk) => bk.id));
       const growSensorReadings = sensorReadings.filter((r) => bucketIds.has(r.bucket_id));
 
+      // Fetch latest reading per bucket directly — ensures manual entries
+      // (which may not appear in the global top-50) are always included
+      const perBucketLatest = await Promise.all(
+        b.map((bk) => getLatestReading(token, bk.id).catch(() => null))
+      );
+      // Merge per-bucket latest into growSensorReadings if not already present
+      const existingIds = new Set(growSensorReadings.map((r) => r.id));
+      for (const r of perBucketLatest) {
+        if (r && !existingIds.has(r.id)) {
+          growSensorReadings.push(r);
+          existingIds.add(r.id);
+        }
+      }
+      // Sort combined results by recorded_at descending
+      growSensorReadings.sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime());
+
       const phVals = growSensorReadings.map((r) => r.ph).filter((v): v is number => v != null).reverse();
       const ecVals = growSensorReadings.map((r) => r.ec).filter((v): v is number => v != null).reverse();
       const ppmVals = growSensorReadings.map((r) => r.ppm).filter((v): v is number => v != null).reverse();
@@ -194,16 +210,6 @@ export default function DashboardPage() {
         if (!bucketLatest.has(r.bucket_id) || r.recorded_at > bucketLatest.get(r.bucket_id)!) {
           bucketLatest.set(r.bucket_id, r.recorded_at);
         }
-      }
-      // Also fetch latest reading per bucket directly for any that were missed
-      const missingBuckets = b.filter((bk) => !bucketLatest.has(bk.id));
-      if (missingBuckets.length > 0) {
-        const latestReadings = await Promise.all(
-          missingBuckets.map((bk) => getLatestReading(token, bk.id).catch(() => null))
-        );
-        latestReadings.forEach((r, i) => {
-          if (r?.recorded_at) bucketLatest.set(missingBuckets[i].id, r.recorded_at);
-        });
       }
       setBucketLastReading(bucketLatest);
 

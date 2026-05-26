@@ -226,12 +226,14 @@ export default function GrowDetailPage() {
 
     // Fetch sensor trends for overview sparklines
     try {
-      const [sensorReadings, tentReadings2] = await Promise.all([
-        listSensorReadings(token, undefined, 30).catch(() => []),
+      const [perBucketReadings, tentReadings2] = await Promise.all([
+        Promise.all(bkts.map((b) => listSensorReadings(token, b.id, 30).catch(() => []))),
         listTentReadings(token, g.tent_id, 30).catch(() => []),
       ]);
-      const bucketIds = new Set(bkts.map((b) => b.id));
-      const growSensor = sensorReadings.filter((r: { bucket_id: string }) => bucketIds.has(r.bucket_id));
+      const growSensor = perBucketReadings
+        .flat()
+        .sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime())
+        .slice(0, 30);
       setSensorTrends({
         ph: growSensor.map((r: { ph: number | null }) => r.ph).filter((v: number | null): v is number => v != null).reverse(),
         ec: growSensor.map((r: { ec: number | null }) => r.ec).filter((v: number | null): v is number => v != null).reverse(),
