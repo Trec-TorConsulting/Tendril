@@ -252,6 +252,14 @@ class TuyaConnector(BaseConnector):
             code = status.get("code", "")
             value = status.get("value")
 
+            logger.info(
+                "Tuya DP [%s] code=%s value=%r type=%s",
+                dm.external_id,
+                code,
+                value,
+                type(value).__name__,
+            )
+
             # Check custom sensor_mapping first
             if code in custom_mapping:
                 tendril_key = custom_mapping[code]
@@ -299,6 +307,15 @@ class TuyaConnector(BaseConnector):
                 else:
                     reading[tendril_key] = numeric
 
+        logger.info(
+            "Tuya mapped reading for %s: %s",
+            dm.external_id,
+            {
+                k: v
+                for k, v in reading.items()
+                if v is not None and k not in ("external_id", "tenant_id", "target", "bucket_id", "tent_id")
+            },
+        )
         return reading
 
     async def handle_webhook(self, payload: dict[str, Any]) -> ConnectorResult:
