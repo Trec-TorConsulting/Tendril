@@ -225,11 +225,18 @@ class TuyaConnector(BaseConnector):
                     # (pH, EC, ORP are often report-type and not in /status)
                     log_statuses = await self._fetch_recent_logs(client, device_id)
                     if log_statuses:
-                        # Merge log DPs (don't overwrite /status values)
-                        status_codes = {s.get("code") for s in statuses}
+                        # Merge log DPs — prefer log value over /status when
+                        # /status has a zero or null value (common for pH sensors)
+                        status_map = {s.get("code"): s for s in statuses}
                         for ls in log_statuses:
-                            if ls.get("code") not in status_codes:
+                            code = ls.get("code")
+                            existing = status_map.get(code)
+                            if existing is None:
+                                # Not in /status at all — add from logs
                                 statuses.append(ls)
+                            elif not existing.get("value"):
+                                # In /status but zero/null — override with log value
+                                existing["value"] = ls.get("value")
 
                     reading = self._map_statuses(statuses, dm)
                     result.readings.append(reading)
@@ -249,8 +256,8 @@ class TuyaConnector(BaseConnector):
         appear in the /status endpoint.
         """
         end_time = int(time.time() * 1000)
-        # Look back 10 minutes for recent reports
-        start_time = end_time - 10 * 60 * 1000
+        # Look back 60 minutes for recent reports (pH sensors often report infrequently)
+        start_time = end_time - 60 * 60 * 1000
         path = f"/v1.0/devices/{device_id}/logs?type=7&start_time={start_time}&end_time={end_time}&size=50"
         try:
             data = await self._api_get(client, path)
