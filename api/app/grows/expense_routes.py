@@ -101,13 +101,15 @@ class GrowComparison(BaseModel):
 # ─── Expense CRUD ─────────────────────────────────────────────────────────────
 
 
-@router.post("/expenses", response_model=ExpenseResponse, status_code=201, dependencies=[Depends(require_plan("pro"))])
+@router.post(
+    "/expenses", response_model=ExpenseResponse, status_code=201, dependencies=[Depends(require_plan("hobby"))]
+)
 async def create_expense(
     body: ExpenseCreate,
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
-    """Log an expense for a grow cycle. Requires Pro plan or higher."""
+    """Log an expense for a grow cycle. Requires any paid plan."""
     # Verify grow belongs to tenant
     grow = await session.get(GrowCycle, body.grow_cycle_id)
     if not grow or grow.tenant_id != user.tenant_id:
@@ -173,7 +175,10 @@ async def delete_expense(
 
 
 @router.post(
-    "/harvest-values", response_model=HarvestValueResponse, status_code=201, dependencies=[Depends(require_plan("pro"))]
+    "/harvest-values",
+    response_model=HarvestValueResponse,
+    status_code=201,
+    dependencies=[Depends(require_plan("hobby"))],
 )
 async def create_harvest_value(
     body: HarvestValueCreate,
@@ -264,7 +269,7 @@ async def _calculate_roi(session: AsyncSession, grow: GrowCycle, tenant_id: UUID
     )
 
 
-@router.get("/{grow_cycle_id}/roi", response_model=ROISummary, dependencies=[Depends(require_plan("pro"))])
+@router.get("/{grow_cycle_id}/roi", response_model=ROISummary, dependencies=[Depends(require_plan("hobby"))])
 async def get_grow_roi(
     grow_cycle_id: UUID,
     user: Annotated[CurrentUser, Depends(get_current_user)],
@@ -277,7 +282,7 @@ async def get_grow_roi(
     return await _calculate_roi(session, grow, user.tenant_id)
 
 
-@router.get("/roi-comparison", response_model=GrowComparison, dependencies=[Depends(require_plan("pro"))])
+@router.get("/roi-comparison", response_model=GrowComparison, dependencies=[Depends(require_plan("hobby"))])
 async def compare_grows_roi(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
