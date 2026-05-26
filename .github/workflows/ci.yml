@@ -92,10 +92,10 @@ jobs:
           kubectl rollout restart deployment/tendril-mqtt-worker -n tendril
           kubectl rollout restart deployment/tendril-scheduler -n tendril
       - run: |
-          kubectl rollout status deployment/tendril-api -n tendril --timeout=120s
-          kubectl rollout status deployment/tendril-web -n tendril --timeout=120s
-          kubectl rollout status deployment/tendril-mqtt-worker -n tendril --timeout=120s
-          kubectl rollout status deployment/tendril-scheduler -n tendril --timeout=120s
+          kubectl rollout status deployment/tendril-api -n tendril --timeout=300s
+          kubectl rollout status deployment/tendril-web -n tendril --timeout=300s
+          kubectl rollout status deployment/tendril-mqtt-worker -n tendril --timeout=300s
+          kubectl rollout status deployment/tendril-scheduler -n tendril --timeout=300s
 
   # ── Re-enable when going public ──────────────────────────────
   # api-test:
