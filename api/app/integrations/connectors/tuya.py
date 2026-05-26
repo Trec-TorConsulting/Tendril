@@ -280,16 +280,24 @@ class TuyaConnector(BaseConnector):
             # Water quality / flow DPs
             elif code in _WATER_DP_MAP:
                 tendril_key = _WATER_DP_MAP[code]
-                if value is None or not isinstance(value, int | float):
+                if value is None:
+                    continue
+                # Coerce string-encoded numbers (common in Tuya water monitors)
+                try:
+                    numeric = float(value)
+                except (ValueError, TypeError):
                     continue
                 # Tuya water temp is deg C x 10
                 if tendril_key == "water_temp_c":
-                    reading[tendril_key] = value / 10
+                    reading[tendril_key] = numeric / 10
                 # Tuya EC is μS/cm, store as mS/cm
                 elif tendril_key == "ec":
-                    reading[tendril_key] = value / 1000
+                    reading[tendril_key] = numeric / 1000
+                # Tuya pH is typically scaled x100 (e.g. 623 = 6.23)
+                elif tendril_key == "ph":
+                    reading[tendril_key] = numeric / 100 if numeric > 14 else numeric
                 else:
-                    reading[tendril_key] = float(value)
+                    reading[tendril_key] = numeric
 
         return reading
 
