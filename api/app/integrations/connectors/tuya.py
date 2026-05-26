@@ -43,11 +43,16 @@ _WATER_DP_MAP: dict[str, str] = {
     "tds_in": "ppm",
     "tds_out": "ppm",
     "tds_value": "ppm",
+    "tds": "ppm",
     # pH
     "ph_value": "ph",
     "ph": "ph",
     # EC (μS/cm → mS/cm in persist)
     "ec_value": "ec",
+    "ec": "ec",
+    # CF (Conductivity Factor - same as EC on most Tuya monitors)
+    "cf": "ec",
+    "cf_value": "ec",
     # Water temperature (Tuya sends deg C scaled x10)
     "water_temp": "water_temp_c",
     "temp_value": "water_temp_c",
@@ -249,7 +254,7 @@ class TuyaConnector(BaseConnector):
         custom_mapping = dm.sensor_mapping or {}
 
         for status in statuses:
-            code = status.get("code", "")
+            code = status.get("code", "").lower()
             value = status.get("value")
 
             logger.info(
