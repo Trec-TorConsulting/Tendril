@@ -27,16 +27,8 @@ jobs:
             [registry."192.168.4.10:30500"]
               http = true
 
-      - name: Pull, tag, and push (${{ matrix.source }})
+      - name: Mirror ${{ matrix.source }} to local registry
         run: |
-          docker pull --platform linux/arm64 ${{ matrix.source }}
-          docker tag ${{ matrix.source }} ${{ matrix.target }}-arm64
-          docker push ${{ matrix.target }}-arm64
-
-          docker pull --platform linux/amd64 ${{ matrix.source }}
-          docker tag ${{ matrix.source }} ${{ matrix.target }}-amd64
-          docker push ${{ matrix.target }}-amd64
-
-          docker buildx imagetools create -t ${{ matrix.target }} \
-            ${{ matrix.target }}-arm64 \
-            ${{ matrix.target }}-amd64
+          docker buildx imagetools create \
+            --tag ${{ matrix.target }} \
+            docker.io/${{ matrix.source }}
