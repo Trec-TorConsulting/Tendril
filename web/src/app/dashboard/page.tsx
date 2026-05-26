@@ -309,7 +309,7 @@ export default function DashboardPage() {
           {/* ─── Camera Feeds ──────────────────────────────────── */}
           {selectedGrow && (
             <motion.section {...fadeUp} transition={{ duration: 0.4 }}>
-              <CameraGrid tentId={selectedGrow.tent_id} hideEmpty />
+              <CameraGrid key={selectedGrow.tent_id} tentId={selectedGrow.tent_id} hideEmpty />
             </motion.section>
           )}
 
