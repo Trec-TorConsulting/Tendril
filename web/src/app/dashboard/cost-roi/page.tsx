@@ -258,7 +258,7 @@ export default function CostROIPage() {
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
             <CardTitle>Expenses</CardTitle>
-            <CardDescription>Track costs per grow cycle</CardDescription>
+            <CardDescription>Track costs per grow</CardDescription>
           </div>
           <Button size="sm" onClick={() => setShowExpenseForm(!showExpenseForm)}>
             <Plus className="h-4 w-4 mr-1" /> Log Expense
@@ -268,7 +268,7 @@ export default function CostROIPage() {
           {showExpenseForm && (
             <form onSubmit={handleCreateExpense} className="grid gap-3 rounded-lg border border-neutral-800 p-4 md:grid-cols-5">
               <select className="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white" value={expGrowId} onChange={(e) => setExpGrowId(e.target.value)} required>
-                <option value="">Select Grow Cycle</option>
+                <option value="">Select Grow</option>
                 {grows.filter((g) => g.status === "active").length > 0 && (
                   <optgroup label="Active">
                     {grows.filter((g) => g.status === "active").map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
@@ -331,7 +331,7 @@ export default function CostROIPage() {
           {showHarvestForm && (
             <form onSubmit={handleCreateHarvestValue} className="grid gap-3 rounded-lg border border-neutral-800 p-4 md:grid-cols-5">
               <select className="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white" value={hvGrowId} onChange={(e) => setHvGrowId(e.target.value)} required>
-                <option value="">Select Grow Cycle</option>
+                <option value="">Select Grow</option>
                 {grows.filter((g) => g.status === "active").length > 0 && (
                   <optgroup label="Active">
                     {grows.filter((g) => g.status === "active").map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
