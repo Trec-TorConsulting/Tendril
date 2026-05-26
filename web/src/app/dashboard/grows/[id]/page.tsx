@@ -175,7 +175,7 @@ export default function GrowDetailPage() {
   const [openTaskCount, setOpenTaskCount] = useState(0);
 
   // Sensor trends for overview sparklines
-  const [sensorTrends, setSensorTrends] = useState<{ ph: number[]; ec: number[]; ppm: number[]; temp: number[]; humidity: number[]; water_temp: number[] }>({ ph: [], ec: [], ppm: [], temp: [], humidity: [], water_temp: [] });
+  const [sensorTrends, setSensorTrends] = useState<{ ph: number[]; ec: number[]; ppm: number[]; temp: number[]; humidity: number[]; water_temp: number[]; water_level: number[] }>({ ph: [], ec: [], ppm: [], temp: [], humidity: [], water_temp: [], water_level: [] });
 
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -239,6 +239,7 @@ export default function GrowDetailPage() {
         ec: growSensor.map((r: { ec: number | null }) => r.ec).filter((v: number | null): v is number => v != null).reverse(),
         ppm: growSensor.map((r: { ppm: number | null }) => r.ppm).filter((v: number | null): v is number => v != null).reverse(),
         water_temp: growSensor.map((r: { water_temp_f: number | null }) => r.water_temp_f).filter((v: number | null): v is number => v != null).reverse(),
+        water_level: growSensor.map((r: { water_level_pct: number | null }) => r.water_level_pct).filter((v: number | null): v is number => v != null).reverse(),
         temp: tentReadings2.map((r: { ambient_temp_f: number | null }) => r.ambient_temp_f).filter((v: number | null): v is number => v != null).reverse(),
         humidity: tentReadings2.map((r: { ambient_humidity: number | null }) => r.ambient_humidity).filter((v: number | null): v is number => v != null).reverse(),
       });
@@ -655,27 +656,52 @@ export default function GrowDetailPage() {
                 </Card>
               </motion.div>
 
-              {/* EC */}
+              {/* EC or Water Level (fallback when EC probe unavailable) */}
               <motion.div variants={fadeUp}>
                 <Card className="relative overflow-hidden">
                   <CardContent className="pt-4 pb-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="flex size-8 items-center justify-center rounded-lg bg-violet-500/10"><Waves className="size-4 text-violet-500" /></div>
-                        <div>
-                          <p className="text-[11px] text-muted-foreground">EC</p>
-                          <p className="text-lg font-semibold tabular-nums">
-                            {sensorTrends.ec.length > 0 ? sensorTrends.ec[sensorTrends.ec.length - 1].toFixed(2) : "—"}
-                          </p>
+                    {sensorTrends.ec.length > 0 ? (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="flex size-8 items-center justify-center rounded-lg bg-violet-500/10"><Waves className="size-4 text-violet-500" /></div>
+                            <div>
+                              <p className="text-[11px] text-muted-foreground">EC</p>
+                              <p className="text-lg font-semibold tabular-nums">
+                                {sensorTrends.ec[sensorTrends.ec.length - 1].toFixed(2)}
+                              </p>
+                            </div>
+                          </div>
+                          {sensorTrends.ec.length >= 2 && (() => {
+                            const delta = sensorTrends.ec[sensorTrends.ec.length - 1] - sensorTrends.ec[sensorTrends.ec.length - 2];
+                            return <Badge variant="outline" className={cn("text-[10px] gap-0.5", delta > 0 ? "text-emerald-500" : delta < 0 ? "text-orange-500" : "")}><TrendingUp className="size-2.5" />{delta >= 0 ? "+" : ""}{delta.toFixed(2)}</Badge>;
+                          })()}
                         </div>
-                      </div>
-                      {sensorTrends.ec.length >= 2 && (() => {
-                        const delta = sensorTrends.ec[sensorTrends.ec.length - 1] - sensorTrends.ec[sensorTrends.ec.length - 2];
-                        return <Badge variant="outline" className={cn("text-[10px] gap-0.5", delta > 0 ? "text-emerald-500" : delta < 0 ? "text-orange-500" : "")}><TrendingUp className="size-2.5" />{delta >= 0 ? "+" : ""}{delta.toFixed(2)}</Badge>;
-                      })()}
-                    </div>
-                    {sensorTrends.ec.length > 2 && (
-                      <div className="mt-2 h-8"><SensorSparkline data={sensorTrends.ec} color="#8b5cf6" /></div>
+                        {sensorTrends.ec.length > 2 && (
+                          <div className="mt-2 h-8"><SensorSparkline data={sensorTrends.ec} color="#8b5cf6" /></div>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="flex size-8 items-center justify-center rounded-lg bg-violet-500/10"><Waves className="size-4 text-violet-500" /></div>
+                            <div>
+                              <p className="text-[11px] text-muted-foreground">Water Level</p>
+                              <p className="text-lg font-semibold tabular-nums">
+                                {sensorTrends.water_level.length > 0 ? `${Math.round(sensorTrends.water_level[sensorTrends.water_level.length - 1])}%` : "—"}
+                              </p>
+                            </div>
+                          </div>
+                          {sensorTrends.water_level.length >= 2 && (() => {
+                            const delta = sensorTrends.water_level[sensorTrends.water_level.length - 1] - sensorTrends.water_level[sensorTrends.water_level.length - 2];
+                            return <Badge variant="outline" className={cn("text-[10px] gap-0.5", delta > 0 ? "text-blue-500" : delta < 0 ? "text-orange-500" : "")}><TrendingUp className="size-2.5" />{delta >= 0 ? "+" : ""}{Math.round(delta)}%</Badge>;
+                          })()}
+                        </div>
+                        {sensorTrends.water_level.length > 2 && (
+                          <div className="mt-2 h-8"><SensorSparkline data={sensorTrends.water_level} color="#8b5cf6" /></div>
+                        )}
+                      </>
                     )}
                   </CardContent>
                 </Card>

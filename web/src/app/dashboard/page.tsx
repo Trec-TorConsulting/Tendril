@@ -119,9 +119,10 @@ export default function DashboardPage() {
     ec: number[];
     ppm: number[];
     water_temp: number[];
+    water_level: number[];
     temp: number[];
     humidity: number[];
-  }>({ ph: [], ec: [], ppm: [], water_temp: [], temp: [], humidity: [] });
+  }>({ ph: [], ec: [], ppm: [], water_temp: [], water_level: [], temp: [], humidity: [] });
   const [lastReadingAt, setLastReadingAt] = useState<string | null>(null);
   const [bucketLastReading, setBucketLastReading] = useState<Map<string, string>>(new Map());
   const [climateData, setClimateData] = useState<ClimateDataPoint[]>([]);
@@ -192,9 +193,10 @@ export default function DashboardPage() {
       const ecVals = growSensorReadings.map((r) => r.ec).filter((v): v is number => v != null).reverse();
       const ppmVals = growSensorReadings.map((r) => r.ppm).filter((v): v is number => v != null).reverse();
       const waterTempVals = growSensorReadings.map((r) => r.water_temp_f).filter((v): v is number => v != null).reverse();
+      const waterLevelVals = growSensorReadings.map((r) => r.water_level_pct).filter((v): v is number => v != null).reverse();
       const tempVals = tentReadings.map((r) => r.ambient_temp_f).filter((v): v is number => v != null).reverse();
       const humVals = tentReadings.map((r) => r.ambient_humidity).filter((v): v is number => v != null).reverse();
-      setSensorTrends({ ph: phVals, ec: ecVals, ppm: ppmVals, water_temp: waterTempVals, temp: tempVals, humidity: humVals });
+      setSensorTrends({ ph: phVals, ec: ecVals, ppm: ppmVals, water_temp: waterTempVals, water_level: waterLevelVals, temp: tempVals, humidity: humVals });
       // Track when the latest reading was recorded (bucket for hydro, tent for others)
       const latestTentReading = tentReadings[0];
       const latestBucketReading = growSensorReadings[0];
@@ -339,13 +341,23 @@ export default function DashboardPage() {
                     icon={<Droplets className="size-5" />}
                     updatedAgo={updatedAgo}
                   />
-                  <EnvironmentBadgeCard
-                    label="EC"
-                    value={sensorTrends.ec.length > 0 ? sensorTrends.ec[sensorTrends.ec.length - 1].toFixed(2) : "—"}
-                    status={sensorTrends.ec.length > 0 ? (sensorTrends.ec[sensorTrends.ec.length - 1] >= 0.8 && sensorTrends.ec[sensorTrends.ec.length - 1] <= 2.5 ? "optimal" : "warning") : "unknown"}
-                    icon={<Waves className="size-5" />}
-                    updatedAgo={updatedAgo}
-                  />
+                  {sensorTrends.ec.length > 0 ? (
+                    <EnvironmentBadgeCard
+                      label="EC"
+                      value={sensorTrends.ec[sensorTrends.ec.length - 1].toFixed(2)}
+                      status={sensorTrends.ec[sensorTrends.ec.length - 1] >= 0.8 && sensorTrends.ec[sensorTrends.ec.length - 1] <= 2.5 ? "optimal" : "warning"}
+                      icon={<Waves className="size-5" />}
+                      updatedAgo={updatedAgo}
+                    />
+                  ) : (
+                    <EnvironmentBadgeCard
+                      label="Water Level"
+                      value={sensorTrends.water_level.length > 0 ? `${Math.round(sensorTrends.water_level[sensorTrends.water_level.length - 1])}%` : "—"}
+                      status={sensorTrends.water_level.length > 0 ? (sensorTrends.water_level[sensorTrends.water_level.length - 1] >= 20 ? "optimal" : "warning") : "unknown"}
+                      icon={<Waves className="size-5" />}
+                      updatedAgo={updatedAgo}
+                    />
+                  )}
                 </>
               ) : (
                 <>
@@ -570,7 +582,7 @@ export default function DashboardPage() {
               </Card>
 
               {/* Quick sensor stats sidebar cards */}
-              {sensorTrends.ec.length >= 2 && (
+              {sensorTrends.ec.length >= 2 ? (
                 <Card className="border-border/50 backdrop-blur-sm">
                   <CardContent className="pt-4">
                     <div className="flex items-center justify-between mb-2">
@@ -582,6 +594,22 @@ export default function DashboardPage() {
                     <SensorSparkline
                       data={sensorTrends.ec}
                       ranges={{ min: 1.0, max: 2.5 }}
+                      height={36}
+                    />
+                  </CardContent>
+                </Card>
+              ) : sensorTrends.water_level.length >= 2 && (
+                <Card className="border-border/50 backdrop-blur-sm">
+                  <CardContent className="pt-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-muted-foreground">Water Level</span>
+                      <span className="text-lg font-bold">
+                        {Math.round(sensorTrends.water_level[sensorTrends.water_level.length - 1])}%
+                      </span>
+                    </div>
+                    <SensorSparkline
+                      data={sensorTrends.water_level}
+                      ranges={{ min: 20, max: 100 }}
                       height={36}
                     />
                   </CardContent>
