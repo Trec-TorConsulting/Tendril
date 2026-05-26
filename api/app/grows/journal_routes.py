@@ -138,6 +138,8 @@ async def create_quick_entry(
     reading_id = None
     has_reading = any([body.ph, body.ec, body.ppm, body.water_temp_f])
     if has_reading:
+        from app.integrations.connectors.base import propagate_header_bucket_readings
+
         # Auto-derive EC↔PPM when only one is provided
         ec = body.ec
         ppm = body.ppm
@@ -154,6 +156,10 @@ async def create_quick_entry(
             water_temp_f=body.water_temp_f,
         )
         session.add(reading)
+        await session.flush()  # Flush to get the reading in session
+
+        # Propagate header readings to all site buckets in RDWC grows
+        await propagate_header_bucket_readings(session, str(reading.bucket_id), reading)
 
     await session.commit()
     await session.refresh(entry)

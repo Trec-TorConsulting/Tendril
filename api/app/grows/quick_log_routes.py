@@ -126,6 +126,7 @@ async def quick_log_feeding(
     elif ppm is not None and ec is None:
         ec = round(ppm / 500.0, 3)
 
+    readings = []
     for bucket in buckets:
         # Create sensor reading
         reading = BucketSensorReading(
@@ -138,6 +139,7 @@ async def quick_log_feeding(
             recorded_at=recorded_at,
         )
         session.add(reading)
+        readings.append(reading)
 
         # Create journal entry for the feeding event
         entry = JournalEntry(
@@ -157,6 +159,14 @@ async def quick_log_feeding(
             created_at=recorded_at,
         )
         session.add(entry)
+
+    await session.flush()  # Flush to ensure readings are in session
+
+    # Propagate header readings to all site buckets in RDWC grows
+    from app.integrations.connectors.base import propagate_header_bucket_readings
+
+    for reading in readings:
+        await propagate_header_bucket_readings(session, str(reading.bucket_id), reading)
 
     await session.commit()
     return FeedingLogResponse(created=len(buckets), bucket_ids=body.bucket_ids)
