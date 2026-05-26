@@ -333,16 +333,21 @@ export default function DashboardPage() {
               {isHydro ? (
                 <>
                   <MultiMetricCard
-                    title="Temperatures"
+                    title="Environment"
                     icon={<Thermometer className="size-5" />}
                     metrics={[
                       {
-                        label: "Tent",
+                        label: "Tent Temp",
                         value: latestTemp != null ? formatTemp(latestTemp, "f", prefs.temp_unit, 0) : "—",
                         status: latestTemp != null ? (latestTemp >= 68 && latestTemp <= 82 ? "optimal" : "warning") : "unknown",
                       },
                       {
-                        label: "Water",
+                        label: "Humidity",
+                        value: latestHumidity != null ? `${latestHumidity.toFixed(0)}%` : "—",
+                        status: latestHumidity != null ? (latestHumidity >= 40 && latestHumidity <= 70 ? "optimal" : "warning") : "unknown",
+                      },
+                      {
+                        label: "Water Temp",
                         value: latestWaterTemp != null ? formatTemp(latestWaterTemp, "f", prefs.temp_unit, 0) : "—",
                         status: latestWaterTemp != null ? (latestWaterTemp >= 62 && latestWaterTemp <= 72 ? "optimal" : "warning") : "unknown",
                       },
@@ -372,9 +377,9 @@ export default function DashboardPage() {
                     updatedAgo={updatedAgo}
                   />
                   <EnvironmentBadgeCard
-                    label="Humidity"
-                    value={latestHumidity != null ? `${latestHumidity.toFixed(0)}%` : "—"}
-                    status={latestHumidity != null ? (latestHumidity >= 40 && latestHumidity <= 70 ? "optimal" : "warning") : "unknown"}
+                    label="EC"
+                    value={sensorTrends.ec.length > 0 ? sensorTrends.ec[sensorTrends.ec.length - 1].toFixed(2) : "—"}
+                    status={sensorTrends.ec.length > 0 ? (sensorTrends.ec[sensorTrends.ec.length - 1] >= 0.8 && sensorTrends.ec[sensorTrends.ec.length - 1] <= 2.5 ? "optimal" : "warning") : "unknown"}
                     icon={<Droplets className="size-5" />}
                     updatedAgo={updatedAgo}
                   />

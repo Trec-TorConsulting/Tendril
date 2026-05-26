@@ -57,6 +57,7 @@ Tendril is an open-source, multi-tenant SaaS platform for grow monitoring and au
 - Branch naming: `feat/`, `fix/`, `chore/`, `security/` prefix with kebab-case description
 - Conventional commit messages on all commits
 - AI assistants creating commits must: create a branch, commit, push, and open a PR
+- **Deploys are only done via the full GitHub flow**: branch → commit → push → PR → merge → CI/CD pipeline (no manual deploys, no direct kubectl apply)
 - OpenSpec proposals for larger changes
 - No secrets, credentials, or PII in tracked files (enforced via .gitignore + pre-commit)
 
