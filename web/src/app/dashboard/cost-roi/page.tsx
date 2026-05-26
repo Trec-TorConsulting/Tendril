@@ -10,9 +10,11 @@ import {
   createHarvestValue,
   deleteHarvestValue,
   compareGrowsROI,
+  listGrows,
   type Expense,
   type HarvestValueEntry,
   type ROISummary,
+  type GrowResponse,
 } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -32,6 +34,7 @@ export default function CostROIPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [harvestValues, setHarvestValues] = useState<HarvestValueEntry[]>([]);
   const [roiComparison, setRoiComparison] = useState<ROISummary[]>([]);
+  const [grows, setGrows] = useState<GrowResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [showHarvestForm, setShowHarvestForm] = useState(false);
@@ -58,16 +61,19 @@ export default function CostROIPage() {
     if (!token) return;
     setLoading(true);
     try {
-      const [exp, hv, roi] = await Promise.all([
+      const [exp, hv, roi, activeGrows, closedGrows] = await Promise.all([
         listExpenses(token),
         listHarvestValues(token),
         compareGrowsROI(token, [], 10),
+        listGrows(token, { status: "active" }),
+        listGrows(token, { status: "completed" }),
       ]);
       setExpenses(exp);
       setHarvestValues(hv);
       setRoiComparison(roi.grows);
+      setGrows([...activeGrows, ...closedGrows]);
     } catch {
-      toast.error("Failed to load cost data. Pro plan required.");
+      toast.error("Failed to load cost data. Paid plan required.");
     } finally {
       setLoading(false);
     }
@@ -261,7 +267,19 @@ export default function CostROIPage() {
         <CardContent className="space-y-4">
           {showExpenseForm && (
             <form onSubmit={handleCreateExpense} className="grid gap-3 rounded-lg border border-neutral-800 p-4 md:grid-cols-5">
-              <Input placeholder="Grow Cycle ID" value={expGrowId} onChange={(e) => setExpGrowId(e.target.value)} required />
+              <select className="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white" value={expGrowId} onChange={(e) => setExpGrowId(e.target.value)} required>
+                <option value="">Select Grow Cycle</option>
+                {grows.filter((g) => g.status === "active").length > 0 && (
+                  <optgroup label="Active">
+                    {grows.filter((g) => g.status === "active").map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                  </optgroup>
+                )}
+                {grows.filter((g) => g.status !== "active").length > 0 && (
+                  <optgroup label="Closed">
+                    {grows.filter((g) => g.status !== "active").map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                  </optgroup>
+                )}
+              </select>
               <select className="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white" value={expCategory} onChange={(e) => setExpCategory(e.target.value)}>
                 {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
@@ -312,7 +330,19 @@ export default function CostROIPage() {
         <CardContent className="space-y-4">
           {showHarvestForm && (
             <form onSubmit={handleCreateHarvestValue} className="grid gap-3 rounded-lg border border-neutral-800 p-4 md:grid-cols-5">
-              <Input placeholder="Grow Cycle ID" value={hvGrowId} onChange={(e) => setHvGrowId(e.target.value)} required />
+              <select className="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white" value={hvGrowId} onChange={(e) => setHvGrowId(e.target.value)} required>
+                <option value="">Select Grow Cycle</option>
+                {grows.filter((g) => g.status === "active").length > 0 && (
+                  <optgroup label="Active">
+                    {grows.filter((g) => g.status === "active").map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                  </optgroup>
+                )}
+                {grows.filter((g) => g.status !== "active").length > 0 && (
+                  <optgroup label="Closed">
+                    {grows.filter((g) => g.status !== "active").map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                  </optgroup>
+                )}
+              </select>
               <select className="rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-white" value={hvGrade} onChange={(e) => setHvGrade(e.target.value)}>
                 <option value="A">Grade A</option>
                 <option value="B">Grade B</option>
