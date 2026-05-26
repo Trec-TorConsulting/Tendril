@@ -148,6 +148,9 @@ export function BucketsTab({ growId, growType, buckets, latestReadings, onRefres
     }
   };
 
+  const headerBucket = buckets.find((bucket) => bucket.role === "header");
+  const headerReading = headerBucket ? latestReadings[headerBucket.id] : null;
+
   return (
     <>
       <div className="mb-4 flex items-center justify-between">
@@ -165,6 +168,9 @@ export function BucketsTab({ growId, growType, buckets, latestReadings, onRefres
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {buckets.map((b) => {
           const reading = latestReadings[b.id];
+          const isRdwcSite = growType === "rdwc" && b.role !== "header";
+          const phValue = reading?.ph ?? (isRdwcSite ? headerReading?.ph ?? null : null);
+          const hasDisplayReading = Boolean(reading || (isRdwcSite && headerReading));
           const strain = b.strain_id ? strainMap[b.strain_id] : null;
           const daysSinceWater = b.last_water_change_at
             ? Math.floor((Date.now() - new Date(b.last_water_change_at).getTime()) / 86400000)
@@ -198,7 +204,7 @@ export function BucketsTab({ growId, growType, buckets, latestReadings, onRefres
                 <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
                   <span>{b.volume_gallons ? `${b.volume_gallons} gal` : "No size set"}</span>
                 </div>
-                {reading && (
+                {hasDisplayReading && (
                   <div className="mt-2">
                     {b.role === "header" ? (
                       // Header bucket: system/reservoir metrics (no battery)
@@ -206,14 +212,14 @@ export function BucketsTab({ growId, growType, buckets, latestReadings, onRefres
                         {reading.water_level_pct != null && <div><span className="text-muted-foreground">Water Level</span><p className="font-medium">{Math.round(reading.water_level_pct)}%</p></div>}
                         {reading.flow_rate != null && <div><span className="text-muted-foreground">Flow Rate</span><p className="font-medium">{reading.flow_rate.toFixed(1)} L/m</p></div>}
                         {reading.dissolved_oxygen != null && <div><span className="text-muted-foreground">D.O.</span><p className="font-medium">{reading.dissolved_oxygen.toFixed(1)} mg/L</p></div>}
-                        {reading.ph != null && <div><span className="text-muted-foreground">pH</span><p className="font-medium">{reading.ph.toFixed(1)}</p></div>}
+                        {phValue != null && <div><span className="text-muted-foreground">pH</span><p className="font-medium">{phValue.toFixed(1)}</p></div>}
                         {reading.ec != null && <div><span className="text-muted-foreground">EC</span><p className="font-medium">{reading.ec.toFixed(2)}</p></div>}
                         {reading.water_temp_f != null && <div><span className="text-muted-foreground">Temp {prefs.temp_unit === "celsius" ? "°C" : "°F"}</span><p className="font-medium">{formatTemp(reading.water_temp_f, "f", prefs.temp_unit)}</p></div>}
                       </div>
                     ) : (
                       // Site bucket: plant/leaf metrics (include battery)
                       <div className="grid grid-cols-3 gap-2 text-xs">
-                        {reading.ph != null && <div><span className="text-muted-foreground">pH</span><p className="font-medium">{reading.ph.toFixed(1)}</p></div>}
+                        {phValue != null && <div><span className="text-muted-foreground">pH</span><p className="font-medium">{phValue.toFixed(1)}</p></div>}
                         {reading.ec != null && <div><span className="text-muted-foreground">EC</span><p className="font-medium">{reading.ec.toFixed(2)}</p></div>}
                         {reading.ppm != null && <div><span className="text-muted-foreground">PPM</span><p className="font-medium">{Math.round(reading.ppm)}</p></div>}
                         {reading.water_temp_f != null && <div><span className="text-muted-foreground">Water {prefs.temp_unit === "celsius" ? "°C" : "°F"}</span><p className="font-medium">{formatTemp(reading.water_temp_f, "f", prefs.temp_unit)}</p></div>}
@@ -225,7 +231,7 @@ export function BucketsTab({ growId, growType, buckets, latestReadings, onRefres
                     )}
                   </div>
                 )}
-                {!reading && <p className="mt-2 text-xs text-muted-foreground">No readings yet</p>}
+                {!hasDisplayReading && <p className="mt-2 text-xs text-muted-foreground">No readings yet</p>}
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   {/* RDWC: only show Water Change / Feed on header bucket (shared reservoir) */}
                   {(b.role === "header" || !buckets.some((bkt) => bkt.role === "header")) && (
