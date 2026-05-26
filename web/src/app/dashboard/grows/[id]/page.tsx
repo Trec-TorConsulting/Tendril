@@ -600,16 +600,19 @@ export default function GrowDetailPage() {
                       label: "Tent Temp",
                       value: latestEnvTemp != null ? formatTemp(latestEnvTemp, "f", prefs.temp_unit, 0) : "—",
                       status: latestEnvTemp != null ? (latestEnvTemp >= 68 && latestEnvTemp <= 82 ? "optimal" : "warning") : "unknown",
+                      hint: latestEnvTemp != null && latestEnvTemp < 68 ? "Too cold — target 68–82°F" : latestEnvTemp != null && latestEnvTemp > 82 ? "Too hot — target 68–82°F" : undefined,
                     },
                     {
                       label: "Humidity",
                       value: latestEnvHumidity != null ? `${latestEnvHumidity.toFixed(0)}%` : "—",
                       status: latestEnvHumidity != null ? (latestEnvHumidity >= 40 && latestEnvHumidity <= 70 ? "optimal" : "warning") : "unknown",
+                      hint: latestEnvHumidity != null && latestEnvHumidity < 40 ? "Too dry — target 40–70%" : latestEnvHumidity != null && latestEnvHumidity > 70 ? "Too humid — target 40–70%" : undefined,
                     },
                     {
                       label: "Water Temp",
                       value: sensorTrends.water_temp.length > 0 ? formatTemp(sensorTrends.water_temp[sensorTrends.water_temp.length - 1], "f", prefs.temp_unit, 0) : "—",
                       status: sensorTrends.water_temp.length > 0 ? (sensorTrends.water_temp[sensorTrends.water_temp.length - 1] >= 62 && sensorTrends.water_temp[sensorTrends.water_temp.length - 1] <= 72 ? "optimal" : "warning") : "unknown",
+                      hint: sensorTrends.water_temp.length > 0 && sensorTrends.water_temp[sensorTrends.water_temp.length - 1] < 62 ? "Too cold — target 62–72°F" : sensorTrends.water_temp.length > 0 && sensorTrends.water_temp[sensorTrends.water_temp.length - 1] > 72 ? "Too warm — risk of root rot. Target 62–72°F" : undefined,
                     },
                   ]}
                 />
@@ -625,16 +628,19 @@ export default function GrowDetailPage() {
                       label: "pH",
                       value: sensorTrends.ph.length > 0 ? sensorTrends.ph[sensorTrends.ph.length - 1].toFixed(1) : "—",
                       status: sensorTrends.ph.length > 0 ? (sensorTrends.ph[sensorTrends.ph.length - 1] >= 5.5 && sensorTrends.ph[sensorTrends.ph.length - 1] <= 6.5 ? "optimal" : "warning") : "unknown",
+                      hint: sensorTrends.ph.length > 0 && sensorTrends.ph[sensorTrends.ph.length - 1] < 5.5 ? "Too acidic — target 5.5–6.5" : sensorTrends.ph.length > 0 && sensorTrends.ph[sensorTrends.ph.length - 1] > 6.5 ? "Too alkaline — target 5.5–6.5" : undefined,
                     },
                     {
                       label: "PPM",
                       value: sensorTrends.ppm.length > 0 ? `${Math.round(sensorTrends.ppm[sensorTrends.ppm.length - 1])}` : "—",
                       status: sensorTrends.ppm.length > 0 ? (sensorTrends.ppm[sensorTrends.ppm.length - 1] >= 400 && sensorTrends.ppm[sensorTrends.ppm.length - 1] <= 1500 ? "optimal" : "warning") : "unknown",
+                      hint: sensorTrends.ppm.length > 0 && sensorTrends.ppm[sensorTrends.ppm.length - 1] < 400 ? "Nutrients too low — target 400–1500 PPM" : sensorTrends.ppm.length > 0 && sensorTrends.ppm[sensorTrends.ppm.length - 1] > 1500 ? "Nutrients too high — target 400–1500 PPM" : undefined,
                     },
                     {
                       label: "Water Level",
                       value: sensorTrends.water_level.length > 0 ? `${Math.round(sensorTrends.water_level[sensorTrends.water_level.length - 1])}%` : "—",
                       status: sensorTrends.water_level.length > 0 ? (sensorTrends.water_level[sensorTrends.water_level.length - 1] >= 20 ? "optimal" : "warning") : "unknown",
+                      hint: sensorTrends.water_level.length > 0 && sensorTrends.water_level[sensorTrends.water_level.length - 1] < 20 ? "Water level critically low — refill reservoir" : undefined,
                     },
                   ]}
                 />
