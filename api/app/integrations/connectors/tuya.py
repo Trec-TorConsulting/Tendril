@@ -50,6 +50,7 @@ _WATER_DP_MAP: dict[str, str] = {
     # EC (μS/cm → mS/cm in persist)
     "ec_value": "ec",
     "ec": "ec",
+    "conductivity_value": "ec",
     # CF (Conductivity Factor - same as EC on most Tuya monitors)
     "cf": "ec",
     "cf_value": "ec",
@@ -72,6 +73,7 @@ _WATER_DP_MAP: dict[str, str] = {
     "salinity_value": "salinity",
     "salinity": "salinity",
     "salt_value": "salinity",
+    "salt_tds": "salinity",
     # Specific Gravity
     "sg_value": "specific_gravity",
     "specific_gravity": "specific_gravity",
@@ -218,6 +220,17 @@ class TuyaConnector(BaseConnector):
                         continue
 
                     statuses = data.get("result", [])
+
+                    # Also fetch recent device logs for report-only DPs
+                    # (pH, EC, ORP are often report-type and not in /status)
+                    log_statuses = await self._fetch_recent_logs(client, device_id)
+                    if log_statuses:
+                        # Merge log DPs (don't overwrite /status values)
+                        status_codes = {s.get("code") for s in statuses}
+                        for ls in log_statuses:
+                            if ls.get("code") not in status_codes:
+                                statuses.append(ls)
+
                     reading = self._map_statuses(statuses, dm)
                     result.readings.append(reading)
 
@@ -227,6 +240,38 @@ class TuyaConnector(BaseConnector):
                     result.errors.append(f"Tuya poll error for {device_id}: {e!s}")
 
         return result
+
+    async def _fetch_recent_logs(self, client: httpx.AsyncClient, device_id: str) -> list[dict[str, Any]]:
+        """Fetch recent device DP logs for report-only data points.
+
+        The /v1.0/devices/{id}/logs endpoint returns DP changes that are
+        report-type (e.g. pH, EC, ORP on water monitors) which don't
+        appear in the /status endpoint.
+        """
+        end_time = int(time.time() * 1000)
+        # Look back 10 minutes for recent reports
+        start_time = end_time - 10 * 60 * 1000
+        path = f"/v1.0/devices/{device_id}/logs?type=7&start_time={start_time}&end_time={end_time}&size=50"
+        try:
+            data = await self._api_get(client, path)
+            if not data.get("success"):
+                logger.debug("Tuya logs API failed for %s: %s", device_id, data.get("msg"))
+                return []
+
+            logs = data.get("result", {}).get("logs", [])
+            # Convert log entries to status format: {"code": "...", "value": ...}
+            statuses: list[dict[str, Any]] = []
+            seen_codes: set[str] = set()
+            for log_entry in logs:
+                code = log_entry.get("code", "")
+                if code and code not in seen_codes:
+                    seen_codes.add(code)
+                    # Use the most recent value for each code
+                    statuses.append({"code": code, "value": log_entry.get("value")})
+            return statuses
+        except Exception as e:
+            logger.debug("Tuya logs fetch failed for %s: %s", device_id, e)
+            return []
 
     def _map_statuses(
         self,
@@ -300,13 +345,15 @@ class TuyaConnector(BaseConnector):
                     numeric = float(value)
                 except (ValueError, TypeError):
                     continue
-                # Tuya water temp is deg C x 10
+                # Tuya water temp: /status sends deg C x10 (e.g. 196=19.6);
+                # logs API may send actual value (e.g. 19.6)
                 if tendril_key == "water_temp_c":
-                    reading[tendril_key] = numeric / 10
-                # Tuya EC is μS/cm, store as mS/cm
+                    reading[tendril_key] = numeric / 10 if numeric > 60 else numeric
+                # EC: /status sends μS/cm (e.g. 610); logs sends mS/cm (e.g. 0.61)
+                # If value > 20, assume μS/cm and convert
                 elif tendril_key == "ec":
-                    reading[tendril_key] = numeric / 1000
-                # Tuya pH is typically scaled x100 (e.g. 623 = 6.23)
+                    reading[tendril_key] = numeric / 1000 if numeric > 20 else numeric
+                # pH: /status may send x100 (e.g. 575=5.75); logs sends actual (5.75)
                 elif tendril_key == "ph":
                     reading[tendril_key] = numeric / 100 if numeric > 14 else numeric
                 else:
