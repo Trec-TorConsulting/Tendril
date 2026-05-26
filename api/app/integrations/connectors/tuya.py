@@ -26,6 +26,7 @@ from typing import Any
 
 import httpx
 from pydantic import BaseModel
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.grows.models import BucketSensorReading, TentSensorReading
@@ -44,12 +45,15 @@ _WATER_DP_MAP: dict[str, str] = {
     "tds_out": "ppm",
     "tds_value": "ppm",
     "tds": "ppm",
-    # pH
+    # pH (various Tuya water monitor brands: Yinmik, Tuya generic, etc.)
     "ph_value": "ph",
     "ph": "ph",
+    "ph_current": "ph",
+    "ph_sensor": "ph",
     # EC (μS/cm → mS/cm in persist)
     "ec_value": "ec",
     "ec": "ec",
+    "ec_current": "ec",
     "conductivity_value": "ec",
     # CF (Conductivity Factor - same as EC on most Tuya monitors)
     "cf": "ec",
@@ -421,12 +425,30 @@ class TuyaConnector(BaseConnector):
                 water_temp_c = reading.get("water_temp_c")
                 water_temp_f = (water_temp_c * 9 / 5 + 32) if water_temp_c is not None else None
 
+                # Carry forward pH from most recent reading if current poll has none.
+                # pH sensors report infrequently but the value is still valid.
+                ph_value = reading.get("ph")
+                if ph_value is None:
+                    last_row = (
+                        await session.execute(
+                            select(BucketSensorReading.ph)
+                            .where(
+                                BucketSensorReading.bucket_id == bucket_id,
+                                BucketSensorReading.ph.isnot(None),
+                            )
+                            .order_by(desc(BucketSensorReading.recorded_at))
+                            .limit(1)
+                        )
+                    ).scalar_one_or_none()
+                    if last_row is not None:
+                        ph_value = last_row
+
                 row = BucketSensorReading(
                     tenant_id=tenant_id,
                     bucket_id=bucket_id,
                     device_id=f"tuya:{external_id}",
                     water_temp_f=water_temp_f,
-                    ph=reading.get("ph"),
+                    ph=ph_value,
                     ec=reading.get("ec"),
                     ppm=reading.get("ppm"),
                     water_level_pct=reading.get("water_level_pct"),
