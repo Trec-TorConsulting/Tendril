@@ -74,7 +74,13 @@ async def create_reading(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Record a new bucket sensor reading (pH, EC, temperature, etc.)."""
-    reading = BucketSensorReading(tenant_id=user.tenant_id, **body.model_dump())
+    data = body.model_dump()
+    # Auto-derive EC↔PPM when only one is provided
+    if data.get("ec") is not None and data.get("ppm") is None:
+        data["ppm"] = round(data["ec"] * 500.0, 1)
+    elif data.get("ppm") is not None and data.get("ec") is None:
+        data["ec"] = round(data["ppm"] / 500.0, 3)
+    reading = BucketSensorReading(tenant_id=user.tenant_id, **data)
     session.add(reading)
     await session.commit()
     await session.refresh(reading)

@@ -104,6 +104,20 @@ _TENT_SENSOR_FIELDS = {
 }
 
 
+EC_PPM_FACTOR = 500.0  # PPM = EC (mS/cm) x 500 (NaCl/Hanna scale)
+
+
+def _derive_ec_ppm(values: dict) -> dict:
+    """Auto-derive EC from PPM or vice versa when only one is present."""
+    ec = values.get("ec")
+    ppm = values.get("ppm")
+    if ec is not None and ppm is None:
+        values["ppm"] = round(ec * EC_PPM_FACTOR, 1)
+    elif ppm is not None and ec is None:
+        values["ec"] = round(ppm / EC_PPM_FACTOR, 3)
+    return values
+
+
 async def store_sensor_reading(tenant_id: UUID, device_id_str: str, sensor_type: str, payload: dict) -> None:
     """Persist an MQTT sensor payload to the appropriate readings table.
 
@@ -181,6 +195,7 @@ async def store_sensor_reading(tenant_id: UUID, device_id_str: str, sensor_type:
             values = {k: float(v) for k, v in payload.items() if k in _BUCKET_SENSOR_FIELDS and v is not None}
             if not values:
                 return
+            _derive_ec_ppm(values)
             reading = BucketSensorReading(
                 tenant_id=tenant_id,
                 bucket_id=bucket.id,

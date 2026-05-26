@@ -118,14 +118,22 @@ async def quick_log_feeding(
     recorded_at = body.recorded_at or datetime.now(UTC)
     nutrient_payload = [n.model_dump() for n in body.nutrients] if body.nutrients else None
 
+    # Auto-derive EC↔PPM when only one is provided
+    ec = body.ec
+    ppm = body.ppm
+    if ec is not None and ppm is None:
+        ppm = round(ec * 500.0, 1)
+    elif ppm is not None and ec is None:
+        ec = round(ppm / 500.0, 3)
+
     for bucket in buckets:
         # Create sensor reading
         reading = BucketSensorReading(
             tenant_id=user.tenant_id,
             bucket_id=bucket.id,
             ph=body.ph,
-            ec=body.ec,
-            ppm=body.ppm,
+            ec=ec,
+            ppm=ppm,
             water_temp_f=body.water_temp_f,
             recorded_at=recorded_at,
         )
@@ -255,14 +263,22 @@ async def quick_log_batch(
                     errors.append(f"Action {i}: bucket not found")
                     continue
                 nutrient_payload = [n.model_dump() for n in req.nutrients] if req.nutrients else None
+                # Auto-derive EC↔PPM
+                _ec = req.ec
+                _ppm = req.ppm
+                if _ec is not None and _ppm is None:
+                    _ppm = round(_ec * 500.0, 1)
+                elif _ppm is not None and _ec is None:
+                    _ec = round(_ppm / 500.0, 3)
+
                 for bucket in buckets:
                     session.add(
                         BucketSensorReading(
                             tenant_id=user.tenant_id,
                             bucket_id=bucket.id,
                             ph=req.ph,
-                            ec=req.ec,
-                            ppm=req.ppm,
+                            ec=_ec,
+                            ppm=_ppm,
                             water_temp_f=req.water_temp_f,
                             recorded_at=action.client_timestamp,
                         )

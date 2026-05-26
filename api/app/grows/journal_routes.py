@@ -138,12 +138,19 @@ async def create_quick_entry(
     reading_id = None
     has_reading = any([body.ph, body.ec, body.ppm, body.water_temp_f])
     if has_reading:
+        # Auto-derive EC↔PPM when only one is provided
+        ec = body.ec
+        ppm = body.ppm
+        if ec is not None and ppm is None:
+            ppm = round(ec * 500.0, 1)
+        elif ppm is not None and ec is None:
+            ec = round(ppm / 500.0, 3)
         reading = BucketSensorReading(
             tenant_id=user.tenant_id,
             bucket_id=body.bucket_id,
             ph=body.ph,
-            ec=body.ec,
-            ppm=body.ppm,
+            ec=ec,
+            ppm=ppm,
             water_temp_f=body.water_temp_f,
         )
         session.add(reading)
