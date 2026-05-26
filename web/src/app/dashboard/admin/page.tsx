@@ -8,6 +8,7 @@ import {
   adminListTenants,
   adminListUsers,
   adminUpdateUserFlags,
+  adminDeleteTenant,
 } from "@/lib/api";
 import type { AdminTenantSummary, AdminUserSummary } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -65,6 +66,20 @@ export default function AdminPage() {
       refresh();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to update");
+    }
+  };
+
+  const handleDeleteTenant = async (tenantId: string, tenantName: string) => {
+    if (!confirm(`Schedule deletion of "${tenantName}"? Data will be purged after 30 days.`)) return;
+    const token = getAccessToken();
+    if (!token) return;
+    try {
+      const res = await adminDeleteTenant(token, tenantId);
+      setError("");
+      alert(res.message);
+      refresh();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to delete tenant");
     }
   };
 
@@ -139,7 +154,8 @@ export default function AdminPage() {
                     <th className="pb-2 pr-4">Slug</th>
                     <th className="pb-2 pr-4">Plan</th>
                     <th className="pb-2 pr-4">Users</th>
-                    <th className="pb-2">Created</th>
+                    <th className="pb-2 pr-4">Created</th>
+                    <th className="pb-2">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -153,8 +169,17 @@ export default function AdminPage() {
                         </span>
                       </td>
                       <td className="py-2 pr-4 text-white">{t.user_count}</td>
-                      <td className="py-2 text-neutral-500">
+                      <td className="py-2 pr-4 text-neutral-500">
                         {formatDate(t.created_at)}
+                      </td>
+                      <td className="py-2">
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => handleDeleteTenant(t.id, t.name)}
+                        >
+                          Delete
+                        </Button>
                       </td>
                     </tr>
                   ))}

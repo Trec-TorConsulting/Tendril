@@ -2,20 +2,24 @@
 
 from __future__ import annotations
 
+import logging
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, require_platform_admin, require_support_or_admin
+from app.config import get_settings
 from app.database import async_session_factory
 from app.pagination import PaginatedResponse, PaginationParams
 from app.tenants.models import Account, PlatformRole, Tenant, TenantMembership, TenantRole, User
 
 router = APIRouter()
+logger = logging.getLogger("tendril.admin")
 
 
 async def _get_db():
@@ -320,3 +324,77 @@ async def platform_stats(
         "total_users": user_count,
         "plans": dict(plan_counts),
     }
+
+
+# ---------- Tenant deletion (admin only) ----------
+
+
+class TenantDeletionResponse(BaseModel):
+    status: str  # scheduled | deleted
+    deletion_date: str | None = None
+    message: str
+
+
+@router.delete("/tenants/{tenant_id}", response_model=TenantDeletionResponse)
+async def delete_tenant(
+    tenant_id: UUID,
+    _admin: Annotated[CurrentUser, Depends(require_platform_admin)],
+    db: Annotated[AsyncSession, Depends(_get_db)],
+    force: bool = Query(default=False, description="Immediately hard-delete (API only)"),
+):
+    """Delete an organization. Schedules 30-day grace period by default.
+
+    Use ?force=true for immediate hard deletion (API-only, not exposed in UI).
+    """
+    result = await db.execute(select(Tenant).where(Tenant.id == tenant_id))
+    tenant = result.scalar_one_or_none()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+
+    if force:
+        # Immediate hard delete — remove memberships, tenant, and account
+        tenant_name = tenant.name
+        account = await db.get(Account, tenant.account_id) if tenant.account_id else None
+
+        await db.execute(delete(TenantMembership).where(TenantMembership.tenant_id == tenant.id))
+        await db.delete(tenant)
+        if account:
+            # Only delete account if no other tenants reference it
+            other_tenants = (
+                await db.execute(
+                    select(func.count(Tenant.id)).where(Tenant.account_id == account.id, Tenant.id != tenant_id)
+                )
+            ).scalar()
+            if not other_tenants:
+                await db.delete(account)
+
+        await db.commit()
+        logger.warning("Admin force-deleted tenant %s (%s)", tenant_id, tenant_name)
+        return TenantDeletionResponse(
+            status="deleted",
+            message=f"Organization '{tenant_name}' and all its data have been permanently deleted.",
+        )
+
+    # Default: schedule 30-day grace period
+    settings = get_settings()
+    deletion_date = datetime.now(UTC) + timedelta(days=settings.data_retention_days)
+
+    account = await db.get(Account, tenant.account_id) if tenant.account_id else None
+    if account:
+        account.deletion_scheduled_at = datetime.now(UTC)
+        account.deletion_date = deletion_date
+    else:
+        tenant.deletion_scheduled_at = datetime.now(UTC)
+        tenant.deletion_date = deletion_date
+
+    await db.commit()
+    logger.info("Admin scheduled deletion of tenant %s (%s) for %s", tenant_id, tenant.name, deletion_date)
+
+    return TenantDeletionResponse(
+        status="scheduled",
+        deletion_date=deletion_date.isoformat(),
+        message=(
+            f"Organization '{tenant.name}' scheduled for deletion on"
+            f" {deletion_date.strftime('%B %d, %Y')}. Data will be purged after this date."
+        ),
+    )
