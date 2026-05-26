@@ -3,7 +3,7 @@
 ### Plumbing & System Architecture (RDWC's Core Differentiator)
 - [ ] 1.1 Define plumbing architecture section: pipe sizing table by site count (2-50+), flow patterns (waterfall vs current-culture), fitting guide
 - [ ] 1.2 Define system sizing calculator: total water volume, pump GPH, airline requirements, chiller BTU sizing
-- [ ] 1.3 Define central reservoir management: control bucket sizing rules, sensor placement, dosing integration points
+- [x] 1.3 Define central reservoir management: control bucket sizing rules, sensor placement, dosing integration points
 - [ ] 1.4 Define flow distribution targets: GPH per site by pipe diameter, manifold vs daisy-chain guidance
 - [ ] 1.5 Define failure mode responses: pump failure, line clog, leak, power outage — severity + response time + protocol
 - [ ] 1.6 Define cross-contamination protocol: quarantine, isolation valves, system flush, sterilization
