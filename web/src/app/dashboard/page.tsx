@@ -29,6 +29,7 @@ import { formatTemp, tempUnitLabel } from "@/lib/units";
 import { isActiveHydro } from "@/lib/terminology";
 import { CameraGrid } from "@/components/camera-grid";
 import { Sparkline, SensorSparkline } from "@/components/sparkline";
+import { MultiMetricCard } from "@/components/multi-metric-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -79,6 +80,10 @@ interface ClimateDataPoint {
   time: string;
   temperature: number | null;
   humidity: number | null;
+  water_temp: number | null;
+  ph: number | null;
+  ppm: number | null;
+  water_level: number | null;
 }
 
 // Stage durations (days) used for progress calculation
@@ -206,16 +211,28 @@ export default function DashboardPage() {
       }
       setBucketLastReading(bucketLatest);
 
-      // Build 24h climate chart from tent readings
-      const climate: ClimateDataPoint[] = tentReadings
-        .slice(0, 24)
-        .reverse()
-        .map((r) => ({
-          time: new Date(r.recorded_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          temperature: r.ambient_temp_f,
-          humidity: r.ambient_humidity,
-        }));
-      setClimateData(climate);
+      // Build 24h analytics chart combining tent + sensor data by timestamp
+      const timeSlots = new Map<string, ClimateDataPoint>();
+      for (const r of tentReadings.slice(0, 30).reverse()) {
+        const time = new Date(r.recorded_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        const existing = timeSlots.get(time) || { time, temperature: null, humidity: null, water_temp: null, ph: null, ppm: null, water_level: null };
+        existing.temperature = r.ambient_temp_f ?? existing.temperature;
+        existing.humidity = r.ambient_humidity ?? existing.humidity;
+        timeSlots.set(time, existing);
+      }
+      for (const r of growSensorReadings.slice(0, 30).reverse()) {
+        const time = new Date(r.recorded_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        const existing = timeSlots.get(time) || { time, temperature: null, humidity: null, water_temp: null, ph: null, ppm: null, water_level: null };
+        existing.water_temp = r.water_temp_f ?? existing.water_temp;
+        existing.ph = r.ph ?? existing.ph;
+        existing.ppm = r.ppm ?? existing.ppm;
+        existing.water_level = r.water_level_pct ?? existing.water_level;
+        // Fallback ambient from bucket if tent not available
+        if (!existing.temperature && r.ambient_temp_f) existing.temperature = r.ambient_temp_f;
+        if (!existing.humidity && r.ambient_humidity) existing.humidity = r.ambient_humidity;
+        timeSlots.set(time, existing);
+      }
+      setClimateData(Array.from(timeSlots.values()));
     } finally {
       setLoading(false);
     }
@@ -449,18 +466,18 @@ export default function DashboardPage() {
                 </motion.section>
               )}
 
-              {/* ─── Climate Analytics ─────────────────────────────── */}
+              {/* ─── Analytics ─────────────────────────────── */}
               {climateData.length >= 2 && (
                 <motion.section {...fadeUp} transition={{ duration: 0.4, delay: 0.2 }}>
                   <Card className="border-border/50 backdrop-blur-sm">
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
                         <TrendingUp className="size-5 text-primary" />
-                        Climate Analytics — 24h
+                        Grow Analytics — 24h
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="h-64">
+                      <div className="h-72">
                         <ResponsiveContainer width="100%" height="100%">
                           <LineChart data={climateData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                             <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" opacity={0.5} />
@@ -478,7 +495,7 @@ export default function DashboardPage() {
                               domain={["dataMin - 5", "dataMax + 5"]}
                             />
                             <YAxis
-                              yAxisId="humidity"
+                              yAxisId="pct"
                               orientation="right"
                               tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }}
                               tickLine={false}
@@ -494,7 +511,7 @@ export default function DashboardPage() {
                               }}
                             />
                             <Legend
-                              wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
+                              wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
                             />
                             <Line
                               yAxisId="temp"
@@ -503,17 +520,65 @@ export default function DashboardPage() {
                               stroke="oklch(0.65 0.15 30)"
                               strokeWidth={2}
                               dot={false}
-                              name={`Temp (${tempUnitLabel(prefs.temp_unit)})`}
+                              name={`Tent Temp (${tempUnitLabel(prefs.temp_unit)})`}
+                              connectNulls
                             />
                             <Line
-                              yAxisId="humidity"
+                              yAxisId="pct"
                               type="monotone"
                               dataKey="humidity"
                               stroke="oklch(0.65 0.14 200)"
                               strokeWidth={2}
                               dot={false}
                               name="Humidity (%)"
+                              connectNulls
                             />
+                            {isHydro && (
+                              <>
+                                <Line
+                                  yAxisId="temp"
+                                  type="monotone"
+                                  dataKey="water_temp"
+                                  stroke="#f97316"
+                                  strokeWidth={2}
+                                  dot={false}
+                                  name={`Water Temp (${tempUnitLabel(prefs.temp_unit)})`}
+                                  connectNulls
+                                />
+                                <Line
+                                  yAxisId="temp"
+                                  type="monotone"
+                                  dataKey="ph"
+                                  stroke="#10b981"
+                                  strokeWidth={2}
+                                  dot={false}
+                                  name="pH"
+                                  connectNulls
+                                />
+                                <Line
+                                  yAxisId="temp"
+                                  type="monotone"
+                                  dataKey="ppm"
+                                  stroke="#3b82f6"
+                                  strokeWidth={1.5}
+                                  strokeDasharray="4 2"
+                                  dot={false}
+                                  name="PPM"
+                                  connectNulls
+                                />
+                                <Line
+                                  yAxisId="pct"
+                                  type="monotone"
+                                  dataKey="water_level"
+                                  stroke="#8b5cf6"
+                                  strokeWidth={1.5}
+                                  strokeDasharray="4 2"
+                                  dot={false}
+                                  name="Water Level (%)"
+                                  connectNulls
+                                />
+                              </>
+                            )}
                           </LineChart>
                         </ResponsiveContainer>
                       </div>
@@ -695,60 +760,6 @@ function EnvironmentBadgeCard({
         >
           {statusLabel}
         </Badge>
-      </CardContent>
-    </Card>
-  );
-}
-
-interface MetricRow {
-  label: string;
-  value: string;
-  status: "optimal" | "warning" | "unknown";
-}
-
-function MultiMetricCard({
-  title,
-  icon,
-  metrics,
-  updatedAgo,
-}: {
-  title: string;
-  icon: React.ReactNode;
-  metrics: MetricRow[];
-  updatedAgo?: string | null;
-}) {
-  const overallStatus = metrics.some((m) => m.status === "warning")
-    ? "warning"
-    : metrics.every((m) => m.status === "optimal")
-      ? "optimal"
-      : "unknown";
-
-  const statusColor = {
-    optimal: "bg-primary/10 text-primary border-primary/20",
-    warning: "bg-orange-500/10 text-orange-500 border-orange-500/20",
-    unknown: "bg-muted text-muted-foreground border-border",
-  }[overallStatus];
-
-  return (
-    <Card className={`border ${statusColor.split(" ").find((c) => c.startsWith("border-")) || "border-border"} backdrop-blur-sm`}>
-      <CardContent className="flex gap-4 py-4">
-        <div className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${statusColor.split(" ").slice(0, 2).join(" ")}`}>
-          {icon}
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-xs font-medium text-muted-foreground mb-1">{title}</p>
-          <div className="space-y-0.5">
-            {metrics.map((m) => (
-              <div key={m.label} className="flex items-baseline justify-between gap-2">
-                <span className="text-[11px] text-muted-foreground">{m.label}</span>
-                <span className={`text-sm font-bold ${m.status === "warning" ? "text-orange-500" : m.status === "optimal" ? "text-foreground" : "text-muted-foreground"}`}>
-                  {m.value}
-                </span>
-              </div>
-            ))}
-          </div>
-          {updatedAgo && <p className="text-[10px] text-muted-foreground mt-1">{updatedAgo}</p>}
-        </div>
       </CardContent>
     </Card>
   );
