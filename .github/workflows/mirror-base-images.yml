@@ -1,0 +1,38 @@
+name: Mirror Base Images
+
+on:
+  schedule:
+    - cron: "0 4 * * 0" # Every Sunday at 4:00 AM UTC
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  mirror:
+    name: Mirror to Local Registry
+    runs-on: arc-runner-arm64
+    strategy:
+      matrix:
+        include:
+          - source: python:3.12-slim-bookworm
+            target: 192.168.4.10:30500/mirror/python:3.12-slim-bookworm
+          - source: node:26-slim
+            target: 192.168.4.10:30500/mirror/node:26-slim
+    steps:
+      - uses: docker/setup-buildx-action@v4
+        with:
+          buildkitd-config-inline: |
+            [registry."192.168.4.10:30500"]
+              http = true
+
+      - name: Pull, tag, and push (${{ matrix.source }})
+        run: |
+          docker pull --platform linux/arm64 ${{ matrix.source }}
+          docker tag ${{ matrix.source }} ${{ matrix.target }}-arm64
+          docker push ${{ matrix.target }}-arm64
+
+          docker pull --platform linux/amd64 ${{ matrix.source }}
+          docker tag ${{ matrix.source }} ${{ matrix.target }}-amd64
+          docker push ${{ matrix.target }}-amd64
+
+          docker buildx imagetools create -t ${{ matrix.target }} \
+            ${{ matrix.target }}-arm64 \
+            ${{ matrix.target }}-amd64

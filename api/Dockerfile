@@ -1,4 +1,4 @@
-FROM python:3.12-slim-bookworm
+FROM 192.168.4.10:30500/mirror/python:3.12-slim-bookworm
 
 WORKDIR /app
 
