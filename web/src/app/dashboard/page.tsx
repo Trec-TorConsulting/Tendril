@@ -14,7 +14,6 @@ import {
   completeTask,
   getHarvestCountdown,
   listSensorReadings,
-  getLatestReading,
   listTentReadings,
   type DeviceResponse,
   type HarvestCountdownItem,
@@ -135,13 +134,11 @@ export default function DashboardPage() {
       const tentId = selectedGrow.tent_id;
       const growId = selectedGrow.id;
 
-      const [d, hc, b, tk, sensorReadings, tentReadings] = await Promise.all([
+      const [d, hc, b, tk, tentReadings] = await Promise.all([
         listDevices(token).catch(() => [] as DeviceResponse[]),
         getHarvestCountdown(token).catch(() => [] as HarvestCountdownItem[]),
         listBuckets(token, growId).catch(() => [] as BucketResponse[]),
         listTasks(token, { status: "pending", grow_cycle_id: growId }).catch(() => [] as TaskItem[]),
-        // Sensor readings will be filtered client-side by bucket IDs
-        listSensorReadings(token, undefined, 50).catch(() => [] as SensorReadingResponse[]),
         listTentReadings(token, tentId, 50).catch(() => [] as TentReadingResponse[]),
       ]);
       setDevices(d);
@@ -169,35 +166,25 @@ export default function DashboardPage() {
         ...sortedHealth.slice(0, 1), // Only the NEXT health action
       ]);
 
-      // Filter sensor readings to only this grow's buckets
-      const bucketIds = new Set(b.map((bk) => bk.id));
-      const growSensorReadings = sensorReadings.filter((r) => bucketIds.has(r.bucket_id));
-
-      // Fetch latest reading per bucket directly — ensures manual entries
-      // (which may not appear in the global top-50) are always included
-      const perBucketLatest = await Promise.all(
-        b.map((bk) => getLatestReading(token, bk.id).catch(() => null))
+      // Fetch sensor readings per bucket (same as grow detail page) so sparse
+      // metrics like pH and water_level are not lost in a global top-50 slice.
+      const perBucketReadings = await Promise.all(
+        b.map((bk) => listSensorReadings(token, bk.id, 30).catch(() => [] as SensorReadingResponse[]))
       );
-      // Merge per-bucket latest into growSensorReadings if not already present
-      const existingIds = new Set(growSensorReadings.map((r) => r.id));
-      for (const r of perBucketLatest) {
-        if (r && !existingIds.has(r.id)) {
-          growSensorReadings.push(r);
-          existingIds.add(r.id);
-        }
-      }
-      // Sort combined results by recorded_at descending
-      growSensorReadings.sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime());
+      const growSensorReadings = perBucketReadings
+        .flat()
+        .sort((a, bb) => new Date(bb.recorded_at).getTime() - new Date(a.recorded_at).getTime());
 
-      const phVals = growSensorReadings.map((r) => r.ph).filter((v): v is number => v != null).reverse();
-      const ecVals = growSensorReadings.map((r) => r.ec).filter((v): v is number => v != null).reverse();
-      const ppmVals = growSensorReadings.map((r) => r.ppm).filter((v): v is number => v != null).reverse();
-      const waterTempVals = growSensorReadings.map((r) => r.water_temp_f).filter((v): v is number => v != null).reverse();
-      const waterLevelVals = growSensorReadings.map((r) => r.water_level_pct).filter((v): v is number => v != null).reverse();
+      // Build each metric independently so sparse metrics are not dropped
+      const phVals = growSensorReadings.map((r) => r.ph).filter((v): v is number => v != null).slice(0, 30).reverse();
+      const ecVals = growSensorReadings.map((r) => r.ec).filter((v): v is number => v != null).slice(0, 30).reverse();
+      const ppmVals = growSensorReadings.map((r) => r.ppm).filter((v): v is number => v != null).slice(0, 30).reverse();
+      const waterTempVals = growSensorReadings.map((r) => r.water_temp_f).filter((v): v is number => v != null).slice(0, 30).reverse();
+      const waterLevelVals = growSensorReadings.map((r) => r.water_level_pct).filter((v): v is number => v != null).slice(0, 30).reverse();
       const tentTempVals = tentReadings.map((r) => r.ambient_temp_f).filter((v): v is number => v != null).reverse();
       const tentHumVals = tentReadings.map((r) => r.ambient_humidity).filter((v): v is number => v != null).reverse();
-      const bucketTempVals = growSensorReadings.map((r) => r.ambient_temp_f).filter((v): v is number => v != null).reverse();
-      const bucketHumVals = growSensorReadings.map((r) => r.ambient_humidity).filter((v): v is number => v != null).reverse();
+      const bucketTempVals = growSensorReadings.map((r) => r.ambient_temp_f).filter((v): v is number => v != null).slice(0, 30).reverse();
+      const bucketHumVals = growSensorReadings.map((r) => r.ambient_humidity).filter((v): v is number => v != null).slice(0, 30).reverse();
       const tempVals = tentTempVals.length > 0 ? tentTempVals : bucketTempVals;
       const humVals = tentHumVals.length > 0 ? tentHumVals : bucketHumVals;
       setSensorTrends({ ph: phVals, ec: ecVals, ppm: ppmVals, water_temp: waterTempVals, water_level: waterLevelVals, temp: tempVals, humidity: humVals });
