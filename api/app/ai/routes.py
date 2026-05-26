@@ -352,6 +352,15 @@ async def run_health_check(
     await session.commit()
     await session.refresh(health_eval)
 
+    # Generate fresh tasks from health check actions (cancels old ones first)
+    if actions:
+        from app.scheduler.task_generator import create_tasks_from_health_eval
+
+        try:
+            await create_tasks_from_health_eval(session, grow, score, issues, actions)
+        except Exception:
+            logger.exception("Failed to create tasks from manual health check for grow %s", grow.id)
+
     await record_usage(session, user.tenant_id, "ai_analyses")
     await session.commit()
 

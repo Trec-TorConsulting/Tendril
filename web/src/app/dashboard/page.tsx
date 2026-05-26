@@ -150,27 +150,24 @@ export default function DashboardPage() {
       setDevices(d);
       setCountdown(hc.filter((h) => h.grow_id === growId));
       setBuckets(b);
-      // Only show actionable tasks: alerts + health fix actions
-      // Daily routines live on the full Tasks page — they don't belong here
-      const alertTasks = tk.filter((t) => t.category === "alert_response");
-      const healthTasks = tk.filter((t) => t.source === "ai" || t.category === "health_response");
+      // Only show fresh, actionable tasks (12h TTL — health check regenerates them)
+      const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000);
+      const freshTasks = tk.filter((t) => new Date(t.created_at ?? t.due_date ?? 0) > twelveHoursAgo);
 
-      // Priority sort: alerts by severity, health by due date
-      const sortedAlerts = [...alertTasks].sort((a, b) => {
-        const prio = { urgent: 0, high: 1, medium: 2, low: 3 };
-        return (prio[a.priority as keyof typeof prio] ?? 3) - (prio[b.priority as keyof typeof prio] ?? 3);
-      });
-      const sortedHealth = [...healthTasks].sort((a, b) => {
-        if (!a.due_date && !b.due_date) return 0;
-        if (!a.due_date) return 1;
-        if (!b.due_date) return -1;
-        return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
-      });
+      const alertTasks = freshTasks.filter((t) => t.category === "alert_response");
+      const healthTasks = freshTasks.filter((t) => t.source === "ai" || t.category === "health_response");
 
-      setTasks([
-        ...sortedAlerts,
-        ...sortedHealth.slice(0, 1), // Only the NEXT health action
-      ]);
+      // Priority sort: alerts by severity, health by priority then due date
+      const prio = { urgent: 0, high: 1, medium: 2, low: 3 } as const;
+      const sortedAlerts = [...alertTasks].sort((a, b) =>
+        (prio[a.priority as keyof typeof prio] ?? 3) - (prio[b.priority as keyof typeof prio] ?? 3)
+      );
+      const sortedHealth = [...healthTasks].sort((a, b) =>
+        (prio[a.priority as keyof typeof prio] ?? 3) - (prio[b.priority as keyof typeof prio] ?? 3)
+      );
+
+      // Cap at 5 total — focused, not lengthy
+      setTasks([...sortedAlerts, ...sortedHealth].slice(0, 5));
 
       // Fetch sensor readings per bucket (same as grow detail page) so sparse
       // metrics like pH and water_level are not lost in a global top-50 slice.

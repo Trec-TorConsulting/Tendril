@@ -13,7 +13,7 @@ from datetime import UTC, datetime, time, timedelta
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.commercial.models import Task
@@ -1767,6 +1767,32 @@ async def generate_all_tasks(session: AsyncSession) -> int:
 
 # ── Health eval → tasks ──────────────────────────────────────────────
 
+# Tasks generated from health checks expire after 12 hours.
+# Each new health check replaces the previous set of tasks.
+HEALTH_TASK_TTL_HOURS = 12
+
+
+async def expire_health_tasks(session: AsyncSession, grow_id: UUID) -> int:
+    """Cancel all pending/in-progress health_response tasks for a grow.
+
+    Called before creating new tasks from a health check so the task list
+    stays fresh and relevant to the current state of the plants.
+    """
+    result = await session.execute(
+        update(Task)
+        .where(
+            Task.grow_cycle_id == grow_id,
+            Task.category == "health_response",
+            Task.source == "ai",
+            Task.status.in_(["pending", "in_progress"]),
+        )
+        .values(status="cancelled")
+    )
+    cancelled = result.rowcount  # type: ignore[assignment]
+    if cancelled:
+        logger.info("Cancelled %d stale health tasks for grow %s", cancelled, grow_id)
+    return cancelled
+
 
 async def create_tasks_from_health_eval(
     session: AsyncSession,
@@ -1775,13 +1801,19 @@ async def create_tasks_from_health_eval(
     issues: list[str],
     actions: list[str],
 ) -> int:
-    """Create tasks from health evaluation results."""
+    """Create tasks from health evaluation results.
+
+    Cancels any existing pending health tasks first so the list stays
+    fresh and relevant (12h TTL policy).
+    """
+    # Cancel previous health tasks — new eval replaces old actions
+    await expire_health_tasks(session, grow.id)
+
     owner_id = await _get_tenant_owner(session, grow.tenant_id)
     if not owner_id:
         return 0
 
     now = datetime.now(UTC)
-    tz = await _get_user_timezone(session, owner_id)
     created = 0
 
     if score is not None:
@@ -1796,27 +1828,10 @@ async def create_tasks_from_health_eval(
     else:
         priority = "medium"
 
-    existing_ai_tasks = (
-        (
-            await session.execute(
-                select(Task.title).where(
-                    Task.grow_cycle_id == grow.id,
-                    Task.source == "ai",
-                    Task.category == "health_response",
-                    Task.status.in_(["pending", "in_progress"]),
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
-    existing_titles = {t.lower().strip() for t in existing_ai_tasks}
+    # Due within 12 hours (next health check will replace these)
+    due_time = now + timedelta(hours=HEALTH_TASK_TTL_HOURS)
 
     for action in actions:
-        action_lower = action.lower().strip()
-        if any(_similar(action_lower, existing) for existing in existing_titles):
-            continue
-
         related_issues = [i for i in issues if _related(action, i)]
         desc_parts = [action]
         if related_issues:
@@ -1825,8 +1840,6 @@ async def create_tasks_from_health_eval(
                 desc_parts.append(f"  • {issue}")
         if score is not None:
             desc_parts.append(f"\nHealth score: {score}/100")
-
-        due_time = _local_to_utc(_get_routine_time("morning", tz), now + timedelta(days=1 if now.hour >= 9 else 0), tz)
 
         task = Task(
             tenant_id=grow.tenant_id,
@@ -1844,7 +1857,6 @@ async def create_tasks_from_health_eval(
             estimated_minutes=10,
         )
         session.add(task)
-        existing_titles.add(action_lower)
         created += 1
 
     if created:
@@ -1852,11 +1864,6 @@ async def create_tasks_from_health_eval(
         logger.info("Created %d AI tasks from health eval (score=%s) for grow %s", created, score, grow.id)
 
     return created
-
-
-def _similar(a: str, b: str) -> bool:
-    """Quick similarity check — if first 40 chars match, consider duplicate."""
-    return a[:40] == b[:40]
 
 
 def _related(action: str, issue: str) -> bool:
