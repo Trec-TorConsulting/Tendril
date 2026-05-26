@@ -78,6 +78,31 @@ async def create_bucket(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Create a new bucket (plant site) in a grow cycle."""
+    from app.grows.models import GrowCycle
+
+    # Validate role
+    if body.role not in ("site", "header"):
+        raise HTTPException(status_code=400, detail="Invalid role: must be 'site' or 'header'")
+
+    # For RDWC grows, enforce at most one header per grow
+    if body.role == "header":
+        grow = await session.get(GrowCycle, body.grow_cycle_id)
+        if not grow:
+            raise HTTPException(status_code=404, detail="Grow cycle not found")
+        if grow.grow_type == "rdwc":
+            existing_header = await session.scalar(
+                select(Bucket).where(
+                    Bucket.grow_cycle_id == body.grow_cycle_id,
+                    Bucket.role == "header",
+                )
+            )
+            if existing_header:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"RDWC grow already has a header bucket: {existing_header.label or 'Unnamed'}. "
+                    "Only one header is allowed per grow. Update the existing header's role to 'site' first.",
+                )
+
     data = body.model_dump()
     # Auto-populate strain_name from strain if strain_id provided
     if data.get("strain_id") and not data.get("strain_name"):
@@ -140,15 +165,39 @@ async def update_bucket(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Update a bucket's details."""
+    from app.grows.models import GrowCycle
+
     bucket = await session.get(Bucket, bucket_id)
     if bucket is None:
         raise HTTPException(status_code=404, detail="Bucket not found")
+
     updates = body.model_dump(exclude_unset=True)
+
+    # Validate role if being changed
+    if "role" in updates and updates["role"] not in ("site", "header"):
+        raise HTTPException(status_code=400, detail="Invalid role: must be 'site' or 'header'")
+
+    # For RDWC grows, enforce at most one header and handle transitions
+    if "role" in updates and updates["role"] == "header":
+        grow = await session.get(GrowCycle, bucket.grow_cycle_id)
+        if grow and grow.grow_type == "rdwc":
+            existing_header = await session.scalar(
+                select(Bucket).where(
+                    Bucket.grow_cycle_id == bucket.grow_cycle_id,
+                    Bucket.role == "header",
+                    Bucket.id != bucket.id,  # Don't count the current bucket
+                )
+            )
+            if existing_header:
+                # Auto-demote existing header to site
+                existing_header.role = "site"
+
     # Auto-populate strain_name from strain if strain_id changed
     if "strain_id" in updates and updates["strain_id"] and "strain_name" not in updates:
         strain = await session.get(Strain, updates["strain_id"])
         if strain:
             updates["strain_name"] = strain.name
+
     for field, value in updates.items():
         setattr(bucket, field, value)
     await session.commit()

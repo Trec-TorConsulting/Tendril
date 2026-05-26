@@ -73,7 +73,12 @@ async def create_reading(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
-    """Record a new bucket sensor reading (pH, EC, temperature, etc.)."""
+    """Record a new bucket sensor reading (pH, EC, temperature, etc.).
+
+    For RDWC header buckets, the reading is automatically propagated to all site buckets.
+    """
+    from app.integrations.connectors.base import propagate_header_bucket_readings
+
     data = body.model_dump()
     # Auto-derive EC↔PPM when only one is provided
     if data.get("ec") is not None and data.get("ppm") is None:
@@ -82,6 +87,11 @@ async def create_reading(
         data["ec"] = round(data["ppm"] / 500.0, 3)
     reading = BucketSensorReading(tenant_id=user.tenant_id, **data)
     session.add(reading)
+    await session.flush()  # Flush to get the reading in the session
+
+    # Propagate header readings to all site buckets in RDWC grows
+    await propagate_header_bucket_readings(session, str(reading.bucket_id), reading)
+
     await session.commit()
     await session.refresh(reading)
     return reading

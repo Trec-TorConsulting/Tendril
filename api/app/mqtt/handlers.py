@@ -204,6 +204,13 @@ async def store_sensor_reading(tenant_id: UUID, device_id_str: str, sensor_type:
                 **values,
             )
             session.add(reading)
+            await session.flush()
+
+            # Propagate header readings to all site buckets in RDWC grows
+            from app.integrations.connectors.base import propagate_header_bucket_readings
+
+            await propagate_header_bucket_readings(session, str(bucket.id), reading)
+
             await session.commit()
             logger.debug(
                 "Stored bucket reading for bucket %s (position %s)",

@@ -199,15 +199,30 @@ export function BucketsTab({ growId, growType, buckets, latestReadings, onRefres
                   <span>{b.volume_gallons ? `${b.volume_gallons} gal` : "No size set"}</span>
                 </div>
                 {reading && (
-                  <div className="mt-2 grid grid-cols-3 gap-2 text-xs">
-                    {reading.ph != null && <div><span className="text-muted-foreground">pH</span><p className="font-medium">{reading.ph.toFixed(1)}</p></div>}
-                    {reading.ec != null && <div><span className="text-muted-foreground">EC</span><p className="font-medium">{reading.ec.toFixed(2)}</p></div>}
-                    {reading.ppm != null && <div><span className="text-muted-foreground">PPM</span><p className="font-medium">{Math.round(reading.ppm)}</p></div>}
-                    {reading.water_temp_f != null && <div><span className="text-muted-foreground">Water {prefs.temp_unit === "celsius" ? "°C" : "°F"}</span><p className="font-medium">{formatTemp(reading.water_temp_f, "f", prefs.temp_unit)}</p></div>}
-                    {reading.orp != null && <div><span className="text-muted-foreground">ORP</span><p className="font-medium">{Math.round(reading.orp)} mV</p></div>}
-                    {reading.salinity != null && <div><span className="text-muted-foreground">Salinity</span><p className="font-medium">{reading.salinity.toFixed(2)} ppt</p></div>}
-                    {reading.specific_gravity != null && <div><span className="text-muted-foreground">S.G.</span><p className="font-medium">{reading.specific_gravity.toFixed(3)}</p></div>}
-                    {reading.battery_pct != null && <div><span className="text-muted-foreground">Battery</span><p className="font-medium">{Math.round(reading.battery_pct)}%</p></div>}
+                  <div className="mt-2">
+                    {b.role === "header" ? (
+                      // Header bucket: system/reservoir metrics (no battery)
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        {reading.water_level_pct != null && <div><span className="text-muted-foreground">Water Level</span><p className="font-medium">{Math.round(reading.water_level_pct)}%</p></div>}
+                        {reading.flow_rate != null && <div><span className="text-muted-foreground">Flow Rate</span><p className="font-medium">{reading.flow_rate.toFixed(1)} L/m</p></div>}
+                        {reading.dissolved_oxygen != null && <div><span className="text-muted-foreground">D.O.</span><p className="font-medium">{reading.dissolved_oxygen.toFixed(1)} mg/L</p></div>}
+                        {reading.ph != null && <div><span className="text-muted-foreground">pH</span><p className="font-medium">{reading.ph.toFixed(1)}</p></div>}
+                        {reading.ec != null && <div><span className="text-muted-foreground">EC</span><p className="font-medium">{reading.ec.toFixed(2)}</p></div>}
+                        {reading.water_temp_f != null && <div><span className="text-muted-foreground">Temp {prefs.temp_unit === "celsius" ? "°C" : "°F"}</span><p className="font-medium">{formatTemp(reading.water_temp_f, "f", prefs.temp_unit)}</p></div>}
+                      </div>
+                    ) : (
+                      // Site bucket: plant/leaf metrics (include battery)
+                      <div className="grid grid-cols-3 gap-2 text-xs">
+                        {reading.ph != null && <div><span className="text-muted-foreground">pH</span><p className="font-medium">{reading.ph.toFixed(1)}</p></div>}
+                        {reading.ec != null && <div><span className="text-muted-foreground">EC</span><p className="font-medium">{reading.ec.toFixed(2)}</p></div>}
+                        {reading.ppm != null && <div><span className="text-muted-foreground">PPM</span><p className="font-medium">{Math.round(reading.ppm)}</p></div>}
+                        {reading.water_temp_f != null && <div><span className="text-muted-foreground">Water {prefs.temp_unit === "celsius" ? "°C" : "°F"}</span><p className="font-medium">{formatTemp(reading.water_temp_f, "f", prefs.temp_unit)}</p></div>}
+                        {reading.water_level_pct != null && <div><span className="text-muted-foreground">Level</span><p className="font-medium">{Math.round(reading.water_level_pct)}%</p></div>}
+                        {reading.battery_pct != null && <div><span className="text-muted-foreground">Battery</span><p className="font-medium">{Math.round(reading.battery_pct)}%</p></div>}
+                        {reading.orp != null && <div><span className="text-muted-foreground">ORP</span><p className="font-medium">{Math.round(reading.orp)} mV</p></div>}
+                        {reading.dissolved_oxygen != null && <div><span className="text-muted-foreground">D.O.</span><p className="font-medium">{reading.dissolved_oxygen.toFixed(1)} mg/L</p></div>}
+                      </div>
+                    )}
                   </div>
                 )}
                 {!reading && <p className="mt-2 text-xs text-muted-foreground">No readings yet</p>}
