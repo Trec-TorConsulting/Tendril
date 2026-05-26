@@ -33,6 +33,7 @@ import { MultiMetricCard } from "@/components/multi-metric-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sprout, Droplets, Thermometer, Wind, Waves, CheckCircle2, TrendingUp, CalendarIcon, FlaskConical, AlertTriangle, Wrench } from "lucide-react";
@@ -344,16 +345,19 @@ export default function DashboardPage() {
                         label: "Tent Temp",
                         value: latestTemp != null ? formatTemp(latestTemp, "f", prefs.temp_unit, 0) : "—",
                         status: latestTemp != null ? (latestTemp >= 68 && latestTemp <= 82 ? "optimal" : "warning") : "unknown",
+                        hint: latestTemp != null && latestTemp < 68 ? "Too cold — target 68–82°F" : latestTemp != null && latestTemp > 82 ? "Too hot — target 68–82°F" : undefined,
                       },
                       {
                         label: "Humidity",
                         value: latestHumidity != null ? `${latestHumidity.toFixed(0)}%` : "—",
                         status: latestHumidity != null ? (latestHumidity >= 40 && latestHumidity <= 70 ? "optimal" : "warning") : "unknown",
+                        hint: latestHumidity != null && latestHumidity < 40 ? "Too dry — target 40–70%" : latestHumidity != null && latestHumidity > 70 ? "Too humid — target 40–70%" : undefined,
                       },
                       {
                         label: "Water Temp",
                         value: latestWaterTemp != null ? formatTemp(latestWaterTemp, "f", prefs.temp_unit, 0) : "—",
                         status: latestWaterTemp != null ? (latestWaterTemp >= 62 && latestWaterTemp <= 72 ? "optimal" : "warning") : "unknown",
+                        hint: latestWaterTemp != null && latestWaterTemp < 62 ? "Too cold — target 62–72°F" : latestWaterTemp != null && latestWaterTemp > 72 ? "Too warm — risk of root rot. Target 62–72°F" : undefined,
                       },
                     ]}
                     updatedAgo={updatedAgo}
@@ -366,16 +370,19 @@ export default function DashboardPage() {
                         label: "pH",
                         value: sensorTrends.ph.length > 0 ? sensorTrends.ph[sensorTrends.ph.length - 1].toFixed(1) : "—",
                         status: sensorTrends.ph.length > 0 ? (sensorTrends.ph[sensorTrends.ph.length - 1] >= 5.5 && sensorTrends.ph[sensorTrends.ph.length - 1] <= 6.5 ? "optimal" : "warning") : "unknown",
+                        hint: sensorTrends.ph.length > 0 && sensorTrends.ph[sensorTrends.ph.length - 1] < 5.5 ? "Too acidic — target 5.5–6.5" : sensorTrends.ph.length > 0 && sensorTrends.ph[sensorTrends.ph.length - 1] > 6.5 ? "Too alkaline — target 5.5–6.5" : undefined,
                       },
                       {
                         label: "PPM",
                         value: latestPpm != null ? `${Math.round(latestPpm)}` : "—",
                         status: latestPpm != null ? (latestPpm >= 400 && latestPpm <= 1500 ? "optimal" : "warning") : "unknown",
+                        hint: latestPpm != null && latestPpm < 400 ? "Nutrients too low — target 400–1500 PPM" : latestPpm != null && latestPpm > 1500 ? "Nutrients too high — target 400–1500 PPM" : undefined,
                       },
                       {
                         label: "Water Level",
                         value: sensorTrends.water_level.length > 0 ? `${Math.round(sensorTrends.water_level[sensorTrends.water_level.length - 1])}%` : "—",
                         status: sensorTrends.water_level.length > 0 ? (sensorTrends.water_level[sensorTrends.water_level.length - 1] >= 20 ? "optimal" : "warning") : "unknown",
+                        hint: sensorTrends.water_level.length > 0 && sensorTrends.water_level[sensorTrends.water_level.length - 1] < 20 ? "Water level critically low — refill reservoir" : undefined,
                       },
                     ]}
                     updatedAgo={updatedAgo}
@@ -386,6 +393,7 @@ export default function DashboardPage() {
                     status={sensorTrends.ec.length > 0 ? (sensorTrends.ec[sensorTrends.ec.length - 1] >= 0.8 && sensorTrends.ec[sensorTrends.ec.length - 1] <= 2.5 ? "optimal" : "warning") : "unknown"}
                     icon={<Droplets className="size-5" />}
                     updatedAgo={updatedAgo}
+                    hint={sensorTrends.ec.length > 0 && sensorTrends.ec[sensorTrends.ec.length - 1] < 0.8 ? "EC too low — target 0.8–2.5" : sensorTrends.ec.length > 0 && sensorTrends.ec[sensorTrends.ec.length - 1] > 2.5 ? "EC too high — risk of nutrient burn. Target 0.8–2.5" : undefined}
                   />
                   <EnvironmentBadgeCard
                     label="CO₂"
@@ -724,12 +732,14 @@ function EnvironmentBadgeCard({
   status,
   icon,
   updatedAgo,
+  hint,
 }: {
   label: string;
   value: string;
   status: "optimal" | "warning" | "unknown";
   icon: React.ReactNode;
   updatedAgo?: string | null;
+  hint?: string;
 }) {
   const statusColor = {
     optimal: "bg-primary/10 text-primary border-primary/20",
@@ -743,6 +753,15 @@ function EnvironmentBadgeCard({
     unknown: "No data",
   }[status];
 
+  const badge = (
+    <Badge
+      variant="outline"
+      className={`text-[10px] ${status === "optimal" ? "border-primary/40 text-primary" : status === "warning" ? "border-orange-500/40 text-orange-500" : ""}`}
+    >
+      {statusLabel}
+    </Badge>
+  );
+
   return (
     <Card className={`border ${statusColor.split(" ").find((c) => c.startsWith("border-")) || "border-border"} backdrop-blur-sm`}>
       <CardContent className="flex items-center gap-4 py-4">
@@ -754,12 +773,14 @@ function EnvironmentBadgeCard({
           <p className="text-xl font-bold">{value}</p>
           {updatedAgo && <p className="text-[10px] text-muted-foreground">{updatedAgo}</p>}
         </div>
-        <Badge
-          variant="outline"
-          className={`text-[10px] ${status === "optimal" ? "border-primary/40 text-primary" : status === "warning" ? "border-orange-500/40 text-orange-500" : ""}`}
-        >
-          {statusLabel}
-        </Badge>
+        {status === "warning" && hint ? (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger className="cursor-help">{badge}</TooltipTrigger>
+              <TooltipContent>{hint}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        ) : badge}
       </CardContent>
     </Card>
   );

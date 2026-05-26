@@ -1,11 +1,13 @@
 "use client";
 
 import { Card, CardContent } from "@/components/ui/card";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 export interface MetricRow {
   label: string;
   value: string;
   status: "optimal" | "warning" | "unknown";
+  hint?: string;
 }
 
 export function MultiMetricCard({
@@ -40,14 +42,27 @@ export function MultiMetricCard({
         <div className="flex-1 min-w-0">
           <p className="text-xs font-medium text-muted-foreground mb-1">{title}</p>
           <div className="space-y-0.5">
-            {metrics.map((m) => (
-              <div key={m.label} className="flex items-baseline justify-between gap-2">
-                <span className="text-[11px] text-muted-foreground">{m.label}</span>
-                <span className={`text-sm font-bold ${m.status === "warning" ? "text-orange-500" : m.status === "optimal" ? "text-foreground" : "text-muted-foreground"}`}>
-                  {m.value}
-                </span>
-              </div>
-            ))}
+            <TooltipProvider>
+              {metrics.map((m) => {
+                const row = (
+                  <div key={m.label} className="flex items-baseline justify-between gap-2">
+                    <span className="text-[11px] text-muted-foreground">{m.label}</span>
+                    <span className={`text-sm font-bold ${m.status === "warning" ? "text-orange-500" : m.status === "optimal" ? "text-foreground" : "text-muted-foreground"}`}>
+                      {m.value}
+                    </span>
+                  </div>
+                );
+                if (m.status === "warning" && m.hint) {
+                  return (
+                    <Tooltip key={m.label}>
+                      <TooltipTrigger className="w-full cursor-help">{row}</TooltipTrigger>
+                      <TooltipContent>{m.hint}</TooltipContent>
+                    </Tooltip>
+                  );
+                }
+                return row;
+              })}
+            </TooltipProvider>
           </div>
           {updatedAgo && <p className="text-[10px] text-muted-foreground mt-1">{updatedAgo}</p>}
         </div>
