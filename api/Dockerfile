@@ -1,4 +1,5 @@
-FROM 192.168.4.10:30500/mirror/python:3.12-slim-bookworm
+ARG BASE_REGISTRY=192.168.4.10:30500/mirror
+FROM ${BASE_REGISTRY}/python:3.12-slim-bookworm
 
 WORKDIR /app
 

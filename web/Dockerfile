@@ -1,4 +1,5 @@
-FROM --platform=$BUILDPLATFORM 192.168.4.10:30500/mirror/node:26-slim AS builder
+ARG BASE_REGISTRY=192.168.4.10:30500/mirror
+FROM --platform=$BUILDPLATFORM ${BASE_REGISTRY}/node:26-slim AS builder
 WORKDIR /app
 ARG NEXT_PUBLIC_API_URL=https://api.tendrilgrow.com/v1
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
@@ -8,7 +9,8 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM 192.168.4.10:30500/mirror/node:26-slim AS runner
+ARG BASE_REGISTRY=192.168.4.10:30500/mirror
+FROM ${BASE_REGISTRY}/node:26-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 RUN npm cache clean --force && rm -rf /usr/local/lib/node_modules/npm
