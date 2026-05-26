@@ -90,6 +90,7 @@ import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
 import { SensorSparkline } from "@/components/sparkline";
 import { CameraGrid } from "@/components/camera-grid";
+import { MultiMetricCard } from "@/components/multi-metric-card";
 import { useChat } from "@/components/chat-provider";
 
 import { formatCalendarDate, formatDateTime } from "@/lib/utils";
@@ -586,133 +587,90 @@ export default function GrowDetailPage() {
         <CameraGrid tentId={grow.tent_id} hideEmpty />
 
         {/* ── Environment + Sensor Trend Cards ────────────────────────── */}
-        <motion.div variants={stagger} initial="initial" animate="animate" className={cn("grid gap-3 grid-cols-2", isActiveHydro(grow.grow_type) ? "lg:grid-cols-5" : "lg:grid-cols-4")}>
+        <motion.div variants={stagger} initial="initial" animate="animate" className={cn("grid gap-3 grid-cols-2", isActiveHydro(grow.grow_type) ? "lg:grid-cols-4" : "lg:grid-cols-4")}>
           {isActiveHydro(grow.grow_type) ? (
             <>
-              {/* Environment (Vivosun ambient temp + humidity) */}
+              {/* Environment — same as main dashboard */}
               <motion.div variants={fadeUp}>
-                <Card className="relative overflow-hidden">
+                <MultiMetricCard
+                  title="Environment"
+                  icon={<Thermometer className="size-5" />}
+                  metrics={[
+                    {
+                      label: "Tent Temp",
+                      value: latestEnvTemp != null ? formatTemp(latestEnvTemp, "f", prefs.temp_unit, 0) : "—",
+                      status: latestEnvTemp != null ? (latestEnvTemp >= 68 && latestEnvTemp <= 82 ? "optimal" : "warning") : "unknown",
+                    },
+                    {
+                      label: "Humidity",
+                      value: latestEnvHumidity != null ? `${latestEnvHumidity.toFixed(0)}%` : "—",
+                      status: latestEnvHumidity != null ? (latestEnvHumidity >= 40 && latestEnvHumidity <= 70 ? "optimal" : "warning") : "unknown",
+                    },
+                    {
+                      label: "Water Temp",
+                      value: sensorTrends.water_temp.length > 0 ? formatTemp(sensorTrends.water_temp[sensorTrends.water_temp.length - 1], "f", prefs.temp_unit, 0) : "—",
+                      status: sensorTrends.water_temp.length > 0 ? (sensorTrends.water_temp[sensorTrends.water_temp.length - 1] >= 62 && sensorTrends.water_temp[sensorTrends.water_temp.length - 1] <= 72 ? "optimal" : "warning") : "unknown",
+                    },
+                  ]}
+                />
+              </motion.div>
+
+              {/* Nutrients — same as main dashboard */}
+              <motion.div variants={fadeUp}>
+                <MultiMetricCard
+                  title="Nutrients"
+                  icon={<FlaskConical className="size-5" />}
+                  metrics={[
+                    {
+                      label: "pH",
+                      value: sensorTrends.ph.length > 0 ? sensorTrends.ph[sensorTrends.ph.length - 1].toFixed(1) : "—",
+                      status: sensorTrends.ph.length > 0 ? (sensorTrends.ph[sensorTrends.ph.length - 1] >= 5.5 && sensorTrends.ph[sensorTrends.ph.length - 1] <= 6.5 ? "optimal" : "warning") : "unknown",
+                    },
+                    {
+                      label: "PPM",
+                      value: sensorTrends.ppm.length > 0 ? `${Math.round(sensorTrends.ppm[sensorTrends.ppm.length - 1])}` : "—",
+                      status: sensorTrends.ppm.length > 0 ? (sensorTrends.ppm[sensorTrends.ppm.length - 1] >= 400 && sensorTrends.ppm[sensorTrends.ppm.length - 1] <= 1500 ? "optimal" : "warning") : "unknown",
+                    },
+                    {
+                      label: "Water Level",
+                      value: sensorTrends.water_level.length > 0 ? `${Math.round(sensorTrends.water_level[sensorTrends.water_level.length - 1])}%` : "—",
+                      status: sensorTrends.water_level.length > 0 ? (sensorTrends.water_level[sensorTrends.water_level.length - 1] >= 20 ? "optimal" : "warning") : "unknown",
+                    },
+                  ]}
+                />
+              </motion.div>
+
+              {/* EC */}
+              <motion.div variants={fadeUp}>
+                <Card className="relative overflow-hidden border-border/50 backdrop-blur-sm">
                   <CardContent className="pt-4 pb-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="flex size-8 items-center justify-center rounded-lg bg-cyan-500/10"><Thermometer className="size-4 text-cyan-500" /></div>
-                        <div>
-                          <p className="text-[11px] text-muted-foreground">Env</p>
-                          <p className="text-lg font-semibold tabular-nums">
-                            {latestEnvTemp != null || latestEnvHumidity != null
-                              ? `${latestEnvTemp != null ? formatTemp(latestEnvTemp, "f", prefs.temp_unit) : "—"}${latestEnvHumidity != null ? ` / ${latestEnvHumidity.toFixed(0)}%` : ""}`
-                              : "—"}
-                          </p>
-                        </div>
+                    <div className="flex items-center gap-2">
+                      <div className="flex size-8 items-center justify-center rounded-lg bg-blue-500/10"><Droplets className="size-4 text-blue-500" /></div>
+                      <div>
+                        <p className="text-[11px] text-muted-foreground">EC</p>
+                        <p className="text-lg font-semibold tabular-nums">
+                          {sensorTrends.ec.length > 0 ? sensorTrends.ec[sensorTrends.ec.length - 1].toFixed(2) : "—"}
+                        </p>
                       </div>
                     </div>
-                    {sensorTrends.temp.length > 2 && (
-                      <div className="mt-2 h-8"><SensorSparkline data={sensorTrends.temp} color="#06b6d4" /></div>
+                    {sensorTrends.ec.length > 2 && (
+                      <div className="mt-2 h-8"><SensorSparkline data={sensorTrends.ec} color="#3b82f6" /></div>
                     )}
                   </CardContent>
                 </Card>
               </motion.div>
 
-              {/* Water Temperature (from bucket sensor readings) */}
+              {/* CO₂ placeholder */}
               <motion.div variants={fadeUp}>
-                <Card className="relative overflow-hidden">
+                <Card className="relative overflow-hidden border-border/50 backdrop-blur-sm">
                   <CardContent className="pt-4 pb-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="flex size-8 items-center justify-center rounded-lg bg-orange-500/10"><Thermometer className="size-4 text-orange-500" /></div>
-                        <div>
-                          <p className="text-[11px] text-muted-foreground">Water Temp</p>
-                          <p className="text-lg font-semibold tabular-nums">
-                            {sensorTrends.water_temp.length > 0 ? formatTemp(sensorTrends.water_temp[sensorTrends.water_temp.length - 1], "f", prefs.temp_unit) : "—"}
-                          </p>
-                        </div>
+                    <div className="flex items-center gap-2">
+                      <div className="flex size-8 items-center justify-center rounded-lg bg-muted"><Activity className="size-4 text-muted-foreground" /></div>
+                      <div>
+                        <p className="text-[11px] text-muted-foreground">CO₂</p>
+                        <p className="text-lg font-semibold tabular-nums text-muted-foreground">—</p>
                       </div>
-                      {sensorTrends.water_temp.length >= 2 && (() => {
-                        const delta = sensorTrends.water_temp[sensorTrends.water_temp.length - 1] - sensorTrends.water_temp[sensorTrends.water_temp.length - 2];
-                        return <Badge variant="outline" className={cn("text-[10px] gap-0.5", delta > 0 ? "text-orange-500" : delta < 0 ? "text-blue-500" : "")}><TrendingUp className="size-2.5" />{delta >= 0 ? "+" : ""}{delta.toFixed(1)}°</Badge>;
-                      })()}
                     </div>
-                    {sensorTrends.water_temp.length > 2 && (
-                      <div className="mt-2 h-8"><SensorSparkline data={sensorTrends.water_temp} color="#f97316" /></div>
-                    )}
-                  </CardContent>
-                </Card>
-              </motion.div>
-
-              {/* pH */}
-              <motion.div variants={fadeUp}>
-                <Card className="relative overflow-hidden">
-                  <CardContent className="pt-4 pb-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="flex size-8 items-center justify-center rounded-lg bg-emerald-500/10"><FlaskConical className="size-4 text-emerald-500" /></div>
-                        <div>
-                          <p className="text-[11px] text-muted-foreground">pH</p>
-                          <p className="text-lg font-semibold tabular-nums">
-                            {sensorTrends.ph.length > 0 ? sensorTrends.ph[sensorTrends.ph.length - 1].toFixed(1) : "—"}
-                          </p>
-                        </div>
-                      </div>
-                      {sensorTrends.ph.length >= 2 && (() => {
-                        const delta = sensorTrends.ph[sensorTrends.ph.length - 1] - sensorTrends.ph[sensorTrends.ph.length - 2];
-                        return <Badge variant="outline" className={cn("text-[10px] gap-0.5", delta > 0 ? "text-emerald-500" : delta < 0 ? "text-orange-500" : "")}><TrendingUp className="size-2.5" />{delta >= 0 ? "+" : ""}{delta.toFixed(1)}</Badge>;
-                      })()}
-                    </div>
-                    {sensorTrends.ph.length > 2 && (
-                      <div className="mt-2 h-8"><SensorSparkline data={sensorTrends.ph} color="#10b981" /></div>
-                    )}
-                  </CardContent>
-                </Card>
-              </motion.div>
-
-              {/* PPM */}
-              <motion.div variants={fadeUp}>
-                <Card className="relative overflow-hidden">
-                  <CardContent className="pt-4 pb-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="flex size-8 items-center justify-center rounded-lg bg-blue-500/10"><Droplets className="size-4 text-blue-500" /></div>
-                        <div>
-                          <p className="text-[11px] text-muted-foreground">PPM</p>
-                          <p className="text-lg font-semibold tabular-nums">
-                            {sensorTrends.ppm.length > 0 ? Math.round(sensorTrends.ppm[sensorTrends.ppm.length - 1]) : "—"}
-                          </p>
-                        </div>
-                      </div>
-                      {sensorTrends.ppm.length >= 2 && (() => {
-                        const delta = sensorTrends.ppm[sensorTrends.ppm.length - 1] - sensorTrends.ppm[sensorTrends.ppm.length - 2];
-                        return <Badge variant="outline" className={cn("text-[10px] gap-0.5", delta > 0 ? "text-emerald-500" : delta < 0 ? "text-orange-500" : "")}><TrendingUp className="size-2.5" />{delta >= 0 ? "+" : ""}{Math.round(delta)}</Badge>;
-                      })()}
-                    </div>
-                    {sensorTrends.ppm.length > 2 && (
-                      <div className="mt-2 h-8"><SensorSparkline data={sensorTrends.ppm} color="#3b82f6" /></div>
-                    )}
-                  </CardContent>
-                </Card>
-              </motion.div>
-
-              {/* Water Level */}
-              <motion.div variants={fadeUp}>
-                <Card className="relative overflow-hidden">
-                  <CardContent className="pt-4 pb-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="flex size-8 items-center justify-center rounded-lg bg-violet-500/10"><Waves className="size-4 text-violet-500" /></div>
-                        <div>
-                          <p className="text-[11px] text-muted-foreground">Water Level</p>
-                          <p className="text-lg font-semibold tabular-nums">
-                            {sensorTrends.water_level.length > 0 ? `${Math.round(sensorTrends.water_level[sensorTrends.water_level.length - 1])}%` : "—"}
-                          </p>
-                        </div>
-                      </div>
-                      {sensorTrends.water_level.length >= 2 && (() => {
-                        const delta = sensorTrends.water_level[sensorTrends.water_level.length - 1] - sensorTrends.water_level[sensorTrends.water_level.length - 2];
-                        return <Badge variant="outline" className={cn("text-[10px] gap-0.5", delta > 0 ? "text-blue-500" : delta < 0 ? "text-orange-500" : "")}><TrendingUp className="size-2.5" />{delta >= 0 ? "+" : ""}{Math.round(delta)}%</Badge>;
-                      })()}
-                    </div>
-                    {sensorTrends.water_level.length > 2 && (
-                      <div className="mt-2 h-8"><SensorSparkline data={sensorTrends.water_level} color="#8b5cf6" /></div>
-                    )}
                   </CardContent>
                 </Card>
               </motion.div>
