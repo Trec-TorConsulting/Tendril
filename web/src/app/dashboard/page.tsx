@@ -194,8 +194,12 @@ export default function DashboardPage() {
       const ppmVals = growSensorReadings.map((r) => r.ppm).filter((v): v is number => v != null).reverse();
       const waterTempVals = growSensorReadings.map((r) => r.water_temp_f).filter((v): v is number => v != null).reverse();
       const waterLevelVals = growSensorReadings.map((r) => r.water_level_pct).filter((v): v is number => v != null).reverse();
-      const tempVals = tentReadings.map((r) => r.ambient_temp_f).filter((v): v is number => v != null).reverse();
-      const humVals = tentReadings.map((r) => r.ambient_humidity).filter((v): v is number => v != null).reverse();
+      const tentTempVals = tentReadings.map((r) => r.ambient_temp_f).filter((v): v is number => v != null).reverse();
+      const tentHumVals = tentReadings.map((r) => r.ambient_humidity).filter((v): v is number => v != null).reverse();
+      const bucketTempVals = growSensorReadings.map((r) => r.ambient_temp_f).filter((v): v is number => v != null).reverse();
+      const bucketHumVals = growSensorReadings.map((r) => r.ambient_humidity).filter((v): v is number => v != null).reverse();
+      const tempVals = tentTempVals.length > 0 ? tentTempVals : bucketTempVals;
+      const humVals = tentHumVals.length > 0 ? tentHumVals : bucketHumVals;
       setSensorTrends({ ph: phVals, ec: ecVals, ppm: ppmVals, water_temp: waterTempVals, water_level: waterLevelVals, temp: tempVals, humidity: humVals });
       // Track when the latest reading was recorded (bucket for hydro, tent for others)
       const latestTentReading = tentReadings[0];
@@ -251,6 +255,14 @@ export default function DashboardPage() {
   const latestWaterTemp = sensorTrends.water_temp[sensorTrends.water_temp.length - 1];
   const latestPpm = sensorTrends.ppm[sensorTrends.ppm.length - 1];
   const latestCO2 = null; // Placeholder — CO2 sensor not yet in data model
+  const envValue =
+    latestTemp != null || latestHumidity != null
+      ? `${latestTemp != null ? formatTemp(latestTemp, "f", prefs.temp_unit, 0) : "—"}${latestHumidity != null ? ` / ${latestHumidity.toFixed(0)}%` : ""}`
+      : "—";
+  const envStatus =
+    latestTemp != null && latestHumidity != null
+      ? (latestTemp >= 68 && latestTemp <= 82 && latestHumidity >= 40 && latestHumidity <= 70 ? "optimal" : "warning")
+      : "unknown";
   const updatedAgo = lastReadingAt ? timeAgo(lastReadingAt) : null;
   const isHydro = isActiveHydro(selectedGrow?.grow_type);
 
@@ -321,10 +333,10 @@ export default function DashboardPage() {
               {isHydro ? (
                 <>
                   <EnvironmentBadgeCard
-                    label="Water Temp"
-                    value={latestWaterTemp != null ? formatTemp(latestWaterTemp, "f", prefs.temp_unit, 0) : "—"}
-                    status={latestWaterTemp != null ? (latestWaterTemp >= 62 && latestWaterTemp <= 72 ? "optimal" : "warning") : "unknown"}
-                    icon={<Thermometer className="size-5" />}
+                    label="Env"
+                    value={envValue}
+                    status={envStatus}
+                    icon={<Wind className="size-5" />}
                     updatedAgo={updatedAgo}
                   />
                   <EnvironmentBadgeCard
@@ -341,23 +353,13 @@ export default function DashboardPage() {
                     icon={<Droplets className="size-5" />}
                     updatedAgo={updatedAgo}
                   />
-                  {sensorTrends.ec.length > 0 ? (
-                    <EnvironmentBadgeCard
-                      label="EC"
-                      value={sensorTrends.ec[sensorTrends.ec.length - 1].toFixed(2)}
-                      status={sensorTrends.ec[sensorTrends.ec.length - 1] >= 0.8 && sensorTrends.ec[sensorTrends.ec.length - 1] <= 2.5 ? "optimal" : "warning"}
-                      icon={<Waves className="size-5" />}
-                      updatedAgo={updatedAgo}
-                    />
-                  ) : (
-                    <EnvironmentBadgeCard
-                      label="Water Level"
-                      value={sensorTrends.water_level.length > 0 ? `${Math.round(sensorTrends.water_level[sensorTrends.water_level.length - 1])}%` : "—"}
-                      status={sensorTrends.water_level.length > 0 ? (sensorTrends.water_level[sensorTrends.water_level.length - 1] >= 20 ? "optimal" : "warning") : "unknown"}
-                      icon={<Waves className="size-5" />}
-                      updatedAgo={updatedAgo}
-                    />
-                  )}
+                  <EnvironmentBadgeCard
+                    label="Water Level"
+                    value={sensorTrends.water_level.length > 0 ? `${Math.round(sensorTrends.water_level[sensorTrends.water_level.length - 1])}%` : "—"}
+                    status={sensorTrends.water_level.length > 0 ? (sensorTrends.water_level[sensorTrends.water_level.length - 1] >= 20 ? "optimal" : "warning") : "unknown"}
+                    icon={<Waves className="size-5" />}
+                    updatedAgo={updatedAgo}
+                  />
                 </>
               ) : (
                 <>

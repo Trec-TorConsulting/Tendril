@@ -230,18 +230,27 @@ export default function GrowDetailPage() {
         Promise.all(bkts.map((b) => listSensorReadings(token, b.id, 30).catch(() => []))),
         listTentReadings(token, g.tent_id, 30).catch(() => []),
       ]);
-      const growSensor = perBucketReadings
+      const allGrowSensor = perBucketReadings
         .flat()
-        .sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime())
-        .slice(0, 30);
+        .sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime());
+      // Build each metric independently so sparse metrics (like pH/water level)
+      // are not dropped by a global mixed-metric slice.
       setSensorTrends({
-        ph: growSensor.map((r: { ph: number | null }) => r.ph).filter((v: number | null): v is number => v != null).reverse(),
-        ec: growSensor.map((r: { ec: number | null }) => r.ec).filter((v: number | null): v is number => v != null).reverse(),
-        ppm: growSensor.map((r: { ppm: number | null }) => r.ppm).filter((v: number | null): v is number => v != null).reverse(),
-        water_temp: growSensor.map((r: { water_temp_f: number | null }) => r.water_temp_f).filter((v: number | null): v is number => v != null).reverse(),
-        water_level: growSensor.map((r: { water_level_pct: number | null }) => r.water_level_pct).filter((v: number | null): v is number => v != null).reverse(),
-        temp: tentReadings2.map((r: { ambient_temp_f: number | null }) => r.ambient_temp_f).filter((v: number | null): v is number => v != null).reverse(),
-        humidity: tentReadings2.map((r: { ambient_humidity: number | null }) => r.ambient_humidity).filter((v: number | null): v is number => v != null).reverse(),
+        ph: allGrowSensor.map((r: { ph: number | null }) => r.ph).filter((v: number | null): v is number => v != null).slice(0, 30).reverse(),
+        ec: allGrowSensor.map((r: { ec: number | null }) => r.ec).filter((v: number | null): v is number => v != null).slice(0, 30).reverse(),
+        ppm: allGrowSensor.map((r: { ppm: number | null }) => r.ppm).filter((v: number | null): v is number => v != null).slice(0, 30).reverse(),
+        water_temp: allGrowSensor.map((r: { water_temp_f: number | null }) => r.water_temp_f).filter((v: number | null): v is number => v != null).slice(0, 30).reverse(),
+        water_level: allGrowSensor.map((r: { water_level_pct: number | null }) => r.water_level_pct).filter((v: number | null): v is number => v != null).slice(0, 30).reverse(),
+        temp: (() => {
+          const tentTemps = tentReadings2.map((r: { ambient_temp_f: number | null }) => r.ambient_temp_f).filter((v: number | null): v is number => v != null).reverse();
+          if (tentTemps.length > 0) return tentTemps;
+          return allGrowSensor.map((r: { ambient_temp_f: number | null }) => r.ambient_temp_f).filter((v: number | null): v is number => v != null).slice(0, 30).reverse();
+        })(),
+        humidity: (() => {
+          const tentHumidity = tentReadings2.map((r: { ambient_humidity: number | null }) => r.ambient_humidity).filter((v: number | null): v is number => v != null).reverse();
+          if (tentHumidity.length > 0) return tentHumidity;
+          return allGrowSensor.map((r: { ambient_humidity: number | null }) => r.ambient_humidity).filter((v: number | null): v is number => v != null).slice(0, 30).reverse();
+        })(),
       });
     } catch { /* empty */ }
 
@@ -433,6 +442,8 @@ export default function GrowDetailPage() {
 
   // Grow type specific settings schema
   const settingsSchema = getSettingsSchema(grow.grow_type, tempUnitLabel(prefs.temp_unit));
+  const latestEnvTemp = tentAmbient?.ambient_temp_f ?? (sensorTrends.temp.length > 0 ? sensorTrends.temp[sensorTrends.temp.length - 1] : null);
+  const latestEnvHumidity = tentAmbient?.ambient_humidity ?? (sensorTrends.humidity.length > 0 ? sensorTrends.humidity[sensorTrends.humidity.length - 1] : null);
 
   return (
     <Tabs defaultValue="overview" className="flex flex-1 flex-col">
@@ -575,9 +586,33 @@ export default function GrowDetailPage() {
         <CameraGrid tentId={grow.tent_id} hideEmpty />
 
         {/* ── Environment + Sensor Trend Cards ────────────────────────── */}
-        <motion.div variants={stagger} initial="initial" animate="animate" className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+        <motion.div variants={stagger} initial="initial" animate="animate" className={cn("grid gap-3 grid-cols-2", isActiveHydro(grow.grow_type) ? "lg:grid-cols-5" : "lg:grid-cols-4")}>
           {isActiveHydro(grow.grow_type) ? (
             <>
+              {/* Environment (Vivosun ambient temp + humidity) */}
+              <motion.div variants={fadeUp}>
+                <Card className="relative overflow-hidden">
+                  <CardContent className="pt-4 pb-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="flex size-8 items-center justify-center rounded-lg bg-cyan-500/10"><Thermometer className="size-4 text-cyan-500" /></div>
+                        <div>
+                          <p className="text-[11px] text-muted-foreground">Env</p>
+                          <p className="text-lg font-semibold tabular-nums">
+                            {latestEnvTemp != null || latestEnvHumidity != null
+                              ? `${latestEnvTemp != null ? formatTemp(latestEnvTemp, "f", prefs.temp_unit) : "—"}${latestEnvHumidity != null ? ` / ${latestEnvHumidity.toFixed(0)}%` : ""}`
+                              : "—"}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    {sensorTrends.temp.length > 2 && (
+                      <div className="mt-2 h-8"><SensorSparkline data={sensorTrends.temp} color="#06b6d4" /></div>
+                    )}
+                  </CardContent>
+                </Card>
+              </motion.div>
+
               {/* Water Temperature (from bucket sensor readings) */}
               <motion.div variants={fadeUp}>
                 <Card className="relative overflow-hidden">
@@ -656,52 +691,27 @@ export default function GrowDetailPage() {
                 </Card>
               </motion.div>
 
-              {/* EC or Water Level (fallback when EC probe unavailable) */}
+              {/* Water Level */}
               <motion.div variants={fadeUp}>
                 <Card className="relative overflow-hidden">
                   <CardContent className="pt-4 pb-3">
-                    {sensorTrends.ec.length > 0 ? (
-                      <>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <div className="flex size-8 items-center justify-center rounded-lg bg-violet-500/10"><Waves className="size-4 text-violet-500" /></div>
-                            <div>
-                              <p className="text-[11px] text-muted-foreground">EC</p>
-                              <p className="text-lg font-semibold tabular-nums">
-                                {sensorTrends.ec[sensorTrends.ec.length - 1].toFixed(2)}
-                              </p>
-                            </div>
-                          </div>
-                          {sensorTrends.ec.length >= 2 && (() => {
-                            const delta = sensorTrends.ec[sensorTrends.ec.length - 1] - sensorTrends.ec[sensorTrends.ec.length - 2];
-                            return <Badge variant="outline" className={cn("text-[10px] gap-0.5", delta > 0 ? "text-emerald-500" : delta < 0 ? "text-orange-500" : "")}><TrendingUp className="size-2.5" />{delta >= 0 ? "+" : ""}{delta.toFixed(2)}</Badge>;
-                          })()}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="flex size-8 items-center justify-center rounded-lg bg-violet-500/10"><Waves className="size-4 text-violet-500" /></div>
+                        <div>
+                          <p className="text-[11px] text-muted-foreground">Water Level</p>
+                          <p className="text-lg font-semibold tabular-nums">
+                            {sensorTrends.water_level.length > 0 ? `${Math.round(sensorTrends.water_level[sensorTrends.water_level.length - 1])}%` : "—"}
+                          </p>
                         </div>
-                        {sensorTrends.ec.length > 2 && (
-                          <div className="mt-2 h-8"><SensorSparkline data={sensorTrends.ec} color="#8b5cf6" /></div>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <div className="flex size-8 items-center justify-center rounded-lg bg-violet-500/10"><Waves className="size-4 text-violet-500" /></div>
-                            <div>
-                              <p className="text-[11px] text-muted-foreground">Water Level</p>
-                              <p className="text-lg font-semibold tabular-nums">
-                                {sensorTrends.water_level.length > 0 ? `${Math.round(sensorTrends.water_level[sensorTrends.water_level.length - 1])}%` : "—"}
-                              </p>
-                            </div>
-                          </div>
-                          {sensorTrends.water_level.length >= 2 && (() => {
-                            const delta = sensorTrends.water_level[sensorTrends.water_level.length - 1] - sensorTrends.water_level[sensorTrends.water_level.length - 2];
-                            return <Badge variant="outline" className={cn("text-[10px] gap-0.5", delta > 0 ? "text-blue-500" : delta < 0 ? "text-orange-500" : "")}><TrendingUp className="size-2.5" />{delta >= 0 ? "+" : ""}{Math.round(delta)}%</Badge>;
-                          })()}
-                        </div>
-                        {sensorTrends.water_level.length > 2 && (
-                          <div className="mt-2 h-8"><SensorSparkline data={sensorTrends.water_level} color="#8b5cf6" /></div>
-                        )}
-                      </>
+                      </div>
+                      {sensorTrends.water_level.length >= 2 && (() => {
+                        const delta = sensorTrends.water_level[sensorTrends.water_level.length - 1] - sensorTrends.water_level[sensorTrends.water_level.length - 2];
+                        return <Badge variant="outline" className={cn("text-[10px] gap-0.5", delta > 0 ? "text-blue-500" : delta < 0 ? "text-orange-500" : "")}><TrendingUp className="size-2.5" />{delta >= 0 ? "+" : ""}{Math.round(delta)}%</Badge>;
+                      })()}
+                    </div>
+                    {sensorTrends.water_level.length > 2 && (
+                      <div className="mt-2 h-8"><SensorSparkline data={sensorTrends.water_level} color="#8b5cf6" /></div>
                     )}
                   </CardContent>
                 </Card>
