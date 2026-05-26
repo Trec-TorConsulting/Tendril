@@ -332,32 +332,57 @@ export default function DashboardPage() {
             <div className="grid gap-4 grid-cols-2 sm:grid-cols-4">
               {isHydro ? (
                 <>
-                  <EnvironmentBadgeCard
-                    label="Env"
-                    value={envValue}
-                    status={envStatus}
-                    icon={<Wind className="size-5" />}
+                  <MultiMetricCard
+                    title="Temperatures"
+                    icon={<Thermometer className="size-5" />}
+                    metrics={[
+                      {
+                        label: "Tent",
+                        value: latestTemp != null ? formatTemp(latestTemp, "f", prefs.temp_unit, 0) : "—",
+                        status: latestTemp != null ? (latestTemp >= 68 && latestTemp <= 82 ? "optimal" : "warning") : "unknown",
+                      },
+                      {
+                        label: "Water",
+                        value: latestWaterTemp != null ? formatTemp(latestWaterTemp, "f", prefs.temp_unit, 0) : "—",
+                        status: latestWaterTemp != null ? (latestWaterTemp >= 62 && latestWaterTemp <= 72 ? "optimal" : "warning") : "unknown",
+                      },
+                    ]}
                     updatedAgo={updatedAgo}
                   />
-                  <EnvironmentBadgeCard
-                    label="pH"
-                    value={sensorTrends.ph.length > 0 ? sensorTrends.ph[sensorTrends.ph.length - 1].toFixed(1) : "—"}
-                    status={sensorTrends.ph.length > 0 ? (sensorTrends.ph[sensorTrends.ph.length - 1] >= 5.5 && sensorTrends.ph[sensorTrends.ph.length - 1] <= 6.5 ? "optimal" : "warning") : "unknown"}
+                  <MultiMetricCard
+                    title="Nutrients"
                     icon={<FlaskConical className="size-5" />}
+                    metrics={[
+                      {
+                        label: "pH",
+                        value: sensorTrends.ph.length > 0 ? sensorTrends.ph[sensorTrends.ph.length - 1].toFixed(1) : "—",
+                        status: sensorTrends.ph.length > 0 ? (sensorTrends.ph[sensorTrends.ph.length - 1] >= 5.5 && sensorTrends.ph[sensorTrends.ph.length - 1] <= 6.5 ? "optimal" : "warning") : "unknown",
+                      },
+                      {
+                        label: "PPM",
+                        value: latestPpm != null ? `${Math.round(latestPpm)}` : "—",
+                        status: latestPpm != null ? (latestPpm >= 400 && latestPpm <= 1500 ? "optimal" : "warning") : "unknown",
+                      },
+                      {
+                        label: "Water Level",
+                        value: sensorTrends.water_level.length > 0 ? `${Math.round(sensorTrends.water_level[sensorTrends.water_level.length - 1])}%` : "—",
+                        status: sensorTrends.water_level.length > 0 ? (sensorTrends.water_level[sensorTrends.water_level.length - 1] >= 20 ? "optimal" : "warning") : "unknown",
+                      },
+                    ]}
                     updatedAgo={updatedAgo}
                   />
                   <EnvironmentBadgeCard
-                    label="PPM"
-                    value={latestPpm != null ? `${Math.round(latestPpm)}` : "—"}
-                    status={latestPpm != null ? (latestPpm >= 400 && latestPpm <= 1500 ? "optimal" : "warning") : "unknown"}
+                    label="Humidity"
+                    value={latestHumidity != null ? `${latestHumidity.toFixed(0)}%` : "—"}
+                    status={latestHumidity != null ? (latestHumidity >= 40 && latestHumidity <= 70 ? "optimal" : "warning") : "unknown"}
                     icon={<Droplets className="size-5" />}
                     updatedAgo={updatedAgo}
                   />
                   <EnvironmentBadgeCard
-                    label="Water Level"
-                    value={sensorTrends.water_level.length > 0 ? `${Math.round(sensorTrends.water_level[sensorTrends.water_level.length - 1])}%` : "—"}
-                    status={sensorTrends.water_level.length > 0 ? (sensorTrends.water_level[sensorTrends.water_level.length - 1] >= 20 ? "optimal" : "warning") : "unknown"}
-                    icon={<Waves className="size-5" />}
+                    label="CO₂"
+                    value={latestCO2 != null ? `${latestCO2} ppm` : "—"}
+                    status="unknown"
+                    icon={<Wind className="size-5" />}
                     updatedAgo={updatedAgo}
                   />
                 </>
@@ -678,6 +703,60 @@ function EnvironmentBadgeCard({
         >
           {statusLabel}
         </Badge>
+      </CardContent>
+    </Card>
+  );
+}
+
+interface MetricRow {
+  label: string;
+  value: string;
+  status: "optimal" | "warning" | "unknown";
+}
+
+function MultiMetricCard({
+  title,
+  icon,
+  metrics,
+  updatedAgo,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  metrics: MetricRow[];
+  updatedAgo?: string | null;
+}) {
+  const overallStatus = metrics.some((m) => m.status === "warning")
+    ? "warning"
+    : metrics.every((m) => m.status === "optimal")
+      ? "optimal"
+      : "unknown";
+
+  const statusColor = {
+    optimal: "bg-primary/10 text-primary border-primary/20",
+    warning: "bg-orange-500/10 text-orange-500 border-orange-500/20",
+    unknown: "bg-muted text-muted-foreground border-border",
+  }[overallStatus];
+
+  return (
+    <Card className={`border ${statusColor.split(" ").find((c) => c.startsWith("border-")) || "border-border"} backdrop-blur-sm`}>
+      <CardContent className="flex gap-4 py-4">
+        <div className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${statusColor.split(" ").slice(0, 2).join(" ")}`}>
+          {icon}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-medium text-muted-foreground mb-1">{title}</p>
+          <div className="space-y-0.5">
+            {metrics.map((m) => (
+              <div key={m.label} className="flex items-baseline justify-between gap-2">
+                <span className="text-[11px] text-muted-foreground">{m.label}</span>
+                <span className={`text-sm font-bold ${m.status === "warning" ? "text-orange-500" : m.status === "optimal" ? "text-foreground" : "text-muted-foreground"}`}>
+                  {m.value}
+                </span>
+              </div>
+            ))}
+          </div>
+          {updatedAgo && <p className="text-[10px] text-muted-foreground mt-1">{updatedAgo}</p>}
+        </div>
       </CardContent>
     </Card>
   );
