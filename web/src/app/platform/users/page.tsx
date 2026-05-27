@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
-import { adminListUsers, adminUpdateUserFlags } from "@/lib/api";
+import { adminListUsers, adminUpdateUserFlags, adminDeleteUser } from "@/lib/api";
 import type { AdminUserSummary } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Users, CheckCircle, XCircle, Search } from "lucide-react";
+import { Users, CheckCircle, XCircle, Search, Trash2 } from "lucide-react";
 
 export default function PlatformUsersPage() {
   const [users, setUsers] = useState<AdminUserSummary[]>([]);
@@ -60,6 +60,18 @@ export default function PlatformUsersPage() {
       refresh();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to update");
+    }
+  };
+
+  const handleDeleteUser = async (userId: string, email: string) => {
+    if (!confirm(`Delete user "${email}"?\n\nThis removes the user and all their memberships. This cannot be undone.`)) return;
+    const token = getAccessToken();
+    if (!token) return;
+    try {
+      await adminDeleteUser(token, userId);
+      refresh();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to delete user");
     }
   };
 
@@ -114,6 +126,7 @@ export default function PlatformUsersPage() {
                 <TableHead>Support</TableHead>
                 <TableHead>Verified</TableHead>
                 <TableHead>Joined</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -169,11 +182,22 @@ export default function PlatformUsersPage() {
                   <TableCell className="text-muted-foreground">
                     {formatDate(u.created_at)}
                   </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => handleDeleteUser(u.id, u.email)}
+                    >
+                      <Trash2 className="size-3 mr-1" />
+                      Delete
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))}
               {filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
+                  <TableCell colSpan={9} className="py-8 text-center text-muted-foreground">
                     {search ? "No users match your search." : "No users found."}
                   </TableCell>
                 </TableRow>

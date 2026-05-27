@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
-import { adminListTenants, adminListTenantUsers, adminUpdateTenantPlan, adminListPlans, adminCreateTenant } from "@/lib/api";
+import { adminListTenants, adminListTenantUsers, adminUpdateTenantPlan, adminListPlans, adminCreateTenant, adminDeleteTenant } from "@/lib/api";
 import type { AdminTenantSummary, AdminUserSummary, AdminBillingPlan } from "@/lib/api";
 import { cn, formatDate } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
@@ -41,7 +41,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Building2, ChevronDown, CheckCircle, XCircle, Plus } from "lucide-react";
+import { Building2, ChevronDown, CheckCircle, XCircle, Plus, Trash2 } from "lucide-react";
 
 export default function PlatformTenantsPage() {
   const [tenants, setTenants] = useState<AdminTenantSummary[]>([]);
@@ -121,6 +121,20 @@ export default function PlatformTenantsPage() {
       setError(e instanceof Error ? e.message : "Failed to create organization");
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleDelete = async (tenantId: string, tenantName: string) => {
+    if (!confirm(`Schedule deletion of "${tenantName}"?\n\nAll data will be permanently purged after 30 days.`)) return;
+    const token = getAccessToken();
+    if (!token) return;
+    try {
+      const res = await adminDeleteTenant(token, tenantId);
+      setError("");
+      alert(res.message);
+      await refresh();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to delete organization");
     }
   };
 
@@ -263,6 +277,15 @@ export default function PlatformTenantsPage() {
                       <span className="text-sm text-muted-foreground">
                         {formatDate(t.created_at)}
                       </span>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="h-7 px-2 text-xs"
+                        onClick={(e) => { e.stopPropagation(); handleDelete(t.id, t.name); }}
+                      >
+                        <Trash2 className="size-3 mr-1" />
+                        Delete
+                      </Button>
                       <ChevronDown
                         className={cn(
                           "size-4 text-muted-foreground transition-transform",
