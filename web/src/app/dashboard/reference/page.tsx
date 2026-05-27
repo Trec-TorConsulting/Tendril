@@ -139,9 +139,9 @@ export default function ReferencePage() {
                       </div>
                       <FlaskConical className="size-4 text-muted-foreground" />
                     </div>
-                    {n.nutrients?.description && (
+                    {typeof n.nutrients?.description === "string" && (
                       <p className="mt-1.5 text-xs text-muted-foreground">
-                        {n.nutrients.description as string}
+                        {n.nutrients.description}
                       </p>
                     )}
                     <div className="mt-2 flex flex-wrap gap-2">
@@ -150,21 +150,21 @@ export default function ReferencePage() {
                           NPK: {n.npk}
                         </Badge>
                       )}
-                      {n.nutrients?.type && (
+                      {typeof n.nutrients?.type === "string" && (
                         <Badge variant="secondary" className="text-xs">
-                          {n.nutrients.type as string}
+                          {n.nutrients.type}
                         </Badge>
                       )}
-                      {n.nutrients?.dosage_ml_per_gal && (
+                      {n.nutrients?.dosage_ml_per_gal != null && typeof n.nutrients.dosage_ml_per_gal === "object" ? (
                         <Badge variant="outline" className="text-xs">
                           {Object.entries(n.nutrients.dosage_ml_per_gal as Record<string, number>).map(([stage, ml]) => `${stage}: ${ml} ml/gal`).join(", ")}
                         </Badge>
-                      )}
-                      {n.nutrients?.dosage_g_per_gal && (
+                      ) : null}
+                      {n.nutrients?.dosage_g_per_gal != null && typeof n.nutrients.dosage_g_per_gal === "object" ? (
                         <Badge variant="outline" className="text-xs">
                           {Object.entries(n.nutrients.dosage_g_per_gal as Record<string, number>).map(([stage, g]) => `${stage}: ${g} g/gal`).join(", ")}
                         </Badge>
-                      )}
+                      ) : null}
                     </div>
                   </CardContent>
                 </Card>
