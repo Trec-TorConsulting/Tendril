@@ -54,6 +54,9 @@ nav:
       - Configuration: configuration.md
   - Guides:
       - ESP32 Hardware: esp32-hardware.md
+      - Atlas Scientific Sensors: atlas-scientific/README.md
+      - Atlas Calibration: atlas-scientific/calibration.md
+      - Atlas ESPHome Template: atlas-scientific/esphome-template.md
       - Billing & Plans: billing.md
       - Disaster Recovery: disaster-recovery.md
   - Architecture:

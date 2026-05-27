@@ -124,5 +124,5 @@ Payload (JSON):
 ## Next Steps
 
 - [Calibration Guide](calibration.md) — Calibrate pH, EC, DO probes
-- [ESPHome YAML Template](../atlas-scientific-esphome.md) — For ESPHome users
-- [Arduino/PlatformIO Sketch](../../esp32/hydro-monitor/src/atlas_sensors.h) — Direct firmware integration
+- [ESPHome YAML Template](esphome-template.md) — For ESPHome users
+- [Arduino/PlatformIO Sketch](https://github.com/Trec-TorConsulting/Tendril/blob/main/esp32/hydro-monitor/src/atlas_sensors.h) — Direct firmware integration
