@@ -39,6 +39,23 @@ TEMPLATES: dict[str, dict] = {
         "sensors": ["CO2 (SCD40)", "Temperature (SHT30)", "Humidity (SHT30)"],
         "board": "esp32dev",
     },
+    "atlas_ph_ec_rtd": {
+        "name": "Atlas Scientific pH/EC/RTD",
+        "description": "Lab-grade hydroponic monitoring with Atlas Scientific EZO circuits via I2C",
+        "sensors": ["pH (Atlas EZO I2C)", "EC (Atlas EZO I2C)", "Water Temp (Atlas PT-1000)"],
+        "board": "esp32dev",
+    },
+    "atlas_full_suite": {
+        "name": "Atlas Scientific Full Suite",
+        "description": "Complete Atlas Scientific setup with pH, EC, RTD, and Dissolved Oxygen",
+        "sensors": [
+            "pH (Atlas EZO I2C)",
+            "EC (Atlas EZO I2C)",
+            "Water Temp (Atlas PT-1000)",
+            "Dissolved Oxygen (Atlas EZO I2C)",
+        ],
+        "board": "esp32dev",
+    },
 }
 
 
@@ -306,6 +323,177 @@ sensor:
       float vpd = svp * (1.0 - rh / 100.0);
       return vpd;
     update_interval: 30s
+"""
+
+    elif template_id == "atlas_ph_ec_rtd":
+        yaml += """
+i2c:
+  sda: GPIO21
+  scl: GPIO22
+  scan: true
+
+sensor:
+  - platform: ezo
+    id: atlas_rtd
+    name: "Water Temperature"
+    address: 0x66
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    update_interval: 30s
+
+  - platform: template
+    name: "Water Temperature F"
+    id: water_temp_f
+    unit_of_measurement: "°F"
+    accuracy_decimals: 1
+    lambda: |-
+      if (id(atlas_rtd).state == 0) return NAN;
+      return id(atlas_rtd).state * 9.0 / 5.0 + 32.0;
+    update_interval: 30s
+
+  - platform: ezo
+    id: atlas_ph
+    name: "pH"
+    address: 0x63
+    unit_of_measurement: "pH"
+    accuracy_decimals: 2
+    update_interval: 30s
+
+  - platform: ezo
+    id: atlas_ec
+    name: "EC"
+    address: 0x64
+    unit_of_measurement: "µS/cm"
+    accuracy_decimals: 0
+    update_interval: 30s
+
+  - platform: template
+    name: "EC mS"
+    id: ec_ms
+    unit_of_measurement: "mS/cm"
+    accuracy_decimals: 2
+    lambda: |-
+      return id(atlas_ec).state / 1000.0;
+    update_interval: 30s
+
+  - platform: template
+    name: "PPM"
+    id: ppm_500
+    unit_of_measurement: "ppm"
+    accuracy_decimals: 0
+    lambda: |-
+      return id(atlas_ec).state * 0.5;
+    update_interval: 30s
+
+interval:
+  - interval: 30s
+    then:
+      - mqtt.publish_json:
+          topic: "${topic_prefix}/sensor/hydro"
+          payload: |-
+            root["water_temp_f"] = id(water_temp_f).state;
+            root["ph"] = id(atlas_ph).state;
+            root["ec"] = id(ec_ms).state;
+            root["ppm"] = (int)(id(ppm_500).state);
+  - interval: 60s
+    then:
+      - lambda: |-
+          if (!isnan(id(atlas_rtd).state)) {
+            char cmd[20];
+            snprintf(cmd, sizeof(cmd), "T,%.1f", id(atlas_rtd).state);
+            id(atlas_ph).send_custom(cmd);
+            id(atlas_ec).send_custom(cmd);
+          }
+"""
+
+    elif template_id == "atlas_full_suite":
+        yaml += """
+i2c:
+  sda: GPIO21
+  scl: GPIO22
+  scan: true
+
+sensor:
+  - platform: ezo
+    id: atlas_rtd
+    name: "Water Temperature"
+    address: 0x66
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    update_interval: 30s
+
+  - platform: template
+    name: "Water Temperature F"
+    id: water_temp_f
+    unit_of_measurement: "°F"
+    accuracy_decimals: 1
+    lambda: |-
+      if (id(atlas_rtd).state == 0) return NAN;
+      return id(atlas_rtd).state * 9.0 / 5.0 + 32.0;
+    update_interval: 30s
+
+  - platform: ezo
+    id: atlas_ph
+    name: "pH"
+    address: 0x63
+    unit_of_measurement: "pH"
+    accuracy_decimals: 2
+    update_interval: 30s
+
+  - platform: ezo
+    id: atlas_ec
+    name: "EC"
+    address: 0x64
+    unit_of_measurement: "µS/cm"
+    accuracy_decimals: 0
+    update_interval: 30s
+
+  - platform: template
+    name: "EC mS"
+    id: ec_ms
+    unit_of_measurement: "mS/cm"
+    accuracy_decimals: 2
+    lambda: |-
+      return id(atlas_ec).state / 1000.0;
+    update_interval: 30s
+
+  - platform: template
+    name: "PPM"
+    id: ppm_500
+    unit_of_measurement: "ppm"
+    accuracy_decimals: 0
+    lambda: |-
+      return id(atlas_ec).state * 0.5;
+    update_interval: 30s
+
+  - platform: ezo
+    id: atlas_do
+    name: "Dissolved Oxygen"
+    address: 0x61
+    unit_of_measurement: "mg/L"
+    accuracy_decimals: 2
+    update_interval: 30s
+
+interval:
+  - interval: 30s
+    then:
+      - mqtt.publish_json:
+          topic: "${topic_prefix}/sensor/hydro"
+          payload: |-
+            root["water_temp_f"] = id(water_temp_f).state;
+            root["ph"] = id(atlas_ph).state;
+            root["ec"] = id(ec_ms).state;
+            root["ppm"] = (int)(id(ppm_500).state);
+            root["do_mg_l"] = id(atlas_do).state;
+  - interval: 60s
+    then:
+      - lambda: |-
+          if (!isnan(id(atlas_rtd).state)) {
+            char cmd[20];
+            snprintf(cmd, sizeof(cmd), "T,%.1f", id(atlas_rtd).state);
+            id(atlas_ph).send_custom(cmd);
+            id(atlas_ec).send_custom(cmd);
+          }
 """
 
     return yaml
