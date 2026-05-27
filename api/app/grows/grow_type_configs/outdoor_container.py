@@ -1696,6 +1696,151 @@ OUTDOOR_CONTAINER_TROUBLESHOOTING: list[dict] = [
     },
 ]
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CONTAINER MANAGEMENT — Outdoor Container's core differentiator expansion
+# ─────────────────────────────────────────────────────────────────────────────
+
+OUTDOOR_CONTAINER_MANAGEMENT: dict = {
+    "container_selection": {
+        "fabric_pots": {
+            "sizes_gal": [3, 5, 7, 10, 15, 20],
+            "recommended_outdoor": {"min": 7, "max": 15, "optimal": 10},
+            "pros": [
+                "Air pruning (prevents root circling)",
+                "Excellent drainage",
+                "Cooler root zone than plastic",
+                "Lightweight",
+                "Foldable storage",
+            ],
+            "cons": [
+                "Dries faster (more watering)",
+                "Harder to move when wet",
+                "Degrades in UV after 2-3 seasons",
+                "Salts build on fabric exterior",
+            ],
+            "best_for": "Primary recommendation for outdoor container growing. Superior root structure.",
+        },
+        "plastic_pots": {
+            "sizes_gal": [3, 5, 7, 10, 15, 20],
+            "recommended_outdoor": {"min": 7, "max": 20, "optimal": 10},
+            "pros": ["Retains moisture longer", "Durable multi-season", "Easy to move", "Cheap"],
+            "cons": [
+                "Root circling if no air holes",
+                "Can overheat in direct sun (black pots)",
+                "Less oxygen to root zone",
+            ],
+            "sun_protection": "Use WHITE or light-colored pots outdoors. Black plastic in direct sun can reach 120°F+ at root zone. Wrap with reflective material if dark colored.",
+            "best_for": "Hot climates (moisture retention) or windy areas (stability).",
+        },
+        "air_pots": {
+            "sizes_gal": [1, 3, 5, 9, 20],
+            "recommended_outdoor": {"min": 9, "max": 20},
+            "pros": ["Maximum air pruning", "Rapid root development", "Cannot overwater"],
+            "cons": ["Expensive", "Dries very fast outdoors", "Requires saucers/trays for runoff", "Wind can tip them"],
+            "best_for": "Experienced growers willing to water frequently for maximum root development.",
+        },
+    },
+    "root_zone_temperature": {
+        "problem": "Outdoor containers expose root zones to ambient temperature extremes. Ground soil insulates; containers do not.",
+        "heat_management": {
+            "critical_root_temp_f": 95,
+            "target_root_temp_f": {"min": 65, "max": 80},
+            "cooling_strategies": [
+                "Light-colored containers (white/tan) — reflects heat vs absorbing",
+                "Double-potting (pot inside larger pot with air gap for insulation)",
+                "Shade cloth on pot sides (not plant canopy) during peak afternoon heat",
+                "Elevate pots off dark surfaces (concrete, asphalt) — use pot feet or wooden pallets",
+                "Mulch surface heavily (3-4 inches) to insulate top of root zone",
+                "Group pots together (outer pots shade inner pot sides)",
+                "Water in morning (evaporative cooling) and again if soil temp exceeds 90°F",
+            ],
+        },
+        "cold_management": {
+            "frost_protocol": [
+                "Move containers indoors or to garage when frost expected (advantage of containers!)",
+                "If too heavy to move: cover with frost cloth/row cover at night",
+                "Group containers against south-facing wall (thermal mass radiates heat at night)",
+                "Water soil before frost (wet soil holds more heat than dry)",
+            ],
+            "spring_strategy": "Containers warm faster than ground in spring (advantage for early start). Place on dark surface in spring to absorb heat. Switch to light surface/elevated in summer.",
+        },
+    },
+    "watering_outdoor_containers": {
+        "frequency_challenge": "Outdoor containers dry much faster than indoor. Wind, sun, heat all accelerate evaporation. Budget for DAILY watering in peak summer, sometimes twice daily.",
+        "by_season": {
+            "spring": {"frequency": "Every 2-3 days", "notes": "Cool temps, small plants, low demand."},
+            "early_summer": {"frequency": "Daily", "notes": "Plants growing rapidly. Increasing demand."},
+            "peak_summer": {
+                "frequency": "Daily or twice daily",
+                "notes": "Hot + windy + large plants = extreme water demand. 10-gal fabric pot may need 2-3 gallons daily.",
+            },
+            "fall": {"frequency": "Every 1-2 days", "notes": "Cooling down. Plants finishing. Reduce slightly."},
+        },
+        "automation_options": {
+            "drip_irrigation": "Timer-controlled drip emitters (2 GPH) per pot. Most reliable for vacations/busy schedules.",
+            "ollas": "Buried terracotta pots that seep water into soil. Low-tech. Self-regulating. Great for smaller containers.",
+            "self_watering_bases": "Reservoir trays that wick water up into pot. Good for short absences (1-3 days).",
+            "wicking_beds": "DIY self-watering container with internal reservoir. Can sustain plants 3-5 days without attention.",
+        },
+        "deep_vs_shallow": {
+            "correct": "Water until 15-20% runoff from bottom. Ensures FULL root zone saturation. All roots get water.",
+            "incorrect": "Light surface watering that doesn't reach bottom roots. Creates shallow root zone. Plant suffers in heat.",
+        },
+    },
+    "mobility_advantage": {
+        "why_it_matters": "Containers can MOVE. This is the #1 advantage over in-ground outdoor growing.",
+        "use_cases": [
+            "Chase sunlight as sun angle changes seasonally",
+            "Move to shelter during storms, hail, extreme heat",
+            "Move indoors for frost protection (extend season 2-4 weeks)",
+            "Rearrange for optimal spacing as plants grow",
+            "Move to darkness for light-dep flowering technique",
+            "Bring inside to inspect/treat pest issues",
+            "Move away from construction, lawn chemicals, or other disturbances",
+        ],
+        "mobility_aids": {
+            "plant_dollies": "Rolling platforms for large pots. Essential for 10+ gallon containers.",
+            "wheeled_bases": "Built-in wheels on pot saucers. Budget option.",
+            "pallet_jacks": "For commercial-scale container moves.",
+            "lightweight_soil_mix": "Use more perlite/pumice in outdoor container mix to reduce weight for mobility.",
+        },
+        "weight_considerations": {
+            "5_gal_saturated_lbs": 40,
+            "7_gal_saturated_lbs": 55,
+            "10_gal_saturated_lbs": 75,
+            "15_gal_saturated_lbs": 110,
+            "20_gal_saturated_lbs": 145,
+            "note": "Plan mobility BEFORE filling and planting. Saturated containers are extremely heavy.",
+        },
+    },
+    "wind_management": {
+        "problem": "Containers elevate plants above ground. Combined with no root anchoring in deep soil, outdoor containers are vulnerable to wind.",
+        "damage_types": [
+            "Toppling (pot blown over)",
+            "Branch breakage",
+            "Wind burn (desiccated leaf edges)",
+            "Increased transpiration (faster drying)",
+        ],
+        "solutions": {
+            "stability": [
+                "Low, wide containers are more stable than tall narrow ones",
+                "Saucers/bases with water add weight (bottom-heavy)",
+                "Group containers together (mutual wind protection)",
+                "Place against walls or fences on windward side",
+                "Stakes/cages anchored into pot provide support without catching wind",
+            ],
+            "wind_protection": [
+                "Shade cloth (30-50%) as windbreak — allows some airflow while reducing force",
+                "Temporary fencing or lattice on windward side",
+                "Companion tall plants (sunflowers, corn) as living windbreak",
+                "Move containers to sheltered location during storms",
+            ],
+        },
+        "training_for_wind_resistance": "Top plants early for bushy, wide profile instead of tall single-cola. Lower center of gravity = less wind catch. LST (Low Stress Training) spreads branches laterally.",
+    },
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIG
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1707,5 +1852,6 @@ OUTDOOR_CONTAINER_CONFIG: dict = {
     "equipment": OUTDOOR_CONTAINER_EQUIPMENT,
     "quick_reference": OUTDOOR_CONTAINER_QUICK_REFERENCE,
     "troubleshooting": OUTDOOR_CONTAINER_TROUBLESHOOTING,
+    "container_management": OUTDOOR_CONTAINER_MANAGEMENT,
     "total_grow_days": {"min": 120, "max": 240, "typical": 170},
 }

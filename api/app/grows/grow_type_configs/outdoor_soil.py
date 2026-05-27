@@ -1862,6 +1862,178 @@ OUTDOOR_SOIL_TROUBLESHOOTING: list[dict] = [
     },
 ]
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# OUTDOOR ENVIRONMENT MANAGEMENT — Outdoor Soil's core differentiator expansion
+# ─────────────────────────────────────────────────────────────────────────────
+
+OUTDOOR_SOIL_ENVIRONMENT: dict = {
+    "site_selection": {
+        "sunlight_requirements": {
+            "minimum_hours": 6,
+            "optimal_hours": 8,
+            "direction": "South-facing (Northern Hemisphere). Unobstructed southern sky exposure.",
+            "morning_sun_priority": "Morning sun (east exposure) dries dew faster, reducing mold/mildew risk.",
+            "afternoon_shade_benefit": "Partial afternoon shade in hot climates (95°F+) prevents heat stress.",
+        },
+        "wind_considerations": {
+            "light_breeze": "Beneficial. Strengthens stems. Improves transpiration. Deters some pests.",
+            "strong_wind": "Damaging. Breaks branches, dries soil rapidly, causes wind burn on leaves.",
+            "windbreak_options": [
+                "Natural hedgerow",
+                "Fence (50% permeable ideal)",
+                "Companion tall plants (sunflowers, corn)",
+                "Shade cloth on windy side",
+            ],
+        },
+        "soil_assessment": {
+            "drainage_test": "Dig 12-inch hole. Fill with water. Should drain within 4 hours. Longer = amend heavily or raised bed.",
+            "ph_test": "Test native soil pH. Cannabis prefers 6.0-7.0 in soil. Amend with lime (raise) or sulfur (lower).",
+            "texture_test": "Squeeze moist soil. Sandy = crumbles (needs organic matter). Clay = stays balled (needs perlite/sand). Loam = ideal.",
+        },
+        "proximity": {
+            "water_source": "Within hose reach. Outdoor plants in peak summer can need 5+ gallons EACH per day.",
+            "security": "Hidden from public view, roads, neighbors. Fenced to prevent animal/human access.",
+            "access_frequency": "Plan for daily visits during peak season (watering, pest checks, training).",
+        },
+    },
+    "in_ground_vs_raised_bed": {
+        "direct_in_ground": {
+            "pros": [
+                "Unlimited root space",
+                "Natural moisture from water table",
+                "Less watering once established",
+                "Beneficial soil organisms",
+            ],
+            "cons": [
+                "Can't control soil quality easily",
+                "Drainage issues in clay",
+                "Harder to amend",
+                "Ground pests (gophers, moles)",
+            ],
+            "preparation": [
+                "Dig 3x3 ft hole, 2 ft deep per plant",
+                "Amend with compost (30%), perlite (10%), worm castings (10%)",
+                "Mix thoroughly with native soil",
+                "Let settle 1-2 weeks before planting",
+            ],
+        },
+        "raised_beds": {
+            "pros": [
+                "Full soil control",
+                "Better drainage",
+                "Warmer soil (earlier start)",
+                "Easier pest management",
+                "Accessibility",
+            ],
+            "cons": [
+                "Limited root space (unless very large)",
+                "Dry faster in heat",
+                "Cost of materials and soil",
+                "May need more frequent watering",
+            ],
+            "minimum_size_per_plant": "4x4 ft, 18 inches deep",
+            "soil_recipe": "1/3 quality compost, 1/3 peat/coco, 1/3 perlite/pumice. Amend with dry organic fertilizer.",
+        },
+        "recommendation": "Raised beds for beginners and areas with poor native soil. In-ground for experienced growers with good soil and long growing seasons.",
+    },
+    "seasonal_timing": {
+        "last_frost_rule": "Do NOT plant outdoors until 2 weeks AFTER last frost date for your area.",
+        "photoperiod_awareness": {
+            "veg_trigger": "Long days (14+ hours) keep plants vegetative.",
+            "flower_trigger": "Plants begin flowering when days shorten below ~14 hours (varies by latitude/strain).",
+            "northern_hemisphere_timeline": {
+                "indoor_start": "March-April (under lights, 18/6)",
+                "outdoor_transplant": "May-June (after last frost)",
+                "flower_onset": "Mid-August (days shortening)",
+                "harvest": "October (strain dependent, 8-10 weeks flower)",
+            },
+            "light_dep_option": "Cover plants with blackout tarp to force flower earlier. Creates artificial short days. Allows multiple harvests per season.",
+        },
+        "hardening_off": {
+            "description": "Gradually acclimating indoor-started plants to outdoor conditions.",
+            "protocol": [
+                "Day 1-2: 2 hours outside in shade, protected from wind",
+                "Day 3-4: 4 hours, partial sun",
+                "Day 5-6: 6 hours, increasing sun exposure",
+                "Day 7-8: Full day outside, bring in at night if cold",
+                "Day 9-10: Leave outside 24h (if nighttime temps above 50°F)",
+                "Day 11+: Transplant to final position",
+            ],
+            "skipping_risks": "Sunburn, wind damage, transplant shock. Plants not adapted to UV intensity will bleach/burn leaves.",
+        },
+    },
+    "pest_management_outdoor": {
+        "prevention_first": [
+            "Companion planting (basil, marigolds, lavender deter many pests)",
+            "Neem oil foliar spray (weekly during veg, stop 3 weeks before harvest)",
+            "Diatomaceous earth around stem base (deters crawling insects)",
+            "Inspect plants DAILY during outdoor season (early detection is key)",
+            "Beneficial insect habitat (ladybugs, lacewings, parasitic wasps)",
+        ],
+        "common_outdoor_pests": {
+            "caterpillars_budworms": {
+                "damage": "Bore into buds. Cause bud rot from inside. Devastating in flower.",
+                "signs": "Frass (black droppings) on buds, small holes in buds, browning bud sections.",
+                "treatment": "BT (Bacillus thuringiensis) spray weekly during flower. Pick off manually. Inspect buds daily.",
+            },
+            "spider_mites": {
+                "damage": "Suck cell contents. Yellow stippling on leaves. Webs in severe infestation.",
+                "signs": "Tiny dots on leaf undersides. Fine webbing. Yellow speckled leaves.",
+                "treatment": "Neem oil or insecticidal soap (veg only). Predatory mites (Phytoseiulus persimilis). Water spray to knock off.",
+            },
+            "aphids": {
+                "damage": "Suck sap. Excrete honeydew (attracts ants, causes sooty mold).",
+                "signs": "Clusters on new growth and stems. Curling leaves. Sticky residue.",
+                "treatment": "Ladybugs (natural predator). Neem oil. Strong water spray. Insecticidal soap.",
+            },
+            "deer_rabbits": {
+                "damage": "Eat entire plants, especially young seedlings.",
+                "prevention": "Fencing (8 ft for deer, buried 6 inches for rabbits). Companion plants (strong-smelling herbs).",
+            },
+        },
+        "mold_mildew_prevention": {
+            "powdery_mildew": {
+                "cause": "High humidity + moderate temps + poor airflow.",
+                "prevention": "Defoliate for airflow. Don't water leaves. Potassium bicarbonate spray preventatively.",
+                "treatment": "Remove affected leaves. Neem oil or potassium bicarbonate spray. Improve airflow.",
+            },
+            "bud_rot_botrytis": {
+                "cause": "High humidity + dense buds + rain/dew exposure.",
+                "prevention": "Shake plants after rain. Ensure airflow through canopy. Choose mold-resistant strains for humid climates. Defoliate inner canopy.",
+                "treatment": "Remove affected buds IMMEDIATELY (cut 1 inch below rot). Check neighboring buds. Cannot be saved — remove and destroy.",
+                "critical": "Bud rot spreads rapidly. ONE rotted bud can destroy entire plant if not caught. Daily inspection mandatory in late flower.",
+            },
+        },
+    },
+    "water_management_outdoor": {
+        "container_vs_ground": {
+            "in_ground": "Water deeply, less frequently. Roots access deeper moisture. 2-3 times per week in peak summer.",
+            "raised_bed": "More frequent than in-ground, less than containers. Monitor moisture at 4-6 inch depth.",
+        },
+        "mulching": {
+            "materials": ["Straw (most popular)", "Wood chips", "Leaves", "Cover crop (living mulch)"],
+            "depth_inches": {"min": 3, "max": 6},
+            "benefits": [
+                "Reduces watering by 50%",
+                "Stabilizes soil temperature",
+                "Feeds soil biology as it decomposes",
+                "Prevents soil splash (reduces disease)",
+                "Suppresses weeds",
+            ],
+        },
+        "rain_considerations": {
+            "advantage": "Free water. Contains dissolved nitrogen (lightning-fixed). Ideal pH for most soils.",
+            "too_much_rain": "Waterlogged soil = root rot. Improve drainage. Raised beds help. Cover with plastic during extended rain events.",
+            "rain_during_flower": "Shake plants gently after rain to dislodge water from buds. Bud rot risk highest after rain events. Tarps/canopies during late flower.",
+        },
+        "drought_strategy": {
+            "deep_watering": "Water deeply (saturate full root zone) less often. Trains roots deep. Shallow watering = shallow roots = drought vulnerability.",
+            "water_schedule_peak_summer": "In-ground: every 2-3 days. Raised bed: daily to every other day. Morning watering preferred (less evaporation).",
+        },
+    },
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIG
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1873,5 +2045,6 @@ OUTDOOR_SOIL_CONFIG: dict = {
     "equipment": OUTDOOR_SOIL_EQUIPMENT,
     "quick_reference": OUTDOOR_SOIL_QUICK_REFERENCE,
     "troubleshooting": OUTDOOR_SOIL_TROUBLESHOOTING,
+    "outdoor_environment": OUTDOOR_SOIL_ENVIRONMENT,
     "total_grow_days": {"min": 120, "max": 240, "typical": 180},
 }

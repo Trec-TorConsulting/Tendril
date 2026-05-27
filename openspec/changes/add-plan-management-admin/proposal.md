@@ -1,17 +1,31 @@
 # Change: Add Plan Management Admin with Bidirectional Sync
 
+## Status
+**~80% Complete** — DB models, plan CRUD API, metering, TierGate, admin UI, and dunning all implemented. Remaining: bidirectional pull sync, dynamic pricing page, and tests.
+
 ## Why
 Plans/products/subscriptions are currently hardcoded as env vars mapped to Stripe Price IDs. The platform operator needs a proper admin UI to create, price, and manage subscription plans — with bidirectional sync to the connected payment provider. Plans created in Tendril push to Stripe; plans modified in Stripe sync back to Tendril.
 
-## What Changes
-- New `billing_plans` table storing the canonical plan definitions
-- New `billing_plan_prices` table for per-provider price ID mapping
-- Admin CRUD UI for plans at `/admin/billing/plans`
-- Bidirectional sync engine: Tendril → Provider and Provider → Tendril
-- Plan feature gates defined per plan (grows, devices, AI calls, storage, team members)
-- Support for one-time products (marketplace items, add-ons) in addition to subscriptions
-- Usage metering records for overage-based billing
-- **BREAKING**: `PRICE_IDS` dict removed; plans resolved from DB
+## What's Already Built
+- `billing_plans`, `billing_plan_prices`, `billing_usage_records` tables (models defined, seeded with 6 plans)
+- Plan CRUD admin API at `/v1/billing/plans` (create, update, archive, sync)
+- Public plans endpoint at `/v1/billing/plans/public` (no auth)
+- Usage metering service (`api/app/billing/metering.py`)
+- TierGate with DB-driven limits, feature flags, and plan hierarchy
+- Plan push to provider (creates Stripe Product + Price)
+- Admin UI at `/platform/billing` with plan editor and sync controls
+- Dunning flow, cancellation with retention offers, account deletion
+- Email service (Resend) for payment failures and lifecycle events
+- Business metrics endpoint (MRR, ARR, churn, ARPU)
+
+## What Remains
+- **Bidirectional pull sync** — fetch products/prices from provider and reconcile
+- **Conflict resolution** — last-write-wins with audit log
+- **Scheduler task** — periodic reconciliation (every 6 hours)
+- **Dynamic pricing page** — fetch from API instead of hardcoded PLANS array in frontend
+- **Annual toggle** — monthly/annual switching with discount display
+- **Feature comparison table** — auto-generated from plan limits
+- **Tests** — unit + integration tests for all billing components
 
 ## Impact
 - Affected specs: billing (new capability)

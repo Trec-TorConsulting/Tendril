@@ -2436,6 +2436,159 @@ DWC_TROUBLESHOOTING: list[dict] = [
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# RESERVOIR MANAGEMENT — DWC's core differentiator deep dive
+# ─────────────────────────────────────────────────────────────────────────────
+
+DWC_RESERVOIR_MANAGEMENT: dict = {
+    "top_off_decision_tree": {
+        "description": "How to decide between plain water top-off vs nutrient top-off based on EC drift.",
+        "ec_rising": {
+            "meaning": "Plants drinking more water than nutrients. Solution is concentrating.",
+            "action": "Top off with plain pH'd water only.",
+            "target": "Bring EC back to starting level.",
+        },
+        "ec_stable": {
+            "meaning": "Plants consuming water and nutrients at equal rates. Ideal balance.",
+            "action": "Top off with 1/2 strength nutrient solution.",
+            "target": "Maintain current EC.",
+        },
+        "ec_dropping": {
+            "meaning": "Plants consuming more nutrients than water. Under-fed.",
+            "action": "Top off with full-strength or slightly concentrated nutrient solution.",
+            "target": "Bring EC back to target for current stage.",
+        },
+        "golden_rule": "When in doubt, top off with plain pH'd water. You can always add nutrients; removing them requires a full change.",
+    },
+    "change_schedule": {
+        "seedling": {"interval_days": 10, "notes": "Low nutrient demand. Change less frequently."},
+        "early_veg": {"interval_days": 7, "notes": "Weekly changes as plant establishes."},
+        "late_veg": {"interval_days": 7, "notes": "Weekly. More aggressive feeders now."},
+        "transition": {"interval_days": 7, "notes": "Weekly. Nutrient ratio shifting."},
+        "early_flower": {"interval_days": 5, "notes": "More frequent. Heavy demand begins."},
+        "mid_flower": {"interval_days": 5, "notes": "Peak demand. Consider every 4 days for large plants."},
+        "late_flower": {"interval_days": 5, "notes": "Maintaining quality. Watch for lockout signs."},
+        "flush": {"interval_days": 3, "notes": "Frequent plain water changes to clear salts."},
+    },
+    "emergency_drain_protocol": [
+        {
+            "trigger": "Root rot detected (brown, slimy roots, foul smell)",
+            "action": "Immediate full drain. H2O2 root dip (3ml/gal 3%). Refill with fresh solution + double Hydroguard.",
+        },
+        {
+            "trigger": "pH won't stabilize (swinging >1.0 in 24h)",
+            "action": "Full drain. Scrub bucket. Refill with fresh calibrated solution.",
+        },
+        {
+            "trigger": "EC spiked unexpectedly (>0.5 above target)",
+            "action": "Drain 50%, refill with plain pH'd water to dilute.",
+        },
+        {
+            "trigger": "Foul smell from reservoir",
+            "action": "Immediate full drain. Clean bucket with H2O2. Fresh solution + Hydroguard.",
+        },
+        {
+            "trigger": "Algae visible (green slime on roots/bucket walls)",
+            "action": "Drain. Scrub bucket with H2O2. Ensure light exclusion. Refill. Add Hydroguard.",
+        },
+    ],
+    "beneficial_microbes": {
+        "primary_recommendation": {
+            "product": "Hydroguard",
+            "active_ingredient": "Bacillus amyloliquefaciens",
+            "dose_ml_per_gal": 2,
+            "frequency": "Every reservoir change AND every top-off",
+            "notes": "The gold standard for DWC root protection. Colonizes root zone, outcompetes pathogens.",
+        },
+        "alternatives": [
+            {
+                "product": "Great White Premium Mycorrhizae",
+                "dose": "1 tsp per 2 gal",
+                "notes": "Powder. Contains mycorrhizae + trichoderma + bacteria. Apply at transplant.",
+            },
+            {
+                "product": "Mammoth P",
+                "dose": "0.16 ml/gal",
+                "notes": "Phosphorus-liberating bacteria. Use in flower. Compatible with Hydroguard.",
+            },
+            {
+                "product": "Recharge",
+                "dose": "0.5 tsp/gal",
+                "notes": "Mycorrhizae + trichoderma + bacteria. Organic. Can cloud water — use sparingly in DWC.",
+            },
+            {
+                "product": "SLF-100",
+                "dose": "1 ml/gal",
+                "notes": "Enzyme-based. Breaks down dead root matter. Not alive — compatible with H2O2 if needed.",
+            },
+        ],
+        "compatibility_notes": [
+            "NEVER use H2O2 with beneficial bacteria — H2O2 kills ALL microbes (good and bad)",
+            "Choose either H2O2 sterile approach OR beneficial microbe approach — not both",
+            "Hydroguard is the standard DWC recommendation (beneficial approach)",
+            "If you must use H2O2 (emergency rot treatment), wait 24h before re-adding beneficials",
+            "Mammoth P is safe to combine with Hydroguard (different organisms, complementary)",
+        ],
+    },
+    "dissolved_oxygen": {
+        "minimum_ppm": 6.0,
+        "target_ppm": 8.0,
+        "critical_low_ppm": 4.0,
+        "factors_that_reduce_do": [
+            "Higher water temperature (above 72°F DO drops rapidly)",
+            "Insufficient air stone output",
+            "Clogged/mineral-encrusted air stones (replace every 2-3 grows)",
+            "Long air hose runs (pressure loss)",
+            "High nutrient concentration",
+        ],
+        "improvement_methods": [
+            "Larger/more air stones (target 1 large stone or multiple small per bucket)",
+            "Commercial air pump (minimum 4 LPM per bucket)",
+            "Water chiller (68°F water holds ~8.5 ppm DO vs 75°F holds ~7.5 ppm)",
+            "Replace air stones when bubbles become large/fewer (mineral buildup)",
+            "Shorter air hose runs — air pump close to bucket",
+        ],
+    },
+    "water_temperature_management": {
+        "target_f": 68,
+        "acceptable_range_f": {"min": 65, "max": 72},
+        "danger_zone_f": {"above": 75, "notes": "Root rot risk increases exponentially above 75°F"},
+        "cooling_methods": [
+            {
+                "method": "Water chiller",
+                "effectiveness": "Best",
+                "cost": "High ($150-$500)",
+                "notes": "The only reliable method. Size: 1/10 HP per 5 gal bucket.",
+            },
+            {
+                "method": "Frozen water bottles",
+                "effectiveness": "Temporary",
+                "cost": "Free",
+                "notes": "Requires constant rotation. Causes pH/EC swings. Emergency only.",
+            },
+            {
+                "method": "Insulate bucket",
+                "effectiveness": "Moderate",
+                "cost": "Low",
+                "notes": "Reflective insulation wrap. Prevents room heat transfer.",
+            },
+            {
+                "method": "Keep bucket off floor in tent",
+                "effectiveness": "Low-Moderate",
+                "cost": "Free",
+                "notes": "Heat rises. Floor is often coolest spot — use elevated stand only if floor has radiant heat.",
+            },
+            {
+                "method": "Run lights at night",
+                "effectiveness": "Moderate",
+                "cost": "Free",
+                "notes": "Lower ambient temp during lights-on keeps water cooler.",
+            },
+        ],
+    },
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # ASSEMBLED CONFIG EXPORT
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -2446,6 +2599,7 @@ DWC_CONFIG: dict = {
     "equipment": DWC_EQUIPMENT,
     "quick_reference": DWC_QUICK_REFERENCE,
     "troubleshooting": DWC_TROUBLESHOOTING,
+    "dwc_reservoir_management": DWC_RESERVOIR_MANAGEMENT,
     "total_grow_days": {
         "min": 90,
         "max": 150,

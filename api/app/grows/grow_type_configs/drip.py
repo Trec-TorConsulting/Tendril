@@ -2478,6 +2478,170 @@ DRIP_TROUBLESHOOTING: list[dict] = [
     },
 ]
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# IRRIGATION MANAGEMENT — Drip system's core differentiator
+# ─────────────────────────────────────────────────────────────────────────────
+
+DRIP_IRRIGATION_MANAGEMENT: dict = {
+    "emitter_types_and_selection": {
+        "pressure_compensating": {
+            "flow_rate_gph": "0.5-2.0",
+            "pressure_range_psi": "10-40",
+            "description": "Delivers consistent flow regardless of pressure variations or line length.",
+            "best_for": "Multi-plant systems with varying line lengths. Commercial setups.",
+            "pros": ["Uniform delivery to all plants", "Long run lengths OK", "Handles elevation changes"],
+            "cons": ["More expensive", "Can clog if not filtered", "Minimum operating pressure required"],
+        },
+        "non_compensating": {
+            "flow_rate_gph": "0.5-4.0 (varies with pressure)",
+            "pressure_range_psi": "5-30",
+            "description": "Flow rate changes with pressure. Simpler, cheaper, but less uniform.",
+            "best_for": "Small systems with equal line lengths. Budget builds.",
+            "pros": ["Cheap", "Simple", "Low minimum pressure"],
+            "cons": ["Uneven flow if lines differ in length", "Pressure-dependent", "End-of-line plants get less"],
+        },
+        "drip_stakes": {
+            "flow_rate_gph": "0.5-2.0",
+            "description": "Emitter mounted on a stake inserted into media. Directs water to root zone.",
+            "best_for": "Pots, grow bags, individual containers. Most common hobby setup.",
+            "notes": "Use arrow/barbed stakes for stability. One per small pot, 2-4 per large pot.",
+        },
+        "drip_rings": {
+            "flow_rate_gph": "2.0-5.0 (distributed)",
+            "description": "Ring around stem base with multiple drip points. Even distribution around root zone.",
+            "best_for": "Large containers (5+ gal). Ensures entire root ball is wetted, not just one spot.",
+            "notes": "Especially important in coco/perlite where lateral water movement is limited.",
+        },
+    },
+    "runoff_monitoring": {
+        "target_runoff_percent": {
+            "standard": {"min": 10, "max": 20, "notes": "10-20% runoff ensures full media saturation without waste."},
+            "heavy_feed": {
+                "min": 20,
+                "max": 30,
+                "notes": "During heavy feeding stages, extra runoff helps prevent salt lockout.",
+            },
+            "flush": {"min": 30, "max": 50, "notes": "Heavy runoff during flush to leach accumulated salts."},
+        },
+        "runoff_ec_analysis": {
+            "runoff_ec_close_to_input": "Media is balanced. Nutrients flowing through without accumulation. Good.",
+            "runoff_ec_higher_than_input": "Salt buildup in media. Increase runoff % or flush. Common issue.",
+            "runoff_ec_lower_than_input": "Plant consuming heavily. May need to increase feed strength.",
+            "action_threshold": "If runoff EC is >0.5 above input EC consistently, perform a flush.",
+        },
+        "runoff_ph_analysis": {
+            "target_range": {"min": 5.5, "max": 6.5},
+            "runoff_ph_dropping": "Media becoming acidic. Often from over-feeding ammoniacal nitrogen. Raise input pH slightly.",
+            "runoff_ph_rising": "Media becoming alkaline. Could be calcium carbonate buildup. Lower input pH slightly.",
+        },
+        "collection_method": "Saucers under pots or elevated pot stands with collection trays. Measure immediately — don't let runoff sit (evaporation concentrates it).",
+    },
+    "drain_to_waste_vs_recirculating": {
+        "drain_to_waste": {
+            "description": "Feed → runoff discarded. Fresh solution every irrigation.",
+            "pros": [
+                "No pathogen recirculation",
+                "No salt accumulation in reservoir",
+                "Simple — no return plumbing",
+                "Best for coco/perlite",
+            ],
+            "cons": ["Higher water/nutrient usage", "Runoff disposal needed", "Environmental impact"],
+            "best_for": "Coco, perlite, small hobby grows, organic nutrients.",
+            "ec_management": "Input EC is all that matters. Target EC based on stage.",
+        },
+        "recirculating": {
+            "description": "Runoff collected and returned to reservoir. Solution reused until changed.",
+            "pros": ["Less waste", "Lower ongoing cost", "Better for large systems"],
+            "cons": [
+                "pH/EC drift faster",
+                "Disease can spread plant-to-plant",
+                "More monitoring required",
+                "Reservoir maintenance",
+            ],
+            "best_for": "Rockwool slabs, commercial operations, environmentally-conscious growers.",
+            "ec_management": "Monitor reservoir EC constantly. Top off with adjusted solution. Full change every 5-7 days.",
+        },
+        "recommendation": "Drain-to-waste for hobby growers using coco/perlite. Recirculating for commercial rockwool slab systems.",
+    },
+    "media_profiles_for_drip": {
+        "coco_coir": {
+            "irrigation_events_per_day": {"veg": "3-5", "flower": "5-8"},
+            "shot_size_ml": "Calculate: container volume × 3-5% per irrigation event",
+            "dry_back_target_percent": 5,
+            "notes": "Coco wants frequent, small irrigations. Never let it dry out completely. High-frequency fertigation is ideal.",
+        },
+        "rockwool": {
+            "irrigation_events_per_day": {"veg": "2-4", "flower": "4-6"},
+            "shot_size_ml": "Calculate: slab volume × 2-4% per event",
+            "dry_back_target_percent": 10,
+            "notes": "Rockwool holds water well. Less frequent than coco. Watch for over-saturation.",
+        },
+        "perlite": {
+            "irrigation_events_per_day": {"veg": "4-6", "flower": "6-10"},
+            "shot_size_ml": "Smaller shots, more frequent. Perlite drains fast.",
+            "dry_back_target_percent": 3,
+            "notes": "Very low retention. Needs most frequent irrigation of all media. Perfect for crop steering.",
+        },
+        "soil_soilless": {
+            "irrigation_events_per_day": {"veg": "1-2", "flower": "2-3"},
+            "shot_size_ml": "Larger shots, less frequent. Let dry back significantly.",
+            "dry_back_target_percent": 30,
+            "notes": "Soil retains heavily. Drip in soil acts more like automated hand-watering. Longer intervals.",
+        },
+    },
+    "crop_steering_with_drip": {
+        "description": "Manipulating irrigation timing and volume to steer plant behavior (vegetative vs generative).",
+        "vegetative_steering": {
+            "strategy": "Keep media wet. Frequent irrigations. Small dry-back.",
+            "irrigation_start": "Early (at lights-on or before)",
+            "irrigation_stop": "Late (1h before lights-off)",
+            "dry_back_percent": {"max": 5},
+            "ec_input": "Lower range for stage",
+            "effect": "Promotes stretching, leaf development, vegetative growth.",
+        },
+        "generative_steering": {
+            "strategy": "Allow dry-back. Fewer irrigations. Higher EC. Stress the plant slightly.",
+            "irrigation_start": "Delayed (2-4h after lights-on)",
+            "irrigation_stop": "Early (3-4h before lights-off)",
+            "dry_back_percent": {"target": 10, "max": 15},
+            "ec_input": "Higher range for stage (+0.2-0.5 above normal)",
+            "effect": "Promotes flowering, fruit set, tighter internodes, terpene production.",
+        },
+        "p1_p2_strategy": {
+            "p1_first_irrigation": "Critical. Should be timed to catch the dry-back at its lowest acceptable point. Too early = vegetative. Too late = stress.",
+            "p2_subsequent_irrigations": "Smaller, frequent shots to maintain moisture without over-saturating.",
+            "overnight_dry_back": "Generative: let media dry back 10-15% overnight. Vegetative: maintain moisture (last irrigation closer to lights-off).",
+        },
+        "sensor_requirements": [
+            "Substrate moisture sensor (capacitance-based for coco/rockwool)",
+            "Weight-based sensor (scale under pot — gold standard for precision)",
+            "Drain/runoff EC sensor (inline for recirculating)",
+            "Environmental sensors (VPD drives transpiration which drives dry-back rate)",
+        ],
+    },
+    "scheduling_strategies": {
+        "timer_based": {
+            "description": "Fixed schedule. Irrigations at set times for set duration.",
+            "pros": ["Simple", "Reliable", "No sensors needed"],
+            "cons": ["Not responsive to plant needs or environment changes", "Over/under-waters on hot/cold days"],
+            "best_for": "Simple setups, stable environments, beginners.",
+        },
+        "sensor_driven": {
+            "description": "Irrigations triggered by substrate moisture readings.",
+            "pros": ["Responsive to actual plant needs", "Optimal for crop steering", "Adapts to environment"],
+            "cons": ["Requires sensors", "More complex", "Sensor calibration needed"],
+            "best_for": "Advanced growers, crop steering, commercial.",
+        },
+        "hybrid": {
+            "description": "Timer-based with sensor guardrails. Timer sets schedule, sensor prevents over/under-watering.",
+            "pros": ["Best of both", "Failsafe if sensor fails", "Easy to understand"],
+            "cons": ["Two systems to manage"],
+            "best_for": "Most hobbyist systems aiming for precision without full automation.",
+        },
+    },
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIG — the single export consumed by the API/frontend
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2489,5 +2653,6 @@ DRIP_CONFIG: dict = {
     "equipment": DRIP_EQUIPMENT,
     "quick_reference": DRIP_QUICK_REFERENCE,
     "troubleshooting": DRIP_TROUBLESHOOTING,
+    "irrigation_management": DRIP_IRRIGATION_MANAGEMENT,
     "total_grow_days": {"min": 98, "max": 189, "typical": 135},
 }

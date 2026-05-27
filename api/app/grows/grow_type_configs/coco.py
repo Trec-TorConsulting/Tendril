@@ -1949,6 +1949,155 @@ COCO_TROUBLESHOOTING: list[dict] = [
     },
 ]
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FERTIGATION MANAGEMENT — Coco's core differentiator expansion
+# ─────────────────────────────────────────────────────────────────────────────
+
+COCO_FERTIGATION_MANAGEMENT: dict = {
+    "high_frequency_fertigation": {
+        "concept": "Coco thrives on frequent, small irrigations with nutrients in every watering. Never plain water.",
+        "always_feed": True,
+        "plain_water_rule": "In coco, EVERY watering should contain nutrients. Plain water causes calcium/magnesium deficiencies because coco's CEC releases bound Ca/Mg when fresh water passes through (buffering effect).",
+        "frequency_by_stage": {
+            "seedling": {"events_per_day": 1, "notes": "Once daily. Small container stays moist. Light feed (0.4 EC)."},
+            "early_veg": {"events_per_day": "1-2", "notes": "1-2 times daily. Increasing as roots fill container."},
+            "late_veg": {
+                "events_per_day": "2-4",
+                "notes": "Multiple daily fertigations. Roots established. Push growth.",
+            },
+            "flower": {"events_per_day": "3-6", "notes": "High frequency. Peak demand. Smaller shot sizes."},
+            "late_flower": {
+                "events_per_day": "3-5",
+                "notes": "Slightly reduce if plant is finishing. Still never plain water.",
+            },
+        },
+        "shot_size_calculation": {
+            "method": "Target 3-5% of container volume per irrigation event.",
+            "example_1_gal": "113-189 ml per shot (1 gal = 3785 ml × 3-5%)",
+            "example_3_gal": "340-568 ml per shot",
+            "example_5_gal": "568-946 ml per shot",
+        },
+        "dry_back_targets": {
+            "vegetative_steering": {
+                "percent": 5,
+                "notes": "Keep coco wet. Minimal dry-back. Promotes stretching/growth.",
+            },
+            "generative_steering": {
+                "percent": 10,
+                "notes": "Allow more dry-back overnight. Promotes flowering/ripening.",
+            },
+            "danger_zone": {
+                "percent": 20,
+                "notes": "NEVER let coco dry more than 20%. Causes salt concentration spike and root damage.",
+            },
+        },
+    },
+    "calcium_magnesium_buffering": {
+        "why_coco_needs_calmag": "Coco coir has high Cation Exchange Capacity (CEC). It naturally binds calcium and magnesium ions, making them unavailable to plants. You must 'buffer' (pre-load) the CEC sites and continuously supplement.",
+        "initial_buffering_protocol": [
+            "Mix CalMag solution at 150 ppm calcium (approximately 5ml/gal of most CalMag products)",
+            "Soak coco in CalMag solution for 8-24 hours",
+            "Drain. DO NOT rinse after buffering (you want those CEC sites loaded).",
+            "This pre-loads the exchange sites so they don't steal calcium from your nutrient solution.",
+        ],
+        "ongoing_supplementation": {
+            "dose": "Add CalMag to EVERY feeding at 1-3 ml/gal (200-400 ppm Ca target in final solution)",
+            "when_to_increase": "If seeing calcium deficiency (brown spots on lower/middle leaves) despite adequate EC, increase CalMag.",
+            "led_consideration": "LED lights increase calcium demand. Add 1 ml/gal extra CalMag under LEDs vs HPS.",
+            "soft_water_consideration": "If using RO or soft water (<100 ppm base), use maximum CalMag (3 ml/gal). Hard water (>200 ppm) may need less.",
+        },
+        "calmag_products": [
+            {
+                "product": "Botanicare Cal-Mag Plus",
+                "ca_ppm_per_ml_gal": 47,
+                "mg_ppm_per_ml_gal": 15,
+                "notes": "Industry standard. Contains iron.",
+            },
+            {
+                "product": "General Hydroponics CaliMAGic",
+                "ca_ppm_per_ml_gal": 54,
+                "mg_ppm_per_ml_gal": 18,
+                "notes": "Concentrated. Less volume needed.",
+            },
+            {
+                "product": "Canna CalMag Agent",
+                "ca_ppm_per_ml_gal": 40,
+                "mg_ppm_per_ml_gal": 12,
+                "notes": "Designed for coco specifically.",
+            },
+        ],
+    },
+    "coco_preparation": {
+        "brick_vs_loose": {
+            "brick": {
+                "pros": ["Cheap", "Compact storage", "Sterile when new"],
+                "cons": ["Must rehydrate", "Can be high-salt if unbuffered", "Quality varies wildly"],
+            },
+            "loose_bagged": {
+                "pros": ["Ready to use", "Often pre-buffered", "Consistent quality"],
+                "cons": ["Bulkier", "More expensive", "Check buffer date"],
+            },
+        },
+        "washing_protocol": [
+            "Place coco in large container",
+            "Rinse with plain water 3-5 times until runoff EC is below 0.5",
+            "This removes excess sodium and potassium salts from manufacturing",
+            "THEN proceed to CalMag buffering (above)",
+        ],
+        "perlite_ratio": {
+            "pure_coco": {
+                "retention": "highest",
+                "aeration": "lowest",
+                "best_for": "Autopot/bottom-feed systems where drainage doesn't matter as much",
+            },
+            "70_30_coco_perlite": {
+                "retention": "high",
+                "aeration": "good",
+                "best_for": "MOST grows. The gold standard ratio. High frequency fertigation.",
+            },
+            "50_50_coco_perlite": {
+                "retention": "medium",
+                "aeration": "high",
+                "best_for": "Very high frequency fertigation. Fast dry-back. Aggressive crop steering.",
+            },
+        },
+    },
+    "runoff_management": {
+        "target_runoff_percent": {"min": 10, "max": 20},
+        "why_runoff_matters": "Runoff flushes accumulated salts from CEC sites. Without runoff, EC builds in media regardless of input EC.",
+        "runoff_ec_monitoring": {
+            "ideal": "Runoff EC within 0.3 of input EC. Balanced.",
+            "warning": "Runoff EC 0.3-0.8 above input. Salt building. Increase runoff % next irrigation.",
+            "critical": "Runoff EC >1.0 above input. Flush immediately. Multiple high-runoff irrigations until equalized.",
+        },
+        "flushing_protocol": [
+            "Use nutrient solution at 50% strength (never plain water in coco)",
+            "Irrigate until 50-80% runoff volume achieved",
+            "Check runoff EC. Repeat if still high.",
+            "Resume normal feeding once runoff EC within 0.3 of input",
+        ],
+    },
+    "reuse_and_recycling": {
+        "can_reuse": True,
+        "max_reuses": 3,
+        "reconditioning_protocol": [
+            "Remove old root mass (shake/pull large roots, don't stress about fine roots)",
+            "Rinse thoroughly with plain water (3-5 times, target EC < 0.5 in runoff)",
+            "Re-buffer with CalMag solution (8-24h soak)",
+            "Add fresh perlite to replace any that was removed/degraded (coco compresses over time)",
+            "Mix in 10-20% fresh coco to restore structure",
+            "Ready for next grow",
+        ],
+        "when_to_replace": [
+            "After 3 uses (fiber breaks down, compacts)",
+            "If persistent pH issues despite proper input",
+            "If root disease occurred in previous grow (start fresh)",
+            "If coco is visibly degraded/muddy in texture",
+        ],
+    },
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIG — the single export consumed by the API/frontend
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1960,5 +2109,6 @@ COCO_CONFIG: dict = {
     "equipment": COCO_EQUIPMENT,
     "quick_reference": COCO_QUICK_REFERENCE,
     "troubleshooting": COCO_TROUBLESHOOTING,
+    "fertigation_management": COCO_FERTIGATION_MANAGEMENT,
     "total_grow_days": {"min": 98, "max": 189, "typical": 135},
 }

@@ -2405,6 +2405,197 @@ EBB_FLOW_TROUBLESHOOTING: list[dict] = [
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# FLOOD CYCLE ENGINEERING — Ebb & Flow's core differentiator
+# ─────────────────────────────────────────────────────────────────────────────
+
+EBB_FLOW_FLOOD_ENGINEERING: dict = {
+    "flood_cycle_timing": {
+        "by_stage": {
+            "seedling": {
+                "floods_per_day": 2,
+                "flood_duration_min": 5,
+                "notes": "Minimal flooding. Media stays moist longer. Over-flooding = damping off.",
+            },
+            "early_veg": {
+                "floods_per_day": 3,
+                "flood_duration_min": 10,
+                "notes": "Increasing frequency. Roots establishing in media.",
+            },
+            "late_veg": {
+                "floods_per_day": 4,
+                "flood_duration_min": 15,
+                "notes": "Aggressive growth needs more frequent nutrient delivery.",
+            },
+            "transition": {
+                "floods_per_day": 4,
+                "flood_duration_min": 15,
+                "notes": "Maintain veg frequency during stretch.",
+            },
+            "early_flower": {
+                "floods_per_day": 5,
+                "flood_duration_min": 15,
+                "notes": "Peak demand approaching. Heavy feeders.",
+            },
+            "mid_flower": {"floods_per_day": 5, "flood_duration_min": 15, "notes": "Peak demand. Largest root mass."},
+            "late_flower": {
+                "floods_per_day": 4,
+                "flood_duration_min": 10,
+                "notes": "Slightly reduce as plant matures. Promotes ripening.",
+            },
+            "flush": {
+                "floods_per_day": 6,
+                "flood_duration_min": 15,
+                "notes": "Frequent flooding with plain water to leach salts from media.",
+            },
+        },
+        "day_vs_night": {
+            "daytime": "All floods occur during lights-on. Active transpiration drives nutrient uptake.",
+            "nighttime": "ZERO floods during lights-off for most growers. Exception: very hot environments where media dries fast.",
+            "first_flood": "30 minutes after lights on.",
+            "last_flood": "1 hour before lights off (allows media surface to dry slightly, reducing fungal risk).",
+        },
+        "flood_height": {
+            "target": "2/3 up the media depth. Never above the top surface.",
+            "danger_zone": "Flooding to surface = algae, fungus gnats, stem rot at base.",
+            "overflow_protection": "MANDATORY overflow fitting set 1 inch below media surface. Prevents pump malfunction from over-flooding.",
+        },
+    },
+    "media_selection_guide": {
+        "hydroton_expanded_clay": {
+            "flood_retention": "low",
+            "drain_speed": "fast",
+            "reusability": True,
+            "ph_stability": "excellent (after initial rinse)",
+            "best_for": "Most ebb & flow setups. Fast drain cycle. Good oxygen retention.",
+            "flood_frequency_adjustment": "Needs more frequent flooding due to low retention. +1-2 floods/day vs rockwool.",
+            "preparation": "Soak and rinse to remove dust. Pre-soak in pH 5.5 water for 24h.",
+        },
+        "growstones": {
+            "flood_retention": "medium",
+            "drain_speed": "medium",
+            "reusability": True,
+            "ph_stability": "good (slightly alkaline initially)",
+            "best_for": "Balance between retention and aeration. Lighter than hydroton.",
+            "flood_frequency_adjustment": "Standard timing. Good moisture holding capacity.",
+            "preparation": "Rinse thoroughly. Can be dusty. Pre-soak 12h.",
+        },
+        "rockwool_cubes_slabs": {
+            "flood_retention": "high",
+            "drain_speed": "slow",
+            "reusability": False,
+            "ph_stability": "needs conditioning (naturally pH 7.5+)",
+            "best_for": "Commercial ebb & flow tables. Consistent saturation. Precise irrigation.",
+            "flood_frequency_adjustment": "Fewer floods needed. -1-2 floods/day vs hydroton. Watch for over-saturation.",
+            "preparation": "Soak in pH 4.5 solution for 24h to condition. Rinse. Verify pH stable at 5.5-6.0.",
+        },
+        "perlite_vermiculite_mix": {
+            "flood_retention": "high",
+            "drain_speed": "medium",
+            "reusability": False,
+            "ph_stability": "good",
+            "best_for": "Budget option. Good retention + aeration. Use in net pots with screen bottom.",
+            "flood_frequency_adjustment": "High retention = fewer floods. Good for forgetful timers.",
+            "preparation": "Wet before use (perlite dust is harmful to breathe). Mix ratio: 70% perlite / 30% vermiculite.",
+        },
+    },
+    "tray_engineering": {
+        "tray_sizes": {
+            "2x2_ft": {
+                "plant_capacity": "1-4",
+                "reservoir_gal": 5,
+                "best_for": "Single large plant or few small plants.",
+            },
+            "3x3_ft": {"plant_capacity": "4-9", "reservoir_gal": 10, "best_for": "Standard hobby setup."},
+            "4x4_ft": {"plant_capacity": "9-16", "reservoir_gal": 15, "best_for": "Full tent fill. Most popular."},
+            "4x8_ft": {"plant_capacity": "16-32", "reservoir_gal": 25, "best_for": "Commercial or large hobby."},
+        },
+        "drain_fitting_size": {
+            "small_trays": "3/4 inch — adequate for 2x2 and 3x3",
+            "large_trays": "1 inch minimum for 4x4+. Dual drains for 4x8.",
+            "critical": "Drain must be larger than fill fitting. Gravity drain is slower than pump fill — undersized drain = overflow.",
+        },
+        "leveling": "Tray MUST be perfectly level. Use shims and spirit level. Unlevel tray = uneven flooding = some plants underwater while others dry.",
+        "flood_fill_fitting": "Usually 1/2 to 3/4 inch. Connects to pump in reservoir below.",
+    },
+    "pump_and_timer_configuration": {
+        "pump_sizing": {
+            "rule": "Pump must fill tray to flood height within 2-3 minutes. Longer fill time = uneven nutrient distribution.",
+            "gph_per_tray_size": {
+                "2x2": 200,
+                "3x3": 300,
+                "4x4": 400,
+                "4x8": 600,
+            },
+            "notes": "Account for head height (tray above reservoir). Add 25% for every 2 feet of vertical lift.",
+        },
+        "timer_requirements": {
+            "minimum_resolution": "1 minute (analog timer acceptable for simple schedules)",
+            "preferred": "Digital timer with 1-minute increments and multiple daily events",
+            "advanced": "Smart timer with programmable flood/drain sequences and alerts",
+            "critical_note": "Timer controls ON time only. Drain happens automatically when pump turns off (gravity).",
+        },
+        "drain_time_considerations": "Total cycle = pump-on time + drain time. Drain typically takes 3-5 min for a 4x4 tray. Roots are submerged during drain. Account for this in total wet time.",
+    },
+    "failure_modes": [
+        {
+            "failure": "Pump stuck ON (timer failure)",
+            "severity": "high",
+            "consequence": "Continuous flooding. Roots submerged indefinitely = drowning + root rot within hours.",
+            "prevention": "Overflow fitting (critical safety). Secondary timer as backup cutoff. Smart outlet with max-on-time limit.",
+        },
+        {
+            "failure": "Drain clog (media particles blocking drain fitting)",
+            "severity": "high",
+            "consequence": "Tray won't drain. Standing water. Root rot. Potential overflow onto floor.",
+            "prevention": "Screen over drain fitting (keeps media out). Regular cleaning. Check drain speed monthly.",
+        },
+        {
+            "failure": "Pump failure (won't turn on)",
+            "severity": "medium",
+            "consequence": "No flooding. Media dries out. 4-12 hours to damage depending on media retention.",
+            "prevention": "Backup pump. Check pump weekly (listen for unusual sounds). Replace annually.",
+        },
+        {
+            "failure": "Tray not level (tilted)",
+            "severity": "medium",
+            "consequence": "Uneven flooding. Low-end plants overwatered. High-end plants underwatered. Algae at low end.",
+            "prevention": "Level check monthly (trays can shift). Use robust stand. Shim immediately if off-level.",
+        },
+        {
+            "failure": "Reservoir too small (runs dry during flood)",
+            "severity": "medium",
+            "consequence": "Tray only partially floods. Pump runs dry (burns out). Plants at edges get no nutrients.",
+            "prevention": "Reservoir volume = 2x tray flood volume. Mark 'low water' line on reservoir. Float valve for auto top-off.",
+        },
+    ],
+    "multi_tray_systems": {
+        "parallel_flooding": {
+            "description": "All trays flood simultaneously from one reservoir/pump.",
+            "pros": ["Simple plumbing", "Uniform schedule"],
+            "cons": ["Requires very large pump", "Nutrient consistency issues (first tray gets freshest solution)"],
+            "pump_sizing": "Sum of all individual tray GPH requirements.",
+        },
+        "sequential_flooding": {
+            "description": "Trays flood one at a time using solenoid valves or individual pumps.",
+            "pros": ["Smaller pump OK", "Can customize timing per tray", "Even nutrient delivery"],
+            "cons": ["More complex", "More points of failure", "Longer total cycle time"],
+            "implementation": "Timer + solenoid valves on each tray feed line. Open one at a time.",
+        },
+        "independent_systems": {
+            "description": "Each tray has its own dedicated reservoir and pump.",
+            "pros": [
+                "Fully independent schedules",
+                "Strain-specific nutrients per tray",
+                "One failure doesn't affect others",
+            ],
+            "cons": ["Most expensive", "Most space", "Multiple reservoirs to maintain"],
+            "best_for": "Multiple strains or growth stages running simultaneously.",
+        },
+    },
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # ASSEMBLED CONFIG EXPORT
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -2415,6 +2606,7 @@ EBB_FLOW_CONFIG: dict = {
     "equipment": EBB_FLOW_EQUIPMENT,
     "quick_reference": EBB_FLOW_QUICK_REFERENCE,
     "troubleshooting": EBB_FLOW_TROUBLESHOOTING,
+    "flood_engineering": EBB_FLOW_FLOOD_ENGINEERING,
     "total_grow_days": {
         "min": 90,
         "max": 150,

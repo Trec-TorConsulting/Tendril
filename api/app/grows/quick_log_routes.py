@@ -61,7 +61,7 @@ class QuickNoteRequest(BaseModel):
 
 
 class BatchAction(BaseModel):
-    type: str  # feeding | reading | note
+    type: str  # feeding | reading | note | water_change
     data: dict
     client_timestamp: datetime
 
@@ -163,6 +163,88 @@ async def quick_log_feeding(
     await session.flush()  # Flush to ensure readings are in session
 
     # Propagate header readings to all site buckets in RDWC grows
+    from app.integrations.connectors.base import propagate_header_bucket_readings
+
+    for reading in readings:
+        await propagate_header_bucket_readings(session, str(reading.bucket_id), reading)
+
+    await session.commit()
+    return FeedingLogResponse(created=len(buckets), bucket_ids=body.bucket_ids)
+
+
+class WaterChangeRequest(BaseModel):
+    bucket_ids: list[UUID] = Field(min_length=1)
+    ph: float | None = None
+    ec: float | None = None
+    ppm: float | None = None
+    water_temp_f: float | None = None
+    volume_gal: float | None = None
+    notes: str | None = None
+    recorded_at: datetime | None = None
+
+
+@router.post("/water-change", response_model=FeedingLogResponse, status_code=201)
+async def quick_log_water_change(
+    body: WaterChangeRequest,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Log a water change for one or more buckets (flush-and-fill)."""
+    result = await session.execute(
+        select(Bucket).where(
+            Bucket.id.in_(body.bucket_ids),
+            Bucket.tenant_id == user.tenant_id,
+        )
+    )
+    buckets = result.scalars().all()
+    if len(buckets) != len(body.bucket_ids):
+        raise HTTPException(status_code=404, detail="One or more buckets not found")
+
+    recorded_at = body.recorded_at or datetime.now(UTC)
+
+    # Auto-derive EC↔PPM when only one is provided
+    ec = body.ec
+    ppm = body.ppm
+    if ec is not None and ppm is None:
+        ppm = round(ec * 500.0, 1)
+    elif ppm is not None and ec is None:
+        ec = round(ppm / 500.0, 3)
+
+    readings = []
+    for bucket in buckets:
+        # Create sensor reading
+        reading = BucketSensorReading(
+            tenant_id=user.tenant_id,
+            bucket_id=bucket.id,
+            ph=body.ph,
+            ec=ec,
+            ppm=ppm,
+            water_temp_f=body.water_temp_f,
+            recorded_at=recorded_at,
+        )
+        session.add(reading)
+        readings.append(reading)
+
+        # Create journal entry for water change
+        entry = JournalEntry(
+            tenant_id=user.tenant_id,
+            bucket_id=bucket.id,
+            event_type="water_change",
+            content=body.notes,
+            payload={
+                "ph": body.ph,
+                "ec": body.ec,
+                "ppm": body.ppm,
+                "water_temp_f": body.water_temp_f,
+                "volume_gal": body.volume_gal,
+                "source": "quick_log",
+            },
+            created_at=recorded_at,
+        )
+        session.add(entry)
+
+    await session.flush()
+
     from app.integrations.connectors.base import propagate_header_bucket_readings
 
     for reading in readings:
@@ -358,6 +440,56 @@ async def quick_log_batch(
                     )
                 )
                 succeeded += 1
+
+            elif action.type == "water_change":
+                req = WaterChangeRequest(**action.data, recorded_at=action.client_timestamp)
+                result = await session.execute(
+                    select(Bucket).where(
+                        Bucket.id.in_(req.bucket_ids),
+                        Bucket.tenant_id == user.tenant_id,
+                    )
+                )
+                buckets = result.scalars().all()
+                if len(buckets) != len(req.bucket_ids):
+                    errors.append(f"Action {i}: bucket not found")
+                    continue
+                _ec = req.ec
+                _ppm = req.ppm
+                if _ec is not None and _ppm is None:
+                    _ppm = round(_ec * 500.0, 1)
+                elif _ppm is not None and _ec is None:
+                    _ec = round(_ppm / 500.0, 3)
+                for bucket in buckets:
+                    session.add(
+                        BucketSensorReading(
+                            tenant_id=user.tenant_id,
+                            bucket_id=bucket.id,
+                            ph=req.ph,
+                            ec=_ec,
+                            ppm=_ppm,
+                            water_temp_f=req.water_temp_f,
+                            recorded_at=action.client_timestamp,
+                        )
+                    )
+                    session.add(
+                        JournalEntry(
+                            tenant_id=user.tenant_id,
+                            bucket_id=bucket.id,
+                            event_type="water_change",
+                            content=req.notes,
+                            payload={
+                                "ph": req.ph,
+                                "ec": req.ec,
+                                "ppm": req.ppm,
+                                "water_temp_f": req.water_temp_f,
+                                "volume_gal": req.volume_gal,
+                                "source": "quick_log",
+                            },
+                            created_at=action.client_timestamp,
+                        )
+                    )
+                succeeded += 1
+
             else:
                 errors.append(f"Action {i}: unknown type '{action.type}'")
         except Exception as exc:

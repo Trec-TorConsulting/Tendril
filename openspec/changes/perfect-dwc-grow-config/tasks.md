@@ -1,11 +1,11 @@
 ## 1. DWC Config Enhancement
 
 ### Reservoir & Root Zone (DWC's Core Differentiator)
-- [ ] 1.1 Add scale tier profiles (solo → warehouse) with reservoir management strategy per tier
-- [ ] 1.2 Add water source profiles (RO, tap/chlorine, tap/chloramine, well, softened) with CalMag adjustment tables
-- [ ] 1.3 Add monitoring thresholds (info/warning/alert/critical) for pH, EC, water temp, DO, water level
-- [ ] 1.4 Expand reservoir management: top-off decision tree (EC rising vs dropping), change schedule by stage, emergency drain protocol
-- [ ] 1.5 Add beneficial microbe program details: Hydroguard dosing schedule, alternatives (Great White, Mammoth P, Recharge), compatibility notes
+- [x] 1.1 Add scale tier profiles (solo → warehouse) with reservoir management strategy per tier
+- [x] 1.2 Add water source profiles (RO, tap/chlorine, tap/chloramine, well, softened) with CalMag adjustment tables
+- [x] 1.3 Add monitoring thresholds (info/warning/alert/critical) for pH, EC, water temp, DO, water level
+- [x] 1.4 Expand reservoir management: top-off decision tree (EC rising vs dropping), change schedule by stage, emergency drain protocol
+- [x] 1.5 Add beneficial microbe program details: Hydroguard dosing schedule, alternatives (Great White, Mammoth P, Recharge), compatibility notes
 
 ### Stage Durations & Strain Types
 - [ ] 1.6 Add `duration_days_auto` and `duration_days_photo` to each stage
@@ -47,12 +47,12 @@
 - [ ] 2.5 Update AI context builder to include scale and strain type when available
 
 ## 3. Profile Enhancement (grow_types.py)
-- [ ] 3.1 Add `scale_tiers` array to DWC profile in GROW_TYPE_PROFILES
-- [ ] 3.2 Add `strain_adjustments` (auto/photo differences) to DWC profile
-- [ ] 3.3 Add `water_source_profiles` to DWC profile
+- [x] 3.1 Add `scale_tiers` array to DWC profile in GROW_TYPE_PROFILES
+- [x] 3.2 Add `strain_adjustments` (auto/photo differences) to DWC profile
+- [x] 3.3 Add `water_source_profiles` to DWC profile
 
 ## 4. Testing
-- [ ] 4.1 Add config completeness test: all 12 stages present, all required fields populated
+- [x] 4.1 Add config completeness test: all 12 stages present, all required fields populated
 - [ ] 4.2 Add threshold validation test: info < warning < alert < critical for each sensor
 - [ ] 4.3 Add API tests for `?scale=` and `?strain_type=` query params
 - [ ] 4.4 Add API test for thresholds endpoint

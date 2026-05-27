@@ -1,17 +1,26 @@
 # Change: Add Multi-Provider Payment Adapter System
 
+## Status
+**~75% Complete** — Architecture, Stripe adapter, admin API/UI, and frontend all implemented. Remaining: PayPal, Square, and Paddle adapter implementations + tests.
+
 ## Why
 The current billing module is hardcoded to Stripe. Self-hosters and SaaS operators need to choose their preferred payment processor. We need a pluggable adapter pattern (like our integration connectors) that lets the platform owner connect Stripe, PayPal, Square, or Paddle — with Apple Pay/Google Pay as checkout methods within those providers.
 
-## What Changes
-- New `PaymentProvider` abstract base class with adapter pattern
-- Provider adapters: Stripe, PayPal, Square, Paddle
-- Apple Pay / Google Pay exposed as checkout methods within primary provider
-- Provider configuration stored encrypted in DB (like integration configs)
-- Admin UI to connect/disconnect payment providers
-- Existing hardcoded Stripe billing refactored into the adapter
-- Wallet-based payments (Apple/Google Pay) configured as sub-methods
-- **BREAKING**: `STRIPE_*` env vars become optional; provider config moves to DB
+## What's Already Built
+- `BasePaymentProvider` ABC in `api/app/billing/providers/base.py`
+- Full Stripe adapter with Apple Pay / Google Pay / Link / automatic tax
+- Provider admin API: list, create, update, delete, test connection
+- Admin UI at `/platform/billing` for provider management
+- Webhook dispatch by provider type (`/webhook/{provider_type}`)
+- Config encryption/decryption (Fernet with JWT secret)
+- Provider resolution service (`get_active_provider()`)
+- Frontend billing flow is provider-agnostic
+
+## What Remains
+- **PayPal adapter** — implement all abstract methods (OAuth2 + Orders/Subscriptions API)
+- **Square adapter** — implement all abstract methods (OAuth2 + Catalog/Subscriptions API)
+- **Paddle adapter** — implement all abstract methods (Billing API v2)
+- **Tests** — unit tests for each adapter, integration tests for webhook verification
 
 ## Impact
 - Affected specs: billing (new capability)

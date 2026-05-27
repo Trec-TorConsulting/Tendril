@@ -2518,3 +2518,32 @@ export function adminArchivePlan(token: string, planId: string) {
 export function adminSyncPlan(token: string, planId: string) {
   return apiFetch<{ status: string; external_price_id: string }>(`/billing/plans/${planId}/sync`, { method: "POST", token });
 }
+
+// ─── Public Plans (no auth) ─────────────────────────────────────────────────
+
+export interface PublicBillingPlan {
+  id: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  is_public: boolean;
+  sort_order: number;
+  billing_model: string;
+  base_price_cents: number;
+  annual_price_cents: number | null;
+  currency: string;
+  max_grows: number | null;
+  max_devices: number | null;
+  max_team_members: number | null;
+  max_ai_analyses_month: number | null;
+  max_storage_gb: number | null;
+  max_automations: number | null;
+  max_integrations: number | null;
+  max_journal_entries_month: number | null;
+  included_support_tier: string;
+  features_json: Record<string, unknown>;
+}
+
+export function getPublicPlans() {
+  return apiFetch<PublicBillingPlan[]>("/billing/plans/public");
+}

@@ -1890,6 +1890,726 @@ RDWC_STAGES: list[dict] = [
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# PLUMBING ARCHITECTURE — pipe sizing, fitting types, flow patterns
+# ─────────────────────────────────────────────────────────────────────────────
+
+RDWC_PLUMBING_ARCHITECTURE: dict = {
+    "pipe_sizing_by_site_count": [
+        {
+            "sites": "2-4",
+            "supply_diameter_in": 0.75,
+            "return_diameter_in": 1.0,
+            "notes": '3/4" supply is adequate for small systems. 1" return ensures gravity drain keeps up.',
+        },
+        {
+            "sites": "5-8",
+            "supply_diameter_in": 1.0,
+            "return_diameter_in": 1.5,
+            "notes": 'Step up to 1" supply. 1.5" return handles higher volume.',
+        },
+        {
+            "sites": "9-16",
+            "supply_diameter_in": 1.25,
+            "return_diameter_in": 2.0,
+            "notes": '1.25" supply with manifold. 2" return is almost mandatory.',
+        },
+        {
+            "sites": "17-30",
+            "supply_diameter_in": 1.5,
+            "return_diameter_in": 2.0,
+            "notes": '1.5" main supply trunk splitting to 1" branches per site. Dual return lines recommended.',
+        },
+        {
+            "sites": "31-50+",
+            "supply_diameter_in": 2.0,
+            "return_diameter_in": 3.0,
+            "notes": 'Commercial scale. 2" main supply manifold, zone-based return trunks, dedicated pumps per zone.',
+        },
+    ],
+    "flow_patterns": {
+        "waterfall": {
+            "description": "Gravity-fed return — site buckets sit higher than central reservoir. Water flows from pump to sites, drains back by gravity.",
+            "pros": ["Simple plumbing", "Fewer failure points", "No return pump needed", "Quiet operation"],
+            "cons": ["Sites must be elevated", "Requires height difference (6-12 inches)", "Harder to rearrange"],
+            "best_for": "Small-medium systems (2-8 sites), hobbyists, limited space",
+        },
+        "current_culture": {
+            "description": "Pump-driven circulation — water flows continuously through interconnected buckets in a loop. All buckets at same height.",
+            "pros": [
+                "All sites at same level",
+                "More even nutrient distribution",
+                "Easier to expand",
+                "Higher flow rates possible",
+            ],
+            "cons": ["More plumbing complexity", "Requires larger pump", "More failure points", "Louder"],
+            "best_for": "Medium-large systems (6-50+ sites), commercial, expandable setups",
+        },
+        "hybrid_manifold": {
+            "description": "Central pump feeds a manifold splitting to individual site lines. Each site returns independently to reservoir.",
+            "pros": [
+                "Individual site control via ball valves",
+                "Easy to isolate one site",
+                "Scalable",
+                "Best flow balance",
+            ],
+            "cons": ["Most plumbing to install", "Higher cost", "More potential leak points"],
+            "best_for": "Any size — recommended default for new builds",
+        },
+    },
+    "fitting_guide": {
+        "bulkhead": {
+            "description": "Two-piece fitting that clamps through a drilled hole with a rubber gasket.",
+            "pros": ["Most reliable seal", "Replaceable gasket", "Handles vibration well"],
+            "cons": ["Requires precise hole drilling", "More expensive", "Harder to install"],
+            "recommended_for": 'All permanent installations. Use PVC bulkheads for 1"+ connections.',
+        },
+        "uniseal": {
+            "description": "Flexible rubber grommet that seals around pipe pushed through a drilled hole.",
+            "pros": ["Cheap", "Easy to install", "Flexible — absorbs movement"],
+            "cons": ["Can leak if hole is off-size", "Less durable long-term", "Not reusable"],
+            "recommended_for": 'Budget builds, temporary setups, or sites under 1" pipe diameter.',
+        },
+    },
+    "overflow_protection": {
+        "air_gap_overflow": "Install an overflow drain 1-2 inches above normal water line in each site bucket. Routes to a catch basin or floor drain.",
+        "float_valve_shutoff": "Float valve in central reservoir cuts pump power if water drops below minimum (prevents pump dry-run).",
+        "alarm_system": "Water leak sensors on floor under each bucket. Triggers alert via notification system.",
+    },
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SYSTEM SIZING CALCULATOR — formulas and lookup tables
+# ─────────────────────────────────────────────────────────────────────────────
+
+RDWC_SYSTEM_SIZING: dict = {
+    "total_volume_formula": {
+        "formula": "total_gal = (site_count × bucket_gal) + central_res_gal + plumbing_volume_gal",
+        "central_res_rule": "central_res_gal = (site_count × bucket_gal) × 0.30 minimum. Bigger is always better.",
+        "plumbing_volume_estimate": "Approximately 0.5 gal per site for typical tubing lengths (4-6 feet per run).",
+        "examples": [
+            {"sites": 4, "bucket_gal": 5, "central_res_gal": 10, "plumbing_gal": 2, "total_gal": 32},
+            {"sites": 4, "bucket_gal": 10, "central_res_gal": 15, "plumbing_gal": 2, "total_gal": 57},
+            {"sites": 8, "bucket_gal": 5, "central_res_gal": 20, "plumbing_gal": 4, "total_gal": 64},
+            {"sites": 8, "bucket_gal": 10, "central_res_gal": 30, "plumbing_gal": 4, "total_gal": 114},
+            {"sites": 16, "bucket_gal": 5, "central_res_gal": 40, "plumbing_gal": 8, "total_gal": 128},
+            {"sites": 16, "bucket_gal": 10, "central_res_gal": 55, "plumbing_gal": 8, "total_gal": 223},
+        ],
+    },
+    "pump_sizing": {
+        "rule": "Minimum pump GPH = site_count × target_gph_per_site × 2 (safety factor).",
+        "target_gph_per_site": {"seedling": 100, "veg": 200, "flower": 400},
+        "head_loss_note": "Add 20% for every foot of vertical lift. Add 10% for every 90° elbow.",
+        "examples": [
+            {
+                "sites": 4,
+                "stage": "flower",
+                "gph_per_site": 400,
+                "pump_min_gph": 3200,
+                "recommendation": "Active Aqua 1000 GPH or equivalent",
+            },
+            {
+                "sites": 8,
+                "stage": "flower",
+                "gph_per_site": 400,
+                "pump_min_gph": 6400,
+                "recommendation": "Ecoplus 1267 GPH or dual pumps",
+            },
+            {
+                "sites": 16,
+                "stage": "flower",
+                "gph_per_site": 400,
+                "pump_min_gph": 12800,
+                "recommendation": "Commercial inline pump or zone-split with multiple pumps",
+            },
+        ],
+    },
+    "air_pump_sizing": {
+        "rule": "Minimum LPM = (site_count + 1) × 4 LPM per stone. +1 for central reservoir stone.",
+        "examples": [
+            {
+                "sites": 4,
+                "stones": 5,
+                "min_lpm": 20,
+                "recommendation": "Commercial 45-65 LPM pump (one pump, manifold to all stones)",
+            },
+            {"sites": 8, "stones": 9, "min_lpm": 36, "recommendation": "60-80 LPM pump or dual 35 LPM pumps"},
+            {
+                "sites": 16,
+                "stones": 17,
+                "min_lpm": 68,
+                "recommendation": "Commercial 100+ LPM pump or regenerative blower",
+            },
+        ],
+    },
+    "chiller_sizing": {
+        "rule": "BTU = total_system_gallons × 8.34 (lb/gal) × delta_temp_F × safety_factor",
+        "target_temp_f": 68,
+        "delta_temp_note": "delta_temp = ambient room temp - target water temp. Typical indoor: 75°F room - 68°F target = 7°F delta.",
+        "safety_factor": 1.5,
+        "examples": [
+            {
+                "total_gal": 32,
+                "delta_f": 7,
+                "btu_needed": 2803,
+                "recommendation": "1/10 HP chiller (most hobby chillers)",
+            },
+            {"total_gal": 64, "delta_f": 7, "btu_needed": 5606, "recommendation": "1/4 HP chiller"},
+            {"total_gal": 128, "delta_f": 7, "btu_needed": 11213, "recommendation": "1/2 HP chiller"},
+            {
+                "total_gal": 223,
+                "delta_f": 10,
+                "btu_needed": 27915,
+                "recommendation": "1 HP chiller or dedicated HVAC loop",
+            },
+        ],
+    },
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FLOW DISTRIBUTION — targets, monitoring, and balancing
+# ─────────────────────────────────────────────────────────────────────────────
+
+RDWC_FLOW_DISTRIBUTION: dict = {
+    "gph_per_site_by_stage": {
+        "germination": 0,
+        "seedling": {"min": 100, "max": 200, "target": 150, "notes": "Gentle flow — roots are delicate."},
+        "early_veg": {"min": 150, "max": 300, "target": 200, "notes": "Increasing as root mass grows."},
+        "late_veg": {"min": 200, "max": 400, "target": 300, "notes": "Strong flow to support rapid growth."},
+        "transition": {"min": 250, "max": 450, "target": 350, "notes": "Maintain high flow through stretch."},
+        "early_flower": {"min": 300, "max": 500, "target": 400, "notes": "Peak flow demand begins."},
+        "mid_flower": {"min": 300, "max": 500, "target": 400, "notes": "Roots dense — flow may need rebalancing."},
+        "late_flower": {"min": 300, "max": 500, "target": 400, "notes": "Monitor for root-bound flow restriction."},
+        "flush": {"min": 400, "max": 600, "target": 500, "notes": "Maximum flow to flush nutrients from root zone."},
+    },
+    "gph_by_pipe_diameter": {
+        "0.5_inch": {"max_gph": 120, "notes": "Only for drip-feed supplemental lines. Not suitable for main supply."},
+        "0.75_inch": {"max_gph": 350, "notes": "Adequate for 2-4 site supply lines."},
+        "1.0_inch": {"max_gph": 800, "notes": "Standard for 5-8 site supply trunk."},
+        "1.25_inch": {"max_gph": 1400, "notes": "Good for 9-16 site main supply."},
+        "1.5_inch": {"max_gph": 2200, "notes": "Large system supply trunk. 17-30 sites."},
+        "2.0_inch": {"max_gph": 4000, "notes": "Commercial. 30+ sites or high-flow current culture."},
+    },
+    "manifold_vs_daisy_chain": {
+        "manifold": {
+            "description": "Central pump feeds a T/cross manifold splitting equally to all sites.",
+            "pros": ["Equal pressure to each site", "Independent ball valves", "Easy to isolate/add sites"],
+            "cons": ["More fittings", "Higher upfront cost", "Longer initial install"],
+            "recommended_for": "Systems with 4+ sites. Best overall approach.",
+        },
+        "daisy_chain": {
+            "description": "Water flows from pump → site 1 → site 2 → ... → return to reservoir.",
+            "pros": ["Fewer fittings", "Simpler initial plumbing"],
+            "cons": [
+                "First site gets most flow, last site gets least",
+                "Any clog stops all downstream sites",
+                "Hard to balance",
+            ],
+            "recommended_for": "Only for 2-3 site builds where simplicity is paramount. Not recommended.",
+        },
+    },
+    "dead_zone_prevention": [
+        "Use 45° elbows instead of 90° where possible — reduces turbulence dead spots",
+        "Aim supply inlet at far wall of bucket to create circular flow",
+        "Return drain should be on opposite side of supply inlet",
+        "Add a small air stone directly under the net pot to agitate dead zones",
+        "Periodically check under net pots for stagnant buildup",
+    ],
+    "flow_monitoring": {
+        "visual_indicators": "Ripples on water surface at each site should be visible. No ripples = flow issue.",
+        "inline_flow_meter": "Install on each site's supply line. Compare readings to detect partial clogs early.",
+        "level_check": "All site buckets should be within 0.5 inch of each other. Uneven levels = flow imbalance.",
+        "temperature_uniformity": "All sites should read within 2°F of each other. Outlier = poor circulation at that site.",
+    },
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FAILURE MODE ANALYSIS — what breaks, severity, response time, protocol
+# ─────────────────────────────────────────────────────────────────────────────
+
+RDWC_FAILURE_MODES: list[dict] = [
+    {
+        "failure": "Circulation pump failure",
+        "severity": "critical",
+        "time_to_damage": "2-6 hours (depending on air stones and water temp)",
+        "detection": ["No water movement visible", "Water levels uneven", "Water temp rising", "DO dropping"],
+        "immediate_response": [
+            "Switch to backup pump immediately",
+            "If no backup: add air stones to every site bucket (oxygenation buys time)",
+            "Lower room temperature to slow metabolism",
+        ],
+        "root_cause_fix": [
+            "Clean pump intake and impeller",
+            "Replace pump if motor is burned",
+            "Install inline pre-filter to prevent future clog",
+            "Wire pump to UPS/battery backup",
+        ],
+        "prevention": "Keep a tested backup pump ready. Run pump on UPS. Install pre-filter screen.",
+    },
+    {
+        "failure": "Supply line clog (single site starved)",
+        "severity": "high",
+        "time_to_damage": "6-12 hours (site has its own air stone as buffer)",
+        "detection": [
+            "One site water level dropping",
+            "One site water temp deviating",
+            "Plant wilting at one site only",
+        ],
+        "immediate_response": [
+            "Close ball valve for affected site",
+            "Manually top off that site bucket with reservoir water",
+            "Clear the clog: disconnect line, flush with pressurized water",
+        ],
+        "root_cause_fix": [
+            "Root fragments blocking line — install root guard screen at drain port",
+            "Mineral deposit — soak line in pH-down solution or vinegar",
+            "Kink in flexible tubing — replace with rigid PVC",
+        ],
+        "prevention": "Root guard screens at every drain. Clean lines at every res change. Regular flow-rate inspections.",
+    },
+    {
+        "failure": "Plumbing leak (water loss)",
+        "severity": "high",
+        "time_to_damage": "Varies: slow leak loses reservoir overnight, burst fitting is immediate",
+        "detection": [
+            "Water level dropping in reservoir without explanation",
+            "Wet floor under buckets",
+            "Pump running dry alert",
+        ],
+        "immediate_response": [
+            "Shut off circulation pump to stop flow to the leak",
+            "Identify leak location",
+            "Temporary fix: plumber's tape, pipe clamp, or bucket under drip",
+            "Permanent fix: drain section, replace fitting/gasket",
+        ],
+        "root_cause_fix": [
+            "Gasket degradation — replace with EPDM gaskets rated for nutrient solution",
+            "Bucket wall cracked — replace bucket entirely",
+            "Vibration loosened connection — add pipe clamps and anti-vibration mounts",
+        ],
+        "prevention": "Leak test before every grow. Water sensors on floor. Inspect fittings monthly. Use drip trays.",
+    },
+    {
+        "failure": "Power outage (total system down)",
+        "severity": "critical",
+        "time_to_damage": "4-8 hours without circulation/aeration (faster in warm water)",
+        "detection": ["All equipment off", "No air bubbles visible", "Water becoming stagnant"],
+        "immediate_response": [
+            "UPS/battery kicks in (if installed) — keeps pump + air running for 1-4 hours",
+            "If no UPS: manually agitate water in each bucket (pour back and forth)",
+            "Open tent/room for airflow — reduce heat buildup without exhaust fans",
+            "Do NOT open reservoir to 'aerate' — splash introduces pathogens",
+        ],
+        "root_cause_fix": [
+            "Install UPS rated for pump + air pump wattage × 4 hours",
+            "Consider generator for grows in areas with frequent outages",
+            "Wire critical equipment (pump, air) to dedicated UPS circuit",
+        ],
+        "prevention": "UPS for pump + air pump. Generator for extended outages. Notification alert on power loss.",
+    },
+    {
+        "failure": "Return line overflow (site bucket fills faster than it drains)",
+        "severity": "medium",
+        "time_to_damage": "Minutes to overflow, then continuous water on floor",
+        "detection": [
+            "Water level in one site rising above normal",
+            "Water spilling from bucket",
+            "Floor wet near one site",
+        ],
+        "immediate_response": [
+            "Reduce flow to that site via ball valve",
+            "Check return line for clog or kink",
+            "Clear obstruction from return fitting inside bucket (often root mass)",
+        ],
+        "root_cause_fix": [
+            "Return pipe too small for flow rate — upsize",
+            "Root mass blocking return port — install root guard mesh",
+            "Return line has uphill section creating air lock — re-route for continuous downhill grade",
+        ],
+        "prevention": 'Overflow drain in every bucket (safety outlet 2" above normal level). Root guards on all return ports.',
+    },
+]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# CROSS-CONTAMINATION PROTOCOL — isolation and recovery procedures
+# ─────────────────────────────────────────────────────────────────────────────
+
+RDWC_CROSS_CONTAMINATION_PROTOCOL: dict = {
+    "overview": "RDWC's shared water means any pathogen at one site reaches all sites within one pump cycle (minutes). Early detection and immediate isolation are critical.",
+    "quarantine_procedure": [
+        {
+            "step": 1,
+            "action": "DETECT",
+            "details": "Brown/slimy roots, foul smell, wilting plant at one site while others look healthy.",
+        },
+        {
+            "step": 2,
+            "action": "ISOLATE",
+            "details": "Close ball valves on the affected site's supply AND return lines. This disconnects it from the loop immediately.",
+        },
+        {
+            "step": 3,
+            "action": "ASSESS",
+            "details": "Is infection at one site only, or has it spread? Check roots at ALL other sites for any discoloration.",
+        },
+        {
+            "step": 4,
+            "action": "TREAT SYSTEM",
+            "details": "If caught early (1 site only): add Hydroguard at 3ml/gal (1.5x normal dose) to central reservoir. Drop water temp to 65°F.",
+        },
+        {
+            "step": 5,
+            "action": "TREAT SEVERE",
+            "details": "If multiple sites affected: H2O2 shock (3ml/gal of 3% H2O2). This kills ALL bacteria (good and bad). Full reservoir change after 24h, then re-inoculate with Hydroguard.",
+        },
+        {
+            "step": 6,
+            "action": "REMOVE OR RECOVER",
+            "details": "Isolated site: either remove the plant entirely, or treat individually with H2O2 root dip and keep isolated for 48h before reconnecting.",
+        },
+        {
+            "step": 7,
+            "action": "MONITOR",
+            "details": "Daily root inspections for 14 days after incident. Any recurrence → remove the affected plant entirely.",
+        },
+    ],
+    "system_flush_procedure": [
+        {"step": 1, "action": "Drain entire system (all sites + reservoir)"},
+        {"step": 2, "action": "Remove all organic debris from buckets and lines"},
+        {"step": 3, "action": "Fill system with H2O2 solution (5ml/gal of 3%) and run pump for 30 minutes"},
+        {"step": 4, "action": "Drain H2O2 solution completely"},
+        {"step": 5, "action": "Rinse with plain water — fill and drain 2x"},
+        {"step": 6, "action": "Refill with fresh nutrient solution + Hydroguard at 3ml/gal"},
+        {"step": 7, "action": "Monitor pH/EC every 4 hours for 48h to confirm stability"},
+    ],
+    "uv_sterilization": {
+        "description": "Inline UV sterilizer on return line kills pathogens before water returns to reservoir.",
+        "sizing_rule": "25-40 watts per 100 gallons of system volume.",
+        "placement": "On return line, AFTER inline filter, BEFORE central reservoir.",
+        "maintenance": "Replace UV bulb every 6 months. Clean quartz sleeve monthly.",
+        "note": "UV also kills beneficial bacteria — if using Hydroguard, add it directly to each site bucket instead of reservoir when UV is inline.",
+    },
+    "prevention_checklist": [
+        "Hydroguard at every reservoir change AND every top-off",
+        "Water temp below 70°F at all times (ideally 65-68°F)",
+        "Ball valves on every site (ability to isolate in seconds)",
+        "Inspect roots at every reservoir change",
+        "Inline filter on return line to catch debris before pump",
+        "Clean plumbing at every reservoir change",
+        "Never reuse old nutrient solution",
+        "Sanitize hands/tools between touching different site's roots",
+    ],
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PLUMBING MAINTENANCE SCHEDULE
+# ─────────────────────────────────────────────────────────────────────────────
+
+RDWC_PLUMBING_MAINTENANCE: dict = {
+    "weekly": [
+        {
+            "task": "Visual flow check",
+            "details": "Verify ripples visible at all site buckets. Compare water levels across sites (should be within 0.5 inch).",
+        },
+        {
+            "task": "Inline filter clean",
+            "details": "Remove and rinse pre-filter screens on return lines. Root fragments and debris accumulate fast in flower.",
+        },
+    ],
+    "at_every_reservoir_change": [
+        {
+            "task": "Flush lines",
+            "details": "Run plain pH'd water through entire system for 15 minutes before refilling with nutrient solution.",
+        },
+        {
+            "task": "Inspect fittings",
+            "details": "Check all bulkheads and connections for seepage. Tighten or reseal as needed.",
+        },
+        {
+            "task": "Clean pump intake",
+            "details": "Remove pump, clear debris from intake screen. Check impeller for mineral buildup.",
+        },
+        {
+            "task": "Root guard inspection",
+            "details": "Check screens at bucket drain ports. Trim any roots growing into screens.",
+        },
+    ],
+    "monthly": [
+        {
+            "task": "Deep line clean",
+            "details": "Run diluted H2O2 (3ml/gal of 3%) through lines for 30 min to clear biofilm. Rinse twice after.",
+        },
+        {
+            "task": "Ball valve exercise",
+            "details": "Open and close every ball valve fully. Prevents seizure from mineral deposits.",
+        },
+        {
+            "task": "Fitting torque check",
+            "details": "Re-check all threaded connections. Thermal cycling and vibration can loosen over time.",
+        },
+        {
+            "task": "Air stone replacement assessment",
+            "details": "Mineral-clogged air stones produce fewer/larger bubbles. Replace if output visually reduced.",
+        },
+    ],
+    "between_grows": [
+        {
+            "task": "Full system sterilization",
+            "details": "Fill with H2O2 solution (5ml/gal) and run 1 hour. Drain and rinse 3x with plain water.",
+        },
+        {
+            "task": "Replace gaskets",
+            "details": "All rubber gaskets in bulkheads. They degrade from nutrient exposure. Cheap insurance.",
+        },
+        {
+            "task": "Inspect tubing",
+            "details": "Look for discoloration, stiffening, or mineral deposits inside. Replace any degraded sections.",
+        },
+        {
+            "task": "Pump rebuild/replace",
+            "details": "After 2 grows, inspect impeller for wear. Consider replacing pump every 3-4 grows proactively.",
+        },
+        {
+            "task": "Leak test",
+            "details": "Fill with plain water and run 24 hours before adding plants. Mark water level — any drop = leak.",
+        },
+    ],
+    "seasonal_winterization": {
+        "applies_to": "outdoor and greenhouse RDWC systems",
+        "steps": [
+            "Drain ALL water from lines, reservoir, and site buckets",
+            "Blow compressed air through all lines to clear remaining water",
+            "Disconnect and store pump indoors (freezing kills submersible pumps)",
+            "Cap all open fittings to prevent debris/insects entering",
+            "Store flexible tubing indoors (cold makes vinyl brittle)",
+            "Inspect and replace any UV-degraded outdoor tubing in spring",
+        ],
+    },
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SCALE TIER PROFILES — configuration adjustments by system size
+# ─────────────────────────────────────────────────────────────────────────────
+
+RDWC_SCALE_TIERS: list[dict] = [
+    {
+        "tier": "hobby_small",
+        "label": "Hobby Small (2-4 sites)",
+        "sites": {"min": 2, "max": 4},
+        "typical_total_volume_gal": {"min": 20, "max": 60},
+        "pump_recommendation": "Single 400-800 GPH submersible",
+        "air_pump_recommendation": "20-30 LPM commercial air pump",
+        "chiller": "Optional — 1/10 HP if room temp exceeds 75°F",
+        "reservoir_size_gal": {"min": 10, "max": 20},
+        "plumbing": '3/4" supply, 1" return, vinyl tubing acceptable',
+        "automation_level": "Manual pH/EC. Timer-based light. Manual top-off.",
+        "estimated_yield_oz": {"min": 8, "max": 24},
+        "notes": "Great starting point. Master plumbing and flow balance before scaling up.",
+    },
+    {
+        "tier": "hobby_medium",
+        "label": "Hobby Medium (5-8 sites)",
+        "sites": {"min": 5, "max": 8},
+        "typical_total_volume_gal": {"min": 50, "max": 120},
+        "pump_recommendation": "800-1200 GPH submersible with manifold",
+        "air_pump_recommendation": "35-50 LPM pump or dual smaller pumps",
+        "chiller": "Recommended — 1/4 HP",
+        "reservoir_size_gal": {"min": 20, "max": 40},
+        "plumbing": '1" supply trunk, 1.5" return, PVC recommended over vinyl',
+        "automation_level": "Auto-top-off recommended. pH controller optional. Smart plugs for monitoring.",
+        "estimated_yield_oz": {"min": 20, "max": 56},
+        "notes": "The sweet spot for serious hobbyists. Auto-top-off becomes nearly mandatory at this scale.",
+    },
+    {
+        "tier": "enthusiast",
+        "label": "Enthusiast (9-16 sites)",
+        "sites": {"min": 9, "max": 16},
+        "typical_total_volume_gal": {"min": 100, "max": 250},
+        "pump_recommendation": "1200-2000 GPH inline pump or dual submersibles",
+        "air_pump_recommendation": "60-80 LPM commercial pump or regenerative blower",
+        "chiller": "Required — 1/3 to 1/2 HP",
+        "reservoir_size_gal": {"min": 40, "max": 80},
+        "plumbing": '1.25" supply manifold, 2" return trunks, all PVC, zone valves',
+        "automation_level": "Auto-top-off, pH/EC controller, environmental automation. Monitoring alerts essential.",
+        "estimated_yield_oz": {"min": 48, "max": 112},
+        "notes": "Dedicated grow room required. Consider zone-based plumbing (2 zones of 8). Backup pump is mandatory.",
+    },
+    {
+        "tier": "commercial_small",
+        "label": "Commercial Small (17-30 sites)",
+        "sites": {"min": 17, "max": 30},
+        "typical_total_volume_gal": {"min": 200, "max": 500},
+        "pump_recommendation": "Commercial inline pump (3000+ GPH) or zone-split with dedicated pumps",
+        "air_pump_recommendation": "Regenerative blower (100+ LPM)",
+        "chiller": "Required — 1/2 to 1 HP or HVAC integration",
+        "reservoir_size_gal": {"min": 80, "max": 150},
+        "plumbing": '1.5" supply trunk, 2" return, zone-based with isolation valves per zone',
+        "automation_level": "Full automation: pH/EC dosing, auto-top-off, environmental control, monitoring + alerts, data logging.",
+        "estimated_yield_oz": {"min": 100, "max": 250},
+        "notes": "Requires commercial space, proper drainage, backup power. Multiple zones allow partial harvest/clean.",
+    },
+    {
+        "tier": "commercial_large",
+        "label": "Commercial Large (31-50+ sites)",
+        "sites": {"min": 31, "max": 999},
+        "typical_total_volume_gal": {"min": 500, "max": 2000},
+        "pump_recommendation": "Multiple zone pumps or centralized commercial pump with manifold distribution",
+        "air_pump_recommendation": "Multiple regenerative blowers or centralized compressed air system",
+        "chiller": "Dedicated HVAC loop or industrial water chiller (1+ HP per 200 gal)",
+        "reservoir_size_gal": {"min": 150, "max": 500},
+        "plumbing": '2"+ PVC trunk lines, zone manifolds, automated valve control, flow meters on each zone',
+        "automation_level": "Enterprise automation: SCADA-like monitoring, automated dosing, predictive alerts, compliance logging, seed-to-sale integration.",
+        "estimated_yield_oz": {"min": 250, "max": 1000},
+        "notes": "Requires dedicated facility, licensed cultivation. Zone isolation mandatory for pathogen control. Redundancy on all critical systems.",
+    },
+]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STRAIN DURATION VARIANTS — auto vs photoperiod timing differences
+# ─────────────────────────────────────────────────────────────────────────────
+
+RDWC_STRAIN_VARIANTS: dict = {
+    "photoperiod": {
+        "description": "Standard cannabis genetics. Veg duration controlled by grower (light schedule). Flower triggered by 12/12.",
+        "typical_total_days": {"min": 100, "max": 160},
+        "veg_duration_days": {
+            "min": 28,
+            "max": 63,
+            "typical": 42,
+            "notes": "RDWC plants veg aggressively — keep shorter veg than DWC to prevent overcrowding between sites.",
+        },
+        "flower_duration_days": {"min": 56, "max": 84, "typical": 63},
+        "yield_potential": "High — full control of plant size via veg length. RDWC maximizes photoperiod potential.",
+        "training_recommendations": [
+            "Top early (week 2-3 veg)",
+            "SCROG net spanning all sites",
+            "Lollipop before flip",
+            "Defoliate at day 21 and day 42 of flower",
+        ],
+        "rdwc_specific_notes": "With shared reservoir, all sites must flip to flower simultaneously. Cannot stagger harvest unless you isolate sites.",
+    },
+    "autoflower": {
+        "description": "Day-neutral genetics. Flowers based on age regardless of light schedule. Fixed timeline.",
+        "typical_total_days": {"min": 65, "max": 95},
+        "veg_duration_days": {
+            "min": 14,
+            "max": 28,
+            "typical": 21,
+            "notes": "Auto veg is short and non-adjustable. Plant starts flowering around day 21 regardless.",
+        },
+        "flower_duration_days": {"min": 42, "max": 63, "typical": 49},
+        "yield_potential": "Moderate — faster turnaround but smaller plants. Good for perpetual RDWC if you stagger planting.",
+        "training_recommendations": [
+            "LST only (no topping — recovery time too slow)",
+            "Leaf tucking over defoliation",
+            "No SCROG — plants too small",
+        ],
+        "rdwc_specific_notes": "Stagger planting by 2-3 weeks per site for perpetual harvest. Different nutrient needs per site complicates shared reservoir — not ideal for beginners.",
+    },
+    "fast_version": {
+        "description": "Photoperiod genetics with faster flower time (bred with auto genetics). Light-flip triggered but finishes 1-2 weeks faster.",
+        "typical_total_days": {"min": 90, "max": 130},
+        "veg_duration_days": {"min": 28, "max": 49, "typical": 35},
+        "flower_duration_days": {"min": 49, "max": 63, "typical": 53},
+        "yield_potential": "High — nearly photoperiod yields with faster finish. Excellent for RDWC.",
+        "training_recommendations": ["Same as photoperiod", "Slightly shorter veg since flower is faster"],
+        "rdwc_specific_notes": "Best of both worlds for RDWC. Full canopy control with faster turnaround. Ideal for uniform multi-site grows.",
+    },
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# WATER SOURCE PROFILES — adjustments for different water chemistry
+# ─────────────────────────────────────────────────────────────────────────────
+
+RDWC_WATER_SOURCES: dict = {
+    "reverse_osmosis": {
+        "description": "0-20 PPM starting water. Pure blank slate for nutrients.",
+        "starting_ec": 0.0,
+        "starting_ph": {"typical": 7.0, "range": "6.5-7.5"},
+        "calmag_required": True,
+        "calmag_dose_ml_per_gal": {
+            "veg": 3,
+            "flower": 5,
+            "notes": "RO water has zero calcium/magnesium. Must add CalMag FIRST before other nutrients.",
+        },
+        "ph_buffer_note": "RO water has almost no buffering capacity — pH will swing more. Expect more frequent pH adjustments.",
+        "rdwc_volume_note": "RO systems produce 50-100 GPD. For 100+ gal systems, you need a high-output RO or to pre-fill a storage tank.",
+        "pros": ["Complete control over mineral content", "No chlorine/chloramine", "Consistent across locations"],
+        "cons": [
+            "Must add CalMag",
+            "pH less stable",
+            "Slow production rate for large systems",
+            "Waste water (typically 3:1 ratio)",
+        ],
+    },
+    "tap_municipal": {
+        "description": "City water — varies by location. Typically 100-400 PPM with chlorine/chloramine treatment.",
+        "starting_ec": {
+            "typical": "0.2-0.8",
+            "notes": "Test YOUR tap water. Subtract starting EC from target EC when mixing nutrients.",
+        },
+        "starting_ph": {"typical": 7.5, "range": "7.0-8.5"},
+        "calmag_required": False,
+        "calmag_dose_ml_per_gal": {
+            "notes": "Usually not needed — tap water contains calcium and magnesium. Test first."
+        },
+        "chlorine_treatment": "Let water sit 24 hours in open container (chlorine evaporates) OR use dechlorinator for chloramine (doesn't evaporate).",
+        "rdwc_volume_note": "Easy fill — unlimited supply from tap. But chloramine in large volumes can overwhelm beneficial bacteria. Always dechlorinate.",
+        "pros": ["Free/cheap", "Contains minerals (less CalMag needed)", "Unlimited quantity"],
+        "cons": [
+            "Chlorine/chloramine kills beneficial bacteria",
+            "Variable PPM seasonally",
+            "May contain heavy metals",
+        ],
+    },
+    "well_water": {
+        "description": "Private well — varies wildly by geology. Can be excellent or problematic.",
+        "starting_ec": {
+            "typical": "0.1-1.0+",
+            "notes": "Get a full water test (iron, manganese, sulfur, hardness, pH, PPM).",
+        },
+        "starting_ph": {"typical": 7.0, "range": "5.5-8.5"},
+        "calmag_required": False,
+        "calmag_dose_ml_per_gal": {
+            "notes": "Usually high in calcium/magnesium already. Additional CalMag may cause lockout."
+        },
+        "iron_warning": "Iron above 0.3 PPM stains everything and feeds iron bacteria. Consider iron filter or RO for high-iron wells.",
+        "rdwc_volume_note": "Unlimited supply, no chlorine. But well pumps have limited GPM — filling 100+ gal takes time. Consider a storage/staging tank.",
+        "pros": ["Free", "No chlorine", "Often mineral-rich"],
+        "cons": [
+            "Unpredictable composition",
+            "May need filtering",
+            "Seasonal variation",
+            "Hard water can cause buildup in plumbing",
+        ],
+    },
+    "rainwater": {
+        "description": "Collected rainwater — very low PPM, slightly acidic. Like soft RO water.",
+        "starting_ec": 0.0,
+        "starting_ph": {"typical": 5.5, "range": "5.0-6.5"},
+        "calmag_required": True,
+        "calmag_dose_ml_per_gal": {"veg": 3, "flower": 5},
+        "contamination_warning": "Filter through sediment filter minimum. First-flush diverter prevents roof contamination. Don't collect from treated/painted roofs.",
+        "rdwc_volume_note": "Supply is weather-dependent. Need large storage capacity (500+ gal tank) to buffer dry periods. Good supplemental source.",
+        "pros": ["Free", "Very pure", "Slightly acidic (less pH down needed)", "Sustainable"],
+        "cons": [
+            "Unreliable supply",
+            "Storage tanks needed",
+            "Potential roof contamination",
+            "No minerals — CalMag required",
+        ],
+    },
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # EQUIPMENT CHECKLIST
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -2205,6 +2925,15 @@ RDWC_CONFIG: dict = {
     "grow_type_id": "rdwc",
     "version": "1.0.0",
     "stages": RDWC_STAGES,
+    "plumbing_architecture": RDWC_PLUMBING_ARCHITECTURE,
+    "system_sizing": RDWC_SYSTEM_SIZING,
+    "flow_distribution": RDWC_FLOW_DISTRIBUTION,
+    "failure_modes": RDWC_FAILURE_MODES,
+    "cross_contamination_protocol": RDWC_CROSS_CONTAMINATION_PROTOCOL,
+    "plumbing_maintenance": RDWC_PLUMBING_MAINTENANCE,
+    "rdwc_system_tiers": RDWC_SCALE_TIERS,
+    "strain_variants": RDWC_STRAIN_VARIANTS,
+    "water_sources": RDWC_WATER_SOURCES,
     "equipment": RDWC_EQUIPMENT,
     "quick_reference": RDWC_QUICK_REFERENCE,
     "troubleshooting": RDWC_TROUBLESHOOTING,
