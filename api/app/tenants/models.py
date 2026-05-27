@@ -98,7 +98,6 @@ class Tenant(Base):
         UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="SET NULL")
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
 
     account: Mapped[Account | None] = relationship(back_populates="tenants")
     memberships: Mapped[list[TenantMembership]] = relationship(back_populates="tenant", cascade="all, delete-orphan")
@@ -172,7 +171,6 @@ class User(Base):
     layout_mode: Mapped[str] = mapped_column(String(20), default="standard", nullable=False)
     preferences: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
 
     tenant_memberships: Mapped[list[TenantMembership]] = relationship(
         back_populates="user", cascade="all, delete-orphan"

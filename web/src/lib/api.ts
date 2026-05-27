@@ -1516,7 +1516,6 @@ export interface AdminTenantSummary {
   plan: string;
   user_count: number;
   created_at: string;
-  deleted_at: string | null;
 }
 
 export interface AdminUserSummary {
@@ -1530,7 +1529,6 @@ export interface AdminUserSummary {
   is_support: boolean;
   email_verified: boolean;
   created_at: string;
-  deleted_at: string | null;
 }
 
 export async function adminListTenants(token: string) {
@@ -1571,19 +1569,11 @@ export function adminGetStats(token: string) {
 }
 
 export function adminDeleteTenant(token: string, tenantId: string) {
-  return apiFetch<{ status: string; deletion_date: string | null; message: string }>(`/admin/tenants/${tenantId}`, { method: "DELETE", token });
+  return apiFetch<{ status: string; message: string }>(`/admin/tenants/${tenantId}`, { method: "DELETE", token });
 }
 
 export function adminDeleteUser(token: string, userId: string) {
-  return apiFetch<{ status: string; deletion_date: string | null; message: string }>(`/admin/users/${userId}`, { method: "DELETE", token });
-}
-
-export function adminRestoreUser(token: string, userId: string) {
-  return apiFetch<{ status: string; message: string }>(`/admin/users/${userId}/restore`, { method: "POST", token });
-}
-
-export function adminRestoreTenant(token: string, tenantId: string) {
-  return apiFetch<{ status: string; message: string }>(`/admin/tenants/${tenantId}/restore`, { method: "POST", token });
+  return apiFetch<{ status: string; message: string }>(`/admin/users/${userId}`, { method: "DELETE", token });
 }
 
 // ── Outdoor Soil: Plot Grid ─────────────────────────────────────────
