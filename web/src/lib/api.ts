@@ -1572,6 +1572,10 @@ export function adminDeleteTenant(token: string, tenantId: string) {
   return apiFetch<{ status: string; deletion_date: string | null; message: string }>(`/admin/tenants/${tenantId}`, { method: "DELETE", token });
 }
 
+export function adminDeleteUser(token: string, userId: string) {
+  return apiFetch<{ status: string; message: string }>(`/admin/users/${userId}`, { method: "DELETE", token });
+}
+
 // ── Outdoor Soil: Plot Grid ─────────────────────────────────────────
 
 export interface PlotCellResponse {

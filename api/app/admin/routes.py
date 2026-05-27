@@ -306,6 +306,30 @@ async def update_user_flags(
     )
 
 
+@router.delete("/users/{user_id}")
+async def delete_user(
+    user_id: UUID,
+    admin: Annotated[CurrentUser, Depends(require_platform_admin)],
+    db: Annotated[AsyncSession, Depends(_get_db)],
+):
+    """Delete a user and remove all their memberships (admin only)."""
+    if user_id == admin.user_id:
+        raise HTTPException(status_code=400, detail="Cannot delete yourself")
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Remove all tenant memberships
+    await db.execute(delete(TenantMembership).where(TenantMembership.user_id == user_id))
+    await db.delete(user)
+    await db.commit()
+
+    logger.warning("Admin deleted user %s (%s)", user_id, user.email)
+    return {"status": "deleted", "message": f"User '{user.email}' has been deleted."}
+
+
 # ---------- Stats (support + admin) ----------
 
 
