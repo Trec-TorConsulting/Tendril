@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { getAccessToken } from "@/lib/auth";
 import { useConfirm } from "@/components/confirm-dialog";
@@ -84,6 +84,7 @@ import {
   SunMedium,
   Timer,
   TrendingUp,
+  RefreshCw,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -441,13 +442,61 @@ export default function GrowDetailPage() {
   const bucketLabelMap: Record<string, string> = {};
   buckets.forEach((b) => { bucketLabelMap[b.id] = `#${b.position} ${b.label || "Unnamed"}`; });
 
+  // Compute last water change date per bucket from journal entries
+  const bucketWaterStatus = useMemo(() => {
+    const map: Record<string, { lastChange: Date; daysSince: number } | null> = {};
+    const now = new Date();
+    for (const b of buckets) {
+      const entries = journalEntries.filter(
+        (e) => e.bucket_id === b.id && e.event_type === "water_change"
+      );
+      if (entries.length === 0) {
+        map[b.id] = null;
+        continue;
+      }
+      const latest = entries.reduce((a, c) =>
+        new Date(c.created_at) > new Date(a.created_at) ? c : a
+      );
+      const lastChange = new Date(latest.created_at);
+      const daysSince = Math.floor((now.getTime() - lastChange.getTime()) / 86_400_000);
+      map[b.id] = { lastChange, daysSince };
+    }
+    return map;
+  }, [buckets, journalEntries]);
   // Grow type specific settings schema
   const settingsSchema = getSettingsSchema(grow.grow_type, tempUnitLabel(prefs.temp_unit));
   const latestEnvTemp = tentAmbient?.ambient_temp_f ?? (sensorTrends.temp.length > 0 ? sensorTrends.temp[sensorTrends.temp.length - 1] : null);
   const latestEnvHumidity = tentAmbient?.ambient_humidity ?? (sensorTrends.humidity.length > 0 ? sensorTrends.humidity[sensorTrends.humidity.length - 1] : null);
 
+  // Tab persistence — remember last active tab across grow switches
+  const TAB_STORAGE_KEY = "tendril:grow-detail-tab";
+  const validTabs = useMemo(() => {
+    const tabs = ["overview", "buckets", "activity", "tasks", "nutrition", "health-photos"];
+    if (isOutdoor(grow.grow_type)) tabs.push("field");
+    if (settingsSchema.length > 0) tabs.push("settings");
+    return tabs;
+  }, [grow.grow_type, settingsSchema.length]);
+
+  const [activeTab, setActiveTab] = useState(() => {
+    if (typeof window === "undefined") return "overview";
+    const stored = sessionStorage.getItem(TAB_STORAGE_KEY);
+    return stored && validTabs.includes(stored) ? stored : "overview";
+  });
+
+  const handleTabChange = useCallback((value: string) => {
+    setActiveTab(value);
+    sessionStorage.setItem(TAB_STORAGE_KEY, value);
+  }, []);
+
+  // Reset to overview if stored tab is invalid for this grow type
+  useEffect(() => {
+    if (!validTabs.includes(activeTab)) {
+      setActiveTab("overview");
+    }
+  }, [validTabs, activeTab]);
+
   return (
-    <Tabs defaultValue="overview" className="flex flex-1 flex-col">
+    <Tabs value={activeTab} onValueChange={handleTabChange} className="flex flex-1 flex-col">
       <PageHeader
         title={grow.name}
         breadcrumbs={[
@@ -472,16 +521,16 @@ export default function GrowDetailPage() {
         }
       />
       <div className="sticky top-0 z-10 border-b bg-background overflow-hidden">
-        <div className="overflow-x-auto scrollbar-none px-4 lg:px-6">
+        <div className="overflow-x-auto scrollbar-none touch-pan-x px-4 lg:px-6">
           <TabsList className="w-max">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="buckets">{t(grow.grow_type, "Buckets")} ({buckets.length})</TabsTrigger>
-            <TabsTrigger value="activity">Activity</TabsTrigger>
-            <TabsTrigger value="tasks">Tasks{openTaskCount > 0 && <Badge variant="secondary" className="ml-1 h-4 min-w-4 px-1 text-[10px]">{openTaskCount}</Badge>}</TabsTrigger>
-            <TabsTrigger value="nutrition">Nutrition & Yield</TabsTrigger>
-            <TabsTrigger value="health-photos">Health & Photos{healthScore != null && healthScore < 50 && <span className="ml-1 inline-block size-2 rounded-full bg-destructive" />}</TabsTrigger>
-            {isOutdoor(grow.grow_type) && <TabsTrigger value="field">Field</TabsTrigger>}
-            {settingsSchema.length > 0 && <TabsTrigger value="settings">Settings</TabsTrigger>}
+            <TabsTrigger value="overview" className="text-xs sm:text-sm">Overview</TabsTrigger>
+            <TabsTrigger value="buckets" className="text-xs sm:text-sm">{t(grow.grow_type, "Buckets")} ({buckets.length})</TabsTrigger>
+            <TabsTrigger value="activity" className="text-xs sm:text-sm">Activity</TabsTrigger>
+            <TabsTrigger value="tasks" className="text-xs sm:text-sm">Tasks{openTaskCount > 0 && <Badge variant="secondary" className="ml-1 h-4 min-w-4 px-1 text-[10px]">{openTaskCount}</Badge>}</TabsTrigger>
+            <TabsTrigger value="nutrition" className="text-xs sm:text-sm">Nutrition & Yield</TabsTrigger>
+            <TabsTrigger value="health-photos" className="text-xs sm:text-sm">Health & Photos{healthScore != null && healthScore < 50 && <span className="ml-1 inline-block size-2 rounded-full bg-destructive" />}</TabsTrigger>
+            {isOutdoor(grow.grow_type) && <TabsTrigger value="field" className="text-xs sm:text-sm">Field</TabsTrigger>}
+            {settingsSchema.length > 0 && <TabsTrigger value="settings" className="text-xs sm:text-sm">Settings</TabsTrigger>}
           </TabsList>
         </div>
       </div>
@@ -799,6 +848,45 @@ export default function GrowDetailPage() {
             </Button>
           )}
         </motion.div>
+
+        {/* ── Bucket Water Change Status ──────────────────────────────── */}
+        {buckets.length > 0 && (
+          <motion.div {...fadeUp} transition={{ delay: 0.22 }}>
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-sm font-medium">
+                  <RefreshCw className="size-4" /> Water Change Status
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {buckets.map((b) => {
+                    const status = bucketWaterStatus[b.id];
+                    const label = bucketLabelMap[b.id] || "Unnamed";
+                    let color = "text-muted-foreground";
+                    if (status) {
+                      if (status.daysSince <= 7) color = "text-green-600 dark:text-green-400";
+                      else if (status.daysSince <= 10) color = "text-yellow-600 dark:text-yellow-400";
+                      else color = "text-red-600 dark:text-red-400";
+                    }
+                    return (
+                      <div key={b.id} className="flex items-center justify-between text-sm">
+                        <span className="truncate">{label}</span>
+                        <span className={cn("text-xs font-medium", color)}>
+                          {status
+                            ? status.daysSince === 0
+                              ? "Today"
+                              : `${status.daysSince}d ago`
+                            : "Never"}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
 
         {/* ── Bucket Quick View ───────────────────────────────────────── */}
         {buckets.length > 0 && (

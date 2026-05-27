@@ -327,3 +327,102 @@ class TestFeedingAndDoses:
         )
         assert resp.status_code == 201
         assert resp.json()["stage"] == "vegetative"
+
+
+# ---------- Quick Log ----------
+
+
+class TestQuickLogWaterChange:
+    """Tests for the water change quick-log endpoint and journal interaction."""
+
+    async def test_water_change_creates_reading_and_journal(self, client, tenant):
+        """Water change endpoint creates both a sensor reading and a journal entry."""
+        t = await client.post("/v1/tents", json={"name": "T"}, headers=tenant["headers"])
+        g = await client.post(
+            "/v1/grows", json={"tent_id": t.json()["id"], "name": "G", "grow_type": "dwc"}, headers=tenant["headers"]
+        )
+        b = await client.post(
+            "/v1/buckets", json={"grow_cycle_id": g.json()["id"], "label": "B1"}, headers=tenant["headers"]
+        )
+        bid = b.json()["id"]
+
+        resp = await client.post(
+            "/v1/quick-log/water-change",
+            json={"bucket_ids": [bid], "ph": 6.0, "ec": 1.2, "volume_gal": 5.0, "notes": "Full flush"},
+            headers=tenant["headers"],
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["created"] == 1
+        assert bid in data["bucket_ids"]
+
+        # Verify journal entry was created with event_type water_change
+        journal_resp = await client.get(f"/v1/journal?bucket_id={bid}", headers=tenant["headers"])
+        assert journal_resp.status_code == 200
+        entries = journal_resp.json()["items"]
+        water_entries = [e for e in entries if e["event_type"] == "water_change"]
+        assert len(water_entries) == 1
+        assert water_entries[0]["content"] == "Full flush"
+        assert water_entries[0]["payload"]["volume_gal"] == 5.0
+
+    async def test_water_change_ec_ppm_auto_derive(self, client, tenant):
+        """EC-only input auto-derives PPM in the sensor reading."""
+        t = await client.post("/v1/tents", json={"name": "T"}, headers=tenant["headers"])
+        g = await client.post(
+            "/v1/grows", json={"tent_id": t.json()["id"], "name": "G", "grow_type": "dwc"}, headers=tenant["headers"]
+        )
+        b = await client.post("/v1/buckets", json={"grow_cycle_id": g.json()["id"]}, headers=tenant["headers"])
+        bid = b.json()["id"]
+
+        resp = await client.post(
+            "/v1/quick-log/water-change",
+            json={"bucket_ids": [bid], "ec": 2.0},
+            headers=tenant["headers"],
+        )
+        assert resp.status_code == 201
+
+        # Verify sensor reading has derived PPM
+        readings_resp = await client.get(f"/v1/sensors?bucket_id={bid}", headers=tenant["headers"])
+        assert readings_resp.status_code == 200
+        items = readings_resp.json()["items"]
+        assert len(items) >= 1
+        assert items[0]["ppm"] == 1000.0  # 2.0 * 500
+
+    async def test_water_change_bucket_not_found(self, client, tenant):
+        resp = await client.post(
+            "/v1/quick-log/water-change",
+            json={"bucket_ids": [str(uuid4())], "ph": 6.0},
+            headers=tenant["headers"],
+        )
+        assert resp.status_code == 404
+
+    async def test_last_water_change_from_journal(self, client, tenant):
+        """Multiple water changes — last one is the most recent by created_at."""
+        t = await client.post("/v1/tents", json={"name": "T"}, headers=tenant["headers"])
+        g = await client.post(
+            "/v1/grows", json={"tent_id": t.json()["id"], "name": "G", "grow_type": "dwc"}, headers=tenant["headers"]
+        )
+        b = await client.post("/v1/buckets", json={"grow_cycle_id": g.json()["id"]}, headers=tenant["headers"])
+        bid = b.json()["id"]
+
+        # First water change
+        await client.post(
+            "/v1/quick-log/water-change",
+            json={"bucket_ids": [bid], "ph": 5.8, "notes": "First"},
+            headers=tenant["headers"],
+        )
+        # Second water change
+        await client.post(
+            "/v1/quick-log/water-change",
+            json={"bucket_ids": [bid], "ph": 6.2, "notes": "Second"},
+            headers=tenant["headers"],
+        )
+
+        # Get journal entries and verify last water change
+        journal_resp = await client.get(f"/v1/journal?bucket_id={bid}", headers=tenant["headers"])
+        entries = journal_resp.json()["items"]
+        water_entries = [e for e in entries if e["event_type"] == "water_change"]
+        assert len(water_entries) == 2
+        # Most recent should be "Second" (sorted by created_at desc by default)
+        latest = max(water_entries, key=lambda e: e["created_at"])
+        assert latest["content"] == "Second"

@@ -2367,6 +2367,153 @@ KRATKY_TROUBLESHOOTING = [
 ]
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# PASSIVE SYSTEM ENGINEERING — Kratky's core differentiator expansion
+# ─────────────────────────────────────────────────────────────────────────────
+
+KRATKY_PASSIVE_SYSTEM: dict = {
+    "air_gap_management": {
+        "concept": "As the plant drinks, water level drops creating an air gap. Roots in the air gap absorb oxygen. Roots in water absorb nutrients. This self-regulating balance IS the Kratky method.",
+        "initial_setup": {
+            "water_level": "Touching the bottom of the net pot (roots just submerged 1-2 inches).",
+            "air_gap": "None at start. The plant creates it by drinking.",
+            "critical_rule": "NEVER refill to original level once air gap forms. Air roots will drown.",
+        },
+        "air_gap_progression": {
+            "week_1_2": {"gap_inches": "0-1", "notes": "Plant barely drinking. Solution level drops slowly."},
+            "week_3_4": {
+                "gap_inches": "1-3",
+                "notes": "Roots developing air roots (fuzzy white) in gap. DO NOT refill.",
+            },
+            "week_5_8": {
+                "gap_inches": "3-6+",
+                "notes": "Large air gap. Long water roots below. Healthy air roots above. System is working.",
+            },
+            "late_grow": {
+                "gap_inches": "Variable",
+                "notes": "May need to add water if container runs low. Add to BELOW current air root zone.",
+            },
+        },
+        "refill_rules": {
+            "when": "Only when water level drops so low that water roots can't reach it (plant wilting).",
+            "how_much": "Fill to JUST below the lowest air roots. NEVER submerge air roots.",
+            "what": "Fresh nutrient solution at current stage EC.",
+            "warning": "Each refill is an opportunity to crash the system. Many Kratky growers prefer to size container large enough to last the entire grow with zero refills.",
+        },
+    },
+    "container_sizing": {
+        "rule_of_thumb": "1 gallon of solution per week of grow time as minimum. Bigger is always safer.",
+        "recommendations": {
+            "lettuce_herbs": {
+                "container_gal": 1,
+                "grow_weeks": 4,
+                "notes": "Small plants, short grows. Mason jar works.",
+            },
+            "small_plants": {"container_gal": 3, "grow_weeks": 6, "notes": "Peppers, small tomatoes."},
+            "medium_plants": {"container_gal": 5, "grow_weeks": 10, "notes": "Standard cannabis veg+flower."},
+            "large_plants": {
+                "container_gal": 8,
+                "grow_weeks": 14,
+                "notes": "Full cannabis flower cycle. Safer margin.",
+            },
+            "aggressive_feeders": {
+                "container_gal": 10,
+                "grow_weeks": 16,
+                "notes": "Largest containers for no-refill grows.",
+            },
+        },
+        "material": {
+            "preferred": [
+                "Black food-grade buckets (5 gal)",
+                "Storage totes (dark colored)",
+                "Mason jars (wrapped to block light)",
+            ],
+            "critical": "100% light-proof. ANY light entering the reservoir = algae bloom. Wrap/paint if using translucent containers.",
+        },
+        "lid_requirements": "Sturdy lid that supports plant weight. Cut net pot hole (3-inch standard). Seal any gaps (light exclusion + evaporation prevention).",
+    },
+    "nutrient_management_passive": {
+        "single_mix_approach": {
+            "description": "Mix nutrients once at setup. Plant grows start to finish on that one batch.",
+            "ec_target": {
+                "min": 1.0,
+                "max": 1.5,
+                "notes": "Start middle-strength. As plant drinks, EC rises (water consumed faster than nutrients). Starting too high = lockout by end.",
+            },
+            "ph_target": {
+                "min": 5.5,
+                "max": 6.5,
+                "initial": 5.8,
+                "notes": "pH will drift up over time (normal). Starting at 5.8 gives it room to drift to 6.5 without issues.",
+            },
+            "simplicity": "This is the beauty of Kratky. Mix once, plant once, harvest. No daily monitoring needed for simple crops.",
+        },
+        "progressive_feeding": {
+            "description": "For longer grows (cannabis, tomatoes), adjust nutrients at key refill points.",
+            "veg_mix": {"ec": 0.8, "ratio": "Higher nitrogen. Standard veg formula."},
+            "transition_mix": {"ec": 1.0, "ratio": "Balanced. Begin shifting to bloom."},
+            "flower_mix": {"ec": 1.2, "ratio": "Higher P-K. Bloom formula."},
+            "notes": "Only applicable if you're doing refills. For true single-mix Kratky, use a balanced formula.",
+        },
+        "ph_drift": {
+            "expected_direction": "pH rises over time (plant uptake of anions).",
+            "acceptable_drift": "5.8 → 6.5 over the grow is normal and fine.",
+            "intervention_needed": "Only if pH exceeds 7.0 or drops below 5.0 (uncommon in Kratky).",
+            "buffer_tip": "Add a small amount of pH-down to initial mix to give it room to drift up. Starting at 5.5-5.8 is ideal.",
+        },
+    },
+    "failure_modes_passive": [
+        {
+            "failure": "Refilling above air roots (drowning air roots)",
+            "severity": "critical",
+            "consequence": "Air roots suffocate. Root rot begins within 24-48h. Plant collapses.",
+            "prevention": "Mark the LOWEST air root level on container exterior. Never fill above this line.",
+            "recovery": "Drain back to safe level immediately. Damaged air roots may not recover — watch for rot.",
+        },
+        {
+            "failure": "Container runs dry",
+            "severity": "high",
+            "consequence": "Water roots dry out and die. Plant wilts. If caught early, recoverable.",
+            "prevention": "Size container appropriately. Use opaque container so you can't see level (use weight or lift test).",
+            "recovery": "Add fresh solution to just below air roots. Plant may recover in 4-12 hours if caught in time.",
+        },
+        {
+            "failure": "Algae bloom (light leak)",
+            "severity": "medium",
+            "consequence": "Green slime on roots and container walls. Consumes oxygen. Competes with roots.",
+            "prevention": "100% light exclusion. No gaps. Dark container or wrapped/painted.",
+            "recovery": "Drain. Clean container. Wrap for light exclusion. Refill with fresh solution.",
+        },
+        {
+            "failure": "EC too high (nutrient concentration)",
+            "severity": "medium",
+            "consequence": "As water is consumed, remaining solution concentrates. Burns roots, locks out nutrients.",
+            "prevention": "Start with moderate EC (1.0-1.2). Larger container = more dilute solution over time.",
+            "recovery": "Add plain pH'd water (one of the ONLY times plain water is OK in Kratky — to dilute concentrated remnants).",
+        },
+    ],
+    "true_set_and_forget": {
+        "philosophy": "Kratky is the laziest hydro method. Embrace it. The goal is zero intervention from planting to harvest.",
+        "checklist_for_zero_maintenance": [
+            "Container sized for entire grow (no refills needed)",
+            "100% light-proof container (no algae)",
+            "Sturdy lid that won't sag under plant weight",
+            "EC at 1.0-1.2 (safe for entire grow without concentration issues)",
+            "pH at 5.8 (room to drift up naturally)",
+            "Net pot with hydroton + starter plug (stable support)",
+            "Grow in moderate temperature environment (no reservoir overheating)",
+        ],
+        "what_can_go_wrong_anyway": [
+            "Extreme heat (above 85°F room temp) — solution heats, dissolved oxygen drops, root rot risk",
+            "Light leak developing over time (lid warps, tape peels) — algae",
+            "Unexpectedly aggressive plant drinks container dry before harvest",
+            "Power outage affecting environment (not the Kratky system itself — it has no power requirements!)",
+        ],
+        "kratky_advantage": "No pumps. No timers. No electricity required for the hydro system. Only power need is grow lights and environment control. Perfect for off-grid or backup grows.",
+    },
+}
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # CONFIG EXPORT
 # ═══════════════════════════════════════════════════════════════════════════
@@ -2378,6 +2525,7 @@ KRATKY_CONFIG = {
     "equipment": KRATKY_EQUIPMENT,
     "quick_reference": KRATKY_QUICK_REFERENCE,
     "troubleshooting": KRATKY_TROUBLESHOOTING,
+    "passive_system": KRATKY_PASSIVE_SYSTEM,
     "total_grow_days": {
         "min": 90,
         "max": 150,

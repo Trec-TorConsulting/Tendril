@@ -293,3 +293,153 @@ test.describe("Grow Lifecycle - Delete Flow", () => {
     }
   });
 });
+
+test.describe("Grow Detail - Merged Tab Navigation", () => {
+  test.beforeEach(async ({ page }) => {
+    await login(page, TEST_USERS.standard.email, TEST_USERS.standard.password);
+  });
+
+  test("can navigate all merged tabs and sub-sections", async ({ page }) => {
+    await page.goto("/dashboard/grows");
+    await page.waitForLoadState("networkidle");
+
+    const growCard = page.locator('[href*="/dashboard/grows/"]').first();
+    if (!(await growCard.isVisible().catch(() => false))) return;
+    await growCard.click();
+    await page.waitForLoadState("networkidle");
+    await page.waitForTimeout(1000);
+
+    // Navigate Activity tab and its sub-views
+    const activityTab = page.getByRole("tab", { name: /activity/i });
+    if (await activityTab.isVisible().catch(() => false)) {
+      await activityTab.click();
+      await page.waitForTimeout(500);
+      // Check sub-tabs: Timeline and Readings
+      const timelineBtn = page.getByRole("tab", { name: /timeline/i }).or(page.getByText(/timeline/i).first());
+      const readingsBtn = page.getByRole("tab", { name: /readings/i }).or(page.getByText(/readings/i).first());
+      if (await timelineBtn.isVisible().catch(() => false)) await timelineBtn.click();
+      if (await readingsBtn.isVisible().catch(() => false)) await readingsBtn.click();
+    }
+
+    // Navigate Nutrition & Yield tab and sub-sections
+    const nutritionTab = page.getByRole("tab", { name: /nutrition/i });
+    if (await nutritionTab.isVisible().catch(() => false)) {
+      await nutritionTab.click();
+      await page.waitForTimeout(500);
+      const feedingBtn = page.getByRole("tab", { name: /feeding/i }).or(page.getByText(/feeding/i).first());
+      const harvestBtn = page.getByRole("tab", { name: /harvest|yield/i }).or(page.getByText(/harvest/i).first());
+      if (await feedingBtn.isVisible().catch(() => false)) await feedingBtn.click();
+      if (await harvestBtn.isVisible().catch(() => false)) await harvestBtn.click();
+    }
+
+    // Navigate Health & Photos tab and sub-sections
+    const healthTab = page.getByRole("tab", { name: /health.*photo/i });
+    if (await healthTab.isVisible().catch(() => false)) {
+      await healthTab.click();
+      await page.waitForTimeout(500);
+      const healthSubBtn = page.getByRole("tab", { name: /^health$/i }).or(page.getByText(/^health$/i).first());
+      const photosSubBtn = page.getByRole("tab", { name: /photo/i }).or(page.getByText(/photo/i).first());
+      if (await healthSubBtn.isVisible().catch(() => false)) await healthSubBtn.click();
+      if (await photosSubBtn.isVisible().catch(() => false)) await photosSubBtn.click();
+    }
+
+    // Navigate remaining tabs (just click, verify no crash)
+    for (const tabName of ["overview", "buckets", "tasks", "settings"]) {
+      const tab = page.getByRole("tab", { name: new RegExp(tabName, "i") });
+      if (await tab.isVisible().catch(() => false)) {
+        await tab.click();
+        await page.waitForTimeout(300);
+      }
+    }
+  });
+
+  test("tabs are horizontally scrollable on mobile viewport", async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 667 });
+    await page.goto("/dashboard/grows");
+    await page.waitForLoadState("networkidle");
+
+    const growCard = page.locator('[href*="/dashboard/grows/"]').first();
+    if (!(await growCard.isVisible().catch(() => false))) return;
+    await growCard.click();
+    await page.waitForLoadState("networkidle");
+    await page.waitForTimeout(1000);
+
+    // TabsList should be scrollable (w-max means it overflows container)
+    const tabsList = page.locator('[role="tablist"]').first();
+    await expect(tabsList).toBeVisible();
+
+    // Container should have overflow-x-auto (scrollable)
+    const scrollContainer = tabsList.locator("..");
+    const overflowX = await scrollContainer.evaluate((el) => getComputedStyle(el).overflowX);
+    expect(overflowX).toBe("auto");
+
+    // Verify at least first and last tabs are reachable
+    const overviewTab = page.getByRole("tab", { name: /overview/i });
+    await expect(overviewTab).toBeVisible();
+
+    // Scroll to last tab (settings or health-photos)
+    const lastTab = page.getByRole("tab").last();
+    await lastTab.scrollIntoViewIfNeeded();
+    await expect(lastTab).toBeVisible();
+  });
+});
+
+test.describe("Grow Detail - Water Change Flow", () => {
+  test.beforeEach(async ({ page }) => {
+    await login(page, TEST_USERS.standard.email, TEST_USERS.standard.password);
+  });
+
+  test("can log a water change from bucket card", async ({ page }) => {
+    // Navigate to an existing grow
+    await page.goto("/dashboard/grows");
+    await page.waitForLoadState("networkidle");
+
+    const growCard = page.locator('[href*="/dashboard/grows/"]').first();
+    if (!(await growCard.isVisible().catch(() => false))) {
+      test.skip(true, "No grows available to test water change");
+      return;
+    }
+    await growCard.click();
+    await page.waitForLoadState("networkidle");
+
+    // Switch to Buckets tab
+    const bucketsTab = page.getByRole("tab", { name: /buckets/i });
+    if (!(await bucketsTab.isVisible().catch(() => false))) {
+      test.skip(true, "No buckets tab visible");
+      return;
+    }
+    await bucketsTab.click();
+    await page.waitForTimeout(500);
+
+    // Find and click the Water Change button on the first bucket card
+    const waterChangeBtn = page.getByRole("button", { name: /water change/i }).first();
+    if (!(await waterChangeBtn.isVisible().catch(() => false))) {
+      test.skip(true, "No water change button visible");
+      return;
+    }
+    await waterChangeBtn.click();
+
+    // Dialog should open
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible({ timeout: 5000 });
+    await expect(dialog.getByText(/water change/i)).toBeVisible();
+
+    // Fill in pH and EC
+    const phInput = dialog.locator('input[placeholder*="pH"], input[name*="ph"]').first();
+    if (await phInput.isVisible()) {
+      await phInput.fill("6.0");
+    }
+    const ecInput = dialog.locator('input[placeholder*="EC"], input[name*="ec"]').first();
+    if (await ecInput.isVisible()) {
+      await ecInput.fill("1.4");
+    }
+
+    // Submit the form
+    const submitBtn = dialog.getByRole("button", { name: /log water change/i });
+    await expect(submitBtn).toBeVisible();
+    await submitBtn.click();
+
+    // Success toast should appear
+    await expect(page.getByText(/water change logged/i)).toBeVisible({ timeout: 5000 });
+  });
+});

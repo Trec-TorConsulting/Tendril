@@ -2206,6 +2206,148 @@ NFT_TROUBLESHOOTING: list[dict] = [
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# CHANNEL ENGINEERING — NFT's core differentiator
+# ─────────────────────────────────────────────────────────────────────────────
+
+NFT_CHANNEL_ENGINEERING: dict = {
+    "channel_specifications": {
+        "slope_percent": {
+            "min": 1,
+            "max": 3,
+            "target": 2,
+            "notes": "1:30 to 1:50 ratio. Too steep = roots dry. Too flat = pooling.",
+        },
+        "channel_width_inches": {
+            "small_plants": 3,
+            "medium_plants": 4,
+            "large_plants": 6,
+            "notes": "Width determines root mat spread and nutrient film coverage.",
+        },
+        "channel_length_ft": {
+            "max_recommended": 12,
+            "notes": "Beyond 12 ft, nutrient depletion at far end becomes an issue. Use multiple shorter channels.",
+        },
+        "channel_material": [
+            "PVC gutter (food-safe)",
+            "NFT-specific extruded channels",
+            "DIY vinyl fence post",
+            "Commercial NFT troughs",
+        ],
+        "cover_requirement": "Light-proof covers mandatory. Light exposure = algae. Use opaque lids with net pot holes.",
+    },
+    "flow_rate_management": {
+        "target_lpm": {
+            "min": 1.0,
+            "max": 2.0,
+            "optimal": 1.5,
+            "notes": "Liters per minute per channel. Measured at drain end.",
+        },
+        "film_depth_mm": {
+            "min": 1,
+            "max": 3,
+            "target": 2,
+            "notes": "The 'Nutrient Film' should be 1-3mm deep. Deeper = roots submerged = less oxygen.",
+        },
+        "flow_uniformity": "All channels must receive equal flow. Use manifold with individual channel valves for balancing.",
+        "flow_check_frequency": "Daily visual check. Weekly measured check with graduated container + timer.",
+        "adjustment_by_stage": {
+            "seedling": {"flow_lpm": 0.5, "notes": "Gentle flow. Root tips just touching film."},
+            "veg": {"flow_lpm": 1.0, "notes": "Roots establishing in channel. Moderate flow."},
+            "flower": {"flow_lpm": 1.5, "notes": "Full flow. Root mat developed. Heavy feeding."},
+            "flush": {"flow_lpm": 2.0, "notes": "Maximum flow with plain water to flush salt buildup."},
+        },
+    },
+    "root_mat_management": {
+        "healthy_root_mat": "White/cream colored, thin mat along channel floor. Does NOT dam the flow.",
+        "problematic_root_mat": "Thick, dense mat that blocks flow to downstream plants. Brown sections = rot.",
+        "dam_prevention": [
+            "Channel slope maintained precisely (no flat spots where roots accumulate)",
+            "Periodic root trimming if mat blocks >50% of channel cross-section",
+            "Wider channels for large plants (6-inch minimum for aggressive rooters)",
+            "Shorter channel runs (fewer plants per channel = less mat buildup)",
+        ],
+        "root_rot_in_nft": {
+            "cause": "Stagnant pools behind root dams. Lack of oxygen in pooled sections.",
+            "signs": [
+                "Brown/slimy roots",
+                "Foul smell from channel",
+                "Flow slowing or stopping",
+                "Downstream plants wilting",
+            ],
+            "treatment": [
+                "Clear the root dam immediately",
+                "Flush channel with H2O2 solution (3ml/gal)",
+                "Increase flow rate temporarily",
+                "Add Hydroguard to reservoir",
+            ],
+        },
+    },
+    "pump_failure_protocol": {
+        "time_to_damage": "15-60 minutes depending on ambient temp and root mat moisture retention",
+        "detection": ["No flow visible at drain end", "Plants wilting", "Reservoir not circulating"],
+        "immediate_actions": [
+            "Switch to backup pump",
+            "If no backup: manually pour nutrient solution through channels every 10 min",
+            "Seal channel ends to create temporary DWC (emergency — holds water in channel)",
+            "Cover channels to trap humidity and slow root drying",
+        ],
+        "backup_system_recommendations": [
+            "Dedicated backup pump, pre-plumbed with valves (manual switchover in <1 min)",
+            "UPS on primary pump (30-60 min runtime minimum)",
+            "Float switch alarm on reservoir (alerts if pump stops returning water)",
+            "Battery-powered backup pump for extended outages",
+        ],
+    },
+    "salt_accumulation": {
+        "where_it_builds": [
+            "Channel edges above waterline (white crust)",
+            "Net pot bottoms",
+            "Channel inlets (reduced flow)",
+            "Root mat surface",
+        ],
+        "problems_caused": ["Nutrient lockout", "pH instability", "Reduced flow rates", "Root burn at channel edges"],
+        "prevention": [
+            "Weekly flush with plain pH'd water (run for 1 hour, drain, refill with nutrients)",
+            "Maintain proper flow rate (too slow = more evaporation = more salt deposits)",
+            "Full channel clean between grows (disassemble, scrub, flush with vinegar or pH-down solution)",
+        ],
+        "cleaning_protocol": [
+            "End of grow: remove all plants and net pots",
+            "Run plain water flush for 30 minutes",
+            "Drain completely",
+            "Fill channels with pH 3.0 solution (citric acid). Soak 2 hours",
+            "Scrub interior with soft brush",
+            "Flush with clean water until runoff is pH neutral",
+            "Inspect for algae, biofilm, or residue. Repeat if needed.",
+        ],
+    },
+    "propagation_to_nft_transfer": {
+        "ideal_root_length_inches": {
+            "min": 2,
+            "max": 4,
+            "notes": "Roots must be long enough to reach the nutrient film from net pot.",
+        },
+        "starter_methods": ["Rockwool cubes (most popular)", "Rapid Rooter plugs", "Neoprene collars with hydroton"],
+        "transfer_protocol": [
+            "Start seedling/clone in starter plug under dome",
+            "Once roots are 2-4 inches, place in net pot with hydroton support",
+            "Insert net pot into NFT channel",
+            "Temporarily increase flow rate for first 24h (ensures roots contact film)",
+            "Verify root-to-film contact within 24h (gently lift cover and check)",
+            "If roots aren't touching: shim net pot lower, or increase flow briefly",
+        ],
+        "acclimation_period": "3-5 days for roots to establish in channel. Growth may pause temporarily. Normal.",
+        "common_mistakes": [
+            "Transferring too early (roots too short to reach film)",
+            "Not checking root contact after transfer",
+            "Reducing flow rate during establishment",
+            "Removing starter plug (leave it — roots grow through it)",
+        ],
+    },
+}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # ASSEMBLED CONFIG EXPORT
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -2216,6 +2358,7 @@ NFT_CONFIG: dict = {
     "equipment": NFT_EQUIPMENT,
     "quick_reference": NFT_QUICK_REFERENCE,
     "troubleshooting": NFT_TROUBLESHOOTING,
+    "channel_engineering": NFT_CHANNEL_ENGINEERING,
     "total_grow_days": {
         "min": 90,
         "max": 150,

@@ -15,10 +15,19 @@ const VALID_ENVIRONMENTS: Record<string, string[]> = {
   Kratky: ["indoor", "greenhouse", "outdoor"],
   "Coco Coir": ["indoor", "outdoor", "greenhouse"],
   Soil: ["indoor", "outdoor", "greenhouse"],
+  "Drip / Top Feed": ["indoor", "greenhouse"],
+  Rockwool: ["indoor", "greenhouse"],
+  "Outdoor Soil": ["outdoor"],
+  "Outdoor Container": ["outdoor", "greenhouse"],
+  Aquaponics: ["indoor", "greenhouse", "outdoor"],
+  "Living Soil / No-Till": ["indoor", "outdoor", "greenhouse"],
+  "Dutch Bucket (Bato)": ["indoor", "greenhouse"],
+  "Vertical / Tower Garden": ["indoor", "greenhouse"],
+  "Wicking Bed": ["indoor", "outdoor", "greenhouse"],
 };
 
 // Define which grow types can use media selection (substrate-based)
-const SUBSTRATE_TYPES = ["Coco Coir", "Soil"];
+const SUBSTRATE_TYPES = ["Coco Coir", "Soil", "Living Soil / No-Till", "Outdoor Soil", "Outdoor Container", "Wicking Bed"];
 
 test.describe("Matrix - Grow Type × Environment Combos", () => {
   test.beforeEach(async ({ page }) => {

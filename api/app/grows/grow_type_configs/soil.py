@@ -1724,6 +1724,192 @@ SOIL_TROUBLESHOOTING: list[dict] = [
     },
 ]
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SOIL BIOLOGY MANAGEMENT — Soil's core differentiator expansion
+# ─────────────────────────────────────────────────────────────────────────────
+
+SOIL_BIOLOGY_MANAGEMENT: dict = {
+    "living_soil_ecosystem": {
+        "key_organisms": {
+            "mycorrhizae": {
+                "types": ["Glomus intraradices (most beneficial)", "Glomus mosseae", "Rhizophagus irregularis"],
+                "function": "Extends root network 100x. Trades phosphorus and micronutrients for plant sugars.",
+                "application": "Dust on roots at transplant. Mix into soil. DO NOT use with high-phosphorus synthetic nutrients (kills colonization).",
+                "kill_conditions": [
+                    "Synthetic phosphorus above 50 ppm",
+                    "Fungicides",
+                    "Excessive tilling/disturbance",
+                    "Hydrogen peroxide",
+                ],
+            },
+            "trichoderma": {
+                "types": ["Trichoderma harzianum", "Trichoderma viride"],
+                "function": "Colonizes root zone. Outcompetes and attacks pathogens (Pythium, Fusarium). Promotes root growth.",
+                "application": "Mix into soil at potting. Apply as root drench monthly.",
+                "compatibility": "Compatible with mycorrhizae. Incompatible with most fungicides.",
+            },
+            "beneficial_bacteria": {
+                "types": ["Bacillus subtilis", "Bacillus amyloliquefaciens", "Pseudomonas fluorescens"],
+                "function": "Fix nitrogen, solubilize phosphorus, produce growth hormones, suppress pathogens.",
+                "application": "Compost tea, microbial inoculants, or worm castings.",
+                "maintenance": "Feed regularly with sugars/molasses to maintain populations.",
+            },
+        },
+        "feeding_the_soil_food_web": {
+            "molasses": {
+                "dose": "1 tbsp per gallon",
+                "frequency": "Weekly during veg, bi-weekly flower",
+                "notes": "Feeds bacteria. Use unsulfured blackstrap molasses only.",
+            },
+            "kelp_meal": {
+                "dose": "1 tbsp per gallon (tea) or top dress 2 tbsp per pot",
+                "frequency": "Bi-weekly",
+                "notes": "Growth hormones + trace minerals. Feeds fungi.",
+            },
+            "fish_hydrolysate": {
+                "dose": "5 ml per gallon",
+                "frequency": "Weekly veg only",
+                "notes": "Nitrogen source + feeds bacteria. Can smell — outdoor or exhaust-filtered use.",
+            },
+            "aloe_vera": {
+                "dose": "10 ml fresh juice per gallon",
+                "frequency": "Weekly",
+                "notes": "Saponins break surface tension. Contains growth enzymes. Natural wetting agent.",
+            },
+        },
+    },
+    "compost_tea_protocol": {
+        "aerated_compost_tea": {
+            "recipe": {
+                "water_gallons": 5,
+                "worm_castings_cups": 2,
+                "molasses_tbsp": 2,
+                "kelp_meal_tbsp": 1,
+                "fish_hydrolysate_tsp": 2,
+            },
+            "brewing": {
+                "aeration": "Continuous vigorous aeration (aquarium pump + large air stone). 400+ LPH air pump minimum.",
+                "duration_hours": {
+                    "min": 24,
+                    "max": 36,
+                    "notes": "24h minimum. 36h maximum. Beyond 36h anaerobic bacteria can develop.",
+                },
+                "temperature_f": {"min": 65, "max": 80, "target": 72},
+                "signs_of_success": "Earthy smell. Light foam on surface. Slightly brown color.",
+                "signs_of_failure": "Foul/rotten smell = anaerobic. Discard immediately. Do NOT apply to plants.",
+            },
+            "application": {
+                "root_drench": "Apply within 4 hours of brewing (microbes die without aeration). Full soil saturation.",
+                "foliar_spray": "Strain through 400-mesh. Apply at lights-off to prevent leaf burn. Covers both leaf surfaces.",
+                "frequency": "Every 2 weeks during veg. Monthly during flower (avoid on buds).",
+            },
+        },
+    },
+    "top_dressing_protocol": {
+        "what_is_top_dressing": "Adding dry amendments to soil surface. Breaks down slowly over 2-4 weeks as you water through it.",
+        "when_to_top_dress": "Every 3-4 weeks throughout the grow. Start 3-4 weeks after potting (amendments in initial mix running out).",
+        "veg_top_dress": {
+            "ingredients": ["2 tbsp worm castings", "1 tbsp kelp meal", "1 tbsp neem meal", "1 tbsp alfalfa meal"],
+            "per": "per gallon of container size",
+            "nitrogen_ratio": "Higher nitrogen for vegetative growth.",
+        },
+        "flower_top_dress": {
+            "ingredients": [
+                "2 tbsp worm castings",
+                "1 tbsp bone meal",
+                "1 tbsp kelp meal",
+                "0.5 tbsp langbeinite (K-Mag)",
+            ],
+            "per": "per gallon of container size",
+            "pk_ratio": "Higher phosphorus and potassium for flower development.",
+        },
+        "application_method": [
+            "Scratch soil surface lightly (top 1/4 inch) — don't disturb roots",
+            "Spread amendments evenly across surface",
+            "Cover with thin layer of worm castings or compost (1/4 inch)",
+            "Water in gently — amendments activate as water passes through",
+            "Mulch on top (straw, rice hulls) to retain moisture and protect biology",
+        ],
+    },
+    "wet_dry_cycle_mastery": {
+        "importance": "The wet/dry cycle is the MOST important skill in soil growing. It drives root development and oxygen exchange.",
+        "phases": {
+            "saturation": {
+                "description": "After watering. Soil fully wetted. Nutrients dissolving and available.",
+                "duration": "First 12-24 hours.",
+            },
+            "field_capacity": {
+                "description": "Excess water drained. Soil holds maximum water against gravity. Ideal nutrient uptake.",
+                "duration": "24-48 hours.",
+            },
+            "dry_back": {
+                "description": "Soil drying. Roots stretching to find moisture. Oxygen returning to pore spaces.",
+                "duration": "48-72 hours depending on pot size.",
+            },
+            "ready_to_water": {
+                "description": "Top 1-2 inches dry. Pot noticeably lighter (50-60% of saturated weight). Slight leaf droop at end of day.",
+                "duration": "Water NOW.",
+            },
+        },
+        "pot_weight_method": {
+            "description": "The gold standard for knowing when to water in soil.",
+            "method": "Lift pot when fully saturated (note weight). Lift daily. Water when pot is 50-60% of saturated weight.",
+            "beginner_shortcut": "Use a chopstick/dowel. Insert 2 inches. Pull out. If dry/clean = water. If moist/dark = wait.",
+        },
+        "container_size_impact": {
+            "1_gallon": {"dry_back_days": "1-2", "notes": "Dries fast. Frequent watering. Easy to under-water."},
+            "3_gallon": {"dry_back_days": "2-4", "notes": "Good balance for small-medium plants."},
+            "5_gallon": {"dry_back_days": "3-5", "notes": "Standard for most indoor soil grows."},
+            "7_gallon": {"dry_back_days": "4-6", "notes": "Good for larger plants. Less frequent watering."},
+            "10_gallon_plus": {"dry_back_days": "5-7+", "notes": "Very long dry-backs. Great for living soil no-till."},
+        },
+        "common_mistakes": [
+            "Watering on a schedule instead of by weight/feel (the #1 soil growing mistake)",
+            "Light frequent watering that only wets the top (trains roots upward, not down)",
+            "Never letting soil dry back (chronically overwatered = root rot, fungus gnats, slow growth)",
+            "Using pots without drainage holes",
+            "Compacted soil that won't absorb water (water runs down sides of rootball)",
+        ],
+    },
+    "no_till_living_soil": {
+        "concept": "Build soil once. Never disturb it. Reuse indefinitely. The soil food web does all the work.",
+        "initial_soil_recipe_per_cubic_foot": {
+            "base": "1/3 peat or coco, 1/3 aeration (pumice/perlite/rice hulls), 1/3 compost/worm castings",
+            "minerals": [
+                "1/2 cup glacial rock dust",
+                "1/2 cup basalt",
+                "1/2 cup oyster shell flour (calcium + pH buffer)",
+            ],
+            "amendments": [
+                "1/4 cup neem meal",
+                "1/4 cup kelp meal",
+                "1/4 cup crustacean meal",
+                "1/4 cup fish bone meal",
+            ],
+            "inoculant": "Mycorrhizae + trichoderma at planting",
+        },
+        "between_grows": [
+            "Chop plant at soil level (leave roots to decompose — feeds biology)",
+            "Remove any large stem pieces from surface",
+            "Top dress with fresh worm castings (1 inch layer)",
+            "Add cover crop seeds (clover, barley) to surface",
+            "Water and let soil 'cook' for 2-4 weeks before replanting",
+            "Plant directly into the living soil for next run",
+        ],
+        "mulch_layer": {
+            "materials": ["Rice hulls (best for cannabis)", "Straw", "Wood chips (small)", "Cover crop (living mulch)"],
+            "depth_inches": 2,
+            "benefits": [
+                "Moisture retention",
+                "Temperature regulation",
+                "Habitat for beneficial organisms",
+                "Prevents soil compaction from watering",
+            ],
+        },
+    },
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIG — the single export consumed by the API/frontend
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1735,5 +1921,6 @@ SOIL_CONFIG: dict = {
     "equipment": SOIL_EQUIPMENT,
     "quick_reference": SOIL_QUICK_REFERENCE,
     "troubleshooting": SOIL_TROUBLESHOOTING,
+    "soil_biology": SOIL_BIOLOGY_MANAGEMENT,
     "total_grow_days": {"min": 105, "max": 210, "typical": 150},
 }

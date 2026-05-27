@@ -22,6 +22,7 @@ TASK_GENERATION_INTERVAL = 6 * 3600  # 6 hours
 INTEGRATION_POLL_INTERVAL = 60  # 1 minute (checks due integrations)
 DUNNING_CHECK_INTERVAL = 3600  # Hourly
 ACCOUNT_PURGE_INTERVAL = 24 * 3600  # Daily
+PLAN_RECONCILE_INTERVAL = 6 * 3600  # Every 6 hours
 
 
 class TaskRunner:
@@ -51,6 +52,9 @@ class TaskRunner:
             ),
             asyncio.create_task(
                 self._loop(shutdown_event, "account_purge", ACCOUNT_PURGE_INTERVAL, self._account_purge)
+            ),
+            asyncio.create_task(
+                self._loop(shutdown_event, "plan_reconcile", PLAN_RECONCILE_INTERVAL, self._plan_reconcile)
             ),
         ]
         await shutdown_event.wait()
@@ -703,3 +707,13 @@ class TaskRunner:
             logger.debug("Account purge check complete")
         except Exception:
             logger.exception("Account purge check failed")
+
+    async def _plan_reconcile(self) -> None:
+        """Reconcile billing plans with payment providers (bidirectional sync)."""
+        from app.billing.sync import reconcile_all_providers
+
+        try:
+            await reconcile_all_providers()
+            logger.debug("Plan reconciliation complete")
+        except Exception:
+            logger.exception("Plan reconciliation failed")

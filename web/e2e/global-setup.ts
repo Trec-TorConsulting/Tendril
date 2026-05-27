@@ -36,6 +36,15 @@ const GROW_TYPES = [
   "Kratky",
   "Coco Coir",
   "Soil",
+  "Drip / Top Feed",
+  "Rockwool",
+  "Outdoor Soil",
+  "Outdoor Container",
+  "Aquaponics",
+  "Living Soil / No-Till",
+  "Dutch Bucket (Bato)",
+  "Vertical / Tower Garden",
+  "Wicking Bed",
 ];
 
 const TENT_CONFIGS = [

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
-import { getBillingStatus, createCheckout, createPortalSession, type BillingStatus } from "@/lib/api";
+import { getBillingStatus, createCheckout, createPortalSession, getPublicPlans, type BillingStatus, type PublicBillingPlan } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,68 +22,83 @@ const WALLET_ICONS: Record<string, { label: string; icon: string }> = {
   card: { label: "Card", icon: "💳" },
 };
 
-const PLANS = [
-  {
-    key: "free",
-    name: "Seedling",
-    price: "Free",
-    description: "Get started with basic grow tracking",
-    features: ["1 grow", "2 devices", "50 journal entries/mo", "10 AI analyses/mo", "1 GB storage"],
-  },
-  {
-    key: "hobby",
-    name: "Hobby",
-    price: "$9.99/mo",
-    description: "Hobbyist growers with IoT and automation",
-    features: ["5 grows", "10 devices", "Unlimited journals", "50 AI analyses/mo", "10 GB storage", "5 automations", "3 integrations"],
-    popular: false,
-  },
-  {
-    key: "pro",
-    name: "Pro",
-    price: "$29.99/mo",
-    description: "Serious growers with advanced AI + analytics",
-    features: ["25 grows", "50 devices", "500 AI analyses/mo", "100 GB storage", "Unlimited automations", "10 integrations", "Priority support"],
-    popular: true,
-  },
-  {
-    key: "commercial",
-    name: "Commercial",
-    price: "$79.99/mo",
-    description: "Teams with audit, API, and compliance",
-    features: ["100 grows", "200 devices", "5 team members", "Unlimited AI", "500 GB storage", "API access", "Audit logs", "Custom grow types"],
-  },
-  {
-    key: "enterprise",
-    name: "Enterprise",
-    price: "$249.99/mo",
-    description: "Large operations with white-label + SLA",
-    features: ["Unlimited grows", "Unlimited devices", "25 team members", "Unlimited everything", "White-label", "SSO/SAML", "Dedicated support", "Custom domain"],
-  },
-  {
-    key: "dedicated",
-    name: "Dedicated",
-    price: "Custom",
-    description: "Your own servers, your own domain",
-    features: ["Dedicated infrastructure", "Custom domain", "Unlimited everything", "Priority SLA", "Custom integrations", "On-premise option"],
-    contact: true,
-  },
-];
+function formatPrice(cents: number, annual: number | null, isAnnual: boolean): string {
+  if (cents === 0) return "Free";
+  if (isAnnual && annual != null) {
+    return `$${(annual / 100).toFixed(2)}/yr`;
+  }
+  return `$${(cents / 100).toFixed(2)}/mo`;
+}
+
+function formatLimit(value: number | null): string {
+  if (value == null) return "Unlimited";
+  return value.toLocaleString();
+}
+
+function planFeatures(plan: PublicBillingPlan): string[] {
+  const features: string[] = [];
+  features.push(`${formatLimit(plan.max_grows)} grow${plan.max_grows !== 1 ? "s" : ""}`);
+  features.push(`${formatLimit(plan.max_devices)} device${plan.max_devices !== 1 ? "s" : ""}`);
+  if (plan.max_journal_entries_month != null) {
+    features.push(`${formatLimit(plan.max_journal_entries_month)} journal entries/mo`);
+  } else {
+    features.push("Unlimited journals");
+  }
+  if (plan.max_ai_analyses_month != null) {
+    features.push(`${formatLimit(plan.max_ai_analyses_month)} AI analyses/mo`);
+  } else {
+    features.push("Unlimited AI");
+  }
+  if (plan.max_storage_gb != null) {
+    features.push(`${plan.max_storage_gb} GB storage`);
+  } else {
+    features.push("Unlimited storage");
+  }
+  if (plan.max_automations != null) {
+    features.push(`${plan.max_automations} automations`);
+  } else if (plan.max_automations == null && plan.base_price_cents > 0) {
+    features.push("Unlimited automations");
+  }
+  if (plan.max_integrations != null) {
+    features.push(`${plan.max_integrations} integrations`);
+  } else if (plan.max_integrations == null && plan.base_price_cents > 0) {
+    features.push("Unlimited integrations");
+  }
+  if (plan.max_team_members != null && plan.max_team_members > 1) {
+    features.push(`${plan.max_team_members} team members`);
+  } else if (plan.max_team_members == null && plan.base_price_cents >= 7999) {
+    features.push("Unlimited team members");
+  }
+  if (plan.included_support_tier !== "community") {
+    features.push(`${plan.included_support_tier.charAt(0).toUpperCase()}${plan.included_support_tier.slice(1)} support`);
+  }
+  return features;
+}
 
 export default function BillingPage() {
   const [status, setStatus] = useState<BillingStatus | null>(null);
+  const [plans, setPlans] = useState<PublicBillingPlan[]>([]);
   const [loading, setLoading] = useState(true);
+  const [annualBilling, setAnnualBilling] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      const token = getAccessToken();
-      if (!token) return;
       try {
-        const data = await getBillingStatus(token);
-        if (!cancelled) setStatus(data);
+        const [publicPlans, billingStatus] = await Promise.all([
+          getPublicPlans(),
+          (async () => {
+            const token = getAccessToken();
+            if (!token) return null;
+            return getBillingStatus(token);
+          })(),
+        ]);
+        if (!cancelled) {
+          setPlans(publicPlans.sort((a, b) => a.sort_order - b.sort_order));
+          setStatus(billingStatus);
+        }
       } catch (e) {
-        if (!cancelled) toast.error(e instanceof Error ? e.message : "Failed to load billing status");
+        if (!cancelled) toast.error(e instanceof Error ? e.message : "Failed to load billing");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -168,61 +183,95 @@ export default function BillingPage() {
         </Card>
 
         {/* Plan Grid */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {PLANS.map((plan) => {
-            const isCurrent = status?.plan === plan.key;
-            return (
-              <Card
-                key={plan.key}
-                className={cn(
-                  isCurrent && "border-primary",
-                  "popular" in plan && plan.popular && "ring-2 ring-primary/50"
-                )}
-              >
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-base">{plan.name}</CardTitle>
-                    {"popular" in plan && plan.popular && (
-                      <Badge variant="default" className="text-xs">Popular</Badge>
+        {plans.length > 0 && (
+          <>
+            {/* Annual Toggle */}
+            {plans.some((p) => p.annual_price_cents != null) && (
+              <div className="flex items-center justify-center gap-3">
+                <span className={cn("text-sm", !annualBilling && "font-medium text-foreground")}>Monthly</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={annualBilling}
+                  onClick={() => setAnnualBilling(!annualBilling)}
+                  className={cn(
+                    "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
+                    annualBilling ? "bg-primary" : "bg-muted-foreground/30"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "pointer-events-none inline-block size-5 rounded-full bg-white shadow-sm transition-transform",
+                      annualBilling ? "translate-x-5" : "translate-x-0"
                     )}
-                  </div>
-                  <CardDescription>{plan.description}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <p className="text-2xl font-bold">{plan.price}</p>
-                  {"features" in plan && (
-                    <ul className="space-y-1 text-sm text-muted-foreground">
-                      {plan.features.map((f) => (
-                        <li key={f} className="flex items-center gap-2">
-                          <Check className="size-3 text-primary" />
-                          {f}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </CardContent>
-                <CardFooter>
-                  {isCurrent ? (
-                    <Badge variant="default" className="gap-1">
-                      <Check className="size-3" />
-                      Current Plan
-                    </Badge>
-                  ) : "contact" in plan && plan.contact ? (
-                    <Button size="sm" variant="outline" className="w-full" asChild>
-                      <a href="mailto:info@tendrilgrow.com">Contact Sales</a>
-                    </Button>
-                  ) : plan.key === "free" ? (
-                    <span className="text-sm text-muted-foreground">Free tier</span>
-                  ) : (
-                    <Button size="sm" className="w-full" onClick={() => handleUpgrade(plan.key)}>
-                      {status?.plan === "free" ? "Upgrade" : "Switch"}
-                    </Button>
-                  )}
-                </CardFooter>
-              </Card>
-            );
-          })}
-        </div>
+                  />
+                </button>
+                <span className={cn("text-sm", annualBilling && "font-medium text-foreground")}>
+                  Annual <Badge variant="secondary" className="ml-1 text-xs">Save ~17%</Badge>
+                </span>
+              </div>
+            )}
+
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {plans.map((plan) => {
+                const isCurrent = status?.plan === plan.slug;
+                const isPopular = plan.slug === "pro";
+                const isContact = plan.slug === "dedicated";
+                const features = planFeatures(plan);
+                return (
+                  <Card
+                    key={plan.id}
+                    className={cn(
+                      isCurrent && "border-primary",
+                      isPopular && "ring-2 ring-primary/50"
+                    )}
+                  >
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-base">{plan.name}</CardTitle>
+                        {isPopular && (
+                          <Badge variant="default" className="text-xs">Popular</Badge>
+                        )}
+                      </div>
+                      <CardDescription>{plan.description}</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <p className="text-2xl font-bold">
+                        {formatPrice(plan.base_price_cents, plan.annual_price_cents, annualBilling)}
+                      </p>
+                      <ul className="space-y-1 text-sm text-muted-foreground">
+                        {features.map((f) => (
+                          <li key={f} className="flex items-center gap-2">
+                            <Check className="size-3 text-primary" />
+                            {f}
+                          </li>
+                        ))}
+                      </ul>
+                    </CardContent>
+                    <CardFooter>
+                      {isCurrent ? (
+                        <Badge variant="default" className="gap-1">
+                          <Check className="size-3" />
+                          Current Plan
+                        </Badge>
+                      ) : isContact ? (
+                        <Button size="sm" variant="outline" className="w-full" asChild>
+                          <a href="mailto:info@tendrilgrow.com">Contact Sales</a>
+                        </Button>
+                      ) : plan.base_price_cents === 0 ? (
+                        <span className="text-sm text-muted-foreground">Free tier</span>
+                      ) : (
+                        <Button size="sm" className="w-full" onClick={() => handleUpgrade(plan.slug)}>
+                          {status?.plan === "free" ? "Upgrade" : "Switch"}
+                        </Button>
+                      )}
+                    </CardFooter>
+                  </Card>
+                );
+              })}
+            </div>
+          </>
+        )}
       </div>
     </>
   );

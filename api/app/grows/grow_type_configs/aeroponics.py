@@ -2329,6 +2329,263 @@ AERO_TROUBLESHOOTING: list[dict] = [
     },
 ]
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MIST ENGINEERING — Aeroponics' core differentiator
+# ─────────────────────────────────────────────────────────────────────────────
+
+AERO_MIST_ENGINEERING: dict = {
+    "hpa_vs_lpa": {
+        "high_pressure_aeroponics": {
+            "pressure_psi": {"min": 80, "max": 120, "target": 100},
+            "droplet_size_microns": {"min": 5, "max": 50, "target": 30},
+            "description": "True aeroponics — atomizes water into fine mist. Maximum oxygen exposure to roots.",
+            "equipment": [
+                "High-pressure pump (diaphragm or piston)",
+                "Accumulator tank",
+                "Pressure switch",
+                "Solenoid valves",
+                "Mist nozzles (brass or stainless)",
+            ],
+            "pros": [
+                "Fastest root growth possible",
+                "Highest DO exposure",
+                "Lowest water usage",
+                "Best nutrient uptake efficiency",
+            ],
+            "cons": [
+                "Expensive",
+                "Complex maintenance",
+                "Nozzle clog sensitivity",
+                "Zero failure tolerance (roots dry in minutes)",
+            ],
+            "best_for": "Experienced growers, commercial operations, cloning/propagation",
+        },
+        "low_pressure_aeroponics": {
+            "pressure_psi": {"min": 2, "max": 40, "target": 20},
+            "droplet_size_microns": {"min": 50, "max": 200},
+            "description": "Uses standard pump with spray nozzles. Larger droplets — technically 'fogponics' or spray culture.",
+            "equipment": [
+                "Standard submersible or inline pump",
+                "Spray/mist heads",
+                "Cycle timer (seconds precision)",
+                "Manifold",
+            ],
+            "pros": ["Much cheaper", "Simpler setup", "Standard parts", "More forgiving on timing"],
+            "cons": [
+                "Less efficient nutrient delivery",
+                "Roots stay wetter (closer to NFT)",
+                "Larger droplets = less oxygen",
+            ],
+            "best_for": "Hobbyists, first-time aero growers, budget builds",
+        },
+    },
+    "mist_cycle_timing": {
+        "by_stage": {
+            "seedling": {
+                "on_seconds": 5,
+                "off_seconds": 300,
+                "cycles_per_hour": 12,
+                "notes": "Very light misting. Roots just emerging. Too much = stem rot.",
+            },
+            "early_veg": {
+                "on_seconds": 5,
+                "off_seconds": 180,
+                "cycles_per_hour": 20,
+                "notes": "Increasing frequency as root mass develops.",
+            },
+            "late_veg": {
+                "on_seconds": 5,
+                "off_seconds": 120,
+                "cycles_per_hour": 30,
+                "notes": "Aggressive root growth demands more frequent misting.",
+            },
+            "transition": {
+                "on_seconds": 5,
+                "off_seconds": 90,
+                "cycles_per_hour": 40,
+                "notes": "Peak demand approaching.",
+            },
+            "early_flower": {
+                "on_seconds": 5,
+                "off_seconds": 60,
+                "cycles_per_hour": 60,
+                "notes": "Peak mist demand. Roots are massive.",
+            },
+            "mid_flower": {
+                "on_seconds": 5,
+                "off_seconds": 60,
+                "cycles_per_hour": 60,
+                "notes": "Maintain peak. Heavy feeders now.",
+            },
+            "late_flower": {
+                "on_seconds": 3,
+                "off_seconds": 90,
+                "cycles_per_hour": 40,
+                "notes": "Slightly reduce as plant matures.",
+            },
+            "flush": {
+                "on_seconds": 5,
+                "off_seconds": 60,
+                "cycles_per_hour": 60,
+                "notes": "Maximum misting with plain water to flush salts.",
+            },
+        },
+        "day_vs_night": {
+            "daytime": "Use standard cycle timing above.",
+            "nighttime": "Reduce frequency by 30-50%. Example: 5s on / 180s off at night vs 5s on / 120s off during day.",
+            "reasoning": "Transpiration drops at night. Roots need less water. Over-misting at night = root rot risk.",
+        },
+        "optimization_signs": {
+            "too_much_mist": [
+                "Roots look waterlogged/saturated",
+                "Algae forming on roots",
+                "Stem rot at base",
+                "Slow growth despite good roots",
+            ],
+            "too_little_mist": [
+                "Root tips drying/browning",
+                "Wilting between cycles",
+                "Roots reaching for nozzles",
+                "Nutrient burn (concentrated spray)",
+            ],
+            "perfect": [
+                "White, fluffy root mass",
+                "Roots hang freely with fine branching",
+                "Rapid growth",
+                "No wet/dry stress signs",
+            ],
+        },
+    },
+    "nozzle_management": {
+        "types": {
+            "brass_mist": {
+                "psi": "60-120",
+                "flow_gph": "0.5-2.0",
+                "clog_resistance": "low",
+                "cost": "low",
+                "notes": "Standard for HPA. Replace frequently.",
+            },
+            "stainless_steel": {
+                "psi": "80-120",
+                "flow_gph": "0.5-2.0",
+                "clog_resistance": "medium",
+                "cost": "high",
+                "notes": "More durable. Less mineral buildup.",
+            },
+            "anti_drip": {
+                "psi": "40-100",
+                "flow_gph": "1.0-3.0",
+                "clog_resistance": "medium",
+                "cost": "medium",
+                "notes": "Stops dripping between cycles. Cleaner operation.",
+            },
+            "ceramic_disc": {
+                "psi": "20-60",
+                "flow_gph": "2.0-5.0",
+                "clog_resistance": "high",
+                "cost": "medium",
+                "notes": "LPA only. Larger droplets but very clog-resistant.",
+            },
+        },
+        "clog_prevention": [
+            "Inline filter (50-100 micron) between pump and nozzles — MANDATORY",
+            "Use synthetic nutrients ONLY (no organics — they clog nozzles immediately)",
+            "Reservoir filter sock over pump intake",
+            "Weekly nozzle soak in pH-down solution (citric acid) or vinegar to dissolve mineral deposits",
+            "Run plain water flush cycle for 5 minutes after every reservoir change",
+            "Keep backup nozzles ready — swap and clean offline rather than downtime",
+        ],
+        "cleaning_protocol": [
+            "Remove nozzles from manifold",
+            "Soak in white vinegar or pH 3.0 solution for 1-2 hours",
+            "Use ultrasonic cleaner if available (best method)",
+            "Clear orifice with soft bristle brush or compressed air (never wire — damages orifice)",
+            "Test spray pattern before reinstalling — should be even cone/fan",
+            "Replace if spray pattern is uneven after cleaning",
+        ],
+        "inspection_schedule": "Visual check daily. Remove and soak weekly. Replace every 2-3 grows or when spray pattern degrades.",
+    },
+    "root_chamber_design": {
+        "light_exclusion": "100% light-proof. ANY light leaks = algae on roots. Use black containers with white/reflective exterior.",
+        "temperature": {
+            "target_f": 68,
+            "max_f": 72,
+            "notes": "Chamber temp tends to be cooler than ambient due to mist evaporation (evaporative cooling effect).",
+        },
+        "drain_design": "Sloped floor (1-2% grade) toward drain port. No standing water — roots must hang freely in air.",
+        "material": "Food-safe plastic (HDPE). No metal (corrosion). Smooth interior (easy to clean, no biofilm anchors).",
+        "sizing": "Minimum 12 inches vertical space below net pots for root development. 18-24 inches preferred for large plants.",
+        "humidity_inside": "95-100% during mist cycles. Drops between cycles (this is the oxygen exposure window).",
+    },
+    "failure_modes": [
+        {
+            "failure": "Nozzle clog (single nozzle)",
+            "severity": "high",
+            "time_to_damage": "15-30 minutes (roots dry rapidly without mist)",
+            "detection": [
+                "One plant wilting while others fine",
+                "Dry roots at one position",
+                "Flow meter shows reduced output",
+            ],
+            "immediate_response": [
+                "Swap nozzle with backup immediately",
+                "Manually mist affected roots with spray bottle while fixing",
+            ],
+            "prevention": "Inline filter. Weekly soak. Keep 2x backup nozzles ready.",
+        },
+        {
+            "failure": "Pump failure (all mist stops)",
+            "severity": "critical",
+            "time_to_damage": "5-15 minutes in hot/dry conditions, 30-60 min in cool/humid",
+            "detection": ["No mist visible", "All plants wilting simultaneously", "Pressure gauge at zero"],
+            "immediate_response": [
+                "Switch to backup pump immediately",
+                "If no backup: submerge roots in bucket of nutrient water (emergency DWC conversion)",
+                "Mist manually with spray bottle",
+            ],
+            "prevention": "Backup pump wired to float switch or pressure sensor. UPS on pump circuit.",
+        },
+        {
+            "failure": "Solenoid stuck closed (HPA)",
+            "severity": "critical",
+            "time_to_damage": "Same as pump failure — no mist reaching roots",
+            "detection": ["Pressure builds but no mist", "Pump running normally but nozzles dry"],
+            "immediate_response": [
+                "Manually open solenoid (override)",
+                "Swap solenoid",
+                "Run continuous mist until fixed",
+            ],
+            "prevention": "Quality solenoids rated for cycling. Spare on hand. Test monthly.",
+        },
+        {
+            "failure": "Power outage",
+            "severity": "critical",
+            "time_to_damage": "10-30 minutes depending on ambient humidity",
+            "detection": ["All systems off"],
+            "immediate_response": [
+                "UPS kicks in (if installed)",
+                "Manually mist roots every 5 min with spray bottle",
+                "Cover root chamber to trap humidity (buys time)",
+            ],
+            "prevention": "UPS rated for pump wattage × 2 hours minimum. Generator for extended outages.",
+        },
+    ],
+    "nutrient_approach": {
+        "ec_targets": {
+            "seedling": {"min": 0.2, "max": 0.5},
+            "veg": {"min": 0.5, "max": 1.0},
+            "flower": {"min": 0.8, "max": 1.4},
+            "notes": "LOWER than all other hydro methods. Fine mist = high absorption efficiency. Less is more.",
+        },
+        "synthetic_only": True,
+        "organic_warning": "NEVER use organic nutrients in aeroponics. Organic particles clog nozzles within hours. No exceptions.",
+        "particle_filtration": "100-micron inline filter minimum. 50-micron preferred for HPA. Clean/replace filter weekly.",
+        "reservoir_change_frequency": "Every 5 days in veg, every 3-4 days in flower. Aero systems have smaller reservoirs that concentrate faster.",
+        "ph_range": {"min": 5.5, "max": 6.2, "target": 5.8},
+    },
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIG — the single export consumed by the API/frontend
 # ─────────────────────────────────────────────────────────────────────────────
@@ -2340,5 +2597,6 @@ AERO_CONFIG: dict = {
     "equipment": AERO_EQUIPMENT,
     "quick_reference": AERO_QUICK_REFERENCE,
     "troubleshooting": AERO_TROUBLESHOOTING,
+    "mist_engineering": AERO_MIST_ENGINEERING,
     "total_grow_days": {"min": 84, "max": 168, "typical": 117},
 }

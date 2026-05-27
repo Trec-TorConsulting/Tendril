@@ -37,6 +37,15 @@ export const GROW_TYPES = [
   "Kratky",
   "Coco Coir",
   "Soil",
+  "Drip / Top Feed",
+  "Rockwool",
+  "Outdoor Soil",
+  "Outdoor Container",
+  "Aquaponics",
+  "Living Soil / No-Till",
+  "Dutch Bucket (Bato)",
+  "Vertical / Tower Garden",
+  "Wicking Bed",
 ] as const;
 
 export const MEDIA_TYPES = [

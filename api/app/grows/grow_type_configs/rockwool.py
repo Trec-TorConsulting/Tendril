@@ -1722,6 +1722,144 @@ ROCKWOOL_TROUBLESHOOTING: list[dict] = [
     },
 ]
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SUBSTRATE ENGINEERING — Rockwool's core differentiator expansion
+# ─────────────────────────────────────────────────────────────────────────────
+
+ROCKWOOL_SUBSTRATE_ENGINEERING: dict = {
+    "conditioning_protocol": {
+        "why_condition": "Rockwool is naturally alkaline (pH 7.5-8.0). Unconditioned rockwool locks out iron, manganese, and phosphorus.",
+        "standard_soak": {
+            "solution_ph": 4.5,
+            "solution_ec": 0.5,
+            "duration_hours": 24,
+            "steps": [
+                "Fill container with pH 4.5 nutrient solution (light veg formula at 0.5 EC)",
+                "Fully submerge rockwool cubes/slabs — squeeze gently to displace air",
+                "Soak for 24 hours minimum (48h for large slabs)",
+                "Do NOT rinse after soaking — go directly to planting",
+                "Check runoff pH — should be 5.5-6.0. If still above 6.5, soak again.",
+            ],
+        },
+        "express_method": {
+            "solution_ph": 4.0,
+            "duration_hours": 4,
+            "notes": "More aggressive pH for faster conditioning. Use only if time-constrained. Check runoff pH before planting.",
+        },
+        "never_do": [
+            "Never use rockwool without conditioning (plants will show iron deficiency within days)",
+            "Never squeeze rockwool dry (damages fiber structure, reduces air porosity)",
+            "Never reuse rockwool from a previous grow (pathogens, salt accumulation, degraded structure)",
+        ],
+    },
+    "cube_and_slab_management": {
+        "propagation_cubes": {
+            "size": "1 inch or 1.5 inch",
+            "use": "Seed germination and cloning. Single plant per cube.",
+            "saturation": "Fully saturate during conditioning. Drain by gravity (never squeeze).",
+            "transplant_timing": "When roots visible on all 4 sides and emerging from bottom.",
+            "dome_humidity": "Keep under humidity dome at 80-90% RH until roots emerge.",
+        },
+        "grow_cubes": {
+            "size": "3 inch, 4 inch, or 6 inch",
+            "use": "Vegetative growth. Transplant propagation cube INTO grow cube (cube-in-cube).",
+            "hole_prep": "Pre-made hole in center for propagation cube. Ensure good contact.",
+            "irrigation": "Top-feed drip or hand water. Target 10-20% runoff.",
+            "transplant_timing": "When roots visible on all sides of grow cube.",
+        },
+        "slabs": {
+            "sizes": {"standard": "36x8x3 inches", "large": "36x12x3 inches"},
+            "use": "Final growing position. Place grow cubes ON TOP of slab (roots grow down into slab).",
+            "plants_per_slab": {"standard": "2-3", "large": "3-4"},
+            "drain_slits": "Cut 2 drain slits per plant position on bottom edge of slab wrap. 1 inch long. Allows runoff.",
+            "initial_saturation": "Condition slab, then let EC stabilize for 24h before placing plants.",
+        },
+    },
+    "water_content_management": {
+        "concept": "Rockwool has predictable water-holding capacity. Managing saturation % is key to crop steering.",
+        "saturation_targets": {
+            "propagation": {
+                "percent": 80,
+                "notes": "High saturation for root initiation. Humidity dome supplementing.",
+            },
+            "veg": {"percent": 70, "notes": "Moderate saturation. Good oxygen availability."},
+            "generative_steering": {"percent": 50, "notes": "Allow dry-back to trigger flowering response."},
+            "flower_maintenance": {"percent": 60, "notes": "Balanced. Not stressed but not vegetative."},
+        },
+        "measuring_saturation": {
+            "weight_method": "Weigh fully saturated slab (100%). Weigh bone-dry slab (0%). Calculate current % by weight.",
+            "sensor_method": "Capacitance-based substrate sensor (Grodan GroSens, Teros 10). Most accurate.",
+            "visual_method": "Lift slab edge — heavy = saturated. Light color on exposed rockwool = drying. Least accurate.",
+        },
+        "steering_with_rockwool": {
+            "vegetative": {
+                "first_irrigation": "At lights-on",
+                "last_irrigation": "1h before lights-off",
+                "dry_back_overnight": "5-10%",
+            },
+            "generative": {
+                "first_irrigation": "2-3h after lights-on",
+                "last_irrigation": "3-4h before lights-off",
+                "dry_back_overnight": "15-20%",
+            },
+            "transition": "Shift from vegetative to generative schedule over 3-5 days. Don't shock the plant with sudden change.",
+        },
+    },
+    "ph_management_in_rockwool": {
+        "input_ph_range": {
+            "min": 5.5,
+            "max": 5.8,
+            "notes": "Rockwool tends to push pH up. Start lower than other media.",
+        },
+        "slab_ph_monitoring": {
+            "method": "Extract solution from slab using syringe. Measure pH of extracted solution.",
+            "frequency": "Every 2-3 days.",
+            "target_slab_ph": {"min": 5.5, "max": 6.2},
+            "if_slab_ph_high": "Lower input pH by 0.2. Increase runoff % to flush alkaline solution out.",
+            "if_slab_ph_low": "Raise input pH by 0.2. Rare in rockwool — usually indicates over-acidification.",
+        },
+        "buffering_behavior": "Rockwool has minimal CEC (unlike coco). pH management is primarily about input pH and maintaining adequate runoff to prevent accumulation.",
+    },
+    "ec_management_rockwool": {
+        "input_ec_by_stage": {
+            "propagation": {"min": 0.5, "max": 0.8},
+            "early_veg": {"min": 0.8, "max": 1.2},
+            "late_veg": {"min": 1.2, "max": 1.6},
+            "flower": {"min": 1.4, "max": 2.0},
+            "late_flower": {"min": 1.0, "max": 1.4},
+        },
+        "slab_ec_monitoring": {
+            "method": "Extract solution from slab center with syringe. Measure EC.",
+            "frequency": "Every 2-3 days.",
+            "target": "Slab EC should be within 0.5 of input EC.",
+            "if_slab_ec_high": "Increase irrigation frequency and runoff %. Flush with lower-EC solution.",
+            "if_slab_ec_low": "Increase input EC slightly. Plants are hungry.",
+        },
+        "ec_gradient": {
+            "description": "In rockwool slabs, EC is not uniform. Top layer (where drip hits) is lower EC. Bottom layer accumulates salts.",
+            "management": "Adequate runoff from drain slits flushes bottom layer. Minimum 15-20% runoff in flower.",
+        },
+    },
+    "disposal_and_sustainability": {
+        "single_use_only": True,
+        "disposal_methods": [
+            "Landfill (rockwool is inert mineral fiber — does not decompose but is non-toxic)",
+            "Garden amendment (shred and mix into outdoor garden soil for aeration — lasts indefinitely)",
+            "Some municipalities accept in construction waste recycling",
+        ],
+        "environmental_notes": "Rockwool manufacturing is energy-intensive (melting basalt rock at 3000°F). Offset by high yields and water efficiency in use.",
+        "alternatives_considered": {
+            "stonewool_brands": ["Grodan (industry standard)", "Cultilene", "Pargro"],
+            "emerging_alternatives": [
+                "Growcoon (paper-based propagation)",
+                "Oasis cubes (phenolic foam)",
+                "Peat plugs",
+            ],
+        },
+    },
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIG — the single export consumed by the API/frontend
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1733,5 +1871,6 @@ ROCKWOOL_CONFIG: dict = {
     "equipment": ROCKWOOL_EQUIPMENT,
     "quick_reference": ROCKWOOL_QUICK_REFERENCE,
     "troubleshooting": ROCKWOOL_TROUBLESHOOTING,
+    "substrate_engineering": ROCKWOOL_SUBSTRATE_ENGINEERING,
     "total_grow_days": {"min": 98, "max": 189, "typical": 135},
 }
