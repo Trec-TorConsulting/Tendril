@@ -194,3 +194,75 @@ async def sync_strains(
         added = await sync_seed_strains(session)
 
     return {"added": added, "status": "ok"}
+
+
+# ─── Nutrient Knowledge Base ──────────────────────────────────────────────────
+
+
+@router.get("/knowledge")
+async def get_nutrient_knowledge(
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+):
+    """Get the complete nutrient knowledge base (DIY recipes, emergency subs, pH guides, methodology)."""
+    from app.reference.nutrient_knowledge import get_all_knowledge
+
+    return get_all_knowledge()
+
+
+@router.get("/knowledge/diy-recipes")
+async def get_diy_recipes(
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    category: str | None = None,
+    difficulty: str | None = None,
+):
+    """Get DIY/homemade nutrient recipes. Optionally filter by category or difficulty."""
+    from app.reference.nutrient_knowledge import get_diy_recipes
+
+    recipes = get_diy_recipes()
+    if category:
+        recipes = [r for r in recipes if r["category"] == category]
+    if difficulty:
+        recipes = [r for r in recipes if r["difficulty"] == difficulty]
+    return recipes
+
+
+@router.get("/knowledge/emergency")
+async def get_emergency_substitutions(
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    deficiency: str | None = None,
+):
+    """Get emergency nutrient substitution guides. Optionally filter by deficiency type."""
+    from app.reference.nutrient_knowledge import get_emergency_substitutions
+
+    subs = get_emergency_substitutions()
+    if deficiency:
+        subs = [s for s in subs if deficiency.lower() in s["id"]]
+    return subs
+
+
+@router.get("/knowledge/ph-alternatives")
+async def get_ph_alternatives(
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    direction: str | None = None,
+):
+    """Get pH management alternatives (household/DIY). Optionally filter by direction (up/down)."""
+    from app.reference.nutrient_knowledge import get_ph_alternatives
+
+    alts = get_ph_alternatives()
+    if direction:
+        alts = [a for a in alts if a["direction"] == direction.lower()]
+    return alts
+
+
+@router.get("/knowledge/methodology")
+async def get_methodology_guides(
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    approach: str | None = None,
+):
+    """Get growing methodology guides (sterile, organic, hybrid, water quality)."""
+    from app.reference.nutrient_knowledge import get_methodology_guides
+
+    guides = get_methodology_guides()
+    if approach:
+        guides = [g for g in guides if g.get("approach") == approach.lower()]
+    return guides
