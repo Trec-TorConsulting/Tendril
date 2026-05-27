@@ -1122,7 +1122,7 @@ export function searchReferenceStrains(token: string, query: string) {
 }
 
 export function searchNutrients(token: string, query: string) {
-  return apiFetch<{ id: string; barcode: string; name: string; brand: string | null; npk: string | null }[]>(
+  return apiFetch<{ id: string; barcode: string; name: string; brand: string | null; npk: string | null; nutrients: Record<string, unknown> | null }[]>(
     `/reference/nutrients?q=${encodeURIComponent(query)}`,
     { token },
   );

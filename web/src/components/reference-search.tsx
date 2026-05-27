@@ -20,6 +20,7 @@ interface NutrientSuggestion {
   name: string;
   brand: string | null;
   npk: string | null;
+  nutrients: Record<string, unknown> | null;
 }
 
 interface ReferenceStrainSearchProps {
@@ -66,7 +67,7 @@ export function ReferenceStrainSearch({ onSelect, placeholder = "Search global s
       </div>
       {open && results.length > 0 && (
         <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-lg">
-          <Command>
+          <Command shouldFilter={false}>
             <CommandList>
               <CommandGroup>
                 {results.map((s) => (
@@ -137,7 +138,7 @@ export function NutrientSearch({ onSelect, placeholder = "Search nutrients by na
       </div>
       {open && results.length > 0 && (
         <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-lg">
-          <Command>
+          <Command shouldFilter={false}>
             <CommandList>
               <CommandGroup>
                 {results.map((n) => (
@@ -151,8 +152,11 @@ export function NutrientSearch({ onSelect, placeholder = "Search nutrients by na
                       <p className="text-sm font-medium">{n.name}</p>
                       <p className="text-xs text-muted-foreground">
                         {[n.brand, n.npk ? `NPK: ${n.npk}` : null].filter(Boolean).join(" · ")}
-                      </p>
-                    </div>
+                      </p>                      {n.nutrients?.description && (
+                        <p className="text-xs text-muted-foreground/70 line-clamp-1">
+                          {n.nutrients.description as string}
+                        </p>
+                      )}                    </div>
                   </CommandItem>
                 ))}
               </CommandGroup>

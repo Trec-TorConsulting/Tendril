@@ -21,6 +21,7 @@ interface NutrientResult {
   name: string;
   brand: string | null;
   npk: string | null;
+  nutrients: Record<string, unknown> | null;
 }
 
 export default function ReferencePage() {
@@ -138,15 +139,30 @@ export default function ReferencePage() {
                       </div>
                       <FlaskConical className="size-4 text-muted-foreground" />
                     </div>
+                    {n.nutrients?.description && (
+                      <p className="mt-1.5 text-xs text-muted-foreground">
+                        {n.nutrients.description as string}
+                      </p>
+                    )}
                     <div className="mt-2 flex flex-wrap gap-2">
                       {n.npk && (
                         <Badge variant="secondary" className="text-xs">
                           NPK: {n.npk}
                         </Badge>
                       )}
-                      {n.barcode && (
-                        <Badge variant="outline" className="text-xs font-mono">
-                          {n.barcode}
+                      {n.nutrients?.type && (
+                        <Badge variant="secondary" className="text-xs">
+                          {n.nutrients.type as string}
+                        </Badge>
+                      )}
+                      {n.nutrients?.dosage_ml_per_gal && (
+                        <Badge variant="outline" className="text-xs">
+                          {Object.entries(n.nutrients.dosage_ml_per_gal as Record<string, number>).map(([stage, ml]) => `${stage}: ${ml} ml/gal`).join(", ")}
+                        </Badge>
+                      )}
+                      {n.nutrients?.dosage_g_per_gal && (
+                        <Badge variant="outline" className="text-xs">
+                          {Object.entries(n.nutrients.dosage_g_per_gal as Record<string, number>).map(([stage, g]) => `${stage}: ${g} g/gal`).join(", ")}
                         </Badge>
                       )}
                     </div>
