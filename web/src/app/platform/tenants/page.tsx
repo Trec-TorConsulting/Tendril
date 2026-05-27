@@ -125,13 +125,12 @@ export default function PlatformTenantsPage() {
   };
 
   const handleDelete = async (tenantId: string, tenantName: string) => {
-    if (!confirm(`Schedule deletion of "${tenantName}"?\n\nAll data will be permanently purged after 30 days.`)) return;
+    if (!confirm(`Permanently delete "${tenantName}"?\n\nThis will remove the organization and all its data. This cannot be undone.`)) return;
     const token = getAccessToken();
     if (!token) return;
     try {
-      const res = await adminDeleteTenant(token, tenantId);
+      await adminDeleteTenant(token, tenantId);
       setError("");
-      alert(res.message);
       await refresh();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to delete organization");

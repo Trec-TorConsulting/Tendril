@@ -64,7 +64,7 @@ export default function PlatformUsersPage() {
   };
 
   const handleDeleteUser = async (userId: string, email: string) => {
-    if (!confirm(`Delete user "${email}"?\n\nThis removes the user and all their memberships. This cannot be undone.`)) return;
+    if (!confirm(`Permanently delete "${email}"?\n\nThis will remove the user and all their memberships. This cannot be undone.`)) return;
     const token = getAccessToken();
     if (!token) return;
     try {
