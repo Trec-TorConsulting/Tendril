@@ -37,6 +37,7 @@ class TenantSummary(BaseModel):
     plan: str
     user_count: int
     created_at: str
+    deleted_at: str | None = None
 
 
 class UserSummary(BaseModel):
@@ -49,6 +50,7 @@ class UserSummary(BaseModel):
     tenant_role: str | None = None
     email_verified: bool
     created_at: str
+    deleted_at: str | None = None
     # Backward compat
     role: str | None = None
     is_platform_admin: bool = False
@@ -84,6 +86,7 @@ async def list_all_tenants(
     _user: Annotated[CurrentUser, Depends(require_support_or_admin)],
     db: Annotated[AsyncSession, Depends(_get_db)],
     pagination: Annotated[PaginationParams, Depends()],
+    include_deleted: bool = Query(default=True, description="Include soft-deleted tenants"),
 ):
     """List all tenants across the platform (paginated)."""
     stmt = (
@@ -93,14 +96,19 @@ async def list_all_tenants(
             Tenant.slug,
             Tenant.plan,
             Tenant.created_at,
+            Tenant.deleted_at,
             func.count(TenantMembership.id).label("user_count"),
         )
         .outerjoin(TenantMembership, TenantMembership.tenant_id == Tenant.id)
         .group_by(Tenant.id)
-        .order_by(Tenant.created_at.desc())
+        .order_by(Tenant.deleted_at.asc().nulls_first(), Tenant.created_at.desc())
     )
+    if not include_deleted:
+        stmt = stmt.where(Tenant.deleted_at.is_(None))
     # Manual pagination for grouped query
     count_stmt = select(func.count()).select_from(select(Tenant.id).subquery())
+    if not include_deleted:
+        count_stmt = select(func.count()).select_from(select(Tenant.id).where(Tenant.deleted_at.is_(None)).subquery())
     total = (await db.execute(count_stmt)).scalar() or 0
     stmt = stmt.offset(pagination.offset).limit(pagination.page_size)
     rows = (await db.execute(stmt)).all()
@@ -112,6 +120,7 @@ async def list_all_tenants(
             plan=r.plan,
             user_count=r.user_count,
             created_at=r.created_at.isoformat(),
+            deleted_at=r.deleted_at.isoformat() if r.deleted_at else None,
         )
         for r in rows
     ]
@@ -240,11 +249,20 @@ async def list_all_users(
     _user: Annotated[CurrentUser, Depends(require_support_or_admin)],
     db: Annotated[AsyncSession, Depends(_get_db)],
     pagination: Annotated[PaginationParams, Depends()],
+    include_deleted: bool = Query(default=True, description="Include soft-deleted users"),
 ):
     """List all users across the platform (paginated)."""
     count_stmt = select(func.count(User.id))
+    base_filter = select(User)
+    if not include_deleted:
+        count_stmt = count_stmt.where(User.deleted_at.is_(None))
+        base_filter = base_filter.where(User.deleted_at.is_(None))
     total = (await db.execute(count_stmt)).scalar() or 0
-    stmt = select(User).order_by(User.created_at.desc()).offset(pagination.offset).limit(pagination.page_size)
+    stmt = (
+        base_filter.order_by(User.deleted_at.asc().nulls_first(), User.created_at.desc())
+        .offset(pagination.offset)
+        .limit(pagination.page_size)
+    )
     users = (await db.execute(stmt)).scalars().all()
     items = [
         UserSummary(
@@ -254,6 +272,7 @@ async def list_all_users(
             platform_role=u.platform_role.value,
             email_verified=u.email_verified,
             created_at=u.created_at.isoformat(),
+            deleted_at=u.deleted_at.isoformat() if u.deleted_at else None,
             is_platform_admin=u.platform_role == PlatformRole.super_admin,
             is_support=u.platform_role == PlatformRole.support,
         )
@@ -312,7 +331,7 @@ async def delete_user(
     admin: Annotated[CurrentUser, Depends(require_platform_admin)],
     db: Annotated[AsyncSession, Depends(_get_db)],
 ):
-    """Delete a user and remove all their memberships (admin only)."""
+    """Soft-delete a user (admin only). Marks user for deletion after 30 days."""
     if user_id == admin.user_id:
         raise HTTPException(status_code=400, detail="Cannot delete yourself")
 
@@ -321,13 +340,60 @@ async def delete_user(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Remove all tenant memberships
-    await db.execute(delete(TenantMembership).where(TenantMembership.user_id == user_id))
-    await db.delete(user)
+    if user.deleted_at:
+        raise HTTPException(status_code=400, detail="User is already scheduled for deletion")
+
+    settings = get_settings()
+    user.deleted_at = datetime.now(UTC)
+    purge_date = user.deleted_at + timedelta(days=settings.data_retention_days)
     await db.commit()
 
-    logger.warning("Admin deleted user %s (%s)", user_id, user.email)
-    return {"status": "deleted", "message": f"User '{user.email}' has been deleted."}
+    logger.info("Admin soft-deleted user %s (%s), purge date %s", user_id, user.email, purge_date)
+    return {
+        "status": "scheduled",
+        "deletion_date": purge_date.isoformat(),
+        "message": f"User '{user.email}' scheduled for deletion on {purge_date.strftime('%B %d, %Y')}.",
+    }
+
+
+@router.post("/users/{user_id}/restore")
+async def restore_user(
+    user_id: UUID,
+    _admin: Annotated[CurrentUser, Depends(require_platform_admin)],
+    db: Annotated[AsyncSession, Depends(_get_db)],
+):
+    """Restore a soft-deleted user (admin only)."""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not user.deleted_at:
+        raise HTTPException(status_code=400, detail="User is not deleted")
+
+    user.deleted_at = None
+    await db.commit()
+    logger.info("Admin restored user %s (%s)", user_id, user.email)
+    return {"status": "restored", "message": f"User '{user.email}' has been restored."}
+
+
+@router.post("/tenants/{tenant_id}/restore")
+async def restore_tenant(
+    tenant_id: UUID,
+    _admin: Annotated[CurrentUser, Depends(require_platform_admin)],
+    db: Annotated[AsyncSession, Depends(_get_db)],
+):
+    """Restore a soft-deleted tenant (admin only)."""
+    result = await db.execute(select(Tenant).where(Tenant.id == tenant_id))
+    tenant = result.scalar_one_or_none()
+    if not tenant:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    if not tenant.deleted_at:
+        raise HTTPException(status_code=400, detail="Organization is not deleted")
+
+    tenant.deleted_at = None
+    await db.commit()
+    logger.info("Admin restored tenant %s (%s)", tenant_id, tenant.name)
+    return {"status": "restored", "message": f"Organization '{tenant.name}' has been restored."}
 
 
 # ---------- Stats (support + admin) ----------
@@ -375,6 +441,9 @@ async def delete_tenant(
     if not tenant:
         raise HTTPException(status_code=404, detail="Tenant not found")
 
+    if not force and tenant.deleted_at:
+        raise HTTPException(status_code=400, detail="Organization is already scheduled for deletion")
+
     if force:
         # Immediate hard delete — remove memberships, tenant, and account
         tenant_name = tenant.name
@@ -399,17 +468,10 @@ async def delete_tenant(
             message=f"Organization '{tenant_name}' and all its data have been permanently deleted.",
         )
 
-    # Default: schedule 30-day grace period
+    # Default: schedule 30-day grace period via soft-delete
     settings = get_settings()
-    deletion_date = datetime.now(UTC) + timedelta(days=settings.data_retention_days)
-
-    account = await db.get(Account, tenant.account_id) if tenant.account_id else None
-    if account:
-        account.deletion_scheduled_at = datetime.now(UTC)
-        account.deletion_date = deletion_date
-    else:
-        tenant.deletion_scheduled_at = datetime.now(UTC)
-        tenant.deletion_date = deletion_date
+    tenant.deleted_at = datetime.now(UTC)
+    deletion_date = tenant.deleted_at + timedelta(days=settings.data_retention_days)
 
     await db.commit()
     logger.info("Admin scheduled deletion of tenant %s (%s) for %s", tenant_id, tenant.name, deletion_date)

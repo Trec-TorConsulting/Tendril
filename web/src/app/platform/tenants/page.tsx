@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
-import { adminListTenants, adminListTenantUsers, adminUpdateTenantPlan, adminListPlans, adminCreateTenant, adminDeleteTenant } from "@/lib/api";
+import { adminListTenants, adminListTenantUsers, adminUpdateTenantPlan, adminListPlans, adminCreateTenant, adminDeleteTenant, adminRestoreTenant } from "@/lib/api";
 import type { AdminTenantSummary, AdminUserSummary, AdminBillingPlan } from "@/lib/api";
 import { cn, formatDate } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
@@ -41,7 +41,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { Building2, ChevronDown, CheckCircle, XCircle, Plus, Trash2 } from "lucide-react";
+import { Building2, ChevronDown, CheckCircle, XCircle, Plus, Trash2, RotateCcw } from "lucide-react";
 
 export default function PlatformTenantsPage() {
   const [tenants, setTenants] = useState<AdminTenantSummary[]>([]);
@@ -129,14 +129,29 @@ export default function PlatformTenantsPage() {
     const token = getAccessToken();
     if (!token) return;
     try {
-      const res = await adminDeleteTenant(token, tenantId);
+      await adminDeleteTenant(token, tenantId);
       setError("");
-      alert(res.message);
       await refresh();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to delete organization");
     }
   };
+
+  const handleRestore = async (tenantId: string, tenantName: string) => {
+    if (!confirm(`Restore "${tenantName}"? This will cancel the scheduled deletion.`)) return;
+    const token = getAccessToken();
+    if (!token) return;
+    try {
+      await adminRestoreTenant(token, tenantId);
+      setError("");
+      await refresh();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to restore organization");
+    }
+  };
+
+  const activeTenants = tenants.filter((t) => !t.deleted_at);
+  const deletedTenants = tenants.filter((t) => t.deleted_at);
 
   const slugify = (value: string) =>
     value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -218,7 +233,7 @@ export default function PlatformTenantsPage() {
         )}
 
         <div className="space-y-2">
-          {tenants.length === 0 && !error && (
+          {activeTenants.length === 0 && !error && (
             <Card className="flex flex-col items-center justify-center py-16">
               <Building2 className="size-12 text-amber-500/50" />
               <h3 className="mt-4 text-lg font-semibold">No organizations</h3>
@@ -228,7 +243,7 @@ export default function PlatformTenantsPage() {
             </Card>
           )}
 
-          {tenants.map((t) => (
+          {activeTenants.map((t) => (
             <Collapsible
               key={t.id}
               open={expandedId === t.id}
@@ -340,6 +355,49 @@ export default function PlatformTenantsPage() {
             </Collapsible>
           ))}
         </div>
+
+        {/* Scheduled for Deletion */}
+        {deletedTenants.length > 0 && (
+          <div className="space-y-2">
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-destructive">
+              <Trash2 className="size-4" />
+              Scheduled for Deletion ({deletedTenants.length})
+            </h2>
+            {deletedTenants.map((t) => {
+              const purgeDate = new Date(new Date(t.deleted_at!).getTime() + 30 * 24 * 60 * 60 * 1000);
+              return (
+                <Card key={t.id} className="border-destructive/30 bg-destructive/5 opacity-75">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Building2 className="size-4 text-muted-foreground" />
+                        <span className="font-medium line-through">{t.name}</span>
+                        <span className="text-sm text-muted-foreground">{t.slug}</span>
+                        <Badge variant="destructive" className="text-xs">
+                          Purges {purgeDate.toLocaleDateString()}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs text-muted-foreground">
+                          Deleted {formatDate(t.deleted_at!)}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 px-2 text-xs"
+                          onClick={() => handleRestore(t.id, t.name)}
+                        >
+                          <RotateCcw className="size-3 mr-1" />
+                          Restore
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
       </div>
     </>
   );

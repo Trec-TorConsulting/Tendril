@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
-import { adminListUsers, adminUpdateUserFlags, adminDeleteUser } from "@/lib/api";
+import { adminListUsers, adminUpdateUserFlags, adminDeleteUser, adminRestoreUser } from "@/lib/api";
 import type { AdminUserSummary } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Users, CheckCircle, XCircle, Search, Trash2 } from "lucide-react";
+import { Users, CheckCircle, XCircle, Search, Trash2, RotateCcw } from "lucide-react";
 
 export default function PlatformUsersPage() {
   const [users, setUsers] = useState<AdminUserSummary[]>([]);
@@ -64,7 +64,7 @@ export default function PlatformUsersPage() {
   };
 
   const handleDeleteUser = async (userId: string, email: string) => {
-    if (!confirm(`Delete user "${email}"?\n\nThis removes the user and all their memberships. This cannot be undone.`)) return;
+    if (!confirm(`Schedule deletion of "${email}"?\n\nUser data will be permanently purged after 30 days.`)) return;
     const token = getAccessToken();
     if (!token) return;
     try {
@@ -75,11 +75,32 @@ export default function PlatformUsersPage() {
     }
   };
 
+  const handleRestoreUser = async (userId: string, email: string) => {
+    if (!confirm(`Restore "${email}"? This will cancel the scheduled deletion.`)) return;
+    const token = getAccessToken();
+    if (!token) return;
+    try {
+      await adminRestoreUser(token, userId);
+      refresh();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to restore user");
+    }
+  };
+
   const filtered = users.filter(
     (u) =>
-      u.email.toLowerCase().includes(search.toLowerCase()) ||
+      !u.deleted_at &&
+      (u.email.toLowerCase().includes(search.toLowerCase()) ||
       (u.display_name || "").toLowerCase().includes(search.toLowerCase()) ||
-      u.tenant_name.toLowerCase().includes(search.toLowerCase()),
+      u.tenant_name.toLowerCase().includes(search.toLowerCase())),
+  );
+
+  const deletedUsers = users.filter(
+    (u) =>
+      u.deleted_at &&
+      (u.email.toLowerCase().includes(search.toLowerCase()) ||
+      (u.display_name || "").toLowerCase().includes(search.toLowerCase()) ||
+      u.tenant_name.toLowerCase().includes(search.toLowerCase())),
   );
 
   return (
@@ -205,6 +226,61 @@ export default function PlatformUsersPage() {
             </TableBody>
           </Table>
         </div>
+
+        {/* Scheduled for Deletion */}
+        {deletedUsers.length > 0 && (
+          <div className="space-y-2">
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-destructive">
+              <Trash2 className="size-4" />
+              Scheduled for Deletion ({deletedUsers.length})
+            </h2>
+            <div className="overflow-x-auto rounded-md border border-destructive/30 bg-destructive/5">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Organization</TableHead>
+                    <TableHead>Deleted</TableHead>
+                    <TableHead>Purges</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {deletedUsers.map((u) => {
+                    const purgeDate = new Date(new Date(u.deleted_at!).getTime() + 30 * 24 * 60 * 60 * 1000);
+                    return (
+                      <TableRow key={u.id} className="opacity-75">
+                        <TableCell className="line-through">{u.email}</TableCell>
+                        <TableCell className="text-muted-foreground">{u.display_name || "—"}</TableCell>
+                        <TableCell className="text-muted-foreground">{u.tenant_name}</TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {formatDate(u.deleted_at!)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="destructive" className="text-xs">
+                            {purgeDate.toLocaleDateString()}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-xs"
+                            onClick={() => handleRestoreUser(u.id, u.email)}
+                          >
+                            <RotateCcw className="size-3 mr-1" />
+                            Restore
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
