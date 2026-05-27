@@ -6,7 +6,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FeedingLogForm } from "@/components/quick-log/feeding-log-form";
 import { ManualReadingForm } from "@/components/quick-log/manual-reading-form";
 import { QuickNoteForm } from "@/components/quick-log/quick-note-form";
-import { Droplets, Thermometer, StickyNote } from "lucide-react";
+import { QuickPhotoCapture } from "@/components/quick-log/quick-photo-capture";
+import { Droplets, Thermometer, StickyNote, Camera } from "lucide-react";
 
 interface QuickLogSheetProps {
   open: boolean;
@@ -40,7 +41,7 @@ export function QuickLogSheet({ open, onOpenChange }: QuickLogSheetProps) {
         </SheetHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-1 flex-col">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="feeding" className="gap-1.5">
               <Droplets className="size-4" />
               <span className="hidden sm:inline">Feeding</span>
@@ -48,6 +49,10 @@ export function QuickLogSheet({ open, onOpenChange }: QuickLogSheetProps) {
             <TabsTrigger value="reading" className="gap-1.5">
               <Thermometer className="size-4" />
               <span className="hidden sm:inline">Reading</span>
+            </TabsTrigger>
+            <TabsTrigger value="photo" className="gap-1.5">
+              <Camera className="size-4" />
+              <span className="hidden sm:inline">Photo</span>
             </TabsTrigger>
             <TabsTrigger value="note" className="gap-1.5">
               <StickyNote className="size-4" />
@@ -60,6 +65,9 @@ export function QuickLogSheet({ open, onOpenChange }: QuickLogSheetProps) {
           </TabsContent>
           <TabsContent value="reading" className="flex-1 overflow-y-auto mt-4">
             <ManualReadingForm onSuccess={handleSuccess} />
+          </TabsContent>
+          <TabsContent value="photo" className="flex-1 overflow-y-auto mt-4">
+            <QuickPhotoCapture onSuccess={handleSuccess} />
           </TabsContent>
           <TabsContent value="note" className="flex-1 overflow-y-auto mt-4">
             <QuickNoteForm onSuccess={handleSuccess} />
