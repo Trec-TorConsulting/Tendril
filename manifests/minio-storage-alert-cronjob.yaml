@@ -1,0 +1,68 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: minio-storage-alert
+  namespace: tendril
+spec:
+  schedule: "0 */6 * * *"  # Every 6 hours
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: check-storage
+              image: minio/mc:latest
+              env:
+                - name: MINIO_ENDPOINT
+                  value: "http://minio.minio.svc.cluster.local:9000"
+                - name: MINIO_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: tendril-secrets
+                      key: STORAGE_ACCESS_KEY
+                - name: MINIO_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: tendril-secrets
+                      key: STORAGE_SECRET_KEY
+                - name: ALERT_THRESHOLD_PCT
+                  value: "80"
+                - name: TENDRIL_API_URL
+                  value: "http://api-service.tendril.svc.cluster.local:8000"
+                - name: INTERNAL_ALERT_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: tendril-secrets
+                      key: INTERNAL_ALERT_SECRET
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  mc alias set minio "$MINIO_ENDPOINT" "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY" --api S3v4
+                  # Get disk usage info
+                  INFO=$(mc admin info minio --json 2>/dev/null)
+                  USED=$(echo "$INFO" | grep -o '"used":[0-9]*' | head -1 | cut -d: -f2)
+                  TOTAL=$(echo "$INFO" | grep -o '"total":[0-9]*' | head -1 | cut -d: -f2)
+                  if [ -z "$TOTAL" ] || [ "$TOTAL" -eq 0 ]; then
+                    echo "ERROR: Could not retrieve MinIO disk info"
+                    exit 1
+                  fi
+                  PCT=$((USED * 100 / TOTAL))
+                  USED_GB=$((USED / 1073741824))
+                  TOTAL_GB=$((TOTAL / 1073741824))
+                  echo "MinIO storage: ${USED_GB}GB / ${TOTAL_GB}GB (${PCT}%)"
+                  if [ "$PCT" -ge "$ALERT_THRESHOLD_PCT" ]; then
+                    echo "ALERT: Storage usage ${PCT}% exceeds threshold ${ALERT_THRESHOLD_PCT}%"
+                    # Post to Tendril internal alert endpoint (logs to notification channels)
+                    curl -sf -X POST "${TENDRIL_API_URL}/internal/alert" \
+                      -H "Content-Type: application/json" \
+                      -H "X-Internal-Secret: ${INTERNAL_ALERT_SECRET}" \
+                      -d "{\"severity\":\"warning\",\"subject\":\"MinIO Storage Alert\",\"body\":\"MinIO storage is at ${PCT}% (${USED_GB}GB / ${TOTAL_GB}GB). Consider cleaning up old data or expanding storage.\"}" \
+                      || echo "Warning: Could not send alert via API"
+                  else
+                    echo "OK: Storage usage ${PCT}% is below threshold ${ALERT_THRESHOLD_PCT}%"
+                  fi

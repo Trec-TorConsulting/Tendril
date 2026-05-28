@@ -321,7 +321,7 @@ export default function AnalyticsPage() {
       <div className="flex flex-1 flex-col gap-6 p-4 lg:p-6">
         {/* Grow + Bucket Selectors */}
         <div className="flex flex-wrap items-center gap-3">
-          <Select value={analyticsGrowId} onValueChange={setAnalyticsGrowId}>
+          <Select value={analyticsGrowId} onValueChange={(v) => setAnalyticsGrowId(v ?? "all")}>
             <SelectTrigger className="w-56">
               <SelectValue>
                 {analyticsGrowId === "all"

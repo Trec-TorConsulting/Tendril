@@ -38,6 +38,7 @@ from app.grows.tent_routes import router as tents_router
 from app.grows.yield_routes import router as yields_router
 from app.integrations.routes import router as integrations_router
 from app.logging_config import setup_logging
+from app.notifications.internal_routes import router as internal_alerts_router
 from app.notifications.routes import router as notifications_router
 from app.outdoor.companion_routes import router as companion_router
 from app.outdoor.container_routes import router as container_router
@@ -143,6 +144,7 @@ def create_app() -> FastAPI:
     app.include_router(ai_router, prefix=f"{settings.api_prefix}/ai", tags=["ai"])
     app.include_router(automation_router, prefix=f"{settings.api_prefix}/automation", tags=["automation"])
     app.include_router(notifications_router, prefix=f"{settings.api_prefix}/notifications", tags=["notifications"])
+    app.include_router(internal_alerts_router, tags=["internal"])
     app.include_router(billing_router, prefix=f"{settings.api_prefix}/billing", tags=["billing"])
     app.include_router(billing_plans_router, prefix=f"{settings.api_prefix}/billing/plans", tags=["billing-plans"])
     app.include_router(
