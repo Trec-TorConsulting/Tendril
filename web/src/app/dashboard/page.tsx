@@ -191,13 +191,15 @@ export default function DashboardPage() {
       const tempVals = tentTempVals.length > 0 ? tentTempVals : bucketTempVals;
       const humVals = tentHumVals.length > 0 ? tentHumVals : bucketHumVals;
       setSensorTrends({ ph: phVals, ec: ecVals, ppm: ppmVals, water_temp: waterTempVals, water_level: waterLevelVals, temp: tempVals, humidity: humVals });
-      // Track when the latest reading was recorded (bucket for hydro, tent for others)
+      // Track when the latest reading was recorded — use the most recent of tent or bucket
       const latestTentReading = tentReadings[0];
       const latestBucketReading = growSensorReadings[0];
-      if (isActiveHydro(selectedGrow?.grow_type) && latestBucketReading?.recorded_at) {
-        setLastReadingAt(latestBucketReading.recorded_at);
+      const tentTs = latestTentReading?.recorded_at ?? null;
+      const bucketTs = latestBucketReading?.recorded_at ?? null;
+      if (tentTs && bucketTs) {
+        setLastReadingAt(tentTs > bucketTs ? tentTs : bucketTs);
       } else {
-        setLastReadingAt(latestTentReading?.recorded_at ?? null);
+        setLastReadingAt(tentTs ?? bucketTs ?? null);
       }
 
       // Build per-bucket latest reading timestamp map
