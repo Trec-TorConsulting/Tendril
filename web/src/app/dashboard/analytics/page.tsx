@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
 import { formatShortDateTime } from "@/lib/utils";
 import {
@@ -263,13 +263,54 @@ export default function AnalyticsPage() {
 
   // Chart data formatting
   const waterTempKey = `Water ${tempUnitLabel(prefs.temp_unit)}`;
-  const chartData = sensorData.map((r) => ({
-    time: formatShortDateTime(r.recorded_at),
-    pH: r.ph,
-    EC: r.ec,
-    PPM: r.ppm,
-    [waterTempKey]: r.water_temp_f != null ? Number(formatTemp(r.water_temp_f, "f", prefs.temp_unit, 1).replace(/[^\d.-]/g, "")) : null,
-  }));
+  const ambientTempKey = `Temp ${tempUnitLabel(prefs.temp_unit)}`;
+
+  // Build merged chart data from bucket sensors + tent trends
+  const chartData = useMemo(() => {
+    // Index tent trends by formatted time for merging
+    const tentMap = new Map<string, { temp: number | null; humidity: number | null }>();
+    if (tentTrends) {
+      tentTrends.timestamps.forEach((ts, i) => {
+        const key = formatShortDateTime(ts);
+        const rawTemp = tentTrends.temps[i];
+        const temp = rawTemp != null ? Number(formatTemp(rawTemp, "f", prefs.temp_unit, 1).replace(/[^\d.-]/g, "")) : null;
+        tentMap.set(key, { temp, humidity: tentTrends.humidities[i] });
+      });
+    }
+
+    // Map sensor data and merge tent data at matching timestamps
+    const merged = sensorData.map((r) => {
+      const timeKey = formatShortDateTime(r.recorded_at);
+      const tent = tentMap.get(timeKey);
+      tentMap.delete(timeKey); // consumed
+      return {
+        time: timeKey,
+        pH: r.ph,
+        EC: r.ec,
+        PPM: r.ppm,
+        [waterTempKey]: r.water_temp_f != null ? Number(formatTemp(r.water_temp_f, "f", prefs.temp_unit, 1).replace(/[^\d.-]/g, "")) : null,
+        [ambientTempKey]: tent?.temp ?? null,
+        "Humidity %": tent?.humidity ?? null,
+      };
+    });
+
+    // Append any remaining tent data points that didn't align with sensor readings
+    for (const [timeKey, tent] of tentMap) {
+      merged.push({
+        time: timeKey,
+        pH: null,
+        EC: null,
+        PPM: null,
+        [waterTempKey]: null,
+        [ambientTempKey]: tent.temp,
+        "Humidity %": tent.humidity,
+      });
+    }
+
+    // Sort by time string (already formatted consistently)
+    merged.sort((a, b) => a.time.localeCompare(b.time));
+    return merged;
+  }, [sensorData, tentTrends, waterTempKey, ambientTempKey, prefs.temp_unit]);
 
   return (
     <>
@@ -377,7 +418,7 @@ export default function AnalyticsPage() {
                       <Tooltip contentStyle={{ fontSize: 12 }} />
                       <Legend iconSize={8} wrapperStyle={{ fontSize: 11 }} />
                       <Area type="monotone" dataKey={waterTempKey} stroke="#ef4444" fill="#ef444420" strokeWidth={2} dot={false} connectNulls />
-                      <Area type="monotone" dataKey="Temp °F" stroke="#f97316" fill="#f9731620" strokeWidth={2} dot={false} connectNulls />
+                      <Area type="monotone" dataKey={ambientTempKey} stroke="#f97316" fill="#f9731620" strokeWidth={2} dot={false} connectNulls />
                       <Area type="monotone" dataKey="Humidity %" stroke="#06b6d4" fill="#06b6d420" strokeWidth={2} dot={false} connectNulls />
                     </AreaChart>
                   </ResponsiveContainer>

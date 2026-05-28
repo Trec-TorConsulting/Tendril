@@ -15,6 +15,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
+from app.auth.signed_url import sign_url
 from app.database import async_session_factory
 from app.grows.models import BucketPhoto, GrowPhoto
 from app.pagination import PaginatedResponse, PaginationParams, paginate
@@ -126,6 +127,7 @@ class GrowPhotoResponse(BaseModel):
     source: str
     caption: str | None
     created_at: datetime
+    url: str | None = None
     model_config = {"from_attributes": True}
 
 
@@ -176,6 +178,7 @@ async def upload_grow_photo(
 
 @router.get("/grow", response_model=PaginatedResponse[GrowPhotoResponse])
 async def list_grow_photos(
+    request: Request,
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
     pagination: Annotated[PaginationParams, Depends()],
@@ -186,7 +189,18 @@ async def list_grow_photos(
     if grow_cycle_id:
         q = q.where(GrowPhoto.grow_cycle_id == grow_cycle_id)
     items, total = await paginate(session, q, pagination)
-    return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
+
+    # Build signed URLs so frontend can load images directly
+    base = str(request.base_url).rstrip("/")
+    prefix = f"{base}/v1/photos/grow/file"
+    tenant_id = str(user.tenant_id)
+    enriched = []
+    for item in items:
+        resp = GrowPhotoResponse.model_validate(item)
+        resp.url = sign_url(f"{prefix}/{item.id}", tenant_id)
+        enriched.append(resp)
+
+    return PaginatedResponse(items=enriched, total=total, page=pagination.page, page_size=pagination.page_size)
 
 
 @router.get("/grow/file/{photo_id}")

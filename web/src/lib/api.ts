@@ -988,6 +988,7 @@ export interface GrowPhotoResponse {
   source: string;
   caption: string | null;
   created_at: string;
+  url: string | null;
 }
 
 export async function listGrowPhotos(token: string, growCycleId: string) {
@@ -1009,9 +1010,13 @@ export async function uploadGrowPhoto(
   if (caption) form.append("caption", caption);
 
   const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/v1";
+  const headers: Record<string, string> = {};
+  const csrf = getCsrfToken();
+  if (csrf) headers["X-CSRF-Token"] = csrf;
   const res = await fetch(`${API_BASE_URL}/photos/grow`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
+    headers,
+    credentials: "include",
     body: form,
   });
   if (!res.ok) {
