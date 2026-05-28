@@ -235,3 +235,45 @@ async def delete_grow(
     await record_audit(session, user.tenant_id, user.user_id, "delete", "grow", str(grow_id), request=request)
     grow.deleted_at = datetime.now(UTC)
     await session.commit()
+
+
+@router.post("/{grow_id}/archive", response_model=GrowResponse)
+async def archive_grow(
+    grow_id: UUID,
+    user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Archive a grow cycle — snapshot bucket data into metadata and mark completed."""
+    grow = await session.execute(
+        select(GrowCycle)
+        .options(selectinload(GrowCycle.buckets))
+        .where(GrowCycle.id == grow_id, GrowCycle.tenant_id == user.tenant_id)
+    )
+    grow = grow.scalar_one_or_none()
+    if grow is None:
+        raise HTTPException(status_code=404, detail="Grow cycle not found")
+    if grow.status in ("completed", "archived"):
+        raise HTTPException(status_code=400, detail="Grow is already archived")
+
+    # Snapshot bucket data into settings metadata
+    bucket_snapshot = [
+        {
+            "id": str(b.id),
+            "position": b.position,
+            "label": b.label,
+            "strain_name": b.strain_name,
+            "growth_stage": b.growth_stage,
+            "volume_gallons": b.volume_gallons,
+            "role": b.role,
+        }
+        for b in grow.buckets
+    ]
+    settings = dict(grow.settings or {})
+    settings["archived_buckets"] = bucket_snapshot
+    grow.settings = settings
+    grow.status = "completed"
+    grow.ended_at = datetime.now(UTC)
+
+    await session.commit()
+    await session.refresh(grow)
+    return grow

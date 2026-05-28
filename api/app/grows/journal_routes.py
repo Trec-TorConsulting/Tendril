@@ -198,13 +198,35 @@ async def list_entries(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
     pagination: Annotated[PaginationParams, Depends()],
     bucket_id: UUID | None = None,
+    event_type: str | None = None,
 ):
-    """List journal entries with optional bucket filtering."""
+    """List journal entries with optional bucket and event_type filtering."""
     q = select(JournalEntry).where(JournalEntry.tenant_id == user.tenant_id).order_by(desc(JournalEntry.created_at))
     if bucket_id:
         q = q.where(JournalEntry.bucket_id == bucket_id)
+    if event_type:
+        q = q.where(JournalEntry.event_type == event_type)
     items, total = await paginate(session, q, pagination)
     return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
+
+
+@router.get("/reports", response_model=list[JournalResponse])
+async def list_reports(
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    limit: int = 14,
+):
+    """Return recent AI daily reports (event_type='daily_report')."""
+    result = await session.execute(
+        select(JournalEntry)
+        .where(
+            JournalEntry.tenant_id == user.tenant_id,
+            JournalEntry.event_type == "daily_report",
+        )
+        .order_by(desc(JournalEntry.created_at))
+        .limit(min(limit, 50))
+    )
+    return result.scalars().all()
 
 
 @router.get("/{entry_id}", response_model=JournalResponse)

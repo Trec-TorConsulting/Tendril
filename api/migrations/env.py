@@ -6,6 +6,7 @@ from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+from app.ai.models import Conversation, ConversationMessage  # noqa: F401
 from app.commercial.models import ApiKey, AuditLog, CustomGrowType, Task  # noqa: F401
 from app.database import Base
 from app.tenants.models import (  # noqa: F401 — register models
