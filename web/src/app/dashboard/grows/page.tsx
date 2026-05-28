@@ -126,6 +126,7 @@ export default function GrowsPage() {
   };
 
   const tentName = (id: string) => tents.find((t) => t.id === id)?.name ?? "—";
+  const growTypeName = (id: string) => growTypes.find((gt) => gt.id === id)?.name ?? id;
 
   const statusVariant = (status: string) => {
     if (status === "active") return "default" as const;
@@ -185,7 +186,7 @@ export default function GrowsPage() {
                       {g.name}
                     </Link>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      {tentName(g.tent_id)} · {g.grow_type}
+                      {tentName(g.tent_id)} · {growTypeName(g.grow_type)}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       Stage: {g.stage} · Started{" "}
