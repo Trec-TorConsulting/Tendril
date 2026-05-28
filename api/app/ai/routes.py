@@ -93,6 +93,47 @@ async def websocket_chat(ws: WebSocket):
     messages = [{"role": "system", "content": system_context}]
     await ws.send_json({"type": "ready", "message": "Connected to Tendril AI"})
 
+    # Conversation persistence: create or load conversation
+    conversation_id = init.get("conversation_id")
+    conv_uuid = None
+    try:
+        from app.ai.models import Conversation, ConversationMessage
+        from app.database import async_session_factory, set_rls_tenant
+
+        if conversation_id:
+            conv_uuid = UUID(conversation_id)
+            # Load existing messages
+            async with async_session_factory() as session:
+                await set_rls_tenant(session, tenant_id)
+                from sqlalchemy.orm import selectinload
+
+                result = await session.execute(
+                    select(Conversation)
+                    .options(selectinload(Conversation.messages))
+                    .where(Conversation.id == conv_uuid, Conversation.tenant_id == tenant_id)
+                )
+                conv = result.scalar_one_or_none()
+                if conv:
+                    for msg in conv.messages:
+                        if msg.role != "system":
+                            messages.append({"role": msg.role, "content": msg.content})
+        else:
+            # Create new conversation
+            async with async_session_factory() as session:
+                await set_rls_tenant(session, tenant_id)
+                conv = Conversation(
+                    tenant_id=tenant_id,
+                    user_id=UUID(payload["sub"]),
+                    grow_cycle_id=grow_uuid,
+                )
+                session.add(conv)
+                await session.commit()
+                await session.refresh(conv)
+                conv_uuid = conv.id
+                await ws.send_json({"type": "conversation_id", "id": str(conv_uuid)})
+    except Exception:
+        logger.warning("Failed to load/create conversation, continuing without persistence")
+
     # Chat loop with tool support
     try:
         while True:
@@ -102,6 +143,19 @@ async def websocket_chat(ws: WebSocket):
                 continue
 
             messages.append({"role": "user", "content": user_msg})
+
+            # Persist user message
+            if conv_uuid:
+                try:
+                    async with async_session_factory() as session:
+                        await set_rls_tenant(session, tenant_id)
+                        session.add(ConversationMessage(conversation_id=conv_uuid, role="user", content=user_msg))
+                        conv = await session.get(Conversation, conv_uuid)
+                        if conv:
+                            conv.message_count = (conv.message_count or 0) + 1
+                        await session.commit()
+                except Exception:
+                    logger.debug("Failed to persist user message")
 
             # Tool-calling loop: detect tool calls, execute, re-query
             if grow_uuid:
@@ -162,6 +216,24 @@ async def websocket_chat(ws: WebSocket):
 
             messages.append({"role": "assistant", "content": full_response})
             await ws.send_json({"type": "done", "content": full_response})
+
+            # Persist assistant message
+            if conv_uuid and full_response:
+                try:
+                    async with async_session_factory() as session:
+                        await set_rls_tenant(session, tenant_id)
+                        session.add(
+                            ConversationMessage(conversation_id=conv_uuid, role="assistant", content=full_response)
+                        )
+                        conv = await session.get(Conversation, conv_uuid)
+                        if conv:
+                            conv.message_count = (conv.message_count or 0) + 1
+                            # Auto-title from first user message if untitled
+                            if not conv.title and len(messages) >= 3:
+                                conv.title = messages[1]["content"][:100]
+                        await session.commit()
+                except Exception:
+                    logger.debug("Failed to persist assistant message")
 
     except WebSocketDisconnect:
         logger.debug("Chat WebSocket disconnected")
@@ -412,6 +484,24 @@ async def get_health_check_history(
             for e in evals
         ]
     )
+
+
+@router.delete("/health-check/{eval_id}", status_code=204)
+async def delete_health_eval(
+    eval_id: str,
+    user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Delete a health evaluation by ID."""
+    from app.grows.models import HealthEval
+
+    eval_obj = await session.get(HealthEval, UUID(eval_id))
+    if eval_obj is None:
+        raise HTTPException(status_code=404, detail="Health evaluation not found")
+    if eval_obj.tenant_id != user.tenant_id:
+        raise HTTPException(status_code=404, detail="Health evaluation not found")
+    await session.delete(eval_obj)
+    await session.commit()
 
 
 # ---------- Coach Tips (4.3) ----------

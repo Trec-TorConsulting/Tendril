@@ -5,6 +5,7 @@ import { getAccessToken } from "@/lib/auth";
 import {
   runHealthCheck,
   getHealthCheckHistory,
+  deleteHealthCheck,
   updateGrow,
   getTent,
   getCoachTip,
@@ -20,7 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
-import { Heart, AlertTriangle, CheckCircle2, Loader2, History, Clock, Camera, Upload, X, Lightbulb, FileText, Download, RefreshCw, Calendar as CalendarIcon } from "lucide-react";
+import { Heart, AlertTriangle, CheckCircle2, Loader2, History, Clock, Camera, Upload, X, Lightbulb, FileText, Download, RefreshCw, Calendar as CalendarIcon, Trash2 } from "lucide-react";
 import { cn, formatDateTime } from "@/lib/utils";
 
 function ScoreBadge({ score }: { score: number | null }) {
@@ -428,6 +429,22 @@ export function HealthTab({ grow, onRefresh }: HealthTabProps) {
                     <span className="text-xs text-muted-foreground">
                       {eval_item.issues.length} issue{eval_item.issues.length !== 1 ? "s" : ""}
                     </span>
+                    {eval_item.id && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          const token = getAccessToken();
+                          if (!token || !eval_item.id) return;
+                          await deleteHealthCheck(token, eval_item.id);
+                          setHistory((h) => h.filter((x) => x.id !== eval_item.id));
+                        }}
+                      >
+                        <Trash2 className="size-3" />
+                      </Button>
+                    )}
                   </summary>
                   <div className="border-t p-3">
                     {eval_item.issues.length > 0 && (

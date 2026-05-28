@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.admin.routes import router as admin_router
+from app.ai.conversation_routes import router as conversation_router
 from app.ai.routes import router as ai_router
 from app.auth.routes import router as auth_router
 from app.automation.routes import router as automation_router
@@ -142,6 +143,7 @@ def create_app() -> FastAPI:
     app.include_router(weather_router, prefix=f"{settings.api_prefix}/weather", tags=["weather"])
     app.include_router(reference_router, prefix=f"{settings.api_prefix}/reference", tags=["reference"])
     app.include_router(ai_router, prefix=f"{settings.api_prefix}/ai", tags=["ai"])
+    app.include_router(conversation_router, prefix=f"{settings.api_prefix}/conversations", tags=["conversations"])
     app.include_router(automation_router, prefix=f"{settings.api_prefix}/automation", tags=["automation"])
     app.include_router(notifications_router, prefix=f"{settings.api_prefix}/notifications", tags=["notifications"])
     app.include_router(internal_alerts_router, tags=["internal"])
@@ -197,6 +199,53 @@ def create_app() -> FastAPI:
                 status_code=503,
                 content={"status": "degraded", "db": "unreachable"},
             )
+
+    @app.get(f"{settings.api_prefix}/status")
+    async def system_status():
+        """System status — connectivity for Ollama, DB, MQTT, and Gemini."""
+        import httpx
+        from sqlalchemy import text
+
+        from app.database import async_session_factory
+
+        results: dict = {}
+
+        # Database
+        try:
+            async with async_session_factory() as session:
+                await session.execute(text("SELECT 1"))
+            results["database"] = "connected"
+        except Exception:
+            results["database"] = "unreachable"
+
+        # Ollama
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                resp = await client.get(f"{settings.ollama_base_url}/api/tags")
+                if resp.status_code == 200:
+                    models = [m["name"] for m in resp.json().get("models", [])]
+                    results["ollama"] = "connected"
+                    results["ollama_models"] = models
+                else:
+                    results["ollama"] = "error"
+        except Exception:
+            results["ollama"] = "unreachable"
+
+        # Gemini
+        results["gemini"] = "configured" if settings.gemini_api_key else "not_configured"
+
+        # MQTT
+        try:
+            async with httpx.AsyncClient(timeout=3.0) as client:
+                resp = await client.get(
+                    f"http://{settings.mqtt_broker_host}:18083/api/v5/status",
+                )
+                results["mqtt"] = "connected" if resp.status_code == 200 else "error"
+        except Exception:
+            results["mqtt"] = "unreachable"
+
+        overall = "ok" if results["database"] == "connected" else "degraded"
+        return {"status": overall, **results}
 
     return app
 

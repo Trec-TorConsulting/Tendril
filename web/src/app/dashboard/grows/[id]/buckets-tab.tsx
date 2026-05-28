@@ -38,6 +38,7 @@ import { ReferenceStrainSearch } from "@/components/reference-search";
 import { usePreferences } from "@/hooks/use-preferences";
 import { formatTemp } from "@/lib/units";
 import { createQuickJournalEntry } from "@/lib/api";
+import { BucketDetailModal } from "./bucket-detail-modal";
 
 interface BucketsTabProps {
   growId: string;
@@ -61,6 +62,9 @@ export function BucketsTab({ growId, growType, buckets, latestReadings, onRefres
   const [editId, setEditId] = useState("");
   const [editForm, setEditForm] = useState({ label: "", strain_id: "", volume_gallons: "", role: "site" });
   const [editSaving, setEditSaving] = useState(false);
+
+  // Bucket detail modal
+  const [detailBucket, setDetailBucket] = useState<BucketResponse | null>(null);
 
   // Water change / Feed quick action dialog
   const [quickActionDialog, setQuickActionDialog] = useState<{ type: "water_change" | "feeding"; bucketId: string; bucketLabel: string } | null>(null);
@@ -177,7 +181,7 @@ export function BucketsTab({ growId, growType, buckets, latestReadings, onRefres
             : null;
           const waterBadgeVariant = daysSinceWater === null ? "outline" : daysSinceWater > 10 ? "destructive" : daysSinceWater > 7 ? "secondary" : "default";
           return (
-            <Card key={b.id}>
+            <Card key={b.id} className="cursor-pointer hover:ring-2 hover:ring-primary/50 transition-shadow" onClick={() => setDetailBucket(b)}>
               <CardContent className="p-4">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="font-medium">#{b.position} {b.label || "Unnamed"}</span>
@@ -232,7 +236,7 @@ export function BucketsTab({ growId, growType, buckets, latestReadings, onRefres
                   </div>
                 )}
                 {!hasDisplayReading && <p className="mt-2 text-xs text-muted-foreground">No readings yet</p>}
-                <div className="mt-3 flex flex-wrap items-center gap-2">
+                <div className="mt-3 flex flex-wrap items-center gap-2" onClick={(e) => e.stopPropagation()}>
                   {/* RDWC: only show Water Change / Feed on header bucket (shared reservoir) */}
                   {(b.role === "header" || !buckets.some((bkt) => bkt.role === "header")) && (
                     <>
@@ -428,6 +432,14 @@ export function BucketsTab({ growId, growType, buckets, latestReadings, onRefres
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Bucket Detail Modal */}
+      <BucketDetailModal
+        bucket={detailBucket}
+        growId={growId}
+        open={!!detailBucket}
+        onClose={() => setDetailBucket(null)}
+      />
     </>
   );
 }

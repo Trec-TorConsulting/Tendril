@@ -775,10 +775,17 @@ export interface JournalEntryResponse {
   created_at: string;
 }
 
-export async function listJournalEntries(token: string, bucketId?: string) {
-  const q = bucketId ? `?bucket_id=${bucketId}` : "";
-  const res = await apiFetch<PaginatedResponse<JournalEntryResponse>>(`/journal${q}`, { token });
+export async function listJournalEntries(token: string, bucketId?: string, eventType?: string) {
+  const qs = new URLSearchParams();
+  if (bucketId) qs.set("bucket_id", bucketId);
+  if (eventType) qs.set("event_type", eventType);
+  const q = qs.toString();
+  const res = await apiFetch<PaginatedResponse<JournalEntryResponse>>(`/journal${q ? `?${q}` : ""}`, { token });
   return res.items;
+}
+
+export async function listJournalReports(token: string, limit = 14) {
+  return apiFetch<JournalEntryResponse[]>(`/journal/reports?limit=${limit}`, { token });
 }
 
 export function createJournalEntry(token: string, data: { bucket_id: string; event_type: string; content?: string; payload?: object }) {
@@ -1161,6 +1168,55 @@ export function getHealthCheckHistory(token: string, growId: string, limit = 10)
     `/ai/health-check/${growId}/history?limit=${limit}`,
     { token },
   );
+}
+
+export function deleteHealthCheck(token: string, evalId: string) {
+  return apiFetch<void>(`/ai/health-check/${evalId}`, { method: "DELETE", token });
+}
+
+// ─── Conversations ─────────────────────────────────────────────────────────────
+
+export interface ConversationResponse {
+  id: string;
+  grow_cycle_id: string | null;
+  title: string | null;
+  message_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ConversationMessageResponse {
+  id: string;
+  role: string;
+  content: string;
+  metadata_json: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface ConversationDetailResponse extends ConversationResponse {
+  messages: ConversationMessageResponse[];
+}
+
+export async function listConversations(token: string, growCycleId?: string) {
+  const qs = growCycleId ? `?grow_cycle_id=${growCycleId}` : "";
+  const res = await apiFetch<PaginatedResponse<ConversationResponse>>(`/conversations${qs}`, { token });
+  return res.items;
+}
+
+export function getConversation(token: string, id: string) {
+  return apiFetch<ConversationDetailResponse>(`/conversations/${id}`, { token });
+}
+
+export function createConversation(token: string, data: { grow_cycle_id?: string; title?: string }) {
+  return apiFetch<ConversationResponse>("/conversations", { method: "POST", body: JSON.stringify(data), token });
+}
+
+export function updateConversation(token: string, id: string, data: { title?: string }) {
+  return apiFetch<ConversationResponse>(`/conversations/${id}`, { method: "PATCH", body: JSON.stringify(data), token });
+}
+
+export function deleteConversation(token: string, id: string) {
+  return apiFetch<void>(`/conversations/${id}`, { method: "DELETE", token });
 }
 
 // ─── Plant Photo Diagnosis ─────────────────────────────────────────────────────
