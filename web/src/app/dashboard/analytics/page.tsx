@@ -106,8 +106,9 @@ interface EnvSnapshot {
 }
 
 export default function AnalyticsPage() {
-  const { grows, selectedGrow } = useGrow();
+  const { grows } = useGrow();
   const { prefs } = usePreferences();
+  const [analyticsGrowId, setAnalyticsGrowId] = useState<string>("all");
   const [buckets, setBuckets] = useState<BucketResponse[]>([]);
   const [selectedBucketId, setSelectedBucketId] = useState<string>("");
   const [sensorData, setSensorData] = useState<SensorReadingResponse[]>([]);
@@ -119,6 +120,8 @@ export default function AnalyticsPage() {
   const [tentTrends, setTentTrends] = useState<{ timestamps: string[]; temps: (number | null)[]; humidities: (number | null)[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [sensorLoading, setSensorLoading] = useState(false);
+
+  const activeGrow = analyticsGrowId === "all" ? null : grows.find((g) => g.id === analyticsGrowId) ?? null;
 
   // Load leaderboard + yields on mount
   useEffect(() => {
@@ -139,21 +142,14 @@ export default function AnalyticsPage() {
     load();
   }, []);
 
-  // Load buckets when grow changes
+  // Load buckets when grow filter changes
   useEffect(() => {
-    if (!selectedGrow) {
-      setBuckets([]);
-      setSelectedBucketId("");
-      setEnvSnapshots([]);
-      setTentAmbient(null);
-      return;
-    }
     const token = getAccessToken();
     if (!token) return;
     (async () => {
       let bkts: Awaited<ReturnType<typeof listBuckets>>;
       try {
-        bkts = await listBuckets(token, selectedGrow.id);
+        bkts = await listBuckets(token, activeGrow?.id);
       } catch {
         setBuckets([]);
         setSelectedBucketId("");
@@ -168,18 +164,24 @@ export default function AnalyticsPage() {
       } else {
         setSelectedBucketId("");
       }
-      // Load tent ambient reading (shared for all buckets)
-      try {
-        const [ambient, trends] = await Promise.all([
-          getLatestTentReading(token, selectedGrow.tent_id),
-          getTentSensorTrends(token, selectedGrow.tent_id).catch(() => null),
-        ]);
-        setTentAmbient(ambient);
-        setTentTrends(trends);
-      } catch { setTentAmbient(null); setTentTrends(null); }
+      // Load tent ambient reading (only when a single grow is selected)
+      if (activeGrow) {
+        try {
+          const [ambient, trends] = await Promise.all([
+            getLatestTentReading(token, activeGrow.tent_id),
+            getTentSensorTrends(token, activeGrow.tent_id).catch(() => null),
+          ]);
+          setTentAmbient(ambient);
+          setTentTrends(trends);
+        } catch { setTentAmbient(null); setTentTrends(null); }
+      } else {
+        setTentAmbient(null);
+        setTentTrends(null);
+      }
       // Load environment snapshots for all active buckets (bucket-level sensors only)
+      const snapshotBuckets = activeBuckets.slice(0, 10);
       const snapshotResults = await Promise.all(
-        activeBuckets.slice(0, 10).map(async (b) => {
+        snapshotBuckets.map(async (b) => {
           try {
             const latest = await getLatestReading(token, b.id);
             if (latest) {
@@ -196,7 +198,7 @@ export default function AnalyticsPage() {
       );
       setEnvSnapshots(snapshotResults.filter((s): s is EnvSnapshot => s !== null));
     })();
-  }, [selectedGrow?.id]);
+  }, [analyticsGrowId, activeGrow?.id, activeGrow?.tent_id]);
 
   // Load sensor data + drift when bucket changes
   useEffect(() => {
@@ -239,12 +241,12 @@ export default function AnalyticsPage() {
 
   // Grow timeline from milestones
   const STAGES_ORDERED = ["seedling", "vegetative", "flowering", "ripening", "drying", "curing", "harvest"];
-  const stageTimeline = selectedGrow?.milestones
+  const stageTimeline = activeGrow?.milestones
     ? STAGES_ORDERED.map((stage, i) => {
-        const ts = selectedGrow.milestones?.[stage];
+        const ts = activeGrow.milestones?.[stage];
         if (!ts) return null;
-        const nextStage = STAGES_ORDERED.find((s, j) => j > i && selectedGrow.milestones?.[s]);
-        const nextTs = nextStage ? selectedGrow.milestones?.[nextStage] : null;
+        const nextStage = STAGES_ORDERED.find((s, j) => j > i && activeGrow.milestones?.[s]);
+        const nextTs = nextStage ? activeGrow.milestones?.[nextStage] : null;
         const days = nextTs
           ? Math.round((new Date(nextTs).getTime() - new Date(ts).getTime()) / 86400000)
           : Math.round((Date.now() - new Date(ts).getTime()) / 86400000);
@@ -276,8 +278,25 @@ export default function AnalyticsPage() {
         breadcrumbs={[{ label: "Dashboard", href: "/dashboard" }, { label: "Analytics" }]}
       />
       <div className="flex flex-1 flex-col gap-6 p-4 lg:p-6">
-        {/* Bucket Selector */}
+        {/* Grow + Bucket Selectors */}
         <div className="flex flex-wrap items-center gap-3">
+          <Select value={analyticsGrowId} onValueChange={setAnalyticsGrowId}>
+            <SelectTrigger className="w-56">
+              <SelectValue>
+                {analyticsGrowId === "all"
+                  ? "All Grows"
+                  : grows.find((g) => g.id === analyticsGrowId)?.name ?? "Select grow"}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Grows</SelectItem>
+              {grows.map((g) => (
+                <SelectItem key={g.id} value={g.id}>
+                  {g.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           {buckets.length > 1 && (
             <Select value={selectedBucketId} onValueChange={(v) => setSelectedBucketId(v ?? "")}>
               <SelectTrigger className="w-56">
@@ -488,7 +507,7 @@ export default function AnalyticsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Timer className="size-4" /> Grow Timeline
-              {selectedGrow && <Badge variant="secondary" className="text-xs capitalize ml-2">{selectedGrow.stage}</Badge>}
+              {activeGrow && <Badge variant="secondary" className="text-xs capitalize ml-2">{activeGrow.stage}</Badge>}
             </CardTitle>
           </CardHeader>
           <CardContent>
