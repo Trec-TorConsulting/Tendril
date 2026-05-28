@@ -38,28 +38,32 @@ import { ImageIcon, Plus, Trash2, Pencil, Loader2, Upload, Camera, Film, Stethos
 import { toast } from "sonner";
 import { PhotoAIDialog } from "@/components/photo-ai-dialog";
 
-/** Fetches an image via credentialed request and returns an object URL. */
-function useAuthImage(url: string | null) {
-  const [src, setSrc] = useState<string>("");
-  useEffect(() => {
-    if (!url) { setSrc(""); return; }
-    let revoke: string | null = null;
-    fetch(url, { credentials: "include" })
-      .then((r) => (r.ok ? r.blob() : Promise.reject(r.statusText)))
-      .then((blob) => {
-        revoke = URL.createObjectURL(blob);
-        setSrc(revoke);
-      })
-      .catch(() => setSrc(""));
-    return () => { if (revoke) URL.revokeObjectURL(revoke); };
-  }, [url]);
-  return src;
-}
+/** Image component with retry logic for signed URLs. */
+function RetryImage({ url, alt, className, maxRetries = 3 }: { url: string; alt: string; className?: string; maxRetries?: number }) {
+  const [retries, setRetries] = useState(0);
+  const [failed, setFailed] = useState(false);
 
-function AuthImage({ url, alt, className }: { url: string; alt: string; className?: string }) {
-  const src = useAuthImage(url);
-  if (!src) return <div className={`${className} bg-muted animate-pulse`} />;
-  return <img src={src} alt={alt} className={className} loading="lazy" />;
+  if (!url || failed) return <div className={`${className} bg-muted flex items-center justify-center`}><ImageIcon className="size-6 text-muted-foreground/40" /></div>;
+
+  return (
+    <img
+      src={url}
+      alt={alt}
+      className={className}
+      loading="lazy"
+      onError={(e) => {
+        if (retries < maxRetries) {
+          setRetries((r) => r + 1);
+          // Force re-fetch by appending a cache-buster
+          const target = e.currentTarget;
+          const sep = url.includes("?") ? "&" : "?";
+          target.src = `${url}${sep}_r=${retries + 1}`;
+        } else {
+          setFailed(true);
+        }
+      }}
+    />
+  );
 }
 
 interface PhotosTabProps {
@@ -180,6 +184,8 @@ export function PhotosTab({ growId, buckets }: PhotosTabProps) {
   };
 
   const getImageSrc = (photo: GrowPhotoResponse) => {
+    if (photo.url) return photo.url;
+    // Fallback for photos without signed URL (e.g. freshly uploaded before list refresh)
     const token = getAccessToken();
     if (!token) return "";
     return growPhotoUrl(token, photo.id);
@@ -251,7 +257,7 @@ export function PhotosTab({ growId, buckets }: PhotosTabProps) {
           {photos.map((p) => (
             <Card key={p.id} className="overflow-hidden cursor-pointer group" onClick={() => { setViewPhoto(p); setEditCaption(p.caption || ""); }}>
               <div className="aspect-square bg-muted relative">
-                <AuthImage url={getImageSrc(p)} alt={p.caption || "Photo"} className="size-full object-cover" />
+                <RetryImage url={getImageSrc(p)} alt={p.caption || "Photo"} className="size-full object-cover" />
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors" />
                 {p.source === "health_check" && (
                   <Badge variant="secondary" className="absolute top-1.5 right-1.5 text-[10px] gap-1">
@@ -353,7 +359,7 @@ export function PhotosTab({ growId, buckets }: PhotosTabProps) {
                 </DialogTitle>
               </DialogHeader>
               <div className="rounded-lg overflow-hidden border">
-                <AuthImage url={getImageSrc(viewPhoto)} alt={viewPhoto.caption || "Photo"} className="w-full max-h-[60vh] object-contain bg-muted" />
+                <RetryImage url={getImageSrc(viewPhoto)} alt={viewPhoto.caption || "Photo"} className="w-full max-h-[60vh] object-contain bg-muted" />
               </div>
               <div className="flex items-end gap-2">
                 <div className="flex-1 space-y-1">
@@ -384,7 +390,7 @@ export function PhotosTab({ growId, buckets }: PhotosTabProps) {
             </DialogDescription>
           </DialogHeader>
           <div className="rounded-lg overflow-hidden border bg-black">
-            <AuthImage
+            <RetryImage
               url={getTimelapseSrc()}
               alt="Grow timelapse"
               className="w-full object-contain"
