@@ -271,6 +271,56 @@ export default function GrowDetailPage() {
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  // Compute last water change date per bucket from journal entries
+  const bucketWaterStatus = useMemo(() => {
+    const map: Record<string, { lastChange: Date; daysSince: number } | null> = {};
+    const now = new Date();
+    for (const b of buckets) {
+      const entries = journalEntries.filter(
+        (e) => e.bucket_id === b.id && e.event_type === "water_change"
+      );
+      if (entries.length === 0) {
+        map[b.id] = null;
+        continue;
+      }
+      const latest = entries.reduce((a, c) =>
+        new Date(c.created_at) > new Date(a.created_at) ? c : a
+      );
+      const lastChange = new Date(latest.created_at);
+      const daysSince = Math.floor((now.getTime() - lastChange.getTime()) / 86_400_000);
+      map[b.id] = { lastChange, daysSince };
+    }
+    return map;
+  }, [buckets, journalEntries]);
+
+  // Tab persistence — remember last active tab across grow switches
+  const TAB_STORAGE_KEY = "tendril:grow-detail-tab";
+  const settingsSchemaLength = useMemo(() => grow ? getSettingsSchema(grow.grow_type, tempUnitLabel(prefs.temp_unit)).length : 0, [grow, prefs.temp_unit]);
+  const validTabs = useMemo(() => {
+    const tabs = ["overview", "buckets", "activity", "tasks", "nutrition", "health-photos"];
+    if (grow && isOutdoor(grow.grow_type)) tabs.push("field");
+    if (settingsSchemaLength > 0) tabs.push("settings");
+    return tabs;
+  }, [grow, settingsSchemaLength]);
+
+  const [activeTab, setActiveTab] = useState(() => {
+    if (typeof window === "undefined") return "overview";
+    const stored = sessionStorage.getItem(TAB_STORAGE_KEY);
+    return stored && validTabs.includes(stored) ? stored : "overview";
+  });
+
+  const handleTabChange = useCallback((value: string) => {
+    setActiveTab(value);
+    sessionStorage.setItem(TAB_STORAGE_KEY, value);
+  }, []);
+
+  // Reset to overview if stored tab is invalid for this grow type
+  useEffect(() => {
+    if (!validTabs.includes(activeTab)) {
+      setActiveTab("overview");
+    }
+  }, [validTabs, activeTab]);
+
   // --- Handlers ---
 
   const handleComplete = async () => {
@@ -442,58 +492,10 @@ export default function GrowDetailPage() {
   const bucketLabelMap: Record<string, string> = {};
   buckets.forEach((b) => { bucketLabelMap[b.id] = `#${b.position} ${b.label || "Unnamed"}`; });
 
-  // Compute last water change date per bucket from journal entries
-  const bucketWaterStatus = useMemo(() => {
-    const map: Record<string, { lastChange: Date; daysSince: number } | null> = {};
-    const now = new Date();
-    for (const b of buckets) {
-      const entries = journalEntries.filter(
-        (e) => e.bucket_id === b.id && e.event_type === "water_change"
-      );
-      if (entries.length === 0) {
-        map[b.id] = null;
-        continue;
-      }
-      const latest = entries.reduce((a, c) =>
-        new Date(c.created_at) > new Date(a.created_at) ? c : a
-      );
-      const lastChange = new Date(latest.created_at);
-      const daysSince = Math.floor((now.getTime() - lastChange.getTime()) / 86_400_000);
-      map[b.id] = { lastChange, daysSince };
-    }
-    return map;
-  }, [buckets, journalEntries]);
   // Grow type specific settings schema
   const settingsSchema = getSettingsSchema(grow.grow_type, tempUnitLabel(prefs.temp_unit));
   const latestEnvTemp = tentAmbient?.ambient_temp_f ?? (sensorTrends.temp.length > 0 ? sensorTrends.temp[sensorTrends.temp.length - 1] : null);
   const latestEnvHumidity = tentAmbient?.ambient_humidity ?? (sensorTrends.humidity.length > 0 ? sensorTrends.humidity[sensorTrends.humidity.length - 1] : null);
-
-  // Tab persistence — remember last active tab across grow switches
-  const TAB_STORAGE_KEY = "tendril:grow-detail-tab";
-  const validTabs = useMemo(() => {
-    const tabs = ["overview", "buckets", "activity", "tasks", "nutrition", "health-photos"];
-    if (isOutdoor(grow.grow_type)) tabs.push("field");
-    if (settingsSchema.length > 0) tabs.push("settings");
-    return tabs;
-  }, [grow.grow_type, settingsSchema.length]);
-
-  const [activeTab, setActiveTab] = useState(() => {
-    if (typeof window === "undefined") return "overview";
-    const stored = sessionStorage.getItem(TAB_STORAGE_KEY);
-    return stored && validTabs.includes(stored) ? stored : "overview";
-  });
-
-  const handleTabChange = useCallback((value: string) => {
-    setActiveTab(value);
-    sessionStorage.setItem(TAB_STORAGE_KEY, value);
-  }, []);
-
-  // Reset to overview if stored tab is invalid for this grow type
-  useEffect(() => {
-    if (!validTabs.includes(activeTab)) {
-      setActiveTab("overview");
-    }
-  }, [validTabs, activeTab]);
 
   return (
     <Tabs value={activeTab} onValueChange={handleTabChange} className="flex flex-1 flex-col">
