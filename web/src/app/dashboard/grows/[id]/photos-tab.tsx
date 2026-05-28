@@ -42,27 +42,36 @@ import { PhotoAIDialog } from "@/components/photo-ai-dialog";
 function RetryImage({ url, alt, className, maxRetries = 3 }: { url: string; alt: string; className?: string; maxRetries?: number }) {
   const [retries, setRetries] = useState(0);
   const [failed, setFailed] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   if (!url || failed) return <div className={`${className} bg-muted flex items-center justify-center`}><ImageIcon className="size-6 text-muted-foreground/40" /></div>;
 
   return (
-    <img
-      src={url}
-      alt={alt}
-      className={className}
-      loading="lazy"
-      onError={(e) => {
-        if (retries < maxRetries) {
-          setRetries((r) => r + 1);
-          // Force re-fetch by appending a cache-buster
-          const target = e.currentTarget;
-          const sep = url.includes("?") ? "&" : "?";
-          target.src = `${url}${sep}_r=${retries + 1}`;
-        } else {
-          setFailed(true);
-        }
-      }}
-    />
+    <div className="relative">
+      {!loaded && (
+        <div className={`${className} absolute inset-0 bg-muted flex items-center justify-center`}>
+          <Loader2 className="size-6 animate-spin text-muted-foreground" />
+        </div>
+      )}
+      <img
+        src={url}
+        alt={alt}
+        className={className}
+        loading="lazy"
+        onLoad={() => setLoaded(true)}
+        onError={(e) => {
+          if (retries < maxRetries) {
+            setRetries((r) => r + 1);
+            // Force re-fetch by appending a cache-buster
+            const target = e.currentTarget;
+            const sep = url.includes("?") ? "&" : "?";
+            target.src = `${url}${sep}_r=${retries + 1}`;
+          } else {
+            setFailed(true);
+          }
+        }}
+      />
+    </div>
   );
 }
 
