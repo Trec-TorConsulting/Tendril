@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.orm import selectinload
 
-from app.auth.dependencies import get_current_admin_user
+from app.auth.middleware import require_platform_admin
 from app.config_management import (
     GrowTypeEnvironment,
     GrowTypeNutrient,
@@ -26,7 +26,7 @@ from app.config_management import (
 from app.config_management.service.cache import cache
 from app.database import async_session_factory
 
-router = APIRouter(dependencies=[Depends(get_current_admin_user)])
+router = APIRouter(dependencies=[Depends(require_platform_admin)])
 
 
 # ─── Schemas ───────────────────────────────────────────────────────────────────
