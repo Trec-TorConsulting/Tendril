@@ -82,10 +82,16 @@ jobs:
     needs: [lint, manifest]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     steps:
+      - uses: actions/checkout@v4
       - run: |
           curl -LO "https://dl.k8s.io/release/$(curl -Ls https://dl.k8s.io/release/stable.txt)/bin/linux/arm64/kubectl"
           chmod +x kubectl
           sudo mv kubectl /usr/local/bin/
+      - name: Run DB migrations
+        run: |
+          kubectl delete job tendril-db-migrate -n tendril --ignore-not-found
+          kubectl apply -f manifests/db-migration-job.yaml
+          kubectl wait --for=condition=complete job/tendril-db-migrate -n tendril --timeout=120s
       - run: |
           kubectl rollout restart deployment/tendril-api -n tendril
           kubectl rollout restart deployment/tendril-web -n tendril
