@@ -44,6 +44,35 @@ spec:
                 matchLabels:
                   app: tendril-api
               topologyKey: kubernetes.io/hostname
+      initContainers:
+      - name: migrate
+        image: 192.168.4.10:30500/tendril-api:latest
+        imagePullPolicy: Always
+        command: ["alembic", "upgrade", "head"]
+        env:
+        - name: PYTHONPATH
+          value: /app
+        envFrom:
+        - secretRef:
+            name: tendril-secrets
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 250m
+            memory: 256Mi
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
       containers:
       - name: api
         image: 192.168.4.10:30500/tendril-api:latest  # Replace with your registry
