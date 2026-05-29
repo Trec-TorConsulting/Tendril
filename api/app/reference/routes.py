@@ -100,7 +100,7 @@ async def search_nutrients(
         return result.scalars().all()
 
 
-# ─── Feed Charts (static reference data) ──────────────────────────────────────
+# ─── Feed Charts (DB-backed reference data) ───────────────────────────────────
 
 
 @router.get("/feed-charts")
@@ -110,14 +110,30 @@ async def list_feed_charts(
     medium: str | None = None,
 ):
     """List nutrient brand feed charts. Optionally filter by brand or medium."""
-    from app.reference.feed_charts import get_all_charts
+    from app.reference.models import FeedChart
 
-    charts = get_all_charts()
-    if brand:
-        charts = [c for c in charts if c["brand"].lower() == brand.lower()]
-    if medium:
-        charts = [c for c in charts if medium.lower() in c["medium"]]
-    return charts
+    async with async_session_factory() as session:
+        query = select(FeedChart)
+        if brand:
+            query = query.where(FeedChart.brand.ilike(brand))
+        result = await session.execute(query)
+        charts = result.scalars().all()
+
+    out = []
+    for c in charts:
+        if medium and medium.lower() not in (c.medium or []):
+            continue
+        out.append(
+            {
+                "brand": c.brand,
+                "line": c.line,
+                "medium": c.medium,
+                "products": c.products,
+                "schedule": c.schedule,
+                "notes": c.notes,
+            }
+        )
+    return out
 
 
 @router.get("/feed-charts/brands")
@@ -125,9 +141,13 @@ async def list_feed_chart_brands(
     user: Annotated[CurrentUser, Depends(get_current_user)],
 ):
     """List available nutrient brand names."""
-    from app.reference.feed_charts import get_brands
+    from sqlalchemy import distinct
 
-    return get_brands()
+    from app.reference.models import FeedChart
+
+    async with async_session_factory() as session:
+        result = await session.execute(select(distinct(FeedChart.brand)).order_by(FeedChart.brand))
+        return [row[0] for row in result.all()]
 
 
 # ─── ESPHome Templates ─────────────────────────────────────────────────────────
