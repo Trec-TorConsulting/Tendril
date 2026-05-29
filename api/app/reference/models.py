@@ -1,4 +1,4 @@
-"""Phase 2 reference data models — DB-backed replacements for hardcoded config."""
+"""Reference data models — DB-backed replacements for hardcoded config."""
 
 from __future__ import annotations
 
@@ -66,4 +66,30 @@ class FeedChart(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     tenant_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+
+class NutrientKnowledge(Base):
+    __tablename__ = "nutrient_knowledge"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    entry_id: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    category: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    data: Mapped[dict] = mapped_column(JSON, nullable=False)
+    is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+
+class ESPHomeTemplate(Base):
+    __tablename__ = "esphome_templates"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    template_id: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    sensors: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False)
+    board: Mapped[str] = mapped_column(String(50), nullable=False, default="esp32dev")
+    yaml_body: Mapped[str] = mapped_column(Text, nullable=False)
+    is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))

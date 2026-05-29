@@ -650,6 +650,109 @@ async def seed_feed_charts(session: AsyncSession) -> int:
     return count
 
 
+async def seed_nutrient_knowledge(session: AsyncSession) -> int:
+    """Seed nutrient knowledge from reference/nutrient_knowledge.py."""
+    import json
+
+    from app.reference.nutrient_knowledge import (
+        DIY_RECIPES,
+        EMERGENCY_SUBSTITUTIONS,
+        METHODOLOGY_GUIDES,
+        PH_ALTERNATIVES,
+    )
+
+    count = 0
+    entries = [
+        ("diy_recipe", DIY_RECIPES),
+        ("emergency_substitution", EMERGENCY_SUBSTITUTIONS),
+        ("ph_alternative", PH_ALTERNATIVES),
+        ("methodology_guide", METHODOLOGY_GUIDES),
+    ]
+
+    for category, items in entries:
+        for item in items:
+            entry_id = item.get("id") or f"{category}_{count}"
+            name = item.get("name") or item.get("id", f"{category}_{count}")
+
+            await session.execute(
+                text("""
+                    INSERT INTO nutrient_knowledge
+                        (id, entry_id, category, name, data, is_system)
+                    VALUES (:id, :entry_id, :category, :name, :data, true)
+                    ON CONFLICT (entry_id) DO UPDATE SET
+                        category = EXCLUDED.category,
+                        name = EXCLUDED.name,
+                        data = EXCLUDED.data
+                """),
+                {
+                    "id": str(uuid.uuid4()),
+                    "entry_id": entry_id,
+                    "category": category,
+                    "name": name,
+                    "data": json.dumps(item),
+                },
+            )
+            count += 1
+
+    await session.commit()
+    logger.info("Seeded %d nutrient knowledge entries", count)
+    return count
+
+
+async def seed_esphome_templates(session: AsyncSession) -> int:
+    """Seed ESPHome templates from reference/esphome_templates.py."""
+    from app.reference.esphome_templates import TEMPLATES, generate_yaml
+
+    count = 0
+    # Generate the yaml body for each template using dummy values
+    # We only want the sensor-specific part (after the common header)
+    for template_id, meta in TEMPLATES.items():
+        # Generate full yaml, then strip the common header to get template body
+        _placeholder = "PLACEHOLDER"
+        full_yaml = generate_yaml(
+            template_id=template_id,
+            device_name=_placeholder,
+            mqtt_host=_placeholder,
+            mqtt_user=_placeholder,
+            mqtt_password=_placeholder,
+            wifi_ssid=_placeholder,
+            wifi_password=_placeholder,
+        )
+        # The body starts after the ota/logger section (after the common header)
+        # Common header ends with "ota:\n  platform: esphome\n"
+        marker = "  platform: esphome\n"
+        idx = full_yaml.find(marker)
+        yaml_body = full_yaml[idx + len(marker) :] if idx >= 0 else full_yaml
+
+        await session.execute(
+            text("""
+                INSERT INTO esphome_templates
+                    (id, template_id, name, description, sensors, board, yaml_body, is_system)
+                VALUES (:id, :template_id, :name, :description, :sensors, :board, :yaml_body, true)
+                ON CONFLICT (template_id) DO UPDATE SET
+                    name = EXCLUDED.name,
+                    description = EXCLUDED.description,
+                    sensors = EXCLUDED.sensors,
+                    board = EXCLUDED.board,
+                    yaml_body = EXCLUDED.yaml_body
+            """),
+            {
+                "id": str(uuid.uuid4()),
+                "template_id": template_id,
+                "name": meta["name"],
+                "description": meta["description"],
+                "sensors": meta["sensors"],
+                "board": meta["board"],
+                "yaml_body": yaml_body,
+            },
+        )
+        count += 1
+
+    await session.commit()
+    logger.info("Seeded %d ESPHome templates", count)
+    return count
+
+
 async def seed_all(session: AsyncSession) -> dict[str, int]:
     """Run all seeders in order. Returns counts."""
     results = {}
@@ -662,6 +765,8 @@ async def seed_all(session: AsyncSession) -> dict[str, int]:
     results["automation_suppressions"] = await seed_automation_suppressions(session)
     results["companion_plants"] = await seed_companion_plants(session)
     results["feed_charts"] = await seed_feed_charts(session)
+    results["nutrient_knowledge"] = await seed_nutrient_knowledge(session)
+    results["esphome_templates"] = await seed_esphome_templates(session)
     return results
 
 
