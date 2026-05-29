@@ -1,0 +1,104 @@
+# Tendril Grafana Dashboard ConfigMap
+# Auto-provisioned by kube-prometheus-stack dashboardsConfigMaps
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tendril-grafana-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  tendril-overview.json: |
+    {
+      "annotations": { "list": [] },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 1,
+      "id": null,
+      "links": [],
+      "panels": [
+        {
+          "title": "API Request Rate",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+          "targets": [
+            {
+              "expr": "rate(http_requests_total{namespace=\"tendril\", app=\"tendril-api\"}[5m])",
+              "legendFormat": "{{method}} {{handler}} {{status}}"
+            }
+          ]
+        },
+        {
+          "title": "API Latency (p95)",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{namespace=\"tendril\", app=\"tendril-api\"}[5m]))",
+              "legendFormat": "{{handler}}"
+            }
+          ]
+        },
+        {
+          "title": "Scheduler Task Last Run",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 6, "x": 0, "y": 8 },
+          "targets": [
+            {
+              "expr": "time() - tendril_scheduler_last_task_run_timestamp",
+              "legendFormat": "seconds ago"
+            }
+          ]
+        },
+        {
+          "title": "Scheduler Task Errors",
+          "type": "stat",
+          "gridPos": { "h": 4, "w": 6, "x": 6, "y": 8 },
+          "targets": [
+            {
+              "expr": "tendril_scheduler_task_errors_total",
+              "legendFormat": "{{task}}"
+            }
+          ]
+        },
+        {
+          "title": "MQTT Messages Processed",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+          "targets": [
+            {
+              "expr": "rate(tendril_mqtt_messages_processed_total{namespace=\"tendril\"}[5m])",
+              "legendFormat": "{{topic}}"
+            }
+          ]
+        },
+        {
+          "title": "Pod Restarts",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+          "targets": [
+            {
+              "expr": "increase(kube_pod_container_status_restarts_total{namespace=\"tendril\"}[1h])",
+              "legendFormat": "{{pod}}"
+            }
+          ]
+        },
+        {
+          "title": "Memory Usage",
+          "type": "timeseries",
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+          "targets": [
+            {
+              "expr": "container_memory_working_set_bytes{namespace=\"tendril\", container!=\"\"}",
+              "legendFormat": "{{pod}} / {{container}}"
+            }
+          ]
+        }
+      ],
+      "schemaVersion": 38,
+      "tags": ["tendril"],
+      "templating": { "list": [] },
+      "time": { "from": "now-6h", "to": "now" },
+      "title": "Tendril Overview",
+      "uid": "tendril-overview"
+    }

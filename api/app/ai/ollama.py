@@ -124,13 +124,54 @@ async def vision_analysis(
         }
     ]
     payload = {
-        "model": model or settings.ollama_model,
+        "model": model or settings.ollama_vision_model,
         "messages": messages,
         "stream": False,
         "options": {"num_ctx": 8192},
     }
 
     async with httpx.AsyncClient(timeout=120) as client:
+        resp = await client.post(
+            f"{settings.ollama_base_url}/api/chat",
+            json=payload,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("message", {}).get("content", "")
+
+
+async def vision_diagnose(
+    image_base64: str,
+    prompt: str,
+    *,
+    model: str | None = None,
+) -> str:
+    """Diagnose a plant image using Ollama vision model with base64 input.
+
+    Args:
+        image_base64: Base64-encoded image data (no data:image/... prefix).
+        prompt: The diagnosis prompt including grow context.
+        model: Override model name (defaults to ollama_vision_model setting).
+
+    Returns:
+        Raw text response from the vision model.
+    """
+    settings = get_settings()
+    messages = [
+        {
+            "role": "user",
+            "content": prompt,
+            "images": [image_base64],
+        }
+    ]
+    payload = {
+        "model": model or settings.ollama_vision_model,
+        "messages": messages,
+        "stream": False,
+        "options": {"num_ctx": 8192},
+    }
+
+    async with httpx.AsyncClient(timeout=180) as client:
         resp = await client.post(
             f"{settings.ollama_base_url}/api/chat",
             json=payload,

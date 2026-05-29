@@ -7,6 +7,7 @@ import logging
 from datetime import UTC
 
 from app.config import Settings
+from app.scheduler.health import record_task_error, record_task_run
 
 logger = logging.getLogger("tendril.scheduler.tasks")
 
@@ -73,8 +74,10 @@ class TaskRunner:
             failed = False
             try:
                 await func()
+                record_task_run()
             except Exception:
                 logger.exception("Error in task %s", name)
+                record_task_error(name)
                 failed = True
             wait = error_retry_delay if failed else interval
             try:

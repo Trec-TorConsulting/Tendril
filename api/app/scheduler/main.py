@@ -12,6 +12,7 @@ import logging
 import signal
 
 from app.config import get_settings
+from app.scheduler.health import set_leader, start_health_server
 from app.scheduler.tasks import TaskRunner
 
 logger = logging.getLogger("tendril.scheduler")
@@ -21,6 +22,9 @@ async def main() -> None:
     settings = get_settings()
     logging.basicConfig(level=getattr(logging, settings.log_level.upper()))
     logger.info("Tendril Scheduler starting")
+
+    # Start health HTTP server (probes work even before leader election)
+    await start_health_server()
 
     shutdown_event = asyncio.Event()
 
@@ -49,11 +53,13 @@ async def main() -> None:
                     is_leader = await try_acquire_leader(session)
 
         if is_leader and not shutdown_event.is_set():
+            set_leader(True)
             logger.info("Elected as scheduler leader — starting tasks")
             try:
                 runner = TaskRunner(settings)
                 await runner.run(shutdown_event)
             finally:
+                set_leader(False)
                 await release_leader(session)
 
     logger.info("Tendril Scheduler stopped")

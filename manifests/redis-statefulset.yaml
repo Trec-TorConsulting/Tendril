@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: tendril-redis
+  namespace: tendril
+  labels:
+    app: tendril-redis
+spec:
+  serviceName: tendril-redis
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tendril-redis
+  template:
+    metadata:
+      labels:
+        app: tendril-redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        args:
+        - "--appendonly"
+        - "yes"
+        - "--appendfsync"
+        - "everysec"
+        - "--maxmemory"
+        - "128mb"
+        - "--maxmemory-policy"
+        - "allkeys-lru"
+        ports:
+        - containerPort: 6379
+          name: redis
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 999
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 192Mi
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        readinessProbe:
+          exec:
+            command: ["redis-cli", "ping"]
+          initialDelaySeconds: 3
+          periodSeconds: 10
+        livenessProbe:
+          exec:
+            command: ["redis-cli", "ping"]
+          initialDelaySeconds: 5
+          periodSeconds: 30
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: longhorn
+      resources:
+        requests:
+          storage: 1Gi

@@ -2589,6 +2589,103 @@ DWC_RESERVOIR_MANAGEMENT: dict = {
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# STRAIN-SPECIFIC STAGE DURATION VARIANTS
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Autoflower: fixed timeline, shorter veg, same flower, can't extend.
+# Photoperiod: flexible veg (grower-controlled), standard flower.
+STRAIN_DURATION_VARIANTS: dict[str, dict] = {
+    "germination": {
+        "duration_days_auto": {"min": 2, "max": 5, "typical": 3},
+        "duration_days_photo": {"min": 2, "max": 7, "typical": 3},
+        "autoflower_notes": "Same germination process. Autoflower seeds tend to be slightly faster to crack.",
+        "photoperiod_notes": "Standard germination. No difference from autoflower at this stage.",
+    },
+    "seedling": {
+        "duration_days_auto": {"min": 5, "max": 10, "typical": 7},
+        "duration_days_photo": {"min": 7, "max": 14, "typical": 10},
+        "autoflower_notes": "Shorter seedling phase — autos move fast. Start in final container (no transplant). Keep light at 20/4.",
+        "photoperiod_notes": "Standard seedling phase. Can start in small container and transplant later.",
+    },
+    "early_veg": {
+        "duration_days_auto": {"min": 7, "max": 14, "typical": 10},
+        "duration_days_photo": {"min": 14, "max": 21, "typical": 14},
+        "autoflower_notes": "Very short window — only 1-2 weeks. Begin LST immediately when 4th node appears. Do NOT top unless plant is extremely vigorous. Light at 20/4.",
+        "photoperiod_notes": "Standard early veg. Good time to start training (topping, LST). Light at 18/6 or 20/4.",
+    },
+    "late_veg": {
+        "duration_days_auto": {"min": 7, "max": 14, "typical": 10},
+        "duration_days_photo": {"min": 21, "max": 63, "typical": 35},
+        "autoflower_notes": "May not exist for autos — many transition directly from early veg to flower around day 21-28. Watch for pistils. Cannot extend veg.",
+        "photoperiod_notes": "Grower-controlled duration. Veg until plant is ~50%% of desired final height. Can extend indefinitely. SCROG/mainline/heavy training all viable.",
+    },
+    "transition": {
+        "duration_days_auto": {"min": 5, "max": 10, "typical": 7},
+        "duration_days_photo": {"min": 7, "max": 21, "typical": 14},
+        "autoflower_notes": "Auto-triggered — no light change needed. Plant will stretch 50-100%% in height. Continue LST during stretch. Keep at 20/4.",
+        "photoperiod_notes": "Triggered by switching to 12/12. Stretch phase — plant doubles in height. Last chance for heavy defoliation.",
+    },
+    "early_flower": {
+        "duration_days_auto": {"min": 10, "max": 14, "typical": 14},
+        "duration_days_photo": {"min": 14, "max": 21, "typical": 14},
+        "autoflower_notes": "Bud sites forming. Reduce nutrient strength to 75%% of photoperiod levels. Light stays at 20/4 (more DLI = more yield).",
+        "photoperiod_notes": "Pistils lengthening, calyxes swelling. Full-strength bloom nutrients. 12/12 mandatory — any light leak can cause hermaphroditism.",
+    },
+    "mid_flower": {
+        "duration_days_auto": {"min": 14, "max": 21, "typical": 14},
+        "duration_days_photo": {"min": 14, "max": 21, "typical": 14},
+        "autoflower_notes": "Peak bud production. Maintain 75%% nutrient strength. Buds will be smaller but more numerous. Don't defoliate heavily — autos can't recover.",
+        "photoperiod_notes": "Peak nutrient demand. Full-strength bloom. Trichomes developing. Defoliation at day 21 of flower (schwazze) optional for canopy penetration.",
+    },
+    "late_flower": {
+        "duration_days_auto": {"min": 7, "max": 14, "typical": 10},
+        "duration_days_photo": {"min": 7, "max": 21, "typical": 14},
+        "autoflower_notes": "Ripening phase. Reduce nutrients. Watch trichomes with loupe — autos ripen slightly faster. Begin checking for harvest window.",
+        "photoperiod_notes": "Ripening and maturation. Reduce nutrient strength. Monitor trichome ratio for desired effect (milky vs amber).",
+    },
+    "flush": {
+        "duration_days_auto": {"min": 3, "max": 7, "typical": 5},
+        "duration_days_photo": {"min": 5, "max": 10, "typical": 7},
+        "autoflower_notes": "Shorter flush due to shorter overall cycle. 3-5 days plain water is sufficient. Some growers skip flush on autos entirely.",
+        "photoperiod_notes": "Standard 7-10 day flush with plain pH'd water. Optional — debated whether it improves taste.",
+    },
+    "harvest": {
+        "duration_days_auto": {"min": 1, "max": 2, "typical": 1},
+        "duration_days_photo": {"min": 1, "max": 2, "typical": 1},
+        "autoflower_notes": "Typically harvest entire plant at once (uniform canopy). Expected yield: 1-4 oz per plant.",
+        "photoperiod_notes": "Can selectively harvest (top buds first, lower buds 1 week later). Expected yield: 2-16 oz per plant.",
+    },
+    "drying": {
+        "duration_days_auto": {"min": 7, "max": 12, "typical": 9},
+        "duration_days_photo": {"min": 7, "max": 14, "typical": 10},
+        "autoflower_notes": "Smaller buds may dry slightly faster. Monitor closely after day 5.",
+        "photoperiod_notes": "Larger/denser buds need full 10-14 days. Don't rush — slow dry = better terpenes.",
+    },
+    "curing": {
+        "duration_days_auto": {"min": 14, "max": 90, "typical": 28},
+        "duration_days_photo": {"min": 14, "max": 180, "typical": 30},
+        "autoflower_notes": "Autos benefit equally from curing. Minimum 2 weeks, ideal 4+ weeks.",
+        "photoperiod_notes": "Standard cure. Many strains continue improving for 2-6 months in jars.",
+    },
+    "storage": {
+        "duration_days_auto": {"min": 30, "max": 365, "typical": 180},
+        "duration_days_photo": {"min": 30, "max": 365, "typical": 180},
+        "autoflower_notes": "Same storage requirements as photoperiod.",
+        "photoperiod_notes": "Properly cured and stored, quality remains excellent for 12+ months.",
+    },
+}
+
+# Apply strain duration variants to each stage
+for _stage in DWC_STAGES:
+    _variants = STRAIN_DURATION_VARIANTS.get(_stage["id"])
+    if _variants:
+        _stage["duration_days_auto"] = _variants["duration_days_auto"]
+        _stage["duration_days_photo"] = _variants["duration_days_photo"]
+        _stage["autoflower_notes"] = _variants["autoflower_notes"]
+        _stage["photoperiod_notes"] = _variants["photoperiod_notes"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # ASSEMBLED CONFIG EXPORT
 # ─────────────────────────────────────────────────────────────────────────────
 

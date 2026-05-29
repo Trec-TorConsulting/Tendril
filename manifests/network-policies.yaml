@@ -1,0 +1,263 @@
+# Tendril Network Policies
+# Default deny + selective allow for least-privilege networking
+---
+# Default deny all ingress in tendril namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: tendril
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+
+---
+# Allow Traefik → API (port 8000)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-traefik-to-api
+  namespace: tendril
+spec:
+  podSelector:
+    matchLabels:
+      app: tendril-api
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: traefik
+    ports:
+    - protocol: TCP
+      port: 8000
+
+---
+# Allow Traefik → Web (port 3000)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-traefik-to-web
+  namespace: tendril
+spec:
+  podSelector:
+    matchLabels:
+      app: tendril-web
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: traefik
+    ports:
+    - protocol: TCP
+      port: 3000
+
+---
+# Allow EMQX → MQTT Worker webhook (port 8081)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-emqx-to-mqtt-worker
+  namespace: tendril
+spec:
+  podSelector:
+    matchLabels:
+      app: tendril-mqtt-worker
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: emqx
+    ports:
+    - protocol: TCP
+      port: 8081
+
+---
+# Allow API/MQTT-Worker/Scheduler → Redis (port 6379)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-apps-to-redis
+  namespace: tendril
+spec:
+  podSelector:
+    matchLabels:
+      app: tendril-redis
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: tendril-api
+    - podSelector:
+        matchLabels:
+          app: tendril-mqtt-worker
+    - podSelector:
+        matchLabels:
+          app: tendril-scheduler
+    ports:
+    - protocol: TCP
+      port: 6379
+
+---
+# Allow Prometheus → all Tendril pods (metrics scraping)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scrape
+  namespace: tendril
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring
+    ports:
+    - protocol: TCP
+      port: 8000
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 8081
+
+---
+# Egress: API/MQTT-Worker/Scheduler → PostgreSQL (port 5432)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-apps-to-postgres
+  namespace: tendril
+spec:
+  podSelector:
+    matchExpressions:
+    - key: app
+      operator: In
+      values: [tendril-api, tendril-mqtt-worker, tendril-scheduler]
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: postgresql
+    ports:
+    - protocol: TCP
+      port: 5432
+
+---
+# Egress: API/MQTT-Worker → EMQX (ports 1883, 8883)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-apps-to-emqx
+  namespace: tendril
+spec:
+  podSelector:
+    matchExpressions:
+    - key: app
+      operator: In
+      values: [tendril-api, tendril-mqtt-worker]
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: emqx
+    ports:
+    - protocol: TCP
+      port: 1883
+    - protocol: TCP
+      port: 8883
+
+---
+# Egress: Scheduler/API → external AI services (Gemini, Ollama)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ai-egress
+  namespace: tendril
+spec:
+  podSelector:
+    matchExpressions:
+    - key: app
+      operator: In
+      values: [tendril-api, tendril-scheduler]
+  policyTypes:
+  - Egress
+  egress:
+  # Ollama (internal)
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ollama
+    ports:
+    - protocol: TCP
+      port: 11434
+  # Gemini API (external HTTPS)
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+        except:
+        - 10.0.0.0/8
+        - 172.16.0.0/12
+        - 192.168.0.0/16
+    ports:
+    - protocol: TCP
+      port: 443
+
+---
+# Egress: All pods → DNS (kube-dns)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: tendril
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+
+---
+# Egress: All pods → Redis (within namespace)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-internal-redis-egress
+  namespace: tendril
+spec:
+  podSelector:
+    matchExpressions:
+    - key: app
+      operator: In
+      values: [tendril-api, tendril-mqtt-worker, tendril-scheduler]
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: tendril-redis
+    ports:
+    - protocol: TCP
+      port: 6379

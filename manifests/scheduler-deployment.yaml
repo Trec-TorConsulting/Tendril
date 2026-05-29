@@ -28,6 +28,17 @@ spec:
       - name: scheduler
         image: 192.168.4.10:30500/tendril-api:latest  # Replace with your registry
         command: ["python", "-m", "app.scheduler.main"]
+        ports:
+        - containerPort: 8080
+          name: health
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
         envFrom:
         - secretRef:
             name: tendril-secrets
@@ -44,6 +55,26 @@ spec:
           limits:
             cpu: 500m
             memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        startupProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          failureThreshold: 12
       volumes:
       - name: tmp
         emptyDir: {}

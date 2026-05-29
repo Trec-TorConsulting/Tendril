@@ -34,7 +34,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"**/tests/**/*.py" = ["S101", "S106", "E501"]  # Allow asserts, hardcoded passwords, and long lines in tests
+"**/tests/**/*.py" = ["S101", "S106", "E501", "UP038"]  # Allow asserts, hardcoded passwords, long lines, tuple isinstance in tests
 "**/grow_types.py" = ["E501"]  # Data file with long string literals
 "**/grow_type_configs/**" = ["E501", "RUF001"]  # Data files with long string literals and unicode chars
 "**/task_generator.py" = ["E501"]  # Task templates with long description strings
@@ -48,10 +48,13 @@ ignore = [
 "**/migrations/**/*.py" = ["E501"]  # Migrations contain long SQL strings
 "**/email_service.py" = ["E501"]  # Email HTML templates with long inline styles
 "**/outdoor/**_routes.py" = ["E501"]  # Route handlers with long descriptions
+"**/data/reports.py" = ["E501", "RUF001"]  # HTML report templates with long inline styles and en-dashes
+"**/mqtt/auth_webhook.py" = ["E402", "S104"]  # Prometheus import after app setup, binds to 0.0.0.0
+"**/config_management/seed.py" = ["E501", "T201"]  # SQL strings and seed script print
+"**/data/seed_treatments.py" = ["T201"]  # Seed script print
 "**/sensors/routes.py" = ["E501"]  # Sensor route definitions
 "**/sensors/tent_routes.py" = ["E501"]  # Tent sensor routes
 "**/grows/feeding_routes.py" = ["E501"]  # Feeding route definitions
-"**/mqtt/auth_webhook.py" = ["S104"]  # Binds to 0.0.0.0 (required for containers)
 
 [tool.ruff.lint.isort]
 known-first-party = ["app", "tests"]
