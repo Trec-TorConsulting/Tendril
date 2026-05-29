@@ -152,7 +152,7 @@ class TaskRunner:
                         )
 
                         observations = {"automated_check": "Scheduled 12-hour health check"}
-                        messages = build_health_check_prompt(grow_data, observations)
+                        messages = await build_health_check_prompt(grow_data, observations, session=session)
 
                         camera_image: bytes | None = grow_data.get("camera_image")
                         raw = await gemini_chat(messages, image_bytes=camera_image)

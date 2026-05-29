@@ -1561,30 +1561,27 @@ async def _build_flush_fill_description(
 
 
 async def _load_task_templates(session: AsyncSession) -> list[TaskTemplate]:
-    """Load task templates from DB if seeded, otherwise use hardcoded TASK_TEMPLATES."""
-    try:
-        from app.config_management.service.task_templates import get_all_templates
+    """Load task templates from DB."""
+    from app.config_management.service.task_templates import get_all_templates
 
-        db_templates = await get_all_templates(session)
-        if db_templates:
-            return [
-                TaskTemplate(
-                    category=t["category"],
-                    title=t["name"],
-                    brief=t.get("brief", ""),
-                    detail=t.get("detail"),
-                    interval_days=max(1, t["frequency_hours"] // 24) if t["frequency_hours"] else 0,
-                    priority=t.get("priority", "medium"),
-                    routine=t.get("routine", "morning"),
-                    estimated_minutes=t.get("estimated_minutes", 5),
-                    grow_types=set(t["grow_types"]) if t.get("grow_types") else None,
-                    stages=set(t["stages"]) if t.get("stages") else None,
-                )
-                for t in db_templates
-            ]
-    except Exception:
-        logger.debug("DB task templates unavailable, using hardcoded")
-    return TASK_TEMPLATES
+    db_templates = await get_all_templates(session)
+    if db_templates:
+        return [
+            TaskTemplate(
+                category=t["category"],
+                title=t["name"],
+                brief=t.get("brief", ""),
+                detail=t.get("detail"),
+                interval_days=max(1, t["frequency_hours"] // 24) if t["frequency_hours"] else 0,
+                priority=t.get("priority", "medium"),
+                routine=t.get("routine", "morning"),
+                estimated_minutes=t.get("estimated_minutes", 5),
+                grow_types=set(t["grow_types"]) if t.get("grow_types") else None,
+                stages=set(t["stages"]) if t.get("stages") else None,
+            )
+            for t in db_templates
+        ]
+    return []
 
 
 # ── Main generation logic ───────────────────────────────────────────

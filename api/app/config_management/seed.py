@@ -40,29 +40,75 @@ def _extract_env_range(val) -> tuple[float | None, float | None]:
 
 async def seed_grow_type_profiles(session: AsyncSession) -> int:
     """Seed grow_type_profiles from grows/grow_types.py GROW_TYPE_PROFILES."""
+    import json
+
+    from app.grows.grow_type_configs import GROW_TYPE_CONFIGS
     from app.grows.grow_types import GROW_TYPE_PROFILES
 
     count = 0
     for profile in GROW_TYPE_PROFILES:
         profile_id = uuid.uuid4()
+        slug = profile["id"]
+
+        # Build extended_config from grow_type_configs (scale_tiers, thresholds, etc.)
+        # and profile-level fields not in dedicated columns
+        full_config = GROW_TYPE_CONFIGS.get(slug, {})
+        extended = {}
+        # From grow_type_configs (rich per-stage config data)
+        for key in (
+            "scale_tiers",
+            "strain_adjustments",
+            "monitoring_thresholds",
+            "quick_reference",
+            "advanced_techniques",
+            "nutrient_brands",
+            "water_source_profiles",
+            "harvest_decision_matrix",
+            "post_harvest_guide",
+            "reservoir_management",
+        ):
+            if key in full_config:
+                extended[key] = full_config[key]
+        # From profile (AI context fields)
+        for key in (
+            "terminology",
+            "relevant_sensors",
+            "primary_sensors",
+            "irrelevant_sensors",
+            "unique_fields",
+            "ph_range",
+            "ec_range",
+            "health_check_questions",
+            "automations",
+            "feeding_approach",
+            "nutrient_strength",
+            "common_problems",
+            "category",
+        ):
+            if key in profile:
+                extended[key] = profile[key]
+
         await session.execute(
             text("""
-                INSERT INTO grow_type_profiles (id, name, slug, description, sensor_kit, ai_context_prompt, is_system)
-                VALUES (:id, :name, :slug, :description, :sensor_kit, :ai_context_prompt, true)
+                INSERT INTO grow_type_profiles
+                    (id, name, slug, description, sensor_kit, ai_context_prompt, is_system, extended_config)
+                VALUES (:id, :name, :slug, :description, :sensor_kit, :ai_context_prompt, true, :extended_config)
                 ON CONFLICT (slug) DO UPDATE SET
                     name = EXCLUDED.name,
                     description = EXCLUDED.description,
                     sensor_kit = EXCLUDED.sensor_kit,
                     ai_context_prompt = EXCLUDED.ai_context_prompt,
+                    extended_config = EXCLUDED.extended_config,
                     updated_at = now()
             """),
             {
                 "id": str(profile_id),
                 "name": profile["name"],
-                "slug": profile["id"],
+                "slug": slug,
                 "description": profile.get("description", ""),
                 "sensor_kit": profile.get("sensor_kit"),
                 "ai_context_prompt": profile.get("ai_prompt_context"),
+                "extended_config": json.dumps(extended) if extended else None,
             },
         )
         count += 1

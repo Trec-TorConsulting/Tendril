@@ -9,8 +9,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth.middleware import CurrentUser, get_current_user
 from app.database import async_session_factory
-from app.grows.grow_type_configs import get_grow_type_config
-from app.grows.grow_types import GROW_TYPE_PROFILES
 
 logger = logging.getLogger(__name__)
 
@@ -21,21 +19,12 @@ router = APIRouter()
 async def list_grow_types(
     _user: Annotated[CurrentUser, Depends(get_current_user)],
 ):
-    """List all available grow types (summary). Reads from DB if available, falls back to code."""
-    try:
-        from app.config_management.service.grow_types import list_profiles
+    """List all available grow types (summary)."""
+    from app.config_management.service.grow_types import list_profiles
 
-        async with async_session_factory() as session:
-            profiles = await list_profiles(session)
-            if profiles:
-                return [{"id": p["slug"], "name": p["name"], "description": p["description"]} for p in profiles]
-    except Exception:
-        logger.debug("DB profile list unavailable, using fallback")
-    # Fallback to hardcoded
-    return [
-        {"id": p["id"], "name": p["name"], "category": p["category"], "description": p["description"]}
-        for p in GROW_TYPE_PROFILES
-    ]
+    async with async_session_factory() as session:
+        profiles = await list_profiles(session)
+        return [{"id": p["slug"], "name": p["name"], "description": p["description"]} for p in profiles]
 
 
 @router.get("/{grow_type_id}")
@@ -44,20 +33,13 @@ async def get_grow_type(
     _user: Annotated[CurrentUser, Depends(get_current_user)],
 ):
     """Get full profile for a specific grow type."""
-    try:
-        from app.config_management.service.grow_types import get_profile
+    from app.config_management.service.grow_types import get_profile
 
-        async with async_session_factory() as session:
-            profile = await get_profile(session, grow_type_id)
-            if profile:
-                return profile
-    except Exception:
-        logger.debug("DB profile lookup unavailable for %s, using fallback", grow_type_id)
-    # Fallback to hardcoded
-    for p in GROW_TYPE_PROFILES:
-        if p["id"] == grow_type_id:
-            return p
-    raise HTTPException(status_code=404, detail="Grow type not found")
+    async with async_session_factory() as session:
+        profile = await get_profile(session, grow_type_id)
+        if not profile:
+            raise HTTPException(status_code=404, detail="Grow type not found")
+        return profile
 
 
 VALID_SCALES = {"solo", "small_tent", "multi_tent", "commercial_room", "warehouse"}
@@ -85,7 +67,10 @@ async def get_grow_type_config_endpoint(
       - scale: Filter scale_tiers to only the matching tier
       - strain_type: Filter strain_adjustments and include strain-specific duration/notes
     """
-    config = get_grow_type_config(grow_type_id)
+    from app.config_management.service.grow_types import get_full_config
+
+    async with async_session_factory() as session:
+        config = await get_full_config(session, grow_type_id)
     if config is None:
         raise HTTPException(status_code=404, detail="Configuration not available for this grow type")
 
@@ -96,17 +81,15 @@ async def get_grow_type_config_endpoint(
             status_code=400, detail=f"Invalid strain_type. Must be one of: {', '.join(sorted(VALID_STRAIN_TYPES))}"
         )
 
-    # Return a filtered copy (don't mutate the global config)
     result = dict(config)
 
     if scale:
-        result["scale_tiers"] = [t for t in config.get("scale_tiers", []) if t["id"] == scale]
+        result["scale_tiers"] = [t for t in config.get("scale_tiers", []) if t.get("id") == scale]
 
     if strain_type:
         adj = config.get("strain_adjustments", {})
         result["strain_adjustments"] = {strain_type: adj[strain_type]} if strain_type in adj else {}
-        # Add strain-specific duration to stages
-        duration_key = f"duration_days_{strain_type[:4]}"  # duration_days_auto or duration_days_phot
+        duration_key = f"duration_days_{strain_type[:4]}"
         notes_key = f"{strain_type}_notes"
         filtered_stages = []
         for stage in config.get("stages", []):
@@ -126,12 +109,11 @@ async def get_grow_type_thresholds(
     grow_type_id: str,
     _user: Annotated[CurrentUser, Depends(get_current_user)],
 ):
-    """Get monitoring thresholds for a grow type — suitable for automation integration.
+    """Get monitoring thresholds for a grow type — suitable for automation integration."""
+    from app.config_management.service.grow_types import get_full_config
 
-    Returns sensor thresholds with info/warning/alert/critical levels
-    for temperature, humidity, VPD, pH, EC, water temp, CO2, and light PPFD.
-    """
-    config = get_grow_type_config(grow_type_id)
+    async with async_session_factory() as session:
+        config = await get_full_config(session, grow_type_id)
     if config is None:
         raise HTTPException(status_code=404, detail="Configuration not available for this grow type")
 
@@ -148,18 +130,20 @@ async def get_grow_type_equipment(
     scale: Annotated[str | None, Query(description="Filter equipment recommendations by scale tier")] = None,
 ):
     """Get equipment checklist for a grow type, optionally filtered by scale."""
-    config = get_grow_type_config(grow_type_id)
+    from app.config_management.service.grow_types import get_full_config
+
+    async with async_session_factory() as session:
+        config = await get_full_config(session, grow_type_id)
     if config is None:
         raise HTTPException(status_code=404, detail="Configuration not available for this grow type")
 
     if scale and scale not in VALID_SCALES:
         raise HTTPException(status_code=400, detail=f"Invalid scale. Must be one of: {', '.join(sorted(VALID_SCALES))}")
 
-    equipment = config.get("equipment", {})
+    equipment = config.get("equipment", [])
 
     if scale:
-        # Filter scale_tiers to show what automation level is expected
-        tiers = [t for t in config.get("scale_tiers", []) if t["id"] == scale]
+        tiers = [t for t in config.get("scale_tiers", []) if t.get("id") == scale]
         return {
             "grow_type_id": grow_type_id,
             "scale": scale,

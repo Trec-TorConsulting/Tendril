@@ -12,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
 from app.commercial.models import CustomGrowType
-from app.grows.grow_types import GROW_TYPE_PROFILES
 
 router = APIRouter()
 
@@ -112,7 +111,9 @@ async def create_custom_grow_type(
     # If base_type specified, seed from built-in profile
     profile = body.profile
     if body.base_type:
-        base = next((p for p in GROW_TYPE_PROFILES if p["id"] == body.base_type), None)
+        from app.config_management.service.grow_types import get_profile
+
+        base = await get_profile(session, body.base_type)
         if not base:
             raise HTTPException(status_code=400, detail=f"Unknown base type: {body.base_type}")
         # Merge: base profile as defaults, user overrides on top

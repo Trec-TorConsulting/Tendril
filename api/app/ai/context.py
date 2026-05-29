@@ -5,31 +5,29 @@ from __future__ import annotations
 import logging
 from datetime import UTC
 
-from app.grows.grow_type_configs import get_grow_type_config
-from app.grows.grow_types import GROW_TYPE_PROFILES
-
 logger = logging.getLogger(__name__)
 
 
-def get_grow_type_profile(grow_type: str) -> dict | None:
-    """Look up the grow type profile by ID. Uses hardcoded data (DB service used at call sites with session)."""
-    for p in GROW_TYPE_PROFILES:
-        if p["id"] == grow_type:
-            return p
-    return None
-
-
 async def get_grow_type_profile_from_db(grow_type: str, session) -> dict | None:
-    """Look up grow type profile from DB with fallback to hardcoded."""
+    """Look up grow type profile from DB."""
     try:
         from app.config_management.service.grow_types import get_profile
 
-        profile = await get_profile(session, grow_type)
-        if profile:
-            return profile
+        return await get_profile(session, grow_type)
     except Exception:
-        logger.debug("DB profile lookup failed for %s, using fallback", grow_type)
-    return get_grow_type_profile(grow_type)
+        logger.debug("DB profile lookup failed for %s", grow_type)
+    return None
+
+
+async def get_grow_type_config_from_db(grow_type: str, session) -> dict | None:
+    """Look up the full config (with extended_config) from DB."""
+    try:
+        from app.config_management.service.grow_types import get_full_config
+
+        return await get_full_config(session, grow_type)
+    except Exception:
+        logger.debug("DB config lookup failed for %s", grow_type)
+    return None
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -317,14 +315,20 @@ def _fmt_settings(settings: dict | None, grow_type: str) -> str:
 # ── Chat context ─────────────────────────────────────────────────────
 
 
-def build_chat_context(
+async def build_chat_context(
     grow_data: dict,
+    session=None,
 ) -> str:
     """Build a comprehensive system prompt for Ollama chat using all available data."""
-    profile = get_grow_type_profile(grow_data.get("grow_type", ""))
+    grow_type = grow_data.get("grow_type", "")
+    profile = None
+    if session and grow_type:
+        profile = await get_grow_type_profile_from_db(grow_type, session)
     if not profile:
         return "You are Tendril, an AI grow assistant."
 
+    # ai_context_prompt is a top-level DB column; extended_config fields are merged in
+    ai_prompt = profile.get("ai_context_prompt") or ""
     parts = [
         f"You are Tendril, an expert cannabis cultivation AI — think master grower with 20+ years of "
         f"experience across every grow style. You specialize in {profile['name']} cannabis cultivation "
@@ -334,13 +338,19 @@ def build_chat_context(
         f"cannabis. You understand the plant at a molecular level: how VPD drives transpiration and nutrient "
         f"uptake, how light spectrum affects cannabinoid synthesis, how stress hormones trigger resin production, "
         f"and how microbial interactions in the rhizosphere affect terpene expression.",
-        f"Grow method context: {profile['ai_prompt_context']}",
-        f"Feeding approach: {profile['feeding_approach']}",
-        f"Nutrient strength: {profile['nutrient_strength']}",
-        f"pH range: {profile['ph_range']['min']}-{profile['ph_range']['max']}",
-        f"Common problems: {', '.join(profile['common_problems'])}",
-        f"Health check questions to consider: {', '.join(profile.get('health_check_questions', []))}",
+        f"Grow method context: {ai_prompt}",
+        f"Feeding approach: {profile.get('feeding_approach', '')}",
+        f"Nutrient strength: {profile.get('nutrient_strength', '')}",
     ]
+    ph_range = profile.get("ph_range")
+    if ph_range:
+        parts.append(f"pH range: {ph_range.get('min', '?')}-{ph_range.get('max', '?')}")
+    common_problems = profile.get("common_problems", [])
+    if common_problems:
+        parts.append(f"Common problems: {', '.join(common_problems)}")
+    health_questions = profile.get("health_check_questions", [])
+    if health_questions:
+        parts.append(f"Health check questions to consider: {', '.join(health_questions)}")
 
     # Add terminology so the AI uses the right words for this grow type
     terminology = profile.get("terminology", {})
@@ -394,10 +404,9 @@ def build_chat_context(
     if notes:
         parts.append(f"\n=== Grower's Notes ===\n  {notes}")
 
-    # Scale & strain-type context from grow type config
-    grow_type_id = grow_data.get("grow_type", "")
-    type_config = get_grow_type_config(grow_type_id)
-    if type_config:
+    # Scale & strain-type context from profile's extended_config
+    # (scale_tiers, strain_adjustments already merged into profile from extended_config)
+    if profile.get("scale_tiers"):
         buckets_list = grow_data.get("buckets") or []
         bucket_count = len(buckets_list)
         # Infer scale from bucket count
@@ -411,7 +420,7 @@ def build_chat_context(
             scale_id = "small_tent"
         else:
             scale_id = "solo"
-        scale_tiers = type_config.get("scale_tiers", [])
+        scale_tiers = profile.get("scale_tiers", [])
         scale_info = next((t for t in scale_tiers if t["id"] == scale_id), None)
         if scale_info:
             parts.append(
@@ -432,7 +441,7 @@ def build_chat_context(
             elif sp.get("flowering_type"):
                 strain_types_seen.add(sp["flowering_type"])
         if strain_types_seen:
-            strain_adj = type_config.get("strain_adjustments", {})
+            strain_adj = profile.get("strain_adjustments", {})
             for st in strain_types_seen:
                 adj = strain_adj.get(st)
                 if adj:
@@ -600,18 +609,19 @@ def build_chat_context(
 # ── Health-check prompt (Gemini) ─────────────────────────────────────
 
 
-def build_health_check_prompt(
+async def build_health_check_prompt(
     grow_data: dict,
     observations: dict[str, str],
+    session=None,
 ) -> list[dict]:
     """Build messages for a Gemini-powered health check using ALL available data."""
     grow_type = grow_data.get("grow_type", "")
     stage = grow_data.get("stage", "?")
-    profile = get_grow_type_profile(grow_type)
+    profile = await get_grow_type_profile_from_db(grow_type, session) if session else None
     type_name = profile["name"] if profile else grow_type
-    context = profile["ai_prompt_context"] if profile else ""
-    common = ", ".join(profile["common_problems"]) if profile else ""
-    ph_range = profile["ph_range"] if profile else {}
+    context = profile.get("ai_context_prompt", "") if profile else ""
+    common = ", ".join(profile.get("common_problems", [])) if profile else ""
+    ph_range = profile.get("ph_range", {}) if profile else {}
     feeding_approach = profile.get("feeding_approach", "") if profile else ""
 
     has_camera = grow_data.get("camera_image") is not None
@@ -832,16 +842,17 @@ def build_health_check_prompt(
 # ── Coach tip prompt ─────────────────────────────────────────────────
 
 
-def build_coach_tip_prompt(
+async def build_coach_tip_prompt(
     grow_type: str,
     stage: str,
     sensors: dict | None = None,
+    session=None,
 ) -> list[dict]:
     """Build messages for generating a coach tip."""
-    profile = get_grow_type_profile(grow_type)
+    profile = await get_grow_type_profile_from_db(grow_type, session) if session else None
     type_name = profile["name"] if profile else grow_type
-    context = profile["ai_prompt_context"] if profile else ""
-    feeding = profile["feeding_approach"] if profile else ""
+    context = profile.get("ai_context_prompt", "") if profile else ""
+    feeding = profile.get("feeding_approach", "") if profile else ""
 
     system = (
         f"You are a master cannabis grower and cultivation coach for Tendril. "
@@ -872,13 +883,14 @@ def build_coach_tip_prompt(
 # ── Insight prompt ───────────────────────────────────────────────────
 
 
-def build_insight_prompt(
+async def build_insight_prompt(
     insight_type: str,
     grow_type: str,
     data: dict,
+    session=None,
 ) -> list[dict]:
     """Build messages for AI insights (harvest predict, nutrient advice, anomaly scan)."""
-    profile = get_grow_type_profile(grow_type)
+    profile = await get_grow_type_profile_from_db(grow_type, session) if session else None
     type_name = profile["name"] if profile else grow_type
 
     prompts = {
@@ -952,16 +964,16 @@ def _week_matches_schedule(week: int, schedule_name: str) -> bool:
     return lo <= week <= hi
 
 
-def build_feeding_advice_prompt(grow_data: dict) -> list[dict]:
+async def build_feeding_advice_prompt(grow_data: dict, session=None) -> list[dict]:
     """Build messages for AI feeding advice using full grow context."""
     import json as _json
 
     stage = grow_data.get("stage", "unknown")
     grow_type = grow_data.get("grow_type", "unknown")
     current_week = _current_grow_week(grow_data)
-    profile = get_grow_type_profile(grow_type)
+    profile = await get_grow_type_profile_from_db(grow_type, session) if session else None
     type_name = profile["name"] if profile else grow_type
-    feeding_approach = profile["feeding_approach"] if profile else ""
+    feeding_approach = profile.get("feeding_approach", "") if profile else ""
     ec_range = profile.get("ec_range", {}) if profile else {}
 
     system = (

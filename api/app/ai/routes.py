@@ -84,7 +84,7 @@ async def websocket_chat(ws: WebSocket):
                         gather_grow_data(session, grow, include_camera=False),
                         timeout=10.0,
                     )
-                    system_context = build_chat_context(grow_data)
+                    system_context = await build_chat_context(grow_data, session=session)
         except TimeoutError:
             logger.warning("Timed out loading grow context for chat, using default")
         except Exception:
@@ -300,7 +300,7 @@ async def run_health_check(
     )
 
     # Build prompt with all data
-    messages = build_health_check_prompt(grow_data, body.observations)
+    messages = await build_health_check_prompt(grow_data, body.observations, session=session)
 
     # Prepare images for Gemini
     camera_image: bytes | None = grow_data.get("camera_image")
@@ -546,7 +546,7 @@ async def get_coach_tip(
         if reading:
             sensors = {"ph": reading.ph, "ec": reading.ec, "water_temp_f": reading.water_temp_f}
 
-    messages = build_coach_tip_prompt(grow.grow_type, grow.stage, sensors)
+    messages = await build_coach_tip_prompt(grow.grow_type, grow.stage, sensors, session=session)
 
     try:
         tip = await chat_completion(messages)
@@ -631,7 +631,7 @@ async def get_insight(
                 data["ec_range"] = f"{min(ec_vals)}-{max(ec_vals)}"
             data["reading_count"] = len(readings)
 
-    messages = build_insight_prompt(body.insight_type, grow.grow_type, data)
+    messages = await build_insight_prompt(body.insight_type, grow.grow_type, data, session=session)
 
     try:
         raw = await chat_completion(messages)
@@ -721,7 +721,7 @@ async def get_feeding_advice(
 
     # Cache miss or stale — regenerate
     grow_data = await gather_grow_data(session, grow, include_camera=False)
-    messages = build_feeding_advice_prompt(grow_data)
+    messages = await build_feeding_advice_prompt(grow_data, session=session)
 
     try:
         raw = await chat_completion(messages)
@@ -1175,47 +1175,28 @@ async def list_treatments(
     query: str | None = None,
 ):
     """List treatment database entries, optionally filtered by category or search query."""
-    try:
-        from app.config_management.service.treatments import (
-            list_all,
-        )
-        from app.config_management.service.treatments import (
-            list_by_category as db_list_by_category,
-        )
-        from app.config_management.service.treatments import (
-            search_treatments as db_search,
-        )
-
-        if query:
-            entries = await db_search(session, query)
-        elif category:
-            entries = await db_list_by_category(session, category)
-        else:
-            entries = await list_all(session)
-
-        if entries:
-            return TreatmentListResponse(
-                items=[
-                    TreatmentSummaryResponse(id=e["id"], category=e["category"], name=e["name"], summary=e["summary"])
-                    for e in entries
-                ],
-                total=len(entries),
-            )
-    except Exception:
-        logger.debug("DB treatment lookup failed, using fallback")
-
-    # Fallback to hardcoded
-    from app.ai.treatment_db import TREATMENT_DATABASE, list_by_category, search_treatments
+    from app.config_management.service.treatments import (
+        list_all,
+    )
+    from app.config_management.service.treatments import (
+        list_by_category as db_list_by_category,
+    )
+    from app.config_management.service.treatments import (
+        search_treatments as db_search,
+    )
 
     if query:
-        entries = search_treatments(query)
+        entries = await db_search(session, query)
     elif category:
-        entries = list_by_category(category)
+        entries = await db_list_by_category(session, category)
     else:
-        entries = TREATMENT_DATABASE
+        entries = await list_all(session)
 
     return TreatmentListResponse(
-        items=[TreatmentSummaryResponse(id=e.id, category=e.category, name=e.name, summary=e.summary) for e in entries],
+        items=[
+            TreatmentSummaryResponse(id=e["id"], category=e["category"], name=e["name"], summary=e["summary"])
+            for e in entries
+        ],
         total=len(entries),
     )
 
@@ -1231,61 +1212,28 @@ async def get_treatment_detail(
 
     Optionally pass grow_type to get type-specific treatment recommendations.
     """
-    # Try DB first
-    try:
-        from app.config_management.service.treatments import get_treatment as db_get_treatment
+    from app.config_management.service.treatments import get_treatment as db_get_treatment
 
-        entry = await db_get_treatment(session, treatment_id)
-        if entry:
-            treatments = dict(entry.get("treatments", {}))
-            if grow_type and grow_type in treatments:
-                treatments = {grow_type: treatments[grow_type]}
-            return TreatmentDetailResponse(
-                id=entry["id"],
-                category=entry["category"],
-                name=entry["name"],
-                aka=entry["aka"],
-                summary=entry["summary"],
-                symptoms=entry["symptoms"],
-                identification_tips=entry["identification_tips"],
-                causes=entry["causes"],
-                severity_criteria=entry["severity_criteria"],
-                treatments=treatments,
-                prevention=entry["prevention"],
-                recovery_time=entry["recovery_time"],
-                commonly_confused_with=entry["commonly_confused_with"],
-            )
-    except Exception:
-        logger.debug("DB treatment detail lookup failed for %s", treatment_id)
-
-    # Fallback to hardcoded
-    from app.ai.treatment_db import get_treatment
-
-    entry = get_treatment(treatment_id)
+    entry = await db_get_treatment(session, treatment_id)
     if not entry:
         raise HTTPException(status_code=404, detail="Treatment not found")
 
-    treatments = dict(entry.treatments)
-    if grow_type:
-        from app.ai.treatment_db import get_treatments_for_grow_type
-
-        type_treatments = get_treatments_for_grow_type(grow_type)
-        specific = type_treatments.get(treatment_id, [])
-        if specific:
-            treatments = {grow_type: specific}
+    treatments = dict(entry.get("treatments", {}))
+    if grow_type and grow_type in treatments:
+        treatments = {grow_type: treatments[grow_type]}
 
     return TreatmentDetailResponse(
-        id=entry.id,
-        category=entry.category,
-        name=entry.name,
-        aka=entry.aka,
-        summary=entry.summary,
-        symptoms=entry.symptoms,
-        identification_tips=entry.identification_tips,
-        causes=entry.causes,
-        severity_criteria=entry.severity_criteria,
+        id=entry["id"],
+        category=entry["category"],
+        name=entry["name"],
+        aka=entry["aka"],
+        summary=entry["summary"],
+        symptoms=entry["symptoms"],
+        identification_tips=entry["identification_tips"],
+        causes=entry["causes"],
+        severity_criteria=entry["severity_criteria"],
         treatments=treatments,
-        prevention=entry.prevention,
-        recovery_time=entry.recovery_time,
-        commonly_confused_with=entry.commonly_confused_with,
+        prevention=entry["prevention"],
+        recovery_time=entry["recovery_time"],
+        commonly_confused_with=entry["commonly_confused_with"],
     )
