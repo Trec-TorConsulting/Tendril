@@ -95,7 +95,7 @@ async def get_full_config(session: AsyncSession, slug: str) -> dict | None:
 
 
 def _serialize_profile(profile: GrowTypeProfile) -> dict:
-    return {
+    data = {
         "id": str(profile.id),
         "name": profile.name,
         "slug": profile.slug,
@@ -125,6 +125,10 @@ def _serialize_profile(profile: GrowTypeProfile) -> dict:
             for t in profile.troubleshooting
         ],
     }
+    # Merge extended_config fields at top level for API consumers
+    if profile.extended_config:
+        data.update(profile.extended_config)
+    return data
 
 
 def _serialize_stage(stage: GrowTypeStage) -> dict:

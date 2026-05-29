@@ -40,29 +40,75 @@ def _extract_env_range(val) -> tuple[float | None, float | None]:
 
 async def seed_grow_type_profiles(session: AsyncSession) -> int:
     """Seed grow_type_profiles from grows/grow_types.py GROW_TYPE_PROFILES."""
+    import json
+
+    from app.grows.grow_type_configs import GROW_TYPE_CONFIGS
     from app.grows.grow_types import GROW_TYPE_PROFILES
 
     count = 0
     for profile in GROW_TYPE_PROFILES:
         profile_id = uuid.uuid4()
+        slug = profile["id"]
+
+        # Build extended_config from grow_type_configs (scale_tiers, thresholds, etc.)
+        # and profile-level fields not in dedicated columns
+        full_config = GROW_TYPE_CONFIGS.get(slug, {})
+        extended = {}
+        # From grow_type_configs (rich per-stage config data)
+        for key in (
+            "scale_tiers",
+            "strain_adjustments",
+            "monitoring_thresholds",
+            "quick_reference",
+            "advanced_techniques",
+            "nutrient_brands",
+            "water_source_profiles",
+            "harvest_decision_matrix",
+            "post_harvest_guide",
+            "reservoir_management",
+        ):
+            if key in full_config:
+                extended[key] = full_config[key]
+        # From profile (AI context fields)
+        for key in (
+            "terminology",
+            "relevant_sensors",
+            "primary_sensors",
+            "irrelevant_sensors",
+            "unique_fields",
+            "ph_range",
+            "ec_range",
+            "health_check_questions",
+            "automations",
+            "feeding_approach",
+            "nutrient_strength",
+            "common_problems",
+            "category",
+        ):
+            if key in profile:
+                extended[key] = profile[key]
+
         await session.execute(
             text("""
-                INSERT INTO grow_type_profiles (id, name, slug, description, sensor_kit, ai_context_prompt, is_system)
-                VALUES (:id, :name, :slug, :description, :sensor_kit, :ai_context_prompt, true)
+                INSERT INTO grow_type_profiles
+                    (id, name, slug, description, sensor_kit, ai_context_prompt, is_system, extended_config)
+                VALUES (:id, :name, :slug, :description, :sensor_kit, :ai_context_prompt, true, :extended_config)
                 ON CONFLICT (slug) DO UPDATE SET
                     name = EXCLUDED.name,
                     description = EXCLUDED.description,
                     sensor_kit = EXCLUDED.sensor_kit,
                     ai_context_prompt = EXCLUDED.ai_context_prompt,
+                    extended_config = EXCLUDED.extended_config,
                     updated_at = now()
             """),
             {
                 "id": str(profile_id),
                 "name": profile["name"],
-                "slug": profile["id"],
+                "slug": slug,
                 "description": profile.get("description", ""),
                 "sensor_kit": profile.get("sensor_kit"),
                 "ai_context_prompt": profile.get("ai_prompt_context"),
+                "extended_config": json.dumps(extended) if extended else None,
             },
         )
         count += 1
@@ -436,6 +482,174 @@ async def seed_task_templates(session: AsyncSession) -> int:
     return count
 
 
+async def seed_stage_transition_tasks(session: AsyncSession) -> int:
+    """Seed stage transition tasks from STAGE_TRANSITION_TASKS."""
+    from app.scheduler.task_generator import (
+        STAGE_TRANSITION_TASKS,
+    )
+
+    count = 0
+    for stage, tasks in STAGE_TRANSITION_TASKS.items():
+        for title, brief, priority, routine, est_minutes, grow_types in tasks:
+            # Convert set to sorted list for stable DB storage
+            slugs = sorted(grow_types) if grow_types else None
+            await session.execute(
+                text("""
+                    INSERT INTO stage_transition_tasks
+                        (id, stage, title, brief, priority, routine, estimated_minutes, grow_type_slugs, is_system)
+                    VALUES (:id, :stage, :title, :brief, :priority, :routine, :est_min, :slugs, true)
+                    ON CONFLICT DO NOTHING
+                """),
+                {
+                    "id": str(uuid.uuid4()),
+                    "stage": stage,
+                    "title": title,
+                    "brief": brief,
+                    "priority": priority,
+                    "routine": routine,
+                    "est_min": est_minutes,
+                    "slugs": slugs,
+                },
+            )
+            count += 1
+
+    await session.commit()
+    logger.info("Seeded %d stage transition tasks", count)
+    return count
+
+
+async def seed_automation_suppressions(session: AsyncSession) -> int:
+    """Seed automation suppressions and verify tasks."""
+    import json
+
+    from app.scheduler.task_generator import AUTOMATION_SUPPRESSIONS, AUTOMATION_VERIFY_TASKS
+
+    count = 0
+    for automation_key, suppressed in AUTOMATION_SUPPRESSIONS.items():
+        verify_task = AUTOMATION_VERIFY_TASKS.get(automation_key)
+        verify_json = None
+        if verify_task:
+            verify_json = {
+                "category": verify_task.category,
+                "title": verify_task.title,
+                "brief": verify_task.brief,
+                "detail": verify_task.detail,
+                "interval_days": verify_task.interval_days,
+                "priority": verify_task.priority,
+                "routine": verify_task.routine,
+                "estimated_minutes": verify_task.estimated_minutes,
+            }
+
+        await session.execute(
+            text("""
+                INSERT INTO automation_suppressions
+                    (id, automation_key, suppressed_categories, verify_task, is_system)
+                VALUES (:id, :key, :suppressed, :verify_task, true)
+                ON CONFLICT (automation_key) DO UPDATE SET
+                    suppressed_categories = EXCLUDED.suppressed_categories,
+                    verify_task = EXCLUDED.verify_task
+            """),
+            {
+                "id": str(uuid.uuid4()),
+                "key": automation_key,
+                "suppressed": suppressed,
+                "verify_task": json.dumps(verify_json) if verify_json else None,
+            },
+        )
+        count += 1
+
+    await session.commit()
+    logger.info("Seeded %d automation suppressions", count)
+    return count
+
+
+async def seed_companion_plants(session: AsyncSession) -> int:
+    """Seed companion plants from data/companion_plants.py."""
+    from app.data.companion_plants import COMPANION_DB
+
+    count = 0
+    for plant_name, data in COMPANION_DB.items():
+        slug = plant_name.lower().replace(" ", "_")
+        # Derive a category from context
+        category = (
+            "herb"
+            if plant_name in {"basil", "dill", "peppermint", "chamomile", "lavender", "lemon_balm", "chives", "yarrow"}
+            else "flower"
+            if plant_name in {"marigold", "sunflower"}
+            else "cover_crop"
+            if plant_name in {"clover", "alfalfa", "cerastium"}
+            else "vegetable"
+            if plant_name in {"beans", "garlic"}
+            else "plant"
+        )
+
+        await session.execute(
+            text("""
+                INSERT INTO companion_plants
+                    (id, name, slug, category, benefits, companions, antagonists, notes, is_system)
+                VALUES (:id, :name, :slug, :category, :benefits, :companions, :antagonists, :notes, true)
+                ON CONFLICT (slug) DO UPDATE SET
+                    name = EXCLUDED.name,
+                    category = EXCLUDED.category,
+                    benefits = EXCLUDED.benefits,
+                    companions = EXCLUDED.companions,
+                    antagonists = EXCLUDED.antagonists,
+                    notes = EXCLUDED.notes
+            """),
+            {
+                "id": str(uuid.uuid4()),
+                "name": plant_name.replace("_", " ").title(),
+                "slug": slug,
+                "category": category,
+                "benefits": data.get("beneficial", []),
+                "companions": data.get("beneficial", []),
+                "antagonists": data.get("harmful", []),
+                "notes": data.get("notes", ""),
+            },
+        )
+        count += 1
+
+    await session.commit()
+    logger.info("Seeded %d companion plants", count)
+    return count
+
+
+async def seed_feed_charts(session: AsyncSession) -> int:
+    """Seed feed charts from reference/feed_charts.py."""
+    import json
+
+    from app.reference.feed_charts import FEED_CHARTS
+
+    count = 0
+    for chart in FEED_CHARTS:
+        await session.execute(
+            text("""
+                INSERT INTO feed_charts
+                    (id, brand, line, medium, products, schedule, notes, is_system)
+                VALUES (:id, :brand, :line, :medium, :products, :schedule, :notes, true)
+                ON CONFLICT ON CONSTRAINT uq_feed_chart_brand_line DO UPDATE SET
+                    medium = EXCLUDED.medium,
+                    products = EXCLUDED.products,
+                    schedule = EXCLUDED.schedule,
+                    notes = EXCLUDED.notes
+            """),
+            {
+                "id": str(uuid.uuid4()),
+                "brand": chart["brand"],
+                "line": chart["line"],
+                "medium": chart["medium"],
+                "products": chart["products"],
+                "schedule": json.dumps(chart["schedule"]),
+                "notes": chart.get("notes", ""),
+            },
+        )
+        count += 1
+
+    await session.commit()
+    logger.info("Seeded %d feed charts", count)
+    return count
+
+
 async def seed_all(session: AsyncSession) -> dict[str, int]:
     """Run all seeders in order. Returns counts."""
     results = {}
@@ -444,6 +658,10 @@ async def seed_all(session: AsyncSession) -> dict[str, int]:
     results["equipment"] = await seed_grow_type_equipment(session)
     results["troubleshooting"] = await seed_grow_type_troubleshooting(session)
     results["task_templates"] = await seed_task_templates(session)
+    results["stage_transitions"] = await seed_stage_transition_tasks(session)
+    results["automation_suppressions"] = await seed_automation_suppressions(session)
+    results["companion_plants"] = await seed_companion_plants(session)
+    results["feed_charts"] = await seed_feed_charts(session)
     return results
 
 

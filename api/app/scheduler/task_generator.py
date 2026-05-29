@@ -1434,9 +1434,9 @@ def _get_grow_automations(grow: GrowCycle) -> set[str]:
     return set()
 
 
-def _is_suppressed(category: str, automations: set[str]) -> bool:
+def _is_suppressed(category: str, automations: set[str], suppressions: dict[str, list[str]]) -> bool:
     """Check if a task category is suppressed by active automation."""
-    for automation, suppressed_categories in AUTOMATION_SUPPRESSIONS.items():
+    for automation, suppressed_categories in suppressions.items():
         if automation in automations and category in suppressed_categories:
             return True
     return False
@@ -1561,30 +1561,42 @@ async def _build_flush_fill_description(
 
 
 async def _load_task_templates(session: AsyncSession) -> list[TaskTemplate]:
-    """Load task templates from DB if seeded, otherwise use hardcoded TASK_TEMPLATES."""
-    try:
-        from app.config_management.service.task_templates import get_all_templates
+    """Load task templates from DB."""
+    from app.config_management.service.task_templates import get_all_templates
 
-        db_templates = await get_all_templates(session)
-        if db_templates:
-            return [
-                TaskTemplate(
-                    category=t["category"],
-                    title=t["name"],
-                    brief=t.get("brief", ""),
-                    detail=t.get("detail"),
-                    interval_days=max(1, t["frequency_hours"] // 24) if t["frequency_hours"] else 0,
-                    priority=t.get("priority", "medium"),
-                    routine=t.get("routine", "morning"),
-                    estimated_minutes=t.get("estimated_minutes", 5),
-                    grow_types=set(t["grow_types"]) if t.get("grow_types") else None,
-                    stages=set(t["stages"]) if t.get("stages") else None,
-                )
-                for t in db_templates
-            ]
-    except Exception:
-        logger.debug("DB task templates unavailable, using hardcoded")
-    return TASK_TEMPLATES
+    db_templates = await get_all_templates(session)
+    if db_templates:
+        return [
+            TaskTemplate(
+                category=t["category"],
+                title=t["name"],
+                brief=t.get("brief", ""),
+                detail=t.get("detail"),
+                interval_days=max(1, t["frequency_hours"] // 24) if t["frequency_hours"] else 0,
+                priority=t.get("priority", "medium"),
+                routine=t.get("routine", "morning"),
+                estimated_minutes=t.get("estimated_minutes", 5),
+                grow_types=set(t["grow_types"]) if t.get("grow_types") else None,
+                stages=set(t["stages"]) if t.get("stages") else None,
+            )
+            for t in db_templates
+        ]
+    return []
+
+
+async def _load_automation_suppressions(session: AsyncSession) -> dict[str, dict]:
+    """Load automation suppressions from DB. Returns {key: {suppressed: [...], verify_task: {...}}}."""
+    from app.reference.models import AutomationSuppression
+
+    result = await session.execute(select(AutomationSuppression))
+    rows = result.scalars().all()
+    return {
+        row.automation_key: {
+            "suppressed": row.suppressed_categories or [],
+            "verify_task": row.verify_task,
+        }
+        for row in rows
+    }
 
 
 # ── Main generation logic ───────────────────────────────────────────
@@ -1612,6 +1624,10 @@ async def generate_tasks_for_grow(
     # Load templates from DB if available, fall back to hardcoded
     templates = await _load_task_templates(session)
 
+    # Load automation suppressions from DB
+    suppression_data = await _load_automation_suppressions(session)
+    suppressions = {k: v["suppressed"] for k, v in suppression_data.items()}
+
     # Track which automation verify tasks we've already generated
     automation_verify_generated: set[str] = set()
 
@@ -1623,37 +1639,39 @@ async def generate_tasks_for_grow(
         if tmpl.stages and grow.stage not in tmpl.stages:
             continue
         # Check automation suppression
-        if _is_suppressed(tmpl.category, automations):
+        if _is_suppressed(tmpl.category, automations, suppressions):
             # Generate verification task instead (once per automation type)
-            for automation, suppressed in AUTOMATION_SUPPRESSIONS.items():
+            for automation, data in suppression_data.items():
+                suppressed = data["suppressed"]
                 if (
                     automation in automations
                     and tmpl.category in suppressed
                     and automation not in automation_verify_generated
                 ):
-                    verify_tmpl = AUTOMATION_VERIFY_TASKS.get(automation)
-                    if verify_tmpl:
-                        for day_offset in range(0, horizon_days, verify_tmpl.interval_days):
+                    verify_json = data.get("verify_task")
+                    if verify_json:
+                        interval = verify_json.get("interval_days", 7)
+                        for day_offset in range(0, horizon_days, interval):
                             due_date = now + timedelta(days=day_offset)
-                            local_time = _get_routine_time(verify_tmpl.routine, tz)
+                            local_time = _get_routine_time(verify_json.get("routine", "morning"), tz)
                             due = _local_to_utc(local_time, due_date, tz)
                             cat = f"verify_{automation}"
                             if await _task_exists(session, grow.tenant_id, cat, grow.id, due):
                                 continue
                             task = Task(
                                 tenant_id=grow.tenant_id,
-                                title=verify_tmpl.title,
-                                description=verify_tmpl.brief,
+                                title=verify_json["title"],
+                                description=verify_json.get("brief", ""),
                                 status="pending",
-                                priority=verify_tmpl.priority,
+                                priority=verify_json.get("priority", "medium"),
                                 category=cat,
                                 source="auto",
                                 created_by=owner_id,
                                 grow_cycle_id=grow.id,
                                 tent_id=grow.tent_id,
                                 due_date=due,
-                                routine=verify_tmpl.routine,
-                                estimated_minutes=verify_tmpl.estimated_minutes,
+                                routine=verify_json.get("routine", "weekly"),
+                                estimated_minutes=verify_json.get("estimated_minutes", 10),
                             )
                             session.add(task)
                             created += 1
@@ -1979,7 +1997,10 @@ async def create_stage_transition_tasks(
     new_stage: str,
 ) -> int:
     """Create preparation tasks when a grow transitions to a new stage."""
-    tasks_for_stage = STAGE_TRANSITION_TASKS.get(new_stage, [])
+    from app.reference.models import StageTransitionTask
+
+    result = await session.execute(select(StageTransitionTask).where(StageTransitionTask.stage == new_stage))
+    tasks_for_stage = result.scalars().all()
     if not tasks_for_stage:
         return 0
 
@@ -1991,8 +2012,8 @@ async def create_stage_transition_tasks(
     now = datetime.now(UTC)
     created = 0
 
-    for title, brief, priority, routine, est_minutes, grow_types in tasks_for_stage:
-        if grow_types and grow.grow_type not in grow_types:
+    for stt in tasks_for_stage:
+        if stt.grow_type_slugs and grow.grow_type not in stt.grow_type_slugs:
             continue
 
         existing = (
@@ -2000,7 +2021,7 @@ async def create_stage_transition_tasks(
                 select(Task.id)
                 .where(
                     Task.grow_cycle_id == grow.id,
-                    Task.title == title,
+                    Task.title == stt.title,
                     Task.status.in_(["pending", "in_progress"]),
                 )
                 .limit(1)
@@ -2009,22 +2030,24 @@ async def create_stage_transition_tasks(
         if existing:
             continue
 
-        due_time = _local_to_utc(_get_routine_time(routine, tz), now + timedelta(days=1 if now.hour >= 9 else 0), tz)
+        due_time = _local_to_utc(
+            _get_routine_time(stt.routine, tz), now + timedelta(days=1 if now.hour >= 9 else 0), tz
+        )
 
         task = Task(
             tenant_id=grow.tenant_id,
-            title=title,
-            description=brief,
+            title=stt.title,
+            description=stt.brief,
             status="pending",
-            priority=priority,
+            priority=stt.priority,
             category="stage_transition",
             source="auto",
             created_by=owner_id,
             grow_cycle_id=grow.id,
             tent_id=grow.tent_id,
             due_date=due_time,
-            routine=routine,
-            estimated_minutes=est_minutes,
+            routine=stt.routine,
+            estimated_minutes=stt.estimated_minutes,
         )
         session.add(task)
         created += 1
