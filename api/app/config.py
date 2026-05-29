@@ -45,6 +45,7 @@ class Settings:
         default_factory=lambda: os.environ.get("OLLAMA_BASE_URL", "http://ollama.ollama.svc.cluster.local:11434")
     )
     ollama_model: str = field(default_factory=lambda: os.environ.get("OLLAMA_MODEL", "mistral-nemo:12b"))
+    ollama_vision_model: str = field(default_factory=lambda: os.environ.get("OLLAMA_VISION_MODEL", "llava:13b"))
 
     # Gemini (used for health checks)
     gemini_api_key: str = field(default_factory=lambda: os.environ.get("GEMINI_API_KEY", ""))

@@ -1170,10 +1170,41 @@ class TreatmentListResponse(BaseModel):
 @router.get("/treatments", response_model=TreatmentListResponse)
 async def list_treatments(
     user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
     category: str | None = None,
     query: str | None = None,
 ):
     """List treatment database entries, optionally filtered by category or search query."""
+    try:
+        from app.config_management.service.treatments import (
+            list_all,
+        )
+        from app.config_management.service.treatments import (
+            list_by_category as db_list_by_category,
+        )
+        from app.config_management.service.treatments import (
+            search_treatments as db_search,
+        )
+
+        if query:
+            entries = await db_search(session, query)
+        elif category:
+            entries = await db_list_by_category(session, category)
+        else:
+            entries = await list_all(session)
+
+        if entries:
+            return TreatmentListResponse(
+                items=[
+                    TreatmentSummaryResponse(id=e["id"], category=e["category"], name=e["name"], summary=e["summary"])
+                    for e in entries
+                ],
+                total=len(entries),
+            )
+    except Exception:
+        logger.debug("DB treatment lookup failed, using fallback")
+
+    # Fallback to hardcoded
     from app.ai.treatment_db import TREATMENT_DATABASE, list_by_category, search_treatments
 
     if query:
@@ -1193,19 +1224,47 @@ async def list_treatments(
 async def get_treatment_detail(
     treatment_id: str,
     user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
     grow_type: str | None = None,
 ):
     """Get detailed treatment information for a specific issue.
 
     Optionally pass grow_type to get type-specific treatment recommendations.
     """
+    # Try DB first
+    try:
+        from app.config_management.service.treatments import get_treatment as db_get_treatment
+
+        entry = await db_get_treatment(session, treatment_id)
+        if entry:
+            treatments = dict(entry.get("treatments", {}))
+            if grow_type and grow_type in treatments:
+                treatments = {grow_type: treatments[grow_type]}
+            return TreatmentDetailResponse(
+                id=entry["id"],
+                category=entry["category"],
+                name=entry["name"],
+                aka=entry["aka"],
+                summary=entry["summary"],
+                symptoms=entry["symptoms"],
+                identification_tips=entry["identification_tips"],
+                causes=entry["causes"],
+                severity_criteria=entry["severity_criteria"],
+                treatments=treatments,
+                prevention=entry["prevention"],
+                recovery_time=entry["recovery_time"],
+                commonly_confused_with=entry["commonly_confused_with"],
+            )
+    except Exception:
+        logger.debug("DB treatment detail lookup failed for %s", treatment_id)
+
+    # Fallback to hardcoded
     from app.ai.treatment_db import get_treatment
 
     entry = get_treatment(treatment_id)
     if not entry:
         raise HTTPException(status_code=404, detail="Treatment not found")
 
-    # If grow_type provided, filter treatments to relevant category
     treatments = dict(entry.treatments)
     if grow_type:
         from app.ai.treatment_db import get_treatments_for_grow_type

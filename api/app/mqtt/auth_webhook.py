@@ -22,6 +22,19 @@ logger = logging.getLogger("tendril.mqtt.auth")
 
 webhook_app = FastAPI(title="EMQX Auth Webhook")
 
+# Prometheus metrics
+from prometheus_fastapi_instrumentator import Instrumentator
+
+Instrumentator(
+    excluded_handlers=["/health", "/metrics"],
+).instrument(webhook_app).expose(webhook_app, endpoint="/metrics")
+
+
+@webhook_app.get("/health")
+async def health_check():
+    """Health check endpoint for Kubernetes liveness/readiness probes."""
+    return {"status": "ok", "service": "mqtt-worker"}
+
 
 @webhook_app.post("/auth")
 async def emqx_auth(request: Request) -> JSONResponse:

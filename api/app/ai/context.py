@@ -2,17 +2,34 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC
 
+from app.grows.grow_type_configs import get_grow_type_config
 from app.grows.grow_types import GROW_TYPE_PROFILES
+
+logger = logging.getLogger(__name__)
 
 
 def get_grow_type_profile(grow_type: str) -> dict | None:
-    """Look up the grow type profile by ID."""
+    """Look up the grow type profile by ID. Uses hardcoded data (DB service used at call sites with session)."""
     for p in GROW_TYPE_PROFILES:
         if p["id"] == grow_type:
             return p
     return None
+
+
+async def get_grow_type_profile_from_db(grow_type: str, session) -> dict | None:
+    """Look up grow type profile from DB with fallback to hardcoded."""
+    try:
+        from app.config_management.service.grow_types import get_profile
+
+        profile = await get_profile(session, grow_type)
+        if profile:
+            return profile
+    except Exception:
+        logger.debug("DB profile lookup failed for %s, using fallback", grow_type)
+    return get_grow_type_profile(grow_type)
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -376,6 +393,54 @@ def build_chat_context(
     notes = grow_data.get("notes")
     if notes:
         parts.append(f"\n=== Grower's Notes ===\n  {notes}")
+
+    # Scale & strain-type context from grow type config
+    grow_type_id = grow_data.get("grow_type", "")
+    type_config = get_grow_type_config(grow_type_id)
+    if type_config:
+        buckets_list = grow_data.get("buckets") or []
+        bucket_count = len(buckets_list)
+        # Infer scale from bucket count
+        if bucket_count >= 100:
+            scale_id = "warehouse"
+        elif bucket_count >= 25:
+            scale_id = "commercial_room"
+        elif bucket_count >= 9:
+            scale_id = "multi_tent"
+        elif bucket_count >= 2:
+            scale_id = "small_tent"
+        else:
+            scale_id = "solo"
+        scale_tiers = type_config.get("scale_tiers", [])
+        scale_info = next((t for t in scale_tiers if t["id"] == scale_id), None)
+        if scale_info:
+            parts.append(
+                f"\n=== Scale Context ===\n"
+                f"  Scale tier: {scale_info['name']} ({bucket_count} plants)\n"
+                f"  Automation level: {scale_info.get('automation_level', 'unknown')}\n"
+                f"  Notes: {scale_info.get('notes', '')}"
+            )
+
+        # Detect strain type (auto vs photo) from bucket strain profiles
+        strain_types_seen = set()
+        for b in buckets_list:
+            sp = b.get("strain_profile") or {}
+            if sp.get("strain_type"):
+                strain_types_seen.add(sp["strain_type"])
+            elif sp.get("autoflower") is True:
+                strain_types_seen.add("autoflower")
+            elif sp.get("flowering_type"):
+                strain_types_seen.add(sp["flowering_type"])
+        if strain_types_seen:
+            strain_adj = type_config.get("strain_adjustments", {})
+            for st in strain_types_seen:
+                adj = strain_adj.get(st)
+                if adj:
+                    parts.append(
+                        f"\n=== Strain Type: {adj.get('name', st)} ===\n"
+                        f"  {adj.get('description', '')}\n"
+                        f"  Nutrient strength: {adj.get('nutrient_strength', 'standard')}"
+                    )
 
     # Buckets
     buckets = grow_data.get("buckets") or []

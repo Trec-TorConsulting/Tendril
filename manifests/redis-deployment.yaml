@@ -1,3 +1,7 @@
+# DEPRECATED — replaced by redis-statefulset.yaml (persistent storage)
+# This file is kept for reference only. Do not apply it.
+# To migrate: kubectl delete deployment tendril-redis -n tendril
+#             kubectl apply -f manifests/redis-statefulset.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:

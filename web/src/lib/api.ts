@@ -1101,6 +1101,10 @@ export function getBucketExportUrl(token: string, bucketId: string, start?: stri
   return `${API_BASE}/data/export/bucket/${bucketId}?${params.toString()}`;
 }
 
+export function getGrowReportPdfUrl(token: string, growId: string) {
+  return `${API_BASE}/data/export/grow/${growId}/report?token=${encodeURIComponent(token)}`;
+}
+
 // Notification Preferences
 export interface NotificationPreference {
   id: string;
@@ -1222,6 +1226,7 @@ export function deleteConversation(token: string, id: string) {
 // ─── Plant Photo Diagnosis ─────────────────────────────────────────────────────
 
 export interface DiagnosisIssue {
+  treatment_id: string;
   name: string;
   severity: "low" | "medium" | "high" | "critical";
   confidence: number;
@@ -1235,6 +1240,8 @@ export interface DiagnoseResult {
   issues: DiagnosisIssue[];
   actions: string[];
   grow_stage_assessment: string | null;
+  model_used: string;
+  health_eval_id: string | null;
 }
 
 export function diagnosePlant(token: string, data: { image_base64: string; grow_id?: string; observations?: string }) {
@@ -2607,4 +2614,98 @@ export interface PublicBillingPlan {
 
 export function getPublicPlans() {
   return apiFetch<PublicBillingPlan[]>("/billing/plans/public");
+}
+
+// ─── Config Management (Admin) ──────────────────────────────────────────────
+
+export interface GrowTypeProfileSummary {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  sensor_kit: string | null;
+  is_system: boolean;
+}
+
+export interface GrowTypeStageData {
+  id: string;
+  name: string;
+  slug: string;
+  order: number;
+  duration_days_min: number | null;
+  duration_days_max: number | null;
+  description: string | null;
+  environment: Record<string, number | null> | null;
+  nutrients: Array<Record<string, unknown>>;
+  watering: Record<string, unknown> | null;
+}
+
+export interface GrowTypeProfileFull extends GrowTypeProfileSummary {
+  ai_context_prompt: string | null;
+  stages: GrowTypeStageData[];
+  equipment: Array<{ id: string; item_name: string; category: string | null; required: boolean; notes: string | null }>;
+  troubleshooting: Array<{ id: string; symptom: string; cause: string | null; solution: string | null; severity: string | null }>;
+}
+
+export interface TaskTemplateSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  category: string;
+  grow_type_slugs: string[] | null;
+  frequency_hours: number;
+  stage_slug: string | null;
+  priority: string;
+  routine: string | null;
+  estimated_minutes: number;
+  is_system: boolean;
+  steps: Array<{ id: string; order: number; instruction: string; duration_minutes: number | null; optional: boolean }>;
+}
+
+export function adminListGrowTypeProfiles(token: string) {
+  return apiFetch<GrowTypeProfileSummary[]>("/admin/config/grow-types", { token });
+}
+
+export function adminGetGrowTypeProfile(token: string, slug: string) {
+  return apiFetch<GrowTypeProfileFull>(`/admin/config/grow-types/${slug}`, { token });
+}
+
+export function adminCreateGrowTypeProfile(token: string, data: { name: string; slug: string; description?: string; sensor_kit?: string }) {
+  return apiFetch<{ id: string; slug: string }>("/admin/config/grow-types", { method: "POST", body: JSON.stringify(data), token });
+}
+
+export function adminUpdateGrowTypeProfile(token: string, slug: string, data: Record<string, unknown>) {
+  return apiFetch<{ id: string; slug: string }>(`/admin/config/grow-types/${slug}`, { method: "PUT", body: JSON.stringify(data), token });
+}
+
+export function adminDeleteGrowTypeProfile(token: string, slug: string) {
+  return apiFetch<void>(`/admin/config/grow-types/${slug}`, { method: "DELETE", token });
+}
+
+export function adminListTaskTemplates(token: string, params?: { category?: string; grow_type?: string }) {
+  const qs = new URLSearchParams();
+  if (params?.category) qs.set("category", params.category);
+  if (params?.grow_type) qs.set("grow_type", params.grow_type);
+  const query = qs.toString();
+  return apiFetch<TaskTemplateSummary[]>(`/admin/config/task-templates${query ? `?${query}` : ""}`, { token });
+}
+
+export function adminCreateTaskTemplate(token: string, data: Partial<TaskTemplateSummary>) {
+  return apiFetch<{ id: string; name: string }>("/admin/config/task-templates", { method: "POST", body: JSON.stringify(data), token });
+}
+
+export function adminUpdateTaskTemplate(token: string, templateId: string, data: Record<string, unknown>) {
+  return apiFetch<{ id: string }>(`/admin/config/task-templates/${templateId}`, { method: "PUT", body: JSON.stringify(data), token });
+}
+
+export function adminDeleteTaskTemplate(token: string, templateId: string) {
+  return apiFetch<void>(`/admin/config/task-templates/${templateId}`, { method: "DELETE", token });
+}
+
+export function adminExportConfig(token: string, configType: string) {
+  return apiFetch<{ type: string; count: number; data: unknown[] }>(`/admin/config/export/${configType}`, { token });
+}
+
+export function adminImportConfig(token: string, configType: string, payload: { data: unknown[] }) {
+  return apiFetch<{ status: string; count: number }>(`/admin/config/import/${configType}`, { method: "POST", body: JSON.stringify(payload), token });
 }

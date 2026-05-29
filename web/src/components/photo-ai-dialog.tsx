@@ -315,7 +315,18 @@ export function PhotoAIDialog({ open, onOpenChange, growId, initialMode, onPhoto
                               </Badge>
                             </div>
                             <p className="text-xs text-muted-foreground">{issue.description}</p>
-                            <p className="text-xs font-medium text-primary">Treatment: {issue.treatment}</p>
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs font-medium text-primary">Treatment: {issue.treatment}</p>
+                              {issue.treatment_id && issue.treatment_id !== "unknown" && (
+                                <a
+                                  href={`/dashboard/ai/treatments?id=${issue.treatment_id}`}
+                                  className="text-[10px] text-muted-foreground hover:text-primary underline"
+                                  onClick={(e) => { e.stopPropagation(); }}
+                                >
+                                  Full guide →
+                                </a>
+                              )}
+                            </div>
                           </CardContent>
                         </Card>
                       );

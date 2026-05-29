@@ -247,6 +247,18 @@ export default function AdminPage() {
               </div>
             </div>
           </div>
+
+          {/* Quick Links */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <a href="/dashboard/admin/config" className="rounded-lg border border-neutral-800 bg-neutral-900 p-4 hover:border-green-800 transition">
+              <p className="font-medium text-white">Config Management</p>
+              <p className="text-sm text-neutral-400 mt-1">Grow type configs, task templates, system settings</p>
+            </a>
+            <a href="/dashboard/admin/providers" className="rounded-lg border border-neutral-800 bg-neutral-900 p-4 hover:border-green-800 transition">
+              <p className="font-medium text-white">Payment Providers</p>
+              <p className="text-sm text-neutral-400 mt-1">Manage billing providers and webhooks</p>
+            </a>
+          </div>
         </div>
       )}
 

@@ -147,3 +147,28 @@ async def export_all(
         media_type="application/zip",
         headers={"Content-Disposition": 'attachment; filename="tendril-export.zip"'},
     )
+
+
+@router.get("/export/grow/{grow_id}/report")
+async def export_grow_report_pdf(
+    grow_id: str,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Generate a PDF report for a grow cycle with sensor stats, health evals, and journal."""
+    from app.data.reports import generate_grow_report_pdf
+    from app.grows.models import GrowCycle
+
+    grow = await session.get(GrowCycle, UUID(grow_id))
+    if not grow:
+        raise HTTPException(status_code=404, detail="Grow not found")
+
+    pdf_bytes = await generate_grow_report_pdf(session, UUID(grow_id))
+    label = grow.name or f"grow-{str(grow.id)[:8]}"
+    safe_label = label.replace("/", "-").replace("\\", "-")
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{safe_label}-report.pdf"'},
+    )

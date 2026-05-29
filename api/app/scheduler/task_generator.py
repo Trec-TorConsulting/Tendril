@@ -1557,6 +1557,36 @@ async def _build_flush_fill_description(
     return "\n".join(lines)
 
 
+# ── Template loading (DB with fallback) ─────────────────────────────
+
+
+async def _load_task_templates(session: AsyncSession) -> list[TaskTemplate]:
+    """Load task templates from DB if seeded, otherwise use hardcoded TASK_TEMPLATES."""
+    try:
+        from app.config_management.service.task_templates import get_all_templates
+
+        db_templates = await get_all_templates(session)
+        if db_templates:
+            return [
+                TaskTemplate(
+                    category=t["category"],
+                    title=t["name"],
+                    brief=t.get("brief", ""),
+                    detail=t.get("detail"),
+                    interval_days=max(1, t["frequency_hours"] // 24) if t["frequency_hours"] else 0,
+                    priority=t.get("priority", "medium"),
+                    routine=t.get("routine", "morning"),
+                    estimated_minutes=t.get("estimated_minutes", 5),
+                    grow_types=set(t["grow_types"]) if t.get("grow_types") else None,
+                    stages=set(t["stages"]) if t.get("stages") else None,
+                )
+                for t in db_templates
+            ]
+    except Exception:
+        logger.debug("DB task templates unavailable, using hardcoded")
+    return TASK_TEMPLATES
+
+
 # ── Main generation logic ───────────────────────────────────────────
 
 
@@ -1579,10 +1609,13 @@ async def generate_tasks_for_grow(
     now = datetime.now(UTC)
     created = 0
 
+    # Load templates from DB if available, fall back to hardcoded
+    templates = await _load_task_templates(session)
+
     # Track which automation verify tasks we've already generated
     automation_verify_generated: set[str] = set()
 
-    for tmpl in TASK_TEMPLATES:
+    for tmpl in templates:
         # Filter by grow type
         if tmpl.grow_types and grow.grow_type not in tmpl.grow_types:
             continue

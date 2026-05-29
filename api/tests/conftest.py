@@ -29,6 +29,18 @@ async def _setup_db():
         PaymentProvider,
     )
     from app.commercial.models import ApiKey, AuditLog, CustomGrowType, Task  # noqa: F401
+    from app.config_management import (  # noqa: F401
+        GrowTypeEnvironment,
+        GrowTypeEquipment,
+        GrowTypeNutrient,
+        GrowTypeProfile,
+        GrowTypeStage,
+        GrowTypeTroubleshooting,
+        GrowTypeWatering,
+        TaskTemplate,
+        TaskTemplateStep,
+        TenantConfigOverride,
+    )
     from app.database import Base
     from app.grows.models import (  # noqa: F401
         Bucket,
@@ -39,7 +51,6 @@ async def _setup_db():
         FeedingSchedule,
         GrowCycle,
         GrowPhoto,
-        GrowTypeProfile,
         HarvestYield,
         HealthEval,
         JournalEntry,

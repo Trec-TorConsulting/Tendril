@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 
 from app.admin.routes import router as admin_router
 from app.ai.conversation_routes import router as conversation_router
+from app.ai.diagnose_routes import router as diagnose_router
 from app.ai.routes import router as ai_router
 from app.auth.routes import router as auth_router
 from app.automation.routes import router as automation_router
@@ -24,6 +25,7 @@ from app.commercial.audit_routes import router as audit_router
 from app.commercial.grow_type_routes import router as custom_grow_types_router
 from app.commercial.task_routes import router as tasks_router
 from app.config import get_settings
+from app.config_management.routes import router as config_mgmt_router
 from app.data.routes import router as data_router
 from app.devices.routes import router as devices_router
 from app.grows.bucket_routes import router as buckets_router
@@ -70,6 +72,7 @@ async def lifespan(app: FastAPI):
 
     # Auto-seed reference data
     try:
+        from app.data.seed_treatments import seed_treatments
         from app.database import async_session_factory
         from app.reference.nutrient_sync import sync_seed_nutrients
         from app.reference.strain_sync import sync_seed_strains
@@ -78,6 +81,7 @@ async def lifespan(app: FastAPI):
         async with async_session_factory() as session:
             await sync_seed_strains(session)
             await sync_seed_nutrients(session)
+            await seed_treatments(session)
         async with async_session_factory() as session:
             await sync_kb_seed(session)
         logger.info("Reference data seeding complete")
@@ -98,6 +102,13 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
         redirect_slashes=False,
     )
+
+    # Prometheus metrics
+    from prometheus_fastapi_instrumentator import Instrumentator
+
+    Instrumentator(
+        excluded_handlers=["/health", "/health/ready", "/metrics"],
+    ).instrument(app).expose(app, endpoint="/metrics")
 
     # Security middleware
     from app.middleware.brute_force import BruteForceProtection
@@ -143,6 +154,7 @@ def create_app() -> FastAPI:
     app.include_router(weather_router, prefix=f"{settings.api_prefix}/weather", tags=["weather"])
     app.include_router(reference_router, prefix=f"{settings.api_prefix}/reference", tags=["reference"])
     app.include_router(ai_router, prefix=f"{settings.api_prefix}/ai", tags=["ai"])
+    app.include_router(diagnose_router, prefix=f"{settings.api_prefix}/ai", tags=["ai-diagnosis"])
     app.include_router(conversation_router, prefix=f"{settings.api_prefix}/conversations", tags=["conversations"])
     app.include_router(automation_router, prefix=f"{settings.api_prefix}/automation", tags=["automation"])
     app.include_router(notifications_router, prefix=f"{settings.api_prefix}/notifications", tags=["notifications"])
@@ -164,6 +176,7 @@ def create_app() -> FastAPI:
     app.include_router(audit_router, prefix=f"{settings.api_prefix}/audit", tags=["audit"])
     app.include_router(api_keys_router, prefix=f"{settings.api_prefix}/api-keys", tags=["api-keys"])
     app.include_router(admin_router, prefix=f"{settings.api_prefix}/admin", tags=["admin"])
+    app.include_router(config_mgmt_router, prefix=f"{settings.api_prefix}/admin/config", tags=["config-management"])
     app.include_router(plot_router, prefix=f"{settings.api_prefix}/grows", tags=["outdoor-plot"])
     app.include_router(soil_router, prefix=f"{settings.api_prefix}/grows", tags=["outdoor-soil"])
     app.include_router(pest_router, prefix=f"{settings.api_prefix}/grows", tags=["outdoor-pest"])

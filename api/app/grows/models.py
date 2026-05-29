@@ -415,32 +415,10 @@ class TentSensorReading(Base):
     tent: Mapped[Tent] = relationship(back_populates="ambient_readings")
 
 
-# ---------- Grow Type Profiles (seed data — read-only) ----------
-
-
-class GrowTypeProfile(Base):
-    __tablename__ = "grow_type_profiles"
-
-    id: Mapped[str] = mapped_column(String(50), primary_key=True)  # e.g., "dwc", "nft", "soil"
-    name: Mapped[str] = mapped_column(String(100), nullable=False)
-    category: Mapped[str] = mapped_column(
-        String(50), nullable=False
-    )  # hydroponic_active | hydroponic_passive | soilless | traditional | outdoor
-    description: Mapped[str] = mapped_column(Text, nullable=False)
-    terminology: Mapped[dict] = mapped_column(JSON, nullable=False)
-    sensor_kit: Mapped[str] = mapped_column(String(100), nullable=False)
-    relevant_sensors: Mapped[list] = mapped_column(JSON, nullable=False)
-    primary_sensors: Mapped[list] = mapped_column(JSON, nullable=False)
-    irrelevant_sensors: Mapped[list] = mapped_column(JSON, nullable=False)
-    unique_fields: Mapped[list] = mapped_column(JSON, nullable=False)
-    ph_range: Mapped[dict] = mapped_column(JSON, nullable=False)  # {min, max}
-    ec_range: Mapped[dict] = mapped_column(JSON, nullable=False)  # {seedling, veg, flower}
-    health_check_questions: Mapped[list] = mapped_column(JSON, nullable=False)
-    automations: Mapped[list] = mapped_column(JSON, nullable=False)
-    feeding_approach: Mapped[str] = mapped_column(Text, nullable=False)
-    nutrient_strength: Mapped[str] = mapped_column(String(50), nullable=False)
-    common_problems: Mapped[list] = mapped_column(JSON, nullable=False)
-    ai_prompt_context: Mapped[str] = mapped_column(Text, nullable=False)
+# ---------- Grow Type Profiles (migrated to config_management module) ----------
+# The GrowTypeProfile model now lives in app.config_management
+# Import from there if needed:
+# from app.config_management import GrowTypeProfile
 
 
 # ---------- Reference Strains (synced from external API) ----------
@@ -494,8 +472,35 @@ class HealthEval(Base):
     issues: Mapped[list | None] = mapped_column(JSON)
     actions: Mapped[list | None] = mapped_column(JSON)
     raw_analysis: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    source: Mapped[str] = mapped_column(String(50), default="manual")  # manual | scheduled
+    source: Mapped[str] = mapped_column(String(50), default="manual")  # manual | scheduled | diagnose
+    diagnosis_treatment_ids: Mapped[list | None] = mapped_column(JSON, default=list)
+    confidence_scores: Mapped[dict | None] = mapped_column(JSON, default=dict)
+    severity: Mapped[str | None] = mapped_column(String(20))  # low | medium | high | critical
+    model_used: Mapped[str | None] = mapped_column(String(100))  # ollama:llava | gemini-2.5-flash
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+
+# ---------- Plant Health Treatments (reference data) ----------
+
+
+class PlantHealthTreatment(Base):
+    __tablename__ = "plant_health_treatments"
+
+    id: Mapped[str] = mapped_column(String(100), primary_key=True)  # e.g., "nitrogen_deficiency"
+    category: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    aka: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    symptoms: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    identification_tips: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    causes: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    severity_criteria: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    treatments: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    prevention: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    recovery_time: Mapped[str] = mapped_column(String(100), nullable=False, default="")
+    commonly_confused_with: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
 
 # ---------- Plot Grids (outdoor soil garden layout) ----------
