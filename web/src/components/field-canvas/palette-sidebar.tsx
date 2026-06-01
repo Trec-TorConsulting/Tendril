@@ -54,6 +54,11 @@ export function PaletteSidebar() {
     }
   };
 
+  const handleDragStart = (e: React.DragEvent, item: PaletteItem) => {
+    e.dataTransfer.setData("application/x-field-canvas-item", JSON.stringify(item));
+    e.dataTransfer.effectAllowed = "copy";
+  };
+
   if (collapsed) {
     return (
       <div className="flex flex-col items-center border-r bg-background py-2 px-1 w-10">
@@ -65,7 +70,7 @@ export function PaletteSidebar() {
   }
 
   return (
-    <div className="flex flex-col border-r bg-background w-56 shrink-0">
+    <div className="flex flex-col border-r bg-background w-48 shrink-0">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b">
         <span className="text-sm font-medium">Items</span>
@@ -101,8 +106,10 @@ export function PaletteSidebar() {
                       return (
                         <button
                           key={`${item.type}-${idx}`}
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, item)}
                           className={cn(
-                            "flex w-full items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors",
+                            "flex w-full items-center gap-2 rounded-md px-2 py-1 text-xs transition-colors cursor-grab active:cursor-grabbing",
                             isActive
                               ? "bg-primary/10 text-primary ring-1 ring-primary/30"
                               : "hover:bg-muted text-foreground"

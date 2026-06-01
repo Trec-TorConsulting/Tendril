@@ -212,7 +212,7 @@ export function BaseElement({ element, isSelected, isLocked }: Props) {
         {label && element.width > 40 && (
           <Text
             text={label}
-            fontSize={10}
+            fontSize={11}
             fill="#374151"
             width={element.width}
             height={element.height}
@@ -227,6 +227,15 @@ export function BaseElement({ element, isSelected, isLocked }: Props) {
         <Transformer
           ref={trRef}
           rotateEnabled={true}
+          anchorSize={14}
+          anchorCornerRadius={3}
+          anchorStroke="#2563eb"
+          anchorFill="#dbeafe"
+          anchorStrokeWidth={2}
+          borderStroke="#2563eb"
+          borderStrokeWidth={1.5}
+          borderDash={[4, 4]}
+          padding={4}
           enabledAnchors={[
             "top-left",
             "top-right",
