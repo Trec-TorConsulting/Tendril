@@ -61,6 +61,13 @@ function ResultCards({ result }: { result: HealthCheckResult }) {
             </span>
             <span className="text-muted-foreground">/ 100</span>
           </div>
+          {result.photo_url && (
+            <img
+              src={result.photo_url}
+              alt="Health check photo"
+              className="mt-3 w-full rounded-lg object-cover"
+            />
+          )}
           {result.source === "scheduled" && (
             <p className="mt-1 text-xs text-muted-foreground">Auto check</p>
           )}
@@ -447,6 +454,13 @@ export function HealthTab({ grow, onRefresh }: HealthTabProps) {
                     )}
                   </summary>
                   <div className="border-t p-3">
+                    {eval_item.photo_url && (
+                      <img
+                        src={eval_item.photo_url}
+                        alt="Health check photo"
+                        className="mb-3 h-40 w-full rounded-lg object-cover"
+                      />
+                    )}
                     {eval_item.issues.length > 0 && (
                       <div className="mb-3">
                         <p className="mb-1 text-xs font-medium text-destructive">Issues</p>

@@ -256,6 +256,7 @@ class HealthCheckResponse(BaseModel):
     actions: list[str] = []
     raw_analysis: str = ""
     source: str = "manual"
+    photo_url: str | None = None
     created_at: str | None = None
 
 
@@ -388,6 +389,7 @@ async def run_health_check(
     grow.feeding_advice_cached_at = None
 
     # Save camera snapshot as a grow photo for the gallery
+    photo_key: str | None = None
     if camera_image:
         try:
             import asyncio
@@ -412,6 +414,7 @@ async def run_health_check(
                 caption=f"Health check snapshot (score: {score})" if score else "Health check snapshot",
             )
             session.add(grow_photo)
+            photo_key = key
         except Exception:
             logger.exception("Failed to save health check camera snapshot to S3")
 
@@ -441,8 +444,14 @@ async def run_health_check(
                 caption=f"Health check upload (score: {score})" if score else "Health check upload",
             )
             session.add(grow_photo)
+            # Prefer user-uploaded photo as the primary
+            photo_key = key
         except Exception:
             logger.exception("Failed to save user-uploaded health check image to S3")
+
+    # Link photo to health eval
+    if photo_key:
+        health_eval.photo_storage_key = photo_key
 
     await session.commit()
     await session.refresh(health_eval)
@@ -459,6 +468,15 @@ async def run_health_check(
     await record_usage(session, user.tenant_id, "ai_analyses")
     await session.commit()
 
+    # Build photo URL if photo was saved
+    photo_url: str | None = None
+    if photo_key:
+        from app.config import get_settings as _get_settings
+
+        s = _get_settings()
+        base = f"https://api.{s.domain}/v1" if s.domain else "http://localhost:8000/v1"
+        photo_url = f"{base}/photos/grow/key/{photo_key}"
+
     return HealthCheckResponse(
         id=str(health_eval.id),
         score=score,
@@ -466,6 +484,7 @@ async def run_health_check(
         actions=actions,
         raw_analysis=raw,
         source="manual",
+        photo_url=photo_url,
         created_at=health_eval.created_at.isoformat(),
     )
 
@@ -493,6 +512,16 @@ async def get_health_check_history(
         .all()
     )
 
+    from app.config import get_settings as _get_settings
+
+    s = _get_settings()
+    base = f"https://api.{s.domain}/v1" if s.domain else "http://localhost:8000/v1"
+
+    def _photo_url(e: HealthEval) -> str | None:
+        if not e.photo_storage_key:
+            return None
+        return f"{base}/photos/grow/key/{e.photo_storage_key}"
+
     return HealthCheckHistoryResponse(
         items=[
             HealthCheckResponse(
@@ -502,6 +531,7 @@ async def get_health_check_history(
                 actions=e.actions or [],
                 raw_analysis=e.raw_analysis,
                 source=e.source,
+                photo_url=_photo_url(e),
                 created_at=e.created_at.isoformat(),
             )
             for e in evals
