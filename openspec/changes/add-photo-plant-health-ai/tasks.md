@@ -1,5 +1,5 @@
 ## 1. AI Vision Integration
-- [ ] 1.1 Add vision model to Ollama (LLaVA or BakLLaVA) on Jetson node
+- [x] 1.1 Add vision model to Ollama (LLaVA or BakLLaVA) on Jetson node
 - [x] 1.2 Create `POST /v1/ai/diagnose` endpoint — accept image + grow context, return diagnosis
 - [x] 1.3 Build prompt engineering for cannabis-specific plant health diagnosis
 - [x] 1.4 Add Gemini Vision fallback for cloud-capable deployments
