@@ -1163,7 +1163,7 @@ export interface HealthCheckResult {
 export function runHealthCheck(token: string, data: { grow_id: string; observations: Record<string, string>; image_base64?: string; include_camera?: boolean }) {
   return apiFetch<HealthCheckResult>(
     "/ai/health-check",
-    { method: "POST", body: JSON.stringify(data), token, timeout: 120_000 },
+    { method: "POST", body: JSON.stringify(data), token, timeout: 180_000 },
   );
 }
 
@@ -1247,7 +1247,7 @@ export interface DiagnoseResult {
 export function diagnosePlant(token: string, data: { image_base64: string; grow_id?: string; observations?: string }) {
   return apiFetch<DiagnoseResult>(
     "/ai/diagnose",
-    { method: "POST", body: JSON.stringify(data), token, timeout: 120_000 },
+    { method: "POST", body: JSON.stringify(data), token, timeout: 180_000 },
   );
 }
 
