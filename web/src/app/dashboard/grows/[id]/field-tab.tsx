@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PlotDesigner } from "@/components/outdoor/plot-designer";
+import { FieldCanvas } from "@/components/field-canvas";
 import { SoilDashboard } from "@/components/outdoor/soil-dashboard";
 import { PestScout } from "@/components/outdoor/pest-scout";
 import { OutdoorIntelligence } from "@/components/outdoor/intelligence";
@@ -47,8 +47,8 @@ export function FieldTab({ growId, growType, tentId, buckets, devices, growStart
         </TabsList>
 
         {isSoil && (
-          <TabsContent value="plot" className="mt-4">
-            <PlotDesigner growId={growId} buckets={buckets} devices={devices} onBucketCreated={onRefresh} />
+          <TabsContent value="plot" className="mt-4 h-[calc(100vh-16rem)]">
+            <FieldCanvas growId={growId} />
           </TabsContent>
         )}
 

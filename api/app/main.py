@@ -31,6 +31,7 @@ from app.devices.routes import router as devices_router
 from app.grows.bucket_routes import router as buckets_router
 from app.grows.expense_routes import router as expense_router
 from app.grows.feeding_routes import router as feeding_router
+from app.grows.field_canvas_routes import router as field_canvas_router
 from app.grows.grow_routes import router as grows_router
 from app.grows.grow_type_routes import router as grow_types_router
 from app.grows.journal_routes import router as journal_router
@@ -178,6 +179,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_router, prefix=f"{settings.api_prefix}/admin", tags=["admin"])
     app.include_router(config_mgmt_router, prefix=f"{settings.api_prefix}/admin/config", tags=["config-management"])
     app.include_router(plot_router, prefix=f"{settings.api_prefix}/grows", tags=["outdoor-plot"])
+    app.include_router(field_canvas_router, prefix=f"{settings.api_prefix}", tags=["field-canvas"])
     app.include_router(soil_router, prefix=f"{settings.api_prefix}/grows", tags=["outdoor-soil"])
     app.include_router(pest_router, prefix=f"{settings.api_prefix}/grows", tags=["outdoor-pest"])
     app.include_router(harvest_yield_router, prefix=f"{settings.api_prefix}/grows", tags=["outdoor-yields"])
