@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from uuid import UUID
@@ -31,14 +29,14 @@ engine = create_async_engine(
 async_session_factory = async_sessionmaker(engine, expire_on_commit=False)
 
 
-async def get_db() -> AsyncGenerator[AsyncSession, None]:
+async def get_db() -> AsyncGenerator[AsyncSession]:
     """Dependency: yield a plain session (no tenant context)."""
     async with async_session_factory() as session:
         yield session
 
 
 @asynccontextmanager
-async def tenant_session(tenant_id: UUID) -> AsyncGenerator[AsyncSession, None]:
+async def tenant_session(tenant_id: UUID) -> AsyncGenerator[AsyncSession]:
     """Context manager that sets RLS tenant context for the session."""
     async with async_session_factory() as session:
         await set_rls_tenant(session, tenant_id)
@@ -53,7 +51,7 @@ async def set_rls_tenant(session: AsyncSession, tenant_id: UUID) -> None:
     )
 
 
-async def get_tenant_db(tenant_id: UUID) -> AsyncGenerator[AsyncSession, None]:
+async def get_tenant_db(tenant_id: UUID) -> AsyncGenerator[AsyncSession]:
     """Dependency version of tenant_session (for use with Depends)."""
     async with tenant_session(tenant_id) as session:
         yield session

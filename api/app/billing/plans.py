@@ -7,7 +7,7 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -59,8 +59,7 @@ class PlanResponse(BaseModel):
     included_support_tier: str
     features_json: dict[str, Any]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class PlanCreateRequest(BaseModel):
@@ -116,8 +115,7 @@ class ProviderResponse(BaseModel):
     is_primary: bool
     supported_methods: list[str] | None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ProviderCreateRequest(BaseModel):
