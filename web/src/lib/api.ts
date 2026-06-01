@@ -1321,6 +1321,7 @@ export function getCoachTip(token: string, growId: string) {
     method: "POST",
     body: JSON.stringify({ grow_id: growId }),
     token,
+    timeout: 180_000,
   });
 }
 
@@ -1329,6 +1330,7 @@ export function getAiInsight(token: string, growId: string, insightType: string)
     method: "POST",
     body: JSON.stringify({ grow_id: growId, insight_type: insightType }),
     token,
+    timeout: 180_000,
   });
 }
 
