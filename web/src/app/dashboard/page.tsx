@@ -15,6 +15,7 @@ import {
   getHarvestCountdown,
   listSensorReadings,
   listTentReadings,
+  getHealthCheckHistory,
   type DeviceResponse,
   type HarvestCountdownItem,
   type BucketResponse,
@@ -36,7 +37,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Sprout, Droplets, Thermometer, Wind, Waves, CheckCircle2, TrendingUp, CalendarIcon, FlaskConical, AlertTriangle, Wrench } from "lucide-react";
+import { Sprout, Droplets, Thermometer, Wind, Waves, CheckCircle2, TrendingUp, CalendarIcon, FlaskConical, AlertTriangle, Wrench, Heart } from "lucide-react";
 import { cn, formatCalendarDate } from "@/lib/utils";
 import { PullToRefresh } from "@/components/pull-to-refresh";
 import {
@@ -131,6 +132,7 @@ export default function DashboardPage() {
   const [lastReadingAt, setLastReadingAt] = useState<string | null>(null);
   const [bucketLastReading, setBucketLastReading] = useState<Map<string, string>>(new Map());
   const [climateData, setClimateData] = useState<ClimateDataPoint[]>([]);
+  const [healthScore, setHealthScore] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
@@ -233,6 +235,12 @@ export default function DashboardPage() {
         timeSlots.set(time, existing);
       }
       setClimateData(Array.from(timeSlots.values()));
+
+      // Fetch health score
+      try {
+        const hist = await getHealthCheckHistory(token, growId, 1);
+        setHealthScore(hist.items.length > 0 ? hist.items[0].score : null);
+      } catch { setHealthScore(null); }
     } finally {
       setLoading(false);
     }
@@ -328,6 +336,19 @@ export default function DashboardPage() {
           {selectedGrow && (
             <motion.section {...fadeUp} transition={{ duration: 0.4 }}>
               <CameraGrid key={selectedGrow.tent_id} tentId={selectedGrow.tent_id} hideEmpty />
+            </motion.section>
+          )}
+
+          {/* ─── Health Status ─────────────────────────────────── */}
+          {healthScore != null && (
+            <motion.section {...fadeUp} transition={{ duration: 0.4 }}>
+              <div className="flex items-center gap-2 rounded-lg border bg-card px-4 py-2.5">
+                <Heart className={cn("size-4", healthScore >= 80 ? "text-emerald-500" : healthScore >= 50 ? "text-yellow-500" : "text-destructive")} />
+                <span className="text-sm font-medium">Health</span>
+                <Badge variant={healthScore >= 80 ? "default" : healthScore >= 50 ? "secondary" : "destructive"} className="text-xs">
+                  {healthScore >= 80 ? "Healthy" : healthScore >= 50 ? "Needs Attention" : "Critical"} — {healthScore}/100
+                </Badge>
+              </div>
             </motion.section>
           )}
 
