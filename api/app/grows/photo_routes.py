@@ -259,6 +259,55 @@ async def serve_grow_photo(
     )
 
 
+@router.get("/grow/key/{storage_key:path}")
+async def serve_grow_photo_by_key(
+    storage_key: str,
+    request: Request,
+    sig: str = Query(None, description="HMAC signature"),
+    exp: str = Query(None, description="Expiry timestamp"),
+    tid: str = Query(None, description="Tenant ID"),
+):
+    """Serve an uploaded photo from S3 by storage key. Accepts signed URLs or cookie auth."""
+    tenant_id: str | None = None
+
+    if sig and exp and tid:
+        from app.auth.signed_url import verify_signed_url
+
+        tenant_id = verify_signed_url(request.url.path, sig, exp, tid)
+    else:
+        from jose import JWTError
+
+        from app.auth.jwt import decode_token
+
+        token = request.cookies.get("access_token")
+        if not token:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        try:
+            payload = decode_token(token)
+        except JWTError:
+            raise HTTPException(status_code=401, detail="Invalid or expired token") from None
+        tenant_id = payload.get("tid")
+        if not tenant_id:
+            raise HTTPException(status_code=403, detail="No tenant context")
+
+    # Verify the storage key belongs to this tenant
+    if not storage_key.startswith(f"{tenant_id}/"):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    loop = asyncio.get_running_loop()
+    try:
+        data, content_type = await loop.run_in_executor(None, s3_get, storage_key)
+    except Exception:
+        logger.exception("Failed to fetch photo from S3: %s", storage_key)
+        raise HTTPException(status_code=502, detail="Failed to retrieve photo") from None
+
+    return Response(
+        content=data,
+        media_type=content_type,
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
 @router.patch("/grow/{photo_id}", response_model=GrowPhotoResponse)
 async def update_grow_photo(
     photo_id: UUID,

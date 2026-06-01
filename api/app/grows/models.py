@@ -477,6 +477,7 @@ class HealthEval(Base):
     confidence_scores: Mapped[dict | None] = mapped_column(JSON, default=dict)
     severity: Mapped[str | None] = mapped_column(String(20))  # low | medium | high | critical
     model_used: Mapped[str | None] = mapped_column(String(100))  # ollama:llava | gemini-2.5-flash
+    photo_storage_key: Mapped[str | None] = mapped_column(String(1024))  # S3 key for associated photo
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
 

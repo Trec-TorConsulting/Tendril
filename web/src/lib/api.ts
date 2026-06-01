@@ -1157,6 +1157,7 @@ export interface HealthCheckResult {
   actions: string[];
   raw_analysis: string;
   source: string;
+  photo_url: string | null;
   created_at: string | null;
 }
 
