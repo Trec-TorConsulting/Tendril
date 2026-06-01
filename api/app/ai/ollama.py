@@ -130,9 +130,10 @@ async def vision_analysis(
         "options": {"num_ctx": 8192},
     }
 
-    async with httpx.AsyncClient(timeout=120) as client:
+    vision_url = settings.ollama_vision_url or settings.ollama_base_url
+    async with httpx.AsyncClient(timeout=180) as client:
         resp = await client.post(
-            f"{settings.ollama_base_url}/api/chat",
+            f"{vision_url}/api/chat",
             json=payload,
         )
         resp.raise_for_status()

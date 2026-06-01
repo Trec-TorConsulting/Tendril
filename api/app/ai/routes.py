@@ -273,7 +273,10 @@ async def run_health_check(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
-    """Run a Gemini-powered AI health check with camera image and full grow data."""
+    """Run AI health check with camera image and full grow data.
+
+    Tries local Ollama vision LLM first, falls back to Gemini if unavailable.
+    """
     from app.ai.gemini import (
         GeminiRateLimitError,
     )
@@ -283,10 +286,8 @@ async def run_health_check(
     from app.ai.gemini import (
         is_configured as gemini_configured,
     )
+    from app.ai.ollama import vision_diagnose
     from app.grows.models import GrowCycle, HealthEval
-
-    if not gemini_configured():
-        raise HTTPException(status_code=503, detail="AI health check service not configured")
 
     grow = await session.get(GrowCycle, UUID(body.grow_id))
     if not grow:
@@ -302,7 +303,7 @@ async def run_health_check(
     # Build prompt with all data
     messages = await build_health_check_prompt(grow_data, body.observations, session=session)
 
-    # Prepare images for Gemini
+    # Prepare images
     camera_image: bytes | None = grow_data.get("camera_image")
     extra_images: list[tuple[str, bytes]] = []
     if body.image_base64:
@@ -315,20 +316,42 @@ async def run_health_check(
         except Exception:
             logger.warning("Invalid base64 image from user")
 
-    try:
-        raw = await gemini_chat(
-            messages,
-            image_bytes=camera_image,
-            extra_images=extra_images or None,
-        )
-    except GeminiRateLimitError:
-        raise HTTPException(
-            status_code=429,
-            detail="AI rate limit reached. Try again in a few minutes.",
-        ) from None
-    except Exception:
-        logger.exception("Gemini health check failed")
-        raise HTTPException(status_code=503, detail="AI service unavailable") from None
+    # Try local Ollama vision first, fall back to Gemini
+    raw: str | None = None
+    if camera_image or body.image_base64:
+        # Build a combined text prompt from messages for Ollama
+        ollama_prompt = "\n\n".join(m["content"] for m in messages)
+        # Use the primary image (prefer user-uploaded, then camera)
+        image_b64 = body.image_base64 if body.image_base64 else None
+        if not image_b64 and camera_image:
+            import base64 as b64mod
+
+            image_b64 = b64mod.b64encode(camera_image).decode()
+        if image_b64:
+            try:
+                raw = await vision_diagnose(image_b64, ollama_prompt)
+                logger.info("Health check completed via local Ollama vision")
+            except Exception:
+                logger.warning("Ollama vision failed for health check, falling back to Gemini")
+
+    if raw is None:
+        if not gemini_configured():
+            raise HTTPException(status_code=503, detail="AI service unavailable (local and cloud)") from None
+        try:
+            raw = await gemini_chat(
+                messages,
+                image_bytes=camera_image,
+                extra_images=extra_images or None,
+            )
+            logger.info("Health check completed via Gemini fallback")
+        except GeminiRateLimitError:
+            raise HTTPException(
+                status_code=429,
+                detail="AI rate limit reached. Try again in a few minutes.",
+            ) from None
+        except Exception:
+            logger.exception("Gemini health check also failed")
+            raise HTTPException(status_code=503, detail="AI service unavailable") from None
 
     # Parse JSON response
     score = None
@@ -844,8 +867,10 @@ async def diagnose_plant_photo(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
-    """Diagnose plant health from a photo using Gemini Vision.
+    """Diagnose plant health from a photo using local vision LLM with Gemini fallback.
 
+    Tries Ollama LLaVA (local, on CPU node) first.
+    Falls back to Gemini Vision if local model is unavailable.
     Provides structured issues with severity, confidence, and treatment recommendations.
     Optionally pass grow_id for grow-type-aware diagnosis.
     """
@@ -858,9 +883,7 @@ async def diagnose_plant_photo(
     from app.ai.gemini import (
         is_configured as gemini_configured,
     )
-
-    if not gemini_configured():
-        raise HTTPException(status_code=503, detail="Gemini API not configured")
+    from app.ai.ollama import vision_diagnose
 
     try:
         image_bytes = base64.b64decode(body.image_base64)
@@ -931,13 +954,24 @@ async def diagnose_plant_photo(
         {"role": "user", "content": "Please analyze this plant photo and provide a full health diagnosis."},
     ]
 
+    # Try local Ollama vision first, fall back to Gemini
+    raw: str | None = None
     try:
-        raw = await gemini_chat(messages, image_bytes=image_bytes)
-    except GeminiRateLimitError:
-        raise HTTPException(status_code=429, detail="AI rate limit reached. Try again in a few minutes.") from None
+        diagnosis_prompt = f"{system_prompt}\n\nPlease analyze this plant photo and provide a full health diagnosis."
+        raw = await vision_diagnose(body.image_base64, diagnosis_prompt)
+        logger.info("Diagnose completed via local Ollama vision")
     except Exception:
-        logger.exception("Gemini diagnose failed")
-        raise HTTPException(status_code=503, detail="AI service unavailable") from None
+        logger.warning("Ollama vision failed for diagnose, falling back to Gemini")
+        if not gemini_configured():
+            raise HTTPException(status_code=503, detail="AI service unavailable (local and cloud)") from None
+        try:
+            raw = await gemini_chat(messages, image_bytes=image_bytes)
+            logger.info("Diagnose completed via Gemini fallback")
+        except GeminiRateLimitError:
+            raise HTTPException(status_code=429, detail="AI rate limit reached. Try again in a few minutes.") from None
+        except Exception:
+            logger.exception("Gemini diagnose also failed")
+            raise HTTPException(status_code=503, detail="AI service unavailable") from None
 
     # Parse response
     try:
