@@ -8,7 +8,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -66,8 +66,7 @@ class TicketSummary(BaseModel):
     updated_at: datetime
     message_count: int | None = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TicketDetail(BaseModel):
@@ -85,8 +84,7 @@ class TicketDetail(BaseModel):
     updated_at: datetime
     messages: list[MessageResponse]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class MessageResponse(BaseModel):
@@ -97,8 +95,7 @@ class MessageResponse(BaseModel):
     attachments: list | None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ─── Routes ───────────────────────────────────────────────────────────────────

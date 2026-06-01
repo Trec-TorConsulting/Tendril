@@ -1,5 +1,5 @@
 ARG BASE_REGISTRY=192.168.4.10:30500/mirror
-FROM ${BASE_REGISTRY}/python:3.12-slim-bookworm
+FROM ${BASE_REGISTRY}/python:3.14-slim-bookworm
 
 WORKDIR /app
 
