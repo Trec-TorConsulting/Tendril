@@ -32,7 +32,6 @@ import {
   type TentResponse,
   type JournalEntryResponse,
   type DeviceResponse,
-  type HealthCheckResult,
 } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -175,7 +174,6 @@ export default function GrowDetailPage() {
 
   // Health score
   const [healthScore, setHealthScore] = useState<number | null>(null);
-  const [latestHealthCheck, setLatestHealthCheck] = useState<HealthCheckResult | null>(null);
   const [openTaskCount, setOpenTaskCount] = useState(0);
 
   // Sensor trends for overview sparklines
@@ -220,10 +218,8 @@ export default function GrowDetailPage() {
 
     try {
       const hist = await getHealthCheckHistory(token, id, 1);
-      const latest = hist.items.length > 0 ? hist.items[0] : null;
-      setHealthScore(latest?.score ?? null);
-      setLatestHealthCheck(latest);
-    } catch { setHealthScore(null); setLatestHealthCheck(null); }
+      setHealthScore(hist.items.length > 0 ? hist.items[0].score : null);
+    } catch { setHealthScore(null); }
 
     try {
       const tasks = await listTasks(token, { grow_cycle_id: id, status: "pending" });
@@ -640,59 +636,6 @@ export default function GrowDetailPage() {
 
         {/* ── Camera Feed ─────────────────────────────────────────────── */}
         <CameraGrid tentId={grow.tent_id} hideEmpty />
-
-        {/* ── Health Status ───────────────────────────────────────────── */}
-        {latestHealthCheck && (
-          <motion.div {...fadeUp} transition={{ delay: 0.08 }}>
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-sm font-medium">
-                  <Heart className={cn("size-4", healthScore != null && healthScore >= 80 ? "text-emerald-500" : healthScore != null && healthScore >= 50 ? "text-yellow-500" : "text-destructive")} />
-                  Health Status
-                  {healthScore != null && (
-                    <Badge variant={healthScore >= 80 ? "default" : healthScore >= 50 ? "secondary" : "destructive"} className="ml-auto text-xs">
-                      {healthScore >= 80 ? "Healthy" : healthScore >= 50 ? "Needs Attention" : "Critical"} — {healthScore}/100
-                    </Badge>
-                  )}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-0 space-y-3">
-                {latestHealthCheck.issues.length > 0 && (
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground mb-1">Issues</p>
-                    <ul className="space-y-1">
-                      {latestHealthCheck.issues.map((issue, i) => (
-                        <li key={i} className="text-sm flex items-start gap-2">
-                          <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-destructive/70" />
-                          {issue}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {latestHealthCheck.actions.length > 0 && (
-                  <div>
-                    <p className="text-xs font-medium text-muted-foreground mb-1">Recommended Actions</p>
-                    <ul className="space-y-1">
-                      {latestHealthCheck.actions.map((action, i) => (
-                        <li key={i} className="text-sm flex items-start gap-2">
-                          <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-primary/70" />
-                          {action}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                {latestHealthCheck.issues.length === 0 && latestHealthCheck.actions.length === 0 && (
-                  <p className="text-sm text-muted-foreground">No issues detected. Your grow looks great!</p>
-                )}
-                {latestHealthCheck.created_at && (
-                  <p className="text-[11px] text-muted-foreground pt-1">Last checked {formatDateTime(latestHealthCheck.created_at)}</p>
-                )}
-              </CardContent>
-            </Card>
-          </motion.div>
-        )}
 
         {/* ── Environment + Sensor Trend Cards ────────────────────────── */}
         <motion.div variants={stagger} initial="initial" animate="animate" className={cn("grid gap-3 grid-cols-2", isActiveHydro(grow.grow_type) ? "lg:grid-cols-4" : "lg:grid-cols-4")}>
