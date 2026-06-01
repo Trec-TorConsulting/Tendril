@@ -6,7 +6,7 @@ Everything you need to contribute code to Tendril — local setup, project struc
 
 | Tool | Version | Install |
 |------|---------|---------|
-| Python | 3.12+ | [python.org](https://python.org) or `brew install python@3.12` |
+| Python | 3.14+ | [python.org](https://python.org) or `brew install python@3.14` |
 | Node.js | 20+ | [nodejs.org](https://nodejs.org) or `brew install node` |
 | PostgreSQL | 15+ | `brew install postgresql@16` or use Docker |
 | PlatformIO | Latest | `pip install platformio` or [VS Code extension](https://platformio.org) |

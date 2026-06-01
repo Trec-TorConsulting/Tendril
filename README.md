@@ -8,7 +8,7 @@ ESP32 IoT sensors · FastAPI backend · Next.js PWA · AI grow assistant
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![Firmware: MIT](https://img.shields.io/badge/Firmware-MIT-green.svg)](esp32/LICENSE)
-[![Python 3.12+](https://img.shields.io/badge/Python-3.12+-blue.svg)](https://python.org)
+[![Python 3.14+](https://img.shields.io/badge/Python-3.14+-blue.svg)](https://python.org)
 [![Next.js 16](https://img.shields.io/badge/Next.js-16-black.svg)](https://nextjs.org)
 [![PlatformIO](https://img.shields.io/badge/PlatformIO-ESP32-orange.svg)](https://platformio.org)
 
@@ -67,7 +67,7 @@ Tendril is a self-hostable, multi-tenant platform for monitoring and automating 
 
 | Service | Description | Tech |
 |---------|-------------|------|
-| **tendril-api** | REST API, WebSocket AI chat, auth, billing | Python 3.12, FastAPI, SQLAlchemy, Alembic |
+| **tendril-api** | REST API, WebSocket AI chat, auth, billing | Python 3.14, FastAPI, SQLAlchemy, Alembic |
 | **tendril-web** | Dashboard, grow management, mobile PWA | TypeScript, Next.js 16, React 19, Tailwind, shadcn/ui |
 | **tendril-mqtt-worker** | Ingests sensor data from MQTT broker | Python, aiomqtt |
 | **tendril-scheduler** | Background tasks: health checks, alerts, data retention, integration polling | Python |
@@ -118,7 +118,7 @@ tendril/
 
 | Tool | Version | Purpose |
 |------|---------|---------|
-| Python | 3.12+ | API backend |
+| Python | 3.14+ | API backend |
 | Node.js | 20+ | Web frontend |
 | PostgreSQL | 15+ | Database |
 | PlatformIO | Latest | ESP32 firmware |
