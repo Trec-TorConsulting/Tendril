@@ -14,13 +14,14 @@ Tendril is an open-source, multi-tenant SaaS platform for grow monitoring and au
 - **Firmware**: C++ (ESP32-WROOM-32), PlatformIO, Arduino, MQTT via PubSubClient
 - **AI**: Google Gemini, Ollama (local LLM), LangChain-style tool calls
 - **Infrastructure**: Docker (arm64 builds), k3s, Traefik ingress, Let's Encrypt TLS
-- **Services**: EMQX (MQTT broker), MinIO (S3-compatible storage), PostgreSQL
+- **Services**: EMQX (MQTT broker), PostgreSQL, Redis
 - **Billing**: Stripe
 
 ## Deployment
 - **Production**: k3s Kubernetes cluster with manifests in `manifests/`
 - **Local Dev**: Docker Compose (`docker-compose.yml`) with full stack
-- **Container Registry**: Configurable via `TENDRIL_REGISTRY` env var in `scripts/build.sh`
+- **Container Registry**: `192.168.4.10:30500` — local registry with filesystem storage on Longhorn PVC; configurable via `TENDRIL_REGISTRY` env var in `scripts/build.sh`
+- **Mirror Images**: `node:26-slim` and `python:3.12-slim-bookworm` mirrored to `192.168.4.10:30500/mirror/` (weekly via `mirror-base-images.yml` workflow)
 - **Domains**: Configurable via `DOMAIN` env var (defaults to `tendrilgrow.com`)
 
 ## Project Conventions
