@@ -12,8 +12,8 @@ jobs:
     strategy:
       matrix:
         include:
-          - source: python:3.12-slim-bookworm
-            target: 192.168.4.10:30500/mirror/python:3.12-slim-bookworm
+          - source: python:3.14-slim-bookworm
+            target: 192.168.4.10:30500/mirror/python:3.14-slim-bookworm
           - source: node:26-slim
             target: 192.168.4.10:30500/mirror/node:26-slim
     steps:

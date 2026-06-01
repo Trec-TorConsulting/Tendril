@@ -44,7 +44,7 @@ The primary HTTP API and WebSocket server. Handles all client requests.
 
 | Aspect | Detail |
 |--------|--------|
-| Runtime | Python 3.12, FastAPI, Uvicorn |
+| Runtime | Python 3.14, FastAPI, Uvicorn |
 | Database | SQLAlchemy 2.0 (async), asyncpg driver |
 | Auth | JWT (HS256) with access + refresh tokens |
 | Middleware | Security headers (CSP, HSTS, X-Frame-Options), rate limiting, brute-force protection |
@@ -278,7 +278,7 @@ The `manifests/` directory contains a complete production deployment:
 
 Both `api/Dockerfile` and `web/Dockerfile` produce optimized production images:
 
-- **API**: `python:3.12-slim-bookworm`, ~200MB
+- **API**: `python:3.14-slim-bookworm`, ~200MB
 - **Web**: Multi-stage build with `node:20-slim`, Next.js standalone output, ~150MB
 
 ### External Dependencies

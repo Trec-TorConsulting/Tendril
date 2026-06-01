@@ -9,7 +9,7 @@ Tendril is an open-source, multi-tenant SaaS platform for grow monitoring and au
 - **Status**: Public (switched from private on 2026-05-14), open-source, enterprise-grade quality standard
 
 ## Tech Stack
-- **API**: Python 3.12+, FastAPI, SQLAlchemy 2.0 async, asyncpg, Alembic, PostgreSQL with RLS
+- **API**: Python 3.14+, FastAPI, SQLAlchemy 2.0 async, asyncpg, Alembic, PostgreSQL with RLS
 - **Web**: TypeScript, Next.js 16, React 19, Tailwind CSS 4, shadcn/ui, custom service worker PWA
 - **Firmware**: C++ (ESP32-WROOM-32), PlatformIO, Arduino, MQTT via PubSubClient
 - **AI**: Google Gemini, Ollama (local LLM), LangChain-style tool calls
@@ -21,7 +21,7 @@ Tendril is an open-source, multi-tenant SaaS platform for grow monitoring and au
 - **Production**: k3s Kubernetes cluster with manifests in `manifests/`
 - **Local Dev**: Docker Compose (`docker-compose.yml`) with full stack
 - **Container Registry**: `192.168.4.10:30500` — local registry with filesystem storage on Longhorn PVC; configurable via `TENDRIL_REGISTRY` env var in `scripts/build.sh`
-- **Mirror Images**: `node:26-slim` and `python:3.12-slim-bookworm` mirrored to `192.168.4.10:30500/mirror/` (weekly via `mirror-base-images.yml` workflow)
+- **Mirror Images**: `node:26-slim` and `python:3.14-slim-bookworm` mirrored to `192.168.4.10:30500/mirror/` (weekly via `mirror-base-images.yml` workflow)
 - **Domains**: Configurable via `DOMAIN` env var (defaults to `tendrilgrow.com`)
 
 ## Project Conventions

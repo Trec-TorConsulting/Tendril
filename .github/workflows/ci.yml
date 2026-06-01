@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: "3.14"
       - run: pip install ruff
       - run: ruff check --config api/pyproject.toml api/
 
@@ -82,7 +82,7 @@ jobs:
     needs: [lint, manifest]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: |
           curl -LO "https://dl.k8s.io/release/$(curl -Ls https://dl.k8s.io/release/stable.txt)/bin/linux/arm64/kubectl"
           chmod +x kubectl
@@ -123,7 +123,7 @@ jobs:
   #     - uses: actions/checkout@v6
   #     - uses: actions/setup-python@v6
   #       with:
-  #         python-version: "3.12"
+  #         python-version: "3.14"
   #         cache: pip
   #     - run: pip install -r requirements.txt -r requirements-dev.txt
   #     - run: pytest --tb=short -q
@@ -156,5 +156,5 @@ jobs:
   #     - uses: actions/checkout@v6
   #     - uses: actions/setup-python@v6
   #       with:
-  #         python-version: "3.12"
+  #         python-version: "3.14"
   #     - uses: pre-commit/action@v3.0.1

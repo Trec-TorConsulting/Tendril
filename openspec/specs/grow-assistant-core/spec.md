@@ -4,7 +4,7 @@
 The core platform for the Tendril multi-tenant grow management SaaS. Provides AI-powered conversation, knowledge extraction, context-enriched plant care recommendations, and full grow lifecycle management.
 
 ### Tech Stack
-- **Backend**: FastAPI (Python 3.12, Uvicorn, async SQLAlchemy)
+- **Backend**: FastAPI (Python 3.14, Uvicorn, async SQLAlchemy)
 - **Database**: PostgreSQL (async via asyncpg, Alembic migrations, tenant_id RLS)
 - **LLM Chat**: Ollama (llama3.1:8b on node05 GPU)
 - **Vision AI**: Google Gemini 2.5-flash (health evaluations)
