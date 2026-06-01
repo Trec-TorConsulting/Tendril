@@ -10,6 +10,7 @@ import {
   getTent,
   getCoachTip,
   getGrowReportUrl,
+  listTentCameras,
   type HealthCheckResult,
   type GrowResponse,
   type TentResponse,
@@ -131,6 +132,7 @@ export function HealthTab({ grow, onRefresh }: HealthTabProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [includeCamera, setIncludeCamera] = useState(true);
+  const [hasCamera, setHasCamera] = useState(false);
   const [uploadedImage, setUploadedImage] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [autoCheck, setAutoCheck] = useState(grow.auto_health_check);
@@ -195,7 +197,11 @@ export function HealthTab({ grow, onRefresh }: HealthTabProps) {
         ]);
         setTent(tentData);
         setHistory(historyData.items);
-        setIncludeCamera(!!tentData.camera_url);
+        // Check for cameras (new TentCamera records OR legacy camera_url)
+        const cameras = await listTentCameras(token, grow.tent_id).catch(() => []);
+        const cameraAvailable = cameras.length > 0 || !!tentData.camera_url;
+        setHasCamera(cameraAvailable);
+        setIncludeCamera(cameraAvailable);
       } catch {
         setTent(null);
         setHistory([]);
@@ -236,7 +242,7 @@ export function HealthTab({ grow, onRefresh }: HealthTabProps) {
         const res = await runHealthCheck(token, {
           grow_id: grow.id,
           observations,
-          include_camera: includeCamera && !!tent?.camera_url,
+          include_camera: includeCamera && hasCamera,
           image_base64: uploadedImage || undefined,
         });
         setResult(res);
@@ -324,7 +330,7 @@ export function HealthTab({ grow, onRefresh }: HealthTabProps) {
         <CardContent className="space-y-4">
           {/* Camera + image section */}
           <div className="flex flex-wrap items-start gap-4 rounded-lg border p-3">
-            {tent?.camera_url && (
+            {hasCamera && (
               <div className="flex items-center gap-3">
                 <Camera className="size-4 text-muted-foreground" />
                 <div className="flex items-center gap-2">
@@ -366,7 +372,7 @@ export function HealthTab({ grow, onRefresh }: HealthTabProps) {
                 )}
               </div>
             </div>
-            {!tent?.camera_url && !uploadedImage && (
+            {!hasCamera && !uploadedImage && (
               <p className="text-xs text-muted-foreground">
                 No camera configured. Upload a photo for visual analysis.
               </p>
@@ -378,7 +384,7 @@ export function HealthTab({ grow, onRefresh }: HealthTabProps) {
             <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="size-4 animate-spin" />
               Running health check…
-              {(includeCamera && tent?.camera_url) && (
+              {(includeCamera && hasCamera) && (
                 <Badge variant="secondary" className="text-xs">
                   <Camera className="mr-1 size-3" />
                   Camera
