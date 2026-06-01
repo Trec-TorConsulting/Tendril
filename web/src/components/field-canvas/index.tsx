@@ -10,7 +10,7 @@ import { Toolbar } from "./toolbar";
 import { LayersPanel } from "./layers-panel";
 import { PropertiesPanel } from "./properties-panel";
 import { getAccessToken } from "@/lib/auth";
-import type { FieldCanvasResponse } from "./types";
+import type { FieldCanvasResponse, PaletteItem } from "./types";
 import { Loader2 } from "lucide-react";
 
 // Dynamically import CanvasStage to avoid SSR (Konva requires window)
@@ -34,6 +34,10 @@ export function FieldCanvas({ growId }: Props) {
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
 
   const loadCanvas = useCanvasStore((s) => s.loadCanvas);
+  const addElement = useCanvasStore((s) => s.addElement);
+  const stageX = useCanvasStore((s) => s.stageX);
+  const stageY = useCanvasStore((s) => s.stageY);
+  const scale = useCanvasStore((s) => s.scale);
 
   // Keyboard shortcuts
   useKeyboard();
@@ -93,6 +97,34 @@ export function FieldCanvas({ growId }: Props) {
     return () => observer.disconnect();
   }, []);
 
+  // ─── Drop handler for palette drag-and-drop ────────────────────────────────
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      const data = e.dataTransfer.getData("application/x-field-canvas-item");
+      if (!data) return;
+
+      const item: PaletteItem = JSON.parse(data);
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      // Convert drop coordinates to canvas space
+      const canvasX = (e.clientX - rect.left - stageX) / scale - item.defaultWidth / 2;
+      const canvasY = (e.clientY - rect.top - stageY) / scale - item.defaultHeight / 2;
+
+      addElement(item, canvasX, canvasY);
+    },
+    [stageX, stageY, scale, addElement]
+  );
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes("application/x-field-canvas-item")) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+    }
+  }, []);
+
   // ─── Render ────────────────────────────────────────────────────────────────
 
   if (loading) {
@@ -111,11 +143,13 @@ export function FieldCanvas({ growId }: Props) {
     );
   }
 
+  const [rightPanelOpen, setRightPanelOpen] = useState(true);
+
   return (
     <div className="flex h-full flex-col">
       {/* Toolbar */}
-      <div className="flex items-center justify-center px-2 py-1.5 border-b bg-muted/30">
-        <Toolbar />
+      <div className="flex items-center justify-center px-2 py-1 border-b bg-muted/30">
+        <Toolbar onToggleRightPanel={() => setRightPanelOpen((v) => !v)} rightPanelOpen={rightPanelOpen} />
       </div>
 
       {/* Main area */}
@@ -124,15 +158,22 @@ export function FieldCanvas({ growId }: Props) {
         <PaletteSidebar />
 
         {/* Canvas */}
-        <div ref={containerRef} className="flex-1 relative overflow-hidden bg-white dark:bg-stone-950">
+        <div
+          ref={containerRef}
+          className="flex-1 min-w-0 relative overflow-hidden bg-white dark:bg-stone-950"
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+        >
           <CanvasStage width={dimensions.width} height={dimensions.height} />
         </div>
 
-        {/* Layers + Properties (right) */}
-        <div className="flex flex-col">
-          <LayersPanel />
-          <PropertiesPanel />
-        </div>
+        {/* Layers + Properties (right) — collapsible */}
+        {rightPanelOpen && (
+          <div className="flex flex-col w-44 shrink-0 border-l bg-background">
+            <LayersPanel />
+            <PropertiesPanel />
+          </div>
+        )}
       </div>
     </div>
   );

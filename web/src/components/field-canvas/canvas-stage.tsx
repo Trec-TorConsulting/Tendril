@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Stage, Layer, Line, Rect } from "react-konva";
 import type Konva from "konva";
 import { useCanvasStore } from "./hooks/use-canvas-state";
@@ -36,7 +36,29 @@ export function CanvasStage({ width, height }: Props) {
 
   const { snapPoint } = useSnapGrid();
 
-  // ─── Zoom via scroll wheel ─────────────────────────────────────────────────
+  // Track Space key for temporary pan mode
+  const [spaceHeld, setSpaceHeld] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === "Space" && !e.repeat && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
+        setSpaceHeld(true);
+      }
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === "Space") setSpaceHeld(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, []);
+
+  const isDraggable = tool === "pan" || spaceHeld;
+
+  // ─── Zoom via Ctrl+scroll / pinch; Pan via two-finger scroll ────────────────
 
   const handleWheel = useCallback(
     (e: Konva.KonvaEventObject<WheelEvent>) => {
@@ -44,26 +66,32 @@ export function CanvasStage({ width, height }: Props) {
       const stage = stageRef.current;
       if (!stage) return;
 
-      const scaleBy = 1.08;
-      const oldScale = scale;
       const pointer = stage.getPointerPosition();
       if (!pointer) return;
 
-      const newScale =
-        e.evt.deltaY < 0
-          ? Math.min(oldScale * scaleBy, 4)
-          : Math.max(oldScale / scaleBy, 0.2);
+      // Ctrl+scroll (or pinch-to-zoom on trackpad) → zoom
+      if (e.evt.ctrlKey || e.evt.metaKey) {
+        const scaleBy = 1.15;
+        const oldScale = scale;
+        const newScale =
+          e.evt.deltaY < 0
+            ? Math.min(oldScale * scaleBy, 5)
+            : Math.max(oldScale / scaleBy, 0.1);
 
-      const mousePointTo = {
-        x: (pointer.x - stageX) / oldScale,
-        y: (pointer.y - stageY) / oldScale,
-      };
+        const mousePointTo = {
+          x: (pointer.x - stageX) / oldScale,
+          y: (pointer.y - stageY) / oldScale,
+        };
 
-      setViewport(
-        pointer.x - mousePointTo.x * newScale,
-        pointer.y - mousePointTo.y * newScale,
-        newScale
-      );
+        setViewport(
+          pointer.x - mousePointTo.x * newScale,
+          pointer.y - mousePointTo.y * newScale,
+          newScale
+        );
+      } else {
+        // Plain scroll (two-finger swipe on trackpad) → pan
+        setViewport(stageX - e.evt.deltaX, stageY - e.evt.deltaY, scale);
+      }
     },
     [scale, stageX, stageY, setViewport]
   );
@@ -168,13 +196,13 @@ export function CanvasStage({ width, height }: Props) {
       y={stageY}
       scaleX={scale}
       scaleY={scale}
-      draggable={tool === "pan"}
+      draggable={isDraggable}
       onWheel={handleWheel}
       onDragEnd={handleDragEnd}
       onClick={handleStageClick}
       onTap={handleStageClick as unknown as (evt: Konva.KonvaEventObject<TouchEvent>) => void}
       onContextMenu={handleContextMenu}
-      style={{ cursor: placingItem ? "crosshair" : tool === "pan" ? "grab" : "default" }}
+      style={{ cursor: placingItem ? "crosshair" : isDraggable ? "grab" : "default" }}
     >
       {/* Grid layer (always bottom) */}
       <Layer listening={false}>{renderGrid()}</Layer>

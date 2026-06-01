@@ -24,9 +24,16 @@ import {
   Save,
   Trash2,
   Copy,
+  PanelRight,
+  PanelRightClose,
 } from "lucide-react";
 
-export function Toolbar() {
+interface ToolbarProps {
+  onToggleRightPanel: () => void;
+  rightPanelOpen: boolean;
+}
+
+export function Toolbar({ onToggleRightPanel, rightPanelOpen }: ToolbarProps) {
   const {
     tool,
     setTool,
@@ -150,6 +157,16 @@ export function Toolbar() {
             Unsaved
           </Badge>
         )}
+
+        <Separator orientation="vertical" className="mx-1 h-6" />
+
+        {/* Right panel toggle */}
+        <ToolBtn
+          icon={rightPanelOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRight className="h-4 w-4" />}
+          label="Toggle Properties Panel"
+          active={rightPanelOpen}
+          onClick={onToggleRightPanel}
+        />
       </div>
     </TooltipProvider>
   );

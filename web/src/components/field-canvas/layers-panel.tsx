@@ -12,7 +12,7 @@ export function LayersPanel() {
   const sorted = [...layers].sort((a, b) => a.order - b.order);
 
   return (
-    <div className="flex flex-col border-l bg-background w-48 shrink-0">
+    <div className="flex flex-col bg-background shrink-0">
       <div className="px-3 py-2 border-b">
         <span className="text-sm font-medium">Layers</span>
       </div>
