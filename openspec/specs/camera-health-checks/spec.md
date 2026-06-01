@@ -47,6 +47,18 @@ The system SHALL perform visual plant health assessments by sending camera snaps
 - **THEN** the evaluation report is removed from the database
 
 
+### Requirement: Dashboard Health Display
+The system SHALL display a summary health status badge on the main dashboard page, showing the most recent health score for the user's active grows.
+
+#### Scenario: Health badge on dashboard
+- **WHEN** the user views the main dashboard and at least one health check exists
+- **THEN** a color-coded health badge is displayed between the camera grid and environment stats showing the score out of 100 with a status label (Healthy / Needs Attention / Critical)
+
+#### Scenario: No health data available
+- **WHEN** the user views the main dashboard and no health checks have been run
+- **THEN** the health badge section is not rendered
+
+
 ### Requirement: Automated Daily Health Checks
 The system SHALL run scheduled daily health evaluations for each configured tent and store the reports in the grow journal.
 

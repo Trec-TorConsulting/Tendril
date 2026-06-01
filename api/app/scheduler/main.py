@@ -38,7 +38,7 @@ async def main() -> None:
 
     # Leader election — only the leader runs tasks
     from app.database import async_session_factory
-    from app.scheduler.leader import release_leader, try_acquire_leader
+    from app.scheduler.leader import release_leader, run_heartbeat, try_acquire_leader
 
     async with async_session_factory() as session:
         is_leader = await try_acquire_leader(session)
@@ -57,7 +57,9 @@ async def main() -> None:
             logger.info("Elected as scheduler leader — starting tasks")
             try:
                 runner = TaskRunner(settings)
+                heartbeat_task = asyncio.create_task(run_heartbeat(session, shutdown_event))
                 await runner.run(shutdown_event)
+                heartbeat_task.cancel()
             finally:
                 set_leader(False)
                 await release_leader(session)
