@@ -41,7 +41,7 @@ python-multipart>=0.0.9,<1
 boto3>=1.34,<2
 
 # PDF report generation
-weasyprint>=62.0,<64
+weasyprint>=64,<70
 
 # Redis (optional — middleware state for multi-instance deployments)
 redis>=5.0,<6
