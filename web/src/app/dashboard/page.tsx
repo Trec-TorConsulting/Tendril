@@ -449,7 +449,7 @@ export default function DashboardPage() {
                   <EnvironmentBadgeCard
                     label="pH"
                     value={sensorTrends.ph.length > 0 ? sensorTrends.ph[sensorTrends.ph.length - 1].toFixed(1) : "—"}
-                    status={sensorTrends.ph.length > 0 ? (sensorTrends.ph[sensorTrends.ph.length - 1] >= 5.5 && sensorTrends.ph[sensorTrends.ph.length - 1] <= 6.5 ? "optimal" : "warning") : "unknown"}
+                    status={sensorTrends.ph.length > 0 ? (sensorTrends.ph[sensorTrends.ph.length - 1] >= 6.0 && sensorTrends.ph[sensorTrends.ph.length - 1] <= 7.0 ? "optimal" : "warning") : "unknown"}
                     icon={<FlaskConical className="size-5" />}
                     updatedAgo={updatedAgo}
                   />

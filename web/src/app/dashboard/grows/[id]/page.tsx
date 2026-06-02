@@ -102,7 +102,7 @@ import { NutritionYieldTab } from "./nutrition-yield-tab";
 import { HealthPhotosTab } from "./health-photos-tab";
 import { FieldTab } from "./field-tab";
 import { WeatherCard } from "./weather-card";
-import { isOutdoor, isActiveHydro, t } from "@/lib/terminology";
+import { isOutdoor, isActiveHydro, isSoil, t } from "@/lib/terminology";
 import { usePreferences } from "@/hooks/use-preferences";
 import { formatTemp, tempUnitLabel } from "@/lib/units";
 
@@ -146,7 +146,7 @@ export default function GrowDetailPage() {
 
   // Sensor reading dialog
   const [sensorDialog, setSensorDialog] = useState<{ open: boolean; bucketIds: string[]; bucketLabel: string }>({ open: false, bucketIds: [], bucketLabel: "" });
-  const [sensorForm, setSensorForm] = useState({ ph: "", ec: "", ppm: "", water_temp_f: "" });
+  const [sensorForm, setSensorForm] = useState({ ph: "", ec: "", ppm: "", water_temp_f: "", soil_moisture: "", soil_temp: "", runoff_ph: "", runoff_ec: "" });
   const [sensorSaving, setSensorSaving] = useState(false);
 
   // Tent ambient dialog
@@ -382,13 +382,17 @@ export default function GrowDetailPage() {
       if (sensorForm.ec) base.ec = parseFloat(sensorForm.ec);
       if (sensorForm.ppm) base.ppm = parseFloat(sensorForm.ppm);
       if (sensorForm.water_temp_f) base.water_temp_f = parseFloat(sensorForm.water_temp_f);
+      if (sensorForm.soil_moisture) base.soil_moisture = parseFloat(sensorForm.soil_moisture);
+      if (sensorForm.soil_temp) base.soil_temp = parseFloat(sensorForm.soil_temp);
+      if (sensorForm.runoff_ph) base.runoff_ph = parseFloat(sensorForm.runoff_ph);
+      if (sensorForm.runoff_ec) base.runoff_ec = parseFloat(sensorForm.runoff_ec);
       await Promise.all(
         sensorDialog.bucketIds.map((id) =>
           createSensorReading(token, { ...base, bucket_id: id } as Parameters<typeof createSensorReading>[1])
         )
       );
       setSensorDialog({ open: false, bucketIds: [], bucketLabel: "" });
-      setSensorForm({ ph: "", ec: "", ppm: "", water_temp_f: "" });
+      setSensorForm({ ph: "", ec: "", ppm: "", water_temp_f: "", soil_moisture: "", soil_temp: "", runoff_ph: "", runoff_ec: "" });
       refresh();
     } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to save reading"); } finally { setSensorSaving(false); }
   };
@@ -880,7 +884,7 @@ export default function GrowDetailPage() {
           </Button>
           {buckets.length > 0 && (
             <Button variant="outline" size="sm" className="gap-1.5" onClick={() => {
-              setSensorForm({ ph: "", ec: "", ppm: "", water_temp_f: "" });
+              setSensorForm({ ph: "", ec: "", ppm: "", water_temp_f: "", soil_moisture: "", soil_temp: "", runoff_ph: "", runoff_ec: "" });
               setSensorDialog({ open: true, bucketIds: buckets.map((b) => b.id), bucketLabel: `All Buckets (${buckets.length})` });
             }}>
               <Droplets className="size-3.5" /> Log Reading
@@ -889,7 +893,7 @@ export default function GrowDetailPage() {
         </motion.div>
 
         {/* ── Bucket Water Change Status ──────────────────────────────── */}
-        {buckets.length > 0 && (
+        {buckets.length > 0 && !isOutdoor(grow.grow_type) && (
           <motion.div {...fadeUp} transition={{ delay: 0.22 }}>
             <Card>
               <CardHeader className="pb-3">
@@ -952,10 +956,21 @@ export default function GrowDetailPage() {
                           </div>
                           {r ? (
                             <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                              {r.ph != null && <span>pH <strong className="text-foreground">{r.ph.toFixed(1)}</strong></span>}
-                              {r.ec != null && <span>EC <strong className="text-foreground">{r.ec.toFixed(2)}</strong></span>}
-                              {r.ppm != null && <span>PPM <strong className="text-foreground">{Math.round(r.ppm)}</strong></span>}
-                              {r.water_temp_f != null && <span>{formatTemp(r.water_temp_f, "f", prefs.temp_unit, 0)}</span>}
+                              {isSoil(grow.grow_type) ? (
+                                <>
+                                  {r.soil_moisture != null && <span>Moisture <strong className="text-foreground">{Math.round(r.soil_moisture)}%</strong></span>}
+                                  {r.soil_temp != null && <span>Soil {formatTemp(r.soil_temp, "f", prefs.temp_unit, 0)}</span>}
+                                  {r.runoff_ph != null && <span>Runoff pH <strong className="text-foreground">{r.runoff_ph.toFixed(1)}</strong></span>}
+                                  {r.runoff_ec != null && <span>Runoff EC <strong className="text-foreground">{r.runoff_ec.toFixed(2)}</strong></span>}
+                                </>
+                              ) : (
+                                <>
+                                  {r.ph != null && <span>pH <strong className="text-foreground">{r.ph.toFixed(1)}</strong></span>}
+                                  {r.ec != null && <span>EC <strong className="text-foreground">{r.ec.toFixed(2)}</strong></span>}
+                                  {r.ppm != null && <span>PPM <strong className="text-foreground">{Math.round(r.ppm)}</strong></span>}
+                                  {r.water_temp_f != null && <span>{formatTemp(r.water_temp_f, "f", prefs.temp_unit, 0)}</span>}
+                                </>
+                              )}
                             </div>
                           ) : (
                             <p className="text-xs text-muted-foreground/60">No readings yet</p>
@@ -982,7 +997,7 @@ export default function GrowDetailPage() {
               latestReadings={latestReadings}
               onRefresh={refresh}
               onOpenSensorDialog={(bucketId, label) => {
-                setSensorForm({ ph: "", ec: "", ppm: "", water_temp_f: "" });
+                setSensorForm({ ph: "", ec: "", ppm: "", water_temp_f: "", soil_moisture: "", soil_temp: "", runoff_ph: "", runoff_ec: "" });
                 setSensorDialog({ open: true, bucketIds: [bucketId], bucketLabel: label });
               }}
             />
@@ -1081,21 +1096,36 @@ export default function GrowDetailPage() {
           </DialogHeader>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <Label className="text-xs">pH</Label>
-              <Input type="number" step="0.1" placeholder="e.g. 5.8" value={sensorForm.ph} onChange={(e) => setSensorForm((p) => ({ ...p, ph: e.target.value }))} />
+              <Label className="text-xs">{isSoil(grow.grow_type) ? "Runoff pH" : "pH"}</Label>
+              <Input type="number" step="0.1" placeholder="e.g. 5.8" value={isSoil(grow.grow_type) ? sensorForm.runoff_ph : sensorForm.ph} onChange={(e) => setSensorForm((p) => ({ ...p, [isSoil(grow.grow_type) ? "runoff_ph" : "ph"]: e.target.value }))} />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">EC (mS/cm)</Label>
-              <Input type="number" step="0.01" placeholder="e.g. 1.20" value={sensorForm.ec} onChange={(e) => setSensorForm((p) => ({ ...p, ec: e.target.value }))} />
+              <Label className="text-xs">{isSoil(grow.grow_type) ? "Runoff EC (mS/cm)" : "EC (mS/cm)"}</Label>
+              <Input type="number" step="0.01" placeholder="e.g. 1.20" value={isSoil(grow.grow_type) ? sensorForm.runoff_ec : sensorForm.ec} onChange={(e) => setSensorForm((p) => ({ ...p, [isSoil(grow.grow_type) ? "runoff_ec" : "ec"]: e.target.value }))} />
             </div>
-            <div className="space-y-1">
-              <Label className="text-xs">PPM</Label>
-              <Input type="number" step="1" placeholder="e.g. 850" value={sensorForm.ppm} onChange={(e) => setSensorForm((p) => ({ ...p, ppm: e.target.value }))} />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Water Temp {tempUnitLabel(prefs.temp_unit)}</Label>
-              <Input type="number" step="0.1" placeholder="e.g. 68.0" value={sensorForm.water_temp_f} onChange={(e) => setSensorForm((p) => ({ ...p, water_temp_f: e.target.value }))} />
-            </div>
+            {!isSoil(grow.grow_type) && (
+              <div className="space-y-1">
+                <Label className="text-xs">PPM</Label>
+                <Input type="number" step="1" placeholder="e.g. 850" value={sensorForm.ppm} onChange={(e) => setSensorForm((p) => ({ ...p, ppm: e.target.value }))} />
+              </div>
+            )}
+            {isSoil(grow.grow_type) ? (
+              <>
+                <div className="space-y-1">
+                  <Label className="text-xs">Soil Moisture (%)</Label>
+                  <Input type="number" step="1" placeholder="e.g. 45" value={sensorForm.soil_moisture} onChange={(e) => setSensorForm((p) => ({ ...p, soil_moisture: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Soil Temp {tempUnitLabel(prefs.temp_unit)}</Label>
+                  <Input type="number" step="0.1" placeholder="e.g. 72.0" value={sensorForm.soil_temp} onChange={(e) => setSensorForm((p) => ({ ...p, soil_temp: e.target.value }))} />
+                </div>
+              </>
+            ) : (
+              <div className="space-y-1">
+                <Label className="text-xs">Water Temp {tempUnitLabel(prefs.temp_unit)}</Label>
+                <Input type="number" step="0.1" placeholder="e.g. 68.0" value={sensorForm.water_temp_f} onChange={(e) => setSensorForm((p) => ({ ...p, water_temp_f: e.target.value }))} />
+              </div>
+            )}
           </div>
           <p className="text-xs text-muted-foreground">Ambient temp & humidity are logged at the tent level. <button type="button" className="underline" onClick={() => { setSensorDialog({ open: false, bucketIds: [], bucketLabel: "" }); setAmbientDialog(true); }}>Log ambient reading →</button></p>
           <DialogFooter>
