@@ -142,11 +142,16 @@ async def propagate_header_bucket_readings(
 ) -> int:
     """For RDWC header buckets, duplicate the reading to all site buckets
     in the same grow cycle. Returns the number of extra rows written."""
-    from app.grows.models import Bucket, BucketSensorReading
+    from app.grows.models import Bucket, BucketSensorReading, GrowCycle
 
     # Look up the header bucket and verify its role
     header = await session.get(Bucket, uuid.UUID(header_bucket_id))
     if not header or header.role != "header":
+        return 0
+
+    # Only propagate for RDWC grows (shared reservoir)
+    grow = await session.get(GrowCycle, header.grow_cycle_id)
+    if not grow or grow.grow_type != "rdwc":
         return 0
 
     # Find all site buckets in the same grow cycle

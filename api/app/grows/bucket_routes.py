@@ -84,24 +84,28 @@ async def create_bucket(
     if body.role not in ("site", "header"):
         raise HTTPException(status_code=400, detail="Invalid role: must be 'site' or 'header'")
 
-    # For RDWC grows, enforce at most one header per grow
+    # Only RDWC grows support a header bucket (shared reservoir)
     if body.role == "header":
         grow = await session.get(GrowCycle, body.grow_cycle_id)
         if not grow:
             raise HTTPException(status_code=404, detail="Grow cycle not found")
-        if grow.grow_type == "rdwc":
-            existing_header = await session.scalar(
-                select(Bucket).where(
-                    Bucket.grow_cycle_id == body.grow_cycle_id,
-                    Bucket.role == "header",
-                )
+        if grow.grow_type != "rdwc":
+            raise HTTPException(
+                status_code=400,
+                detail=f"Header buckets are only supported for RDWC grows, not '{grow.grow_type}'.",
             )
-            if existing_header:
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"RDWC grow already has a header bucket: {existing_header.label or 'Unnamed'}. "
-                    "Only one header is allowed per grow. Update the existing header's role to 'site' first.",
-                )
+        existing_header = await session.scalar(
+            select(Bucket).where(
+                Bucket.grow_cycle_id == body.grow_cycle_id,
+                Bucket.role == "header",
+            )
+        )
+        if existing_header:
+            raise HTTPException(
+                status_code=409,
+                detail=f"RDWC grow already has a header bucket: {existing_header.label or 'Unnamed'}. "
+                "Only one header is allowed per grow. Update the existing header's role to 'site' first.",
+            )
 
     data = body.model_dump()
     # Auto-populate strain_name from strain if strain_id provided
