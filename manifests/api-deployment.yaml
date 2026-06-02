@@ -20,6 +20,7 @@ spec:
       labels:
         app: tendril-api
     spec:
+      terminationGracePeriodSeconds: 60
       topologySpreadConstraints:
       - maxSkew: 1
         topologyKey: kubernetes.io/hostname
@@ -78,6 +79,10 @@ spec:
         image: 192.168.4.10:30500/tendril-api:latest  # Replace with your registry
         ports:
         - containerPort: 8000
+        lifecycle:
+          preStop:
+            exec:
+              command: ["sh", "-c", "sleep 5"]
         securityContext:
           runAsNonRoot: true
           runAsUser: 1000
