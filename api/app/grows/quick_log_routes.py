@@ -338,6 +338,8 @@ async def quick_log_batch(
     """Replay offline-queued quick-log actions. Processes each action in order."""
     succeeded = 0
     errors: list[str] = []
+    # Track readings that need RDWC header→site propagation
+    readings_to_propagate: list[BucketSensorReading] = []
 
     for i, action in enumerate(body.actions):
         try:
@@ -364,17 +366,17 @@ async def quick_log_batch(
                     _ec = round(_ppm / 500.0, 3)
 
                 for bucket in buckets:
-                    session.add(
-                        BucketSensorReading(
-                            tenant_id=user.tenant_id,
-                            bucket_id=bucket.id,
-                            ph=req.ph,
-                            ec=_ec,
-                            ppm=_ppm,
-                            water_temp_f=req.water_temp_f,
-                            recorded_at=action.client_timestamp,
-                        )
+                    reading = BucketSensorReading(
+                        tenant_id=user.tenant_id,
+                        bucket_id=bucket.id,
+                        ph=req.ph,
+                        ec=_ec,
+                        ppm=_ppm,
+                        water_temp_f=req.water_temp_f,
+                        recorded_at=action.client_timestamp,
                     )
+                    session.add(reading)
+                    readings_to_propagate.append(reading)
                     session.add(
                         JournalEntry(
                             tenant_id=user.tenant_id,
@@ -460,17 +462,17 @@ async def quick_log_batch(
                 elif _ppm is not None and _ec is None:
                     _ec = round(_ppm / 500.0, 3)
                 for bucket in buckets:
-                    session.add(
-                        BucketSensorReading(
-                            tenant_id=user.tenant_id,
-                            bucket_id=bucket.id,
-                            ph=req.ph,
-                            ec=_ec,
-                            ppm=_ppm,
-                            water_temp_f=req.water_temp_f,
-                            recorded_at=action.client_timestamp,
-                        )
+                    reading = BucketSensorReading(
+                        tenant_id=user.tenant_id,
+                        bucket_id=bucket.id,
+                        ph=req.ph,
+                        ec=_ec,
+                        ppm=_ppm,
+                        water_temp_f=req.water_temp_f,
+                        recorded_at=action.client_timestamp,
                     )
+                    session.add(reading)
+                    readings_to_propagate.append(reading)
                     session.add(
                         JournalEntry(
                             tenant_id=user.tenant_id,
@@ -494,6 +496,14 @@ async def quick_log_batch(
                 errors.append(f"Action {i}: unknown type '{action.type}'")
         except Exception as exc:
             errors.append(f"Action {i}: {exc!s}")
+
+    # Propagate header readings to site buckets for RDWC grows
+    if readings_to_propagate:
+        await session.flush()
+        from app.integrations.connectors.base import propagate_header_bucket_readings
+
+        for reading in readings_to_propagate:
+            await propagate_header_bucket_readings(session, str(reading.bucket_id), reading)
 
     await session.commit()
     return BatchResponse(
