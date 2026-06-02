@@ -117,13 +117,18 @@ def _fmt_journal(entries: list[dict]) -> str:
     parts = []
     for j in entries:
         date = j["created_at"][:10] if j.get("created_at") else "?"
-        line = f"  {date} [{j['event_type']}] {j.get('content', '')}"
+        content = j.get("content") or ""
+        line = f"  {date} [{j['event_type']}] {content}"
         # Include payload data (pH readings, EC values, nutrient amounts, etc.)
         payload = j.get("payload")
         if payload and isinstance(payload, dict):
             details = ", ".join(f"{k}: {v}" for k, v in payload.items() if v is not None and k != "bucket_id")
             if details:
                 line += f"\n    Data: {details}"
+            else:
+                line += "\n    ⚠️ No measurement data logged"
+        elif j["event_type"] in ("water_change", "reservoir_change", "feeding", "nutrient_adjustment"):
+            line += "\n    ⚠️ No measurement data logged (missing pH, EC, volume, nutrients)"
         parts.append(line)
     return "\n".join(parts)
 
@@ -760,10 +765,32 @@ async def build_health_check_prompt(
     if buckets:
         sections.append(f"=== Plants/Buckets ({len(buckets)}) ===\n" + _fmt_bucket_list(buckets))
 
+    # Data freshness warning
+    sensor_age = grow_data.get("sensor_data_age_hours")
+    if grow_data.get("sensor_data_stale"):
+        if sensor_age is not None:
+            days_old = sensor_age / 24
+            age_str = f"{days_old:.1f} days ({sensor_age:.0f} hours)" if days_old >= 1 else f"{sensor_age:.1f} hours"
+            sections.append(
+                f"=== ⚠️ DATA FRESHNESS WARNING ===\n"
+                f"  Sensor data is STALE — last reading was {age_str} ago.\n"
+                f"  Sensors may be offline or disconnected. The readings below are NOT current.\n"
+                f"  Do NOT treat these as the plant's current state. Factor this data gap into your assessment.\n"
+                f"  Any tasks completed AFTER the sensor timestamp cannot be validated against sensor data."
+            )
+        else:
+            sections.append(
+                "=== ⚠️ DATA FRESHNESS WARNING ===\n"
+                "  NO sensor data available at all. Sensors may be offline or not configured.\n"
+                "  Assessment will be limited to observations, journal entries, and task history only."
+            )
+
     # Sensors
     bucket_sensors = grow_data.get("bucket_sensors") or {}
     if bucket_sensors:
         s = "=== Latest Sensor Readings ==="
+        if sensor_age and sensor_age > 6:
+            s += f" [⚠️ STALE: {sensor_age:.0f}h old]"
         for pos, readings in bucket_sensors.items():
             s += f"\n  Bucket {pos}:\n" + _fmt_sensors(readings)
         sections.append(s)
@@ -772,6 +799,43 @@ async def build_health_check_prompt(
     trends = grow_data.get("sensor_trends")
     if trends:
         sections.append("=== Sensor Trends (24h) ===\n" + _fmt_trends(trends))
+
+    # Tent ambient environment
+    tent_ambient = grow_data.get("tent_ambient")
+    if tent_ambient:
+        amb_lines = []
+        if tent_ambient.get("ambient_temp_f") is not None:
+            amb_lines.append(f"  Ambient Temp: {tent_ambient['ambient_temp_f']}°F")
+        if tent_ambient.get("ambient_humidity") is not None:
+            amb_lines.append(f"  Ambient Humidity: {tent_ambient['ambient_humidity']}%")
+        if tent_ambient.get("recorded_at"):
+            amb_lines.append(f"  Recorded: {tent_ambient['recorded_at']}")
+        if tent_ambient.get("hours_old") and tent_ambient["hours_old"] > 6:
+            amb_lines.append(f"  ⚠️ STALE: {tent_ambient['hours_old']:.0f} hours old")
+        if amb_lines:
+            sections.append("=== Tent Environment ===\n" + "\n".join(amb_lines))
+    else:
+        sections.append(
+            "=== Tent Environment ===\n"
+            "  ⚠️ No ambient temperature/humidity data available.\n"
+            "  VPD cannot be calculated. Environment sensors may be offline or not configured."
+        )
+
+    # Ambient trends
+    ambient_trends = grow_data.get("ambient_trends")
+    if ambient_trends:
+        amb_trend_lines = [
+            f"  Period: {ambient_trends.get('period_hours', 24)}h ({ambient_trends.get('reading_count', 0)} readings)"
+        ]
+        for field in ("ambient_temp_f", "ambient_humidity"):
+            avg = ambient_trends.get(f"{field}_avg")
+            if avg is not None:
+                label = "Temp" if "temp" in field else "Humidity"
+                unit = "°F" if "temp" in field else "%"
+                lo = ambient_trends.get(f"{field}_min")
+                hi = ambient_trends.get(f"{field}_max")
+                amb_trend_lines.append(f"  {label}: avg {avg}{unit} (range {lo}-{hi}{unit})")
+        sections.append("=== Ambient Trends (24h) ===\n" + "\n".join(amb_trend_lines))
 
     # Feeding
     feeds = grow_data.get("feeding_schedules") or []
