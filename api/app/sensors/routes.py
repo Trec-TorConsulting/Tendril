@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID
@@ -14,6 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
 from app.grows.models import BucketSensorReading
 from app.pagination import PaginatedResponse, PaginationParams, paginate
+
+logger = logging.getLogger("tendril.sensors")
 
 router = APIRouter()
 
@@ -94,6 +97,26 @@ async def create_reading(
 
     await session.commit()
     await session.refresh(reading)
+
+    # Evaluate real-time alerts in background (non-blocking)
+    try:
+        from app.automation.engine import (
+            evaluate_composite_alerts,
+            evaluate_critical_alerts,
+            evaluate_trend_alerts,
+        )
+        from app.grows.models import Bucket, GrowCycle
+
+        bucket = await session.get(Bucket, reading.bucket_id)
+        if bucket and bucket.grow_cycle_id:
+            grow = await session.get(GrowCycle, bucket.grow_cycle_id)
+            if grow:
+                await evaluate_critical_alerts(session, grow.grow_type, user.tenant_id, grow.id, reading)
+                await evaluate_composite_alerts(session, grow.grow_type, user.tenant_id, grow.id, reading)
+                await evaluate_trend_alerts(session, grow.grow_type, user.tenant_id, grow.id, reading.bucket_id)
+    except Exception:
+        logger.debug("Alert evaluation failed for reading %s", reading.id, exc_info=True)
+
     return reading
 
 

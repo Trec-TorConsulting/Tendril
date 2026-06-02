@@ -408,8 +408,11 @@ class TaskRunner:
             logger.exception("Alert eval task failed")
 
     async def _rule_eval(self) -> None:
-        """Evaluate automation rules against latest sensor readings."""
-        from app.automation.engine import evaluate_rules
+        """Evaluate automation rules, trend alerts, composite alerts, and escalation."""
+        from app.automation.engine import (
+            escalate_unacknowledged_alerts,
+            evaluate_rules,
+        )
         from app.database import async_session_factory
 
         try:
@@ -417,6 +420,11 @@ class TaskRunner:
                 triggered = await evaluate_rules(session)
                 if triggered:
                     logger.info("Rule eval triggered %d alerts", len(triggered))
+
+                # Escalate stale unacknowledged alerts
+                escalated = await escalate_unacknowledged_alerts(session)
+                if escalated:
+                    logger.info("Escalated %d unacknowledged alerts", escalated)
         except Exception:
             logger.exception("Rule eval task failed")
 

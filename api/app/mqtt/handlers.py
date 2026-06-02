@@ -212,6 +212,24 @@ async def store_sensor_reading(tenant_id: UUID, device_id_str: str, sensor_type:
             await propagate_header_bucket_readings(session, str(bucket.id), reading)
 
             await session.commit()
+
+            # Evaluate real-time alerts (non-blocking — failures logged but don't fail ingestion)
+            try:
+                from app.automation.engine import (
+                    evaluate_composite_alerts,
+                    evaluate_critical_alerts,
+                    evaluate_trend_alerts,
+                )
+                from app.grows.models import GrowCycle
+
+                grow = await session.get(GrowCycle, bucket.grow_cycle_id)
+                if grow:
+                    await evaluate_critical_alerts(session, grow.grow_type, tenant_id, grow.id, reading)
+                    await evaluate_composite_alerts(session, grow.grow_type, tenant_id, grow.id, reading)
+                    await evaluate_trend_alerts(session, grow.grow_type, tenant_id, grow.id, bucket.id)
+            except Exception:
+                logger.debug("Alert evaluation failed for bucket %s", bucket.id, exc_info=True)
+
             logger.debug(
                 "Stored bucket reading for bucket %s (position %s)",
                 bucket.id,
