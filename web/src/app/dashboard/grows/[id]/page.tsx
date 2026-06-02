@@ -437,7 +437,7 @@ export default function GrowDetailPage() {
         name: cloneName.trim(),
         grow_type: grow.grow_type,
       });
-      // Copy buckets
+      // Copy buckets (preserve role for RDWC header buckets)
       for (const b of buckets) {
         await createBucket(token, {
           grow_cycle_id: newGrow.id,
@@ -446,6 +446,7 @@ export default function GrowDetailPage() {
           strain_name: b.strain_name || undefined,
           position: b.position,
           volume_gallons: b.volume_gallons || undefined,
+          role: b.role,
         });
       }
       // Copy settings (including nutrient brand selection)
