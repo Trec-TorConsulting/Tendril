@@ -232,11 +232,26 @@ class TuyaConnector(BaseConnector):
                         # Merge log DPs — prefer log value over /status when
                         # /status has a zero or null value (common for pH sensors)
                         status_map = {s.get("code"): s for s in statuses}
+                        # Build set of Tendril fields already covered by /status
+                        # so log entries with different DP codes don't overwrite them
+                        covered_fields: set[str] = set()
+                        custom_mapping = dm.sensor_mapping or {}
+                        for s in statuses:
+                            sc = (s.get("code") or "").lower()
+                            if s.get("value"):
+                                if sc in custom_mapping:
+                                    covered_fields.add(custom_mapping[sc])
+                                elif sc in _WATER_DP_MAP:
+                                    covered_fields.add(_WATER_DP_MAP[sc])
                         for ls in log_statuses:
                             code = ls.get("code")
                             existing = status_map.get(code)
                             if existing is None:
-                                # Not in /status at all — add from logs
+                                # Check if another /status DP already maps to the same Tendril field
+                                lc = (code or "").lower()
+                                tendril_field = custom_mapping.get(lc) or _WATER_DP_MAP.get(lc)
+                                if tendril_field and tendril_field in covered_fields:
+                                    continue  # /status already has a value for this field
                                 statuses.append(ls)
                             elif not existing.get("value"):
                                 # In /status but zero/null — override with log value
