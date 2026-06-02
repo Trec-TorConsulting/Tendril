@@ -172,7 +172,7 @@ async def store_sensor_reading(tenant_id: UUID, device_id_str: str, sensor_type:
             bucket = (
                 await session.execute(
                     select(Bucket)
-                    .join(GrowCycle, Bucket.grow_cycle_id == GrowCycle.id)
+                    .join(GrowCycle, Bucket.grow_cycle_id == GrowCycle.id)  # noqa: F823
                     .where(
                         GrowCycle.tent_id == device.tent_id,
                         GrowCycle.tenant_id == tenant_id,
