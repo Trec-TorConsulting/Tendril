@@ -35,7 +35,7 @@ async def get_grow_type_config_from_db(grow_type: str, session) -> dict | None:
 
 def _fmt_sensors(sensors: dict) -> str:
     """Format a bucket's sensor dict as readable lines."""
-    skip = {"recorded_at"}
+    skip = {"recorded_at", "hours_old"}
     lines = []
     for k, v in sensors.items():
         if k in skip or v is None:
@@ -461,10 +461,23 @@ async def build_chat_context(
     if buckets:
         parts.append(f"\n=== Plants/Buckets ({len(buckets)}) ===\n" + _fmt_bucket_list(buckets))
 
+    # Data freshness warning (chat)
+    sensor_age = grow_data.get("sensor_data_age_hours")
+    if grow_data.get("sensor_data_stale") and sensor_age is not None:
+        days_old = sensor_age / 24
+        age_str = f"{days_old:.1f} days" if days_old >= 1 else f"{sensor_age:.1f} hours"
+        parts.append(
+            f"\n=== ⚠️ SENSOR DATA WARNING ===\n"
+            f"  Sensor data is {age_str} old. Sensors may be offline.\n"
+            f"  Readings below are NOT current — factor this into advice."
+        )
+
     # Latest sensors
     bucket_sensors = grow_data.get("bucket_sensors") or {}
     if bucket_sensors:
         sensor_section = "\n=== Latest Sensor Readings ==="
+        if sensor_age and sensor_age > 6:
+            sensor_section += f" [⚠️ {sensor_age:.0f}h old]"
         for pos, readings in bucket_sensors.items():
             sensor_section += f"\n  Bucket {pos}:\n" + _fmt_sensors(readings)
         parts.append(sensor_section)
@@ -479,6 +492,8 @@ async def build_chat_context(
             ambient_lines.append(f"  Ambient Humidity: {tent_ambient['ambient_humidity']}%")
         if tent_ambient.get("recorded_at"):
             ambient_lines.append(f"  Recorded: {tent_ambient['recorded_at']}")
+        if tent_ambient.get("hours_old") and tent_ambient["hours_old"] > 6:
+            ambient_lines.append(f"  ⚠️ STALE: {tent_ambient['hours_old']:.0f}h old")
         if ambient_lines:
             parts.append("\n=== Tent Environment (shared) ===\n" + "\n".join(ambient_lines))
 
@@ -1161,8 +1176,14 @@ async def build_feeding_advice_prompt(grow_data: dict, session=None) -> list[dic
     # Sensor readings
     if grow_data.get("bucket_sensors"):
         sensor_lines = []
+        if grow_data.get("sensor_data_stale"):
+            sensor_lines.append(
+                f"  ⚠️ DATA IS {grow_data.get('sensor_data_age_hours', '?')} HOURS OLD — sensors may be offline"
+            )
         for pos, readings in grow_data["bucket_sensors"].items():
-            sensor_lines.append(f"  Bucket #{pos}: " + ", ".join(f"{k}={v}" for k, v in readings.items()))
+            sensor_lines.append(
+                f"  Bucket #{pos}: " + ", ".join(f"{k}={v}" for k, v in readings.items() if k != "hours_old")
+            )
         sections.append("## Latest Sensor Readings\n" + "\n".join(sensor_lines))
 
     if grow_data.get("sensor_trends"):
