@@ -207,46 +207,7 @@ export default function AutomationPage() {
           </TabsContent>
 
           <TabsContent value="alerts">
-            <div className="mt-4 space-y-3">
-              {alerts.length === 0 ? (
-                <Card className="flex flex-col items-center justify-center py-16">
-                  <AlertTriangle className="size-12 text-muted-foreground/50" />
-                  <h3 className="mt-4 text-lg font-semibold">No alerts</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Alerts will appear here when automation rules are triggered.
-                  </p>
-                </Card>
-              ) : (
-                alerts.map((alert) => (
-                  <Card
-                    key={alert.id}
-                    className={cn(
-                      "flex items-center justify-between p-4",
-                      alert.acknowledged && "opacity-60"
-                    )}
-                  >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant={severityVariant(alert.severity)}>
-                          {alert.severity}
-                        </Badge>
-                        <span className="text-sm">{alert.message}</span>
-                      </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {formatDateTime(alert.created_at)}
-                        {alert.sensor_value != null && ` — Value: ${alert.sensor_value}`}
-                      </p>
-                    </div>
-                    {!alert.acknowledged && (
-                      <Button variant="outline" size="sm" onClick={() => handleAcknowledge(alert.id)}>
-                        <CheckCircle2 className="mr-1 size-4" />
-                        Acknowledge
-                      </Button>
-                    )}
-                  </Card>
-                ))
-              )}
-            </div>
+            <AlertsPanel alerts={alerts} onAcknowledge={handleAcknowledge} severityVariant={severityVariant} />
           </TabsContent>
         </Tabs>
       </div>
@@ -260,6 +221,132 @@ export default function AutomationPage() {
         }}
       />
     </>
+  );
+}
+
+// ── Alerts Panel with Filtering ──────────────────────────────────────────────
+
+function alertCategory(alertType: string): string {
+  if (alertType.startsWith("trend_")) return "Trend";
+  if (alertType.startsWith("composite_")) return "Composite";
+  if (alertType.startsWith("critical_")) return "Critical";
+  if (alertType.startsWith("weather_")) return "Weather";
+  return "Rule";
+}
+
+function AlertsPanel({
+  alerts,
+  onAcknowledge,
+  severityVariant,
+}: {
+  alerts: AlertResponse[];
+  onAcknowledge: (id: string) => void;
+  severityVariant: (s: string) => "destructive" | "outline" | "secondary";
+}) {
+  const [severityFilter, setSeverityFilter] = useState<string>("all");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [showAcknowledged, setShowAcknowledged] = useState(false);
+
+  const filtered = alerts.filter((a) => {
+    if (!showAcknowledged && a.acknowledged) return false;
+    if (severityFilter !== "all" && a.severity !== severityFilter) return false;
+    if (categoryFilter !== "all" && alertCategory(a.alert_type) !== categoryFilter) return false;
+    return true;
+  });
+
+  const categories = [...new Set(alerts.map((a) => alertCategory(a.alert_type)))];
+
+  return (
+    <div className="mt-4 space-y-4">
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-3">
+        <Select value={severityFilter} onValueChange={(v) => setSeverityFilter(v ?? "all")}>
+          <SelectTrigger className="w-[140px]">
+            <SelectValue placeholder="Severity" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Severities</SelectItem>
+            <SelectItem value="critical">Critical</SelectItem>
+            <SelectItem value="warning">Warning</SelectItem>
+            <SelectItem value="info">Info</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={categoryFilter} onValueChange={(v) => setCategoryFilter(v ?? "all")}>
+          <SelectTrigger className="w-[140px]">
+            <SelectValue placeholder="Category" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Types</SelectItem>
+            {categories.map((c) => (
+              <SelectItem key={c} value={c}>{c}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button
+          variant={showAcknowledged ? "secondary" : "outline"}
+          size="sm"
+          onClick={() => setShowAcknowledged(!showAcknowledged)}
+        >
+          {showAcknowledged ? "Hide Acknowledged" : "Show Acknowledged"}
+        </Button>
+        <span className="ml-auto text-xs text-muted-foreground">
+          {filtered.length} of {alerts.length} alerts
+        </span>
+      </div>
+
+      {/* Alert List */}
+      <div className="space-y-3">
+        {filtered.length === 0 ? (
+          <Card className="flex flex-col items-center justify-center py-16">
+            <AlertTriangle className="size-12 text-muted-foreground/50" />
+            <h3 className="mt-4 text-lg font-semibold">No alerts</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {alerts.length === 0
+                ? "Alerts will appear here when automation rules are triggered."
+                : "No alerts match the current filters."}
+            </p>
+          </Card>
+        ) : (
+          filtered.map((alert) => (
+            <Card
+              key={alert.id}
+              className={cn(
+                "flex items-center justify-between p-4",
+                alert.acknowledged && "opacity-60",
+                alert.message.startsWith("[ESCALATED]") && "border-red-500/50"
+              )}
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge variant={severityVariant(alert.severity)}>
+                    {alert.severity}
+                  </Badge>
+                  <Badge variant="secondary" className="text-[10px]">
+                    {alertCategory(alert.alert_type)}
+                  </Badge>
+                  {alert.message.startsWith("[ESCALATED]") && (
+                    <Badge variant="destructive" className="text-[10px]">Escalated</Badge>
+                  )}
+                </div>
+                <p className="mt-1 text-sm">
+                  {alert.message.replace("[ESCALATED] ", "")}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {formatDateTime(alert.created_at)}
+                  {alert.sensor_value != null && ` — Value: ${alert.sensor_value}`}
+                </p>
+              </div>
+              {!alert.acknowledged && (
+                <Button variant="outline" size="sm" className="ml-3 shrink-0" onClick={() => onAcknowledge(alert.id)}>
+                  <CheckCircle2 className="mr-1 size-4" />
+                  Ack
+                </Button>
+              )}
+            </Card>
+          ))
+        )}
+      </div>
+    </div>
   );
 }
 

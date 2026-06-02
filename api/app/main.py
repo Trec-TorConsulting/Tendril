@@ -27,6 +27,7 @@ from app.commercial.task_routes import router as tasks_router
 from app.config import get_settings
 from app.config_management.routes import router as config_mgmt_router
 from app.data.routes import router as data_router
+from app.devices.commands import router as device_commands_router
 from app.devices.routes import router as devices_router
 from app.grows.bucket_routes import router as buckets_router
 from app.grows.expense_routes import router as expense_router
@@ -140,6 +141,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router, prefix=f"{settings.api_prefix}/auth", tags=["auth"])
     app.include_router(tenants_router, prefix=f"{settings.api_prefix}/tenants", tags=["tenants"])
     app.include_router(devices_router, prefix=f"{settings.api_prefix}/devices", tags=["devices"])
+    app.include_router(device_commands_router, prefix=f"{settings.api_prefix}/devices", tags=["device-commands"])
     app.include_router(grow_types_router, prefix=f"{settings.api_prefix}/grow-types", tags=["grow-types"])
     app.include_router(tents_router, prefix=f"{settings.api_prefix}/tents", tags=["tents"])
     app.include_router(quick_log_router, prefix=f"{settings.api_prefix}/quick-log", tags=["quick-log"])

@@ -2712,3 +2712,43 @@ export function adminExportConfig(token: string, configType: string) {
 export function adminImportConfig(token: string, configType: string, payload: { data: unknown[] }) {
   return apiFetch<{ status: string; count: number }>(`/admin/config/import/${configType}`, { method: "POST", body: JSON.stringify(payload), token });
 }
+
+// Device Commands
+
+export interface DeviceCommandResponse {
+  id: string;
+  device_id: string;
+  command_type: string;
+  payload: Record<string, unknown>;
+  status: string;
+  source: string;
+  created_at: string;
+  sent_at: string | null;
+  acknowledged_at: string | null;
+  error_message: string | null;
+}
+
+export interface CommandTypeInfo {
+  type: string;
+  description: string;
+}
+
+export function listDeviceCommands(token: string, deviceId?: string, status?: string) {
+  const qs = new URLSearchParams();
+  if (deviceId) qs.set("device_id", deviceId);
+  if (status) qs.set("status", status);
+  const q = qs.toString();
+  return apiFetch<PaginatedResponse<DeviceCommandResponse>>(`/devices/commands${q ? `?${q}` : ""}`, { token }).then((r) => r.items);
+}
+
+export function createDeviceCommand(token: string, data: { device_id: string; command_type: string; payload?: Record<string, unknown>; expires_in_seconds?: number }) {
+  return apiFetch<DeviceCommandResponse>("/devices/commands", { method: "POST", body: JSON.stringify(data), token });
+}
+
+export function getDeviceCommand(token: string, commandId: string) {
+  return apiFetch<DeviceCommandResponse>(`/devices/commands/${commandId}`, { token });
+}
+
+export function listCommandTypes(token: string) {
+  return apiFetch<CommandTypeInfo[]>("/devices/commands/types", { token });
+}
