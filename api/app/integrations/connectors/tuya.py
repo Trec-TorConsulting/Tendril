@@ -21,7 +21,7 @@ import hashlib
 import hmac
 import logging
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -441,15 +441,19 @@ class TuyaConnector(BaseConnector):
                 water_temp_f = (water_temp_c * 9 / 5 + 32) if water_temp_c is not None else None
 
                 # Carry forward pH from most recent reading if current poll has none.
-                # pH sensors report infrequently but the value is still valid.
+                # pH sensors report infrequently but the value is still valid —
+                # however, only carry forward if the last reading is < 1 hour old
+                # to avoid perpetuating stale data from devices that no longer report pH.
                 ph_value = reading.get("ph")
                 if ph_value is None:
+                    staleness_cutoff = now - timedelta(hours=1)
                     last_row = (
                         await session.execute(
                             select(BucketSensorReading.ph)
                             .where(
                                 BucketSensorReading.bucket_id == bucket_id,
                                 BucketSensorReading.ph.isnot(None),
+                                BucketSensorReading.recorded_at >= staleness_cutoff,
                             )
                             .order_by(desc(BucketSensorReading.recorded_at))
                             .limit(1)
