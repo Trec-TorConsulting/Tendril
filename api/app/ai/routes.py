@@ -305,12 +305,16 @@ async def run_health_check(
     if not grow:
         raise HTTPException(status_code=404, detail="Grow not found")
 
-    # Gather ALL data
-    grow_data = await gather_grow_data(
-        session,
-        grow,
-        include_camera=body.include_camera,
-    )
+    # Gather ALL data (camera may timeout — don't let that block the request)
+    try:
+        grow_data = await gather_grow_data(
+            session,
+            grow,
+            include_camera=body.include_camera,
+        )
+    except Exception:
+        logger.warning("gather_grow_data failed, retrying without camera")
+        grow_data = await gather_grow_data(session, grow, include_camera=False)
 
     # Build prompt with all data
     messages = await build_health_check_prompt(grow_data, body.observations, session=session)
@@ -794,26 +798,29 @@ async def get_feeding_advice(
     grow_data = await gather_grow_data(session, grow, include_camera=False)
     messages = await build_feeding_advice_prompt(grow_data, session=session)
 
+    raw: str | None = None
     try:
         raw = await chat_completion(messages)
     except Exception:
-        # Try Gemini as fallback
+        logger.warning("Ollama failed for feeding advice, trying Gemini")
         try:
             from app.ai.gemini import chat_completion as gemini_chat
 
             raw = await gemini_chat(messages)
         except Exception:
-            logger.exception("Feeding advice AI call failed")
-            # If we have stale cache, return it rather than erroring
-            if grow.cached_feeding_advice:
-                cached = grow.cached_feeding_advice
-                return FeedingAdviceResponse(
-                    current_stage_advice=cached.get("current_stage_advice"),
-                    adjustments=cached.get("adjustments") or [],
-                    alerts=cached.get("alerts") or [],
-                    next_transition=cached.get("next_transition"),
-                    health_impact=cached.get("health_impact"),
-                )
+            logger.exception("Feeding advice AI call failed (both Ollama and Gemini)")
+
+    if raw is None:
+        # Both AI providers failed — return stale cache if available
+        if grow.cached_feeding_advice:
+            cached = grow.cached_feeding_advice
+            return FeedingAdviceResponse(
+                current_stage_advice=cached.get("current_stage_advice"),
+                adjustments=cached.get("adjustments") or [],
+                alerts=cached.get("alerts") or [],
+                next_transition=cached.get("next_transition"),
+                health_impact=cached.get("health_impact"),
+            )
         raise HTTPException(status_code=503, detail="AI service unavailable") from None
 
     # Parse JSON response
@@ -1074,11 +1081,34 @@ async def diagnose_plant_photo(
     await record_usage(session, user.tenant_id, "ai_analyses")
     await session.commit()
 
+    # Safely parse issues — AI may return unexpected dict shapes
+    diagnosis_issues: list[DiagnosisIssue] = []
+    for i in parsed.get("issues", []):
+        if not isinstance(i, dict):
+            continue
+        try:
+            diagnosis_issues.append(DiagnosisIssue(**i))
+        except Exception:
+            # Partial issue — extract what we can
+            diagnosis_issues.append(
+                DiagnosisIssue(
+                    name=i.get("name", "Unknown Issue"),
+                    severity=i.get("severity", "medium"),
+                    confidence=float(i.get("confidence", 0.5)),
+                    description=i.get("description", str(i)),
+                    treatment=i.get("treatment", "Consult detailed diagnosis."),
+                )
+            )
+
+    # Normalize actions to strings
+    raw_actions = parsed.get("actions", [])
+    actions_list = [a if isinstance(a, str) else a.get("message", a.get("action", str(a))) for a in raw_actions]
+
     return DiagnoseResponse(
         overall_score=parsed.get("overall_score", 0),
         summary=parsed.get("summary", ""),
-        issues=[DiagnosisIssue(**i) for i in parsed.get("issues", []) if isinstance(i, dict)],
-        actions=parsed.get("actions", []),
+        issues=diagnosis_issues,
+        actions=actions_list,
         grow_stage_assessment=parsed.get("grow_stage_assessment"),
     )
 
@@ -1126,9 +1156,7 @@ async def identify_plant(
     from app.ai.gemini import (
         is_configured as gemini_configured,
     )
-
-    if not gemini_configured():
-        raise HTTPException(status_code=503, detail="Gemini API not configured")
+    from app.ai.ollama import vision_diagnose
 
     try:
         image_bytes = base64.b64decode(body.image_base64)
@@ -1175,13 +1203,26 @@ async def identify_plant(
         {"role": "user", "content": "Please identify this plant and describe its characteristics."},
     ]
 
+    # Try local Ollama vision first, fall back to Gemini
+    raw: str | None = None
     try:
-        raw = await gemini_chat(messages, image_bytes=image_bytes)
-    except GeminiRateLimitError:
-        raise HTTPException(status_code=429, detail="AI rate limit reached. Try again in a few minutes.") from None
+        identify_prompt = f"{system_prompt}\n\nPlease identify this plant and describe its characteristics."
+        raw = await vision_diagnose(body.image_base64, identify_prompt)
+        logger.info("Identify completed via local Ollama vision")
     except Exception:
-        logger.exception("Gemini identify failed")
-        raise HTTPException(status_code=503, detail="AI service unavailable") from None
+        logger.warning("Ollama vision failed for identify, falling back to Gemini")
+
+    if raw is None:
+        if not gemini_configured():
+            raise HTTPException(status_code=503, detail="AI service unavailable (local and cloud)") from None
+        try:
+            raw = await gemini_chat(messages, image_bytes=image_bytes)
+            logger.info("Identify completed via Gemini fallback")
+        except GeminiRateLimitError:
+            raise HTTPException(status_code=429, detail="AI rate limit reached. Try again in a few minutes.") from None
+        except Exception:
+            logger.exception("Gemini identify also failed")
+            raise HTTPException(status_code=503, detail="AI service unavailable") from None
 
     # Parse response
     try:
