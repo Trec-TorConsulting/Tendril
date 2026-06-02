@@ -232,17 +232,24 @@ export default function GrowDetailPage() {
         Promise.all(bkts.map((b) => listSensorReadings(token, b.id, 30).catch(() => []))),
         listTentReadings(token, g.tent_id, 30).catch(() => []),
       ]);
+      // For RDWC grows, use only the header bucket's readings for shared water
+      // metrics to avoid double-counting propagated duplicates.
+      const headerBkt = g.grow_type === "rdwc" ? bkts.find((b) => b.role === "header") : null;
+      const headerIdx = headerBkt ? bkts.indexOf(headerBkt) : -1;
+      const waterReadings = headerIdx >= 0
+        ? [...perBucketReadings[headerIdx]].sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime())
+        : perBucketReadings.flat().sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime());
       const allGrowSensor = perBucketReadings
         .flat()
         .sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime());
       // Build each metric independently so sparse metrics (like pH/water level)
       // are not dropped by a global mixed-metric slice.
       setSensorTrends({
-        ph: allGrowSensor.map((r: { ph: number | null }) => r.ph).filter((v: number | null): v is number => v != null).slice(0, 30).reverse(),
-        ec: allGrowSensor.map((r: { ec: number | null }) => r.ec).filter((v: number | null): v is number => v != null).slice(0, 30).reverse(),
-        ppm: allGrowSensor.map((r: { ppm: number | null }) => r.ppm).filter((v: number | null): v is number => v != null).slice(0, 30).reverse(),
-        water_temp: allGrowSensor.map((r: { water_temp_f: number | null }) => r.water_temp_f).filter((v: number | null): v is number => v != null).slice(0, 30).reverse(),
-        water_level: allGrowSensor.map((r: { water_level_pct: number | null }) => r.water_level_pct).filter((v: number | null): v is number => v != null).slice(0, 30).reverse(),
+        ph: waterReadings.map((r: { ph: number | null }) => r.ph).filter((v: number | null): v is number => v != null).slice(0, 30).reverse(),
+        ec: waterReadings.map((r: { ec: number | null }) => r.ec).filter((v: number | null): v is number => v != null).slice(0, 30).reverse(),
+        ppm: waterReadings.map((r: { ppm: number | null }) => r.ppm).filter((v: number | null): v is number => v != null).slice(0, 30).reverse(),
+        water_temp: waterReadings.map((r: { water_temp_f: number | null }) => r.water_temp_f).filter((v: number | null): v is number => v != null).slice(0, 30).reverse(),
+        water_level: waterReadings.map((r: { water_level_pct: number | null }) => r.water_level_pct).filter((v: number | null): v is number => v != null).slice(0, 30).reverse(),
         temp: (() => {
           const tentTemps = tentReadings2.map((r: { ambient_temp_f: number | null }) => r.ambient_temp_f).filter((v: number | null): v is number => v != null).reverse();
           if (tentTemps.length > 0) return tentTemps;
