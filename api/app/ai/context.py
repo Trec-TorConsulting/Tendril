@@ -165,19 +165,23 @@ def _fmt_prev_eval(prev: dict, *, filter_feeding: bool = False) -> str:
     ]
     if prev.get("issues"):
         issues = prev["issues"]
+        # Normalize: issues can be list[str] or list[dict]
+        issue_strs = [i if isinstance(i, str) else i.get("message", i.get("issue", str(i))) for i in issues]
         if filter_feeding:
-            issues = [i for i in issues if "schedule" not in i.lower() and "feeding" not in i.lower()]
-        if issues:
+            issue_strs = [i for i in issue_strs if "schedule" not in i.lower() and "feeding" not in i.lower()]
+        if issue_strs:
             parts.append("  Issues:")
-            for issue in issues:
+            for issue in issue_strs:
                 parts.append(f"    - {issue}")
     if prev.get("actions"):
         actions = prev["actions"]
+        # Normalize: actions can be list[str] or list[dict]
+        action_strs = [a if isinstance(a, str) else a.get("message", a.get("action", str(a))) for a in actions]
         if filter_feeding:
-            actions = [a for a in actions if "schedule" not in a.lower() and "feeding" not in a.lower()]
-        if actions:
+            action_strs = [a for a in action_strs if "schedule" not in a.lower() and "feeding" not in a.lower()]
+        if action_strs:
             parts.append("  Actions recommended:")
-            for action in actions:
+            for action in action_strs:
                 parts.append(f"    - {action}")
     return "\n".join(parts)
 
@@ -1220,7 +1224,9 @@ async def build_feeding_advice_prompt(grow_data: dict, session=None) -> list[dic
         score_line = f"  - Score: {ev.get('score', '?')}/100"
         # Only pass non-schedule issues (filter out stale feeding conclusions)
         raw_issues = ev.get("issues") or []
-        filtered = [i for i in raw_issues if "schedule" not in i.lower() and "feeding" not in i.lower()]
+        # Normalize: issues can be list[str] or list[dict]
+        issue_strs = [i if isinstance(i, str) else i.get("message", i.get("issue", str(i))) for i in raw_issues]
+        filtered = [i for i in issue_strs if "schedule" not in i.lower() and "feeding" not in i.lower()]
         issues_line = f"  - Issues: {', '.join(filtered) or 'None'}"
         sections.append(f"## Latest Health Check\n{score_line}\n{issues_line}")
 
