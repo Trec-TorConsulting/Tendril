@@ -367,8 +367,11 @@ async def run_health_check(
         cleaned = cleaned.strip()
         parsed = json.loads(cleaned)
         score = parsed.get("score")
-        issues = parsed.get("issues", [])
-        actions = parsed.get("actions", [])
+        raw_issues = parsed.get("issues", [])
+        raw_actions = parsed.get("actions", [])
+        # Normalize: AI may return list[dict] or list[str]
+        issues = [i if isinstance(i, str) else i.get("message", i.get("issue", str(i))) for i in raw_issues]
+        actions = [a if isinstance(a, str) else a.get("message", a.get("action", str(a))) for a in raw_actions]
     except json.JSONDecodeError:
         logger.warning("Gemini returned non-JSON: %s", raw[:200])
 
@@ -527,8 +530,12 @@ async def get_health_check_history(
             HealthCheckResponse(
                 id=str(e.id),
                 score=e.score,
-                issues=e.issues or [],
-                actions=e.actions or [],
+                issues=[
+                    i if isinstance(i, str) else i.get("message", i.get("issue", str(i))) for i in (e.issues or [])
+                ],
+                actions=[
+                    a if isinstance(a, str) else a.get("message", a.get("action", str(a))) for a in (e.actions or [])
+                ],
                 raw_analysis=e.raw_analysis,
                 source=e.source,
                 photo_url=_photo_url(e),
