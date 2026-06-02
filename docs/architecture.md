@@ -49,7 +49,7 @@ The primary HTTP API and WebSocket server. Handles all client requests.
 | Auth | JWT (HS256) with access + refresh tokens |
 | Middleware | Security headers (CSP, HSTS, X-Frame-Options), rate limiting, brute-force protection |
 | File storage | S3/MinIO via boto3 |
-| AI | Google Gemini + Ollama (local LLM) via HTTP |
+| AI | Ollama (primary, local) + Google Gemini (fallback) via HTTP |
 
 **Router modules** (30+ route groups):
 
@@ -178,7 +178,7 @@ API gathers context:
 Build prompt with full grow context
     │
     ▼
-Send to Gemini API or local Ollama
+Send to local Ollama (primary) → Gemini (fallback)
     │
     ▼
 AI responds with recommendations, can invoke tools:
@@ -288,8 +288,8 @@ Both `api/Dockerfile` and `web/Dockerfile` produce optimized production images:
 | PostgreSQL 15+ | Yes | Primary datastore with RLS |
 | EMQX / Mosquitto | Yes | MQTT broker for sensor data |
 | MinIO / S3 | Yes | Photo and file storage |
-| Ollama | Optional | Local AI models |
-| Google Gemini | Optional | Cloud AI for health checks |
+| Ollama | Optional | Local AI models (primary for all AI features) |
+| Google Gemini | Optional | Cloud AI fallback when Ollama is unavailable |
 | Stripe | Optional | Subscription billing |
 | OpenWeather API | Optional | Enhanced weather data (free 2.5 + One Call 3.0) |
 | Ecowitt API/Gateway | Optional | Weather stations, soil probes (webhook + cloud API) |

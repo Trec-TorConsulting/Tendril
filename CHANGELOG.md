@@ -6,30 +6,56 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased]
+## [1.1.0] — 2026-06-02
 
 ### Added
-- **Notification tables** — Migration 0004 creates `notification_channels`, `notification_preferences`, `push_subscriptions`, and `notification_log` tables
-- **Knowledge Base** — Auto-seeded 5 categories and 21 support articles on startup (`kb_seed.py`)
+- **Device command framework** — Send commands to ESP32 devices via MQTT with confirmation tracking (#120)
+- **Enhanced alerts UI** — Trend-based, composite, and escalation alerts with full frontend management (#119, #120)
+- **Field canvas** — Draw.io-style interactive field layout designer replacing the old plot tool (#110)
+- **Plant photo diagnosis** — Structured multi-issue diagnosis with severity, confidence, and treatments
+- **Plant identification** — Strain identification from photos via Ollama + Gemini vision
+- **AI chat with tool-calling** — Chat assistant can query sensors, update settings, look up references
+- **Health check photo linking** — Photos attached to health evaluations and displayed in history (#108)
+- **Feeding advice caching** — AI feeding recommendations cached until next health check
+- **Health status dashboard card** — Overview widget showing latest health score (#97, #98)
+- **DB-backed configuration** — Nutrient knowledge, ESPHome templates, and reference data migrated to database (#95, #96)
+- **Scheduler leadership heartbeat** — Advisory lock-based leader election with heartbeat monitoring (#99)
+- **Tuya integration** — Smart device control via Tuya Cloud API with pH/EC sensor support (#112–#114)
+- **Notification tables** — Migration 0004 creates notification channels, preferences, push subscriptions, and log
+- **Knowledge Base** — Auto-seeded 5 categories and 21 support articles on startup
 - **Reference data seeding** — Auto-seeds 20 strains and 34 nutrient products on startup
-- **Feeding mixing order** — Products displayed in correct application order (Cal-Mag → Micro → Gro → Bloom → pH → Hydroguard)
-- **Rate limiting configuration** — Added `RATE_LIMIT_IP` and `RATE_LIMIT_TENANT` env vars to production manifest (120/600 per minute)
-- **Configuration docs** — Added rate limiting, brute-force, and Redis env var documentation
-
-### Fixed
-- **Scheduler tasks** — Fixed `_dunning_check` and `_account_purge` passing sessions to functions that create their own
-- **Scheduler daily report** — Fixed missing `notification_log` and `notification_channels` tables causing errors
-- **Support routes** — Fixed `user.id` → `user.user_id` across all support ticket endpoints
-- **Team page** — Fixed `listTenantMembers` to extract `.items` from paginated API response
-- **Analytics page** — Fixed API shape mismatch causing frontend crash
-- **Reference search** — Fixed empty results by auto-seeding strains and nutrients on startup
+- **Feeding mixing order** — Products displayed in correct application order
+- **Rate limiting configuration** — Configurable via `RATE_LIMIT_IP` and `RATE_LIMIT_TENANT` env vars
 
 ### Changed
-- Production rate limits increased from defaults (60 IP / 300 tenant) to 120 IP / 600 tenant per minute
+- **AI architecture: Ollama-first with Gemini fallback** — All AI features (chat, health check, diagnose, identify, coach tips, insights, feeding advice) now use local Ollama as primary with automatic Gemini cloud fallback. Users never see "AI unavailable" unless both providers are down (#104, #105, #128, #129)
+- **Separate vision inference** — Vision models run on a dedicated CPU node (`OLLAMA_VISION_URL`) while chat runs on GPU (`OLLAMA_BASE_URL`) (#104)
+- **Python 3.14** — API upgraded from 3.12 to 3.14 (#100, #101)
+- **Graceful shutdown** — API pods now have 60s termination grace period with 5s pre-stop hook to drain in-flight requests (#124)
+- **Health check scoring** — AI guided to score based on plant health observations, not record-keeping completeness (#125)
+- **Data staleness in AI prompts** — All AI contexts now include sensor age warnings and staleness flags (#122, #123)
+- Production rate limits increased to 120 IP / 600 tenant per minute
+- GitHub Actions CI updated to Node.js 24 runtime
+
+### Fixed
+- **AI health check crash** — Previous eval issues stored as `list[dict]` caused `AttributeError: 'dict' object has no attribute 'lower'` (#126)
+- **Health check response validation** — Gemini returning issues as dicts caused Pydantic `ValidationError` (#127)
+- **Feeding advice logic bug** — Gemini fallback success still raised HTTP 503 due to incorrect exception nesting (#129)
+- **Diagnose response parsing** — Unexpected AI response shapes no longer crash with `ValidationError` (#129)
+- **Health check camera timeout** — Camera ESP32 offline no longer blocks entire health check (#129)
+- **RDWC batch propagation** — Header water changes propagate to site buckets correctly (#115, #117)
+- **Tuya pH handling** — Prevent stale log pH from overwriting fresh status values (#112, #113, #114)
+- **Outdoor grow UI** — Defensive guards and UI adaptation for soil/outdoor grow types (#116, #118)
+- **CI lint** — Suppress false-positive F823 ruff lint on forward-referenced models (#121)
+- **Scheduler tasks** — Fixed session handling in dunning and purge jobs
+- **Support routes** — Fixed `user.id` → `user.user_id` across all endpoints
+- **Team page** — Fixed paginated response extraction
+- **Analytics page** — Fixed API shape mismatch causing crash
+- **Reference search** — Fixed empty results via auto-seeding on startup
 
 ---
 
-## [Unreleased — Previous]
+## [1.0.0] — 2026
 
 ### Added
 - **Enterprise RBAC** — Full role-based access control overhaul with three-tier model:

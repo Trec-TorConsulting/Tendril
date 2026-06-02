@@ -44,12 +44,14 @@ JWT settings (not configurable via env, set in code):
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `OLLAMA_BASE_URL` | No | `http://ollama.ollama.svc.cluster.local:11434` | Ollama API URL. Use `http://host.docker.internal:11434` for Docker. |
-| `OLLAMA_MODEL` | No | `llama3.1:8b` | Ollama model name. Must be pulled first with `ollama pull`. |
-| `GEMINI_API_KEY` | No | `""` | Google Gemini API key. Leave empty to disable Gemini. |
+| `OLLAMA_BASE_URL` | No | `http://ollama.ollama.svc.cluster.local:11434` | Ollama API URL for chat (GPU node). Use `http://host.docker.internal:11434` for Docker. |
+| `OLLAMA_VISION_URL` | No | Falls back to `OLLAMA_BASE_URL` | Separate Ollama instance for vision models (can run on CPU). |
+| `OLLAMA_MODEL` | No | `mistral-nemo:12b` | Ollama chat model name. Must be pulled first with `ollama pull`. |
+| `OLLAMA_VISION_MODEL` | No | `llava:7b` | Ollama vision model for health checks, diagnose, and identify. |
+| `GEMINI_API_KEY` | No | `""` | Google Gemini API key. Leave empty to disable Gemini fallback. |
 | `GEMINI_MODEL` | No | `gemini-2.5-flash` | Gemini model name. |
 
-**AI provider priority**: If both are configured, the API uses Gemini for cloud-powered features (health checks, reports) and Ollama for the interactive chat assistant. If only one is configured, it's used for everything. If neither is configured, AI features are disabled.
+**AI provider priority**: All AI features use **Ollama as the primary provider** with **Gemini as automatic fallback**. Chat uses `OLLAMA_BASE_URL` (optimized for GPU). Vision endpoints (health check, diagnose, identify) use `OLLAMA_VISION_URL` (can run on CPU). If Ollama fails for any request, the system transparently retries with Gemini. If neither is configured, AI features are disabled.
 
 ### Stripe Billing
 

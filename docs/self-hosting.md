@@ -54,10 +54,12 @@ S3_BUCKET=tendril-photos
 MQTT_BROKER_HOST=emqx
 MQTT_BROKER_PORT=1883
 
-# Optional — AI
-GEMINI_API_KEY=your-key-here
+# Optional — AI (Ollama primary, Gemini fallback)
 OLLAMA_BASE_URL=http://host.docker.internal:11434
-OLLAMA_MODEL=llama3.1:8b
+OLLAMA_MODEL=mistral-nemo:12b
+OLLAMA_VISION_URL=http://host.docker.internal:11434
+OLLAMA_VISION_MODEL=llava:7b
+GEMINI_API_KEY=your-key-here
 
 # Optional — Billing
 STRIPE_SECRET_KEY=
