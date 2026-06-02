@@ -210,9 +210,20 @@ async def websocket_chat(ws: WebSocket):
                     full_response += chunk
                     await ws.send_json({"type": "chunk", "content": chunk})
             except Exception:
-                logger.exception("Ollama stream error")
-                await ws.send_json({"type": "error", "message": "AI service unavailable"})
-                continue
+                logger.warning("Ollama stream failed, falling back to Gemini")
+                # Fallback to Gemini (non-streaming)
+                try:
+                    from app.ai.gemini import chat_completion as gemini_chat
+                    from app.ai.gemini import is_configured as gemini_configured
+
+                    if not gemini_configured():
+                        raise RuntimeError("Gemini not configured")
+                    full_response = await gemini_chat(messages)
+                    await ws.send_json({"type": "chunk", "content": full_response})
+                except Exception:
+                    logger.exception("Gemini chat fallback also failed")
+                    await ws.send_json({"type": "error", "message": "AI service unavailable"})
+                    continue
 
             messages.append({"role": "assistant", "content": full_response})
             await ws.send_json({"type": "done", "content": full_response})
