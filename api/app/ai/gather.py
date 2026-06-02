@@ -86,6 +86,8 @@ async def gather_grow_data(
 
     # ── Latest sensors per bucket ────────────────────────────────
     bucket_sensors: dict = {}
+    now = datetime.now(UTC)
+    oldest_sensor_reading: datetime | None = None
     for b in buckets:
         reading = (
             await session.execute(
@@ -115,7 +117,20 @@ async def gather_grow_data(
                 if getattr(reading, k) is not None
             }
             bucket_sensors[b.position]["recorded_at"] = reading.recorded_at.isoformat()
+            age_hours = (now - reading.recorded_at).total_seconds() / 3600
+            bucket_sensors[b.position]["hours_old"] = round(age_hours, 1)
+            if oldest_sensor_reading is None or reading.recorded_at < oldest_sensor_reading:
+                oldest_sensor_reading = reading.recorded_at
     data["bucket_sensors"] = bucket_sensors
+
+    # Staleness summary for context
+    if oldest_sensor_reading:
+        age_h = (now - oldest_sensor_reading).total_seconds() / 3600
+        data["sensor_data_age_hours"] = round(age_h, 1)
+        data["sensor_data_stale"] = age_h > 6  # Flag if older than 6 hours
+    else:
+        data["sensor_data_age_hours"] = None
+        data["sensor_data_stale"] = True  # No data at all
 
     # ── Tent ambient readings (shared across all buckets) ────────
     tent_ambient: dict | None = None
@@ -135,6 +150,8 @@ async def gather_grow_data(
             tent_ambient["ambient_humidity"] = tent_ambient_reading.ambient_humidity
         if tent_ambient:
             tent_ambient["recorded_at"] = tent_ambient_reading.recorded_at.isoformat()
+            age_h = (now - tent_ambient_reading.recorded_at).total_seconds() / 3600
+            tent_ambient["hours_old"] = round(age_h, 1)
     data["tent_ambient"] = tent_ambient
 
     # ── Sensor trends (24h from first bucket) ────────────────────
