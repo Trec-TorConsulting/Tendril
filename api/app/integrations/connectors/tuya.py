@@ -218,44 +218,18 @@ class TuyaConnector(BaseConnector):
             for dm in self.device_maps:
                 device_id = dm.external_id
                 try:
-                    data = await self._api_get(client, f"/v1.0/devices/{device_id}/status")
-                    if not data.get("success"):
-                        result.errors.append(f"Tuya error for {device_id}: {data.get('msg')}")
-                        continue
+                    # Use v2.0 shadow/properties as primary source — it returns
+                    # ALL DPs including report-only ones (pH, EC, ORP) that the
+                    # v1.0 /status endpoint often omits.
+                    statuses = await self._fetch_shadow_properties(client, device_id)
 
-                    statuses = data.get("result", [])
-
-                    # Also fetch recent device logs for report-only DPs
-                    # (pH, EC, ORP are often report-type and not in /status)
-                    log_statuses = await self._fetch_recent_logs(client, device_id)
-                    if log_statuses:
-                        # Merge log DPs — prefer log value over /status when
-                        # /status has a zero or null value (common for pH sensors)
-                        status_map = {s.get("code"): s for s in statuses}
-                        # Build set of Tendril fields already covered by /status
-                        # so log entries with different DP codes don't overwrite them
-                        covered_fields: set[str] = set()
-                        custom_mapping = dm.sensor_mapping or {}
-                        for s in statuses:
-                            sc = (s.get("code") or "").lower()
-                            if s.get("value"):
-                                if sc in custom_mapping:
-                                    covered_fields.add(custom_mapping[sc])
-                                elif sc in _WATER_DP_MAP:
-                                    covered_fields.add(_WATER_DP_MAP[sc])
-                        for ls in log_statuses:
-                            code = ls.get("code")
-                            existing = status_map.get(code)
-                            if existing is None:
-                                # Check if another /status DP already maps to the same Tendril field
-                                lc = (code or "").lower()
-                                tendril_field = custom_mapping.get(lc) or _WATER_DP_MAP.get(lc)
-                                if tendril_field and tendril_field in covered_fields:
-                                    continue  # /status already has a value for this field
-                                statuses.append(ls)
-                            elif not existing.get("value"):
-                                # In /status but zero/null — override with log value
-                                existing["value"] = ls.get("value")
+                    if not statuses:
+                        # Fall back to v1.0 /status if shadow API unavailable
+                        data = await self._api_get(client, f"/v1.0/devices/{device_id}/status")
+                        if not data.get("success"):
+                            result.errors.append(f"Tuya error for {device_id}: {data.get('msg')}")
+                            continue
+                        statuses = data.get("result", [])
 
                     reading = self._map_statuses(statuses, dm)
                     result.readings.append(reading)
@@ -267,36 +241,31 @@ class TuyaConnector(BaseConnector):
 
         return result
 
-    async def _fetch_recent_logs(self, client: httpx.AsyncClient, device_id: str) -> list[dict[str, Any]]:
-        """Fetch recent device DP logs for report-only data points.
+    async def _fetch_shadow_properties(self, client: httpx.AsyncClient, device_id: str) -> list[dict[str, Any]]:
+        """Fetch device state from the v2.0 shadow/properties API.
 
-        The /v1.0/devices/{id}/logs endpoint returns DP changes that are
-        report-type (e.g. pH, EC, ORP on water monitors) which don't
-        appear in the /status endpoint.
+        This endpoint returns ALL DPs including report-only ones (pH, EC, ORP)
+        that are missing from the v1.0 /status endpoint on many water monitors.
+        Returns data in the same format as /status: [{"code": ..., "value": ...}]
         """
-        end_time = int(time.time() * 1000)
-        # Look back 60 minutes for recent reports (pH sensors often report infrequently)
-        start_time = end_time - 60 * 60 * 1000
-        path = f"/v1.0/devices/{device_id}/logs?type=7&start_time={start_time}&end_time={end_time}&size=50"
+        path = f"/v2.0/cloud/thing/{device_id}/shadow/properties"
         try:
             data = await self._api_get(client, path)
             if not data.get("success"):
-                logger.debug("Tuya logs API failed for %s: %s", device_id, data.get("msg"))
+                logger.debug("Shadow API failed for %s: %s", device_id, data.get("msg"))
                 return []
 
-            logs = data.get("result", {}).get("logs", [])
-            # Convert log entries to status format: {"code": "...", "value": ...}
+            properties = data.get("result", {}).get("properties", [])
+            # Convert to the same format as /status for uniform processing
             statuses: list[dict[str, Any]] = []
-            seen_codes: set[str] = set()
-            for log_entry in logs:
-                code = log_entry.get("code", "")
-                if code and code not in seen_codes:
-                    seen_codes.add(code)
-                    # Use the most recent value for each code
-                    statuses.append({"code": code, "value": log_entry.get("value")})
+            for prop in properties:
+                code = prop.get("code")
+                value = prop.get("value")
+                if code and value is not None:
+                    statuses.append({"code": code, "value": value})
             return statuses
         except Exception as e:
-            logger.debug("Tuya logs fetch failed for %s: %s", device_id, e)
+            logger.debug("Shadow API fetch failed for %s: %s", device_id, e)
             return []
 
     def _map_statuses(
