@@ -74,7 +74,10 @@ class TestPayPalProvider:
             }
         )
         assert "sandbox" not in p.base_url
-        assert "api-m.paypal.com" in p.base_url
+        from urllib.parse import urlparse
+
+        parsed = urlparse(p.base_url)
+        assert parsed.hostname == "api-m.paypal.com"
 
     def test_create_customer_uses_email_hash(self):
         import asyncio
