@@ -271,27 +271,56 @@ export default function GrowDetailPage() {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  // Compute last water change date per bucket from journal entries
+  // Compute last water change date per bucket from journal entries.
+  // For RDWC grows, a water change on the header applies to all site buckets
+  // (they share the same reservoir).
   const bucketWaterStatus = useMemo(() => {
     const map: Record<string, { lastChange: Date; daysSince: number } | null> = {};
     const now = new Date();
+
+    // Find the header bucket's most recent water_change for RDWC propagation
+    let headerLastChange: Date | null = null;
+    if (grow?.grow_type === "rdwc") {
+      const headerBucket = buckets.find((b) => b.role === "header");
+      if (headerBucket) {
+        const headerEntries = journalEntries.filter(
+          (e) => e.bucket_id === headerBucket.id && e.event_type === "water_change"
+        );
+        if (headerEntries.length > 0) {
+          const latest = headerEntries.reduce((a, c) =>
+            new Date(c.created_at) > new Date(a.created_at) ? c : a
+          );
+          headerLastChange = new Date(latest.created_at);
+        }
+      }
+    }
+
     for (const b of buckets) {
       const entries = journalEntries.filter(
         (e) => e.bucket_id === b.id && e.event_type === "water_change"
       );
-      if (entries.length === 0) {
+      let lastChange: Date | null = null;
+      if (entries.length > 0) {
+        const latest = entries.reduce((a, c) =>
+          new Date(c.created_at) > new Date(a.created_at) ? c : a
+        );
+        lastChange = new Date(latest.created_at);
+      }
+      // RDWC: site buckets inherit the header's water change if more recent
+      if (grow?.grow_type === "rdwc" && b.role !== "header" && headerLastChange) {
+        if (!lastChange || headerLastChange > lastChange) {
+          lastChange = headerLastChange;
+        }
+      }
+      if (!lastChange) {
         map[b.id] = null;
         continue;
       }
-      const latest = entries.reduce((a, c) =>
-        new Date(c.created_at) > new Date(a.created_at) ? c : a
-      );
-      const lastChange = new Date(latest.created_at);
       const daysSince = Math.floor((now.getTime() - lastChange.getTime()) / 86_400_000);
       map[b.id] = { lastChange, daysSince };
     }
     return map;
-  }, [buckets, journalEntries]);
+  }, [buckets, journalEntries, grow]);
 
   // Tab persistence — remember last active tab across grow switches
   const TAB_STORAGE_KEY = "tendril:grow-detail-tab";

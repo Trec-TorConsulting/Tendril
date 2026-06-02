@@ -220,11 +220,18 @@ async def delete_bucket(
 
 
 async def _get_last_water_changes(session: AsyncSession, bucket_ids: list[UUID]) -> dict[UUID, datetime | None]:
-    """Batch-fetch the most recent water_change/flushing journal timestamp per bucket."""
+    """Batch-fetch the most recent water_change/flushing journal timestamp per bucket.
+
+    For RDWC grows, a water change on the header bucket counts for all site
+    buckets in the same grow (they share the same reservoir).
+    """
     if not bucket_ids:
         return {}
     from sqlalchemy import func
 
+    from app.grows.models import GrowCycle
+
+    # Direct water change entries per bucket
     subq = (
         select(
             JournalEntry.bucket_id,
@@ -237,4 +244,45 @@ async def _get_last_water_changes(session: AsyncSession, bucket_ids: list[UUID])
         .group_by(JournalEntry.bucket_id)
     )
     result = await session.execute(subq)
-    return {row.bucket_id: row.last_change for row in result}
+    water_map: dict[UUID, datetime | None] = {row.bucket_id: row.last_change for row in result}
+
+    # For RDWC grows, propagate the header's water change to site buckets.
+    # Find which requested buckets belong to RDWC grows.
+    rdwc_buckets = (
+        await session.execute(
+            select(Bucket.id, Bucket.grow_cycle_id, Bucket.role)
+            .join(GrowCycle, Bucket.grow_cycle_id == GrowCycle.id)
+            .where(Bucket.id.in_(bucket_ids), GrowCycle.grow_type == "rdwc")
+        )
+    ).all()
+
+    if rdwc_buckets:
+        # Group by grow and find header water change dates
+        grow_ids = {b.grow_cycle_id for b in rdwc_buckets}
+        header_dates: dict[UUID, datetime | None] = {}
+        for grow_id in grow_ids:
+            header_row = (
+                await session.execute(
+                    select(func.max(JournalEntry.created_at))
+                    .join(Bucket, JournalEntry.bucket_id == Bucket.id)
+                    .where(
+                        Bucket.grow_cycle_id == grow_id,
+                        Bucket.role == "header",
+                        JournalEntry.event_type.in_(["water_change", "flushing"]),
+                    )
+                )
+            ).scalar_one_or_none()
+            header_dates[grow_id] = header_row
+
+        # Apply header date to site buckets where it's more recent
+        for b in rdwc_buckets:
+            if b.role == "header":
+                continue
+            header_dt = header_dates.get(b.grow_cycle_id)
+            if header_dt is None:
+                continue
+            existing = water_map.get(b.id)
+            if existing is None or header_dt > existing:
+                water_map[b.id] = header_dt
+
+    return water_map
