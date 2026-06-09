@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Search, Sprout } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useGrow } from "@/hooks/use-grow";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Select,
   SelectContent,
@@ -32,6 +33,14 @@ interface PageHeaderProps {
 export function PageHeader({ title, description, breadcrumbs, actions }: PageHeaderProps) {
   const isMobile = useIsMobile();
   const { grows, selectedGrow, setSelectedGrowId } = useGrow();
+  const pathname = usePathname();
+  const router = useRouter();
+  const handleMobileGrowChange = (growId: string) => {
+    setSelectedGrowId(growId);
+    if (pathname.startsWith("/dashboard/grows/")) {
+      router.push(`/dashboard/grows/${growId}`);
+    }
+  };
   const openCommandPalette = () => {
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true }));
   };
@@ -47,7 +56,7 @@ export function PageHeader({ title, description, breadcrumbs, actions }: PageHea
       {/* Mobile grow switcher — sidebar not rendered on mobile */}
       {isMobile && grows.length > 0 && (
         <>
-          <Select value={selectedGrow?.id || ""} onValueChange={(v) => setSelectedGrowId(v ?? "")}>
+          <Select value={selectedGrow?.id || ""} onValueChange={handleMobileGrowChange}>
             <SelectTrigger className="h-8 w-auto max-w-[140px] gap-1.5 border-none bg-transparent px-1.5 text-xs font-medium shadow-none">
               <Sprout className="size-3 shrink-0 text-primary" />
               <SelectValue>{selectedGrow?.name || "Grow"}</SelectValue>
