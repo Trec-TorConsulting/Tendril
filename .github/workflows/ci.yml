@@ -43,6 +43,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: docker/setup-buildx-action@v4
         with:
+          driver-opts: network=host
           buildkitd-config-inline: |
             [registry."registry.registry.svc.cluster.local:5000"]
               http = true
@@ -52,7 +53,7 @@ jobs:
           platforms: ${{ matrix.platform }}
           push: ${{ github.ref == 'refs/heads/main' }}
           tags: registry.registry.svc.cluster.local:5000/tendril-${{ matrix.target }}:${{ matrix.arch }}
-          cache-from: type=registry,ref=registry.registry.svc.cluster.local:5000/tendril-${{ matrix.target }}:buildcache-${{ matrix.arch }}
+          cache-from: ${{ github.ref == 'refs/heads/main' && format('type=registry,ref=registry.registry.svc.cluster.local:5000/tendril-{0}:buildcache-{1}', matrix.target, matrix.arch) || '' }}
           cache-to: ${{ github.ref == 'refs/heads/main' && format('type=registry,ref=registry.registry.svc.cluster.local:5000/tendril-{0}:buildcache-{1},mode=max', matrix.target, matrix.arch) || '' }}
 
   # ── Create multi-arch manifest ───────────────────────────────
@@ -67,6 +68,7 @@ jobs:
     steps:
       - uses: docker/setup-buildx-action@v4
         with:
+          driver-opts: network=host
           buildkitd-config-inline: |
             [registry."registry.registry.svc.cluster.local:5000"]
               http = true
