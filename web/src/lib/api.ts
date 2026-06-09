@@ -1323,6 +1323,7 @@ export function getCoachTip(token: string, growId: string) {
     body: JSON.stringify({ grow_id: growId }),
     token,
     timeout: 180_000,
+    retries: 2,
   });
 }
 
@@ -1332,6 +1333,7 @@ export function getAiInsight(token: string, growId: string, insightType: string)
     body: JSON.stringify({ grow_id: growId, insight_type: insightType }),
     token,
     timeout: 180_000,
+    retries: 2,
   });
 }
 
