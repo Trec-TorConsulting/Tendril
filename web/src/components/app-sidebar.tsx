@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   Warehouse,
@@ -117,7 +117,15 @@ interface AppSidebarProps {
 
 export function AppSidebar({ user, onLogout }: AppSidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const { grows, selectedGrow, setSelectedGrowId } = useGrow();
+
+  const handleGrowChange = (growId: string) => {
+    setSelectedGrowId(growId);
+    if (pathname.startsWith("/dashboard/grows/")) {
+      router.push(`/dashboard/grows/${growId}`);
+    }
+  };
 
   const initials = user?.display_name
     ? user.display_name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)
@@ -147,7 +155,7 @@ export function AppSidebar({ user, onLogout }: AppSidebarProps) {
       {/* Global Grow Selector */}
       {grows.length > 0 && (
         <div className="px-3 pb-2 group-data-[collapsible=icon]:hidden">
-          <Select value={selectedGrow?.id || ""} onValueChange={(v) => setSelectedGrowId(v ?? "")}>
+          <Select value={selectedGrow?.id || ""} onValueChange={handleGrowChange}>
             <SelectTrigger className="h-8 w-full text-xs">
               <SelectValue>
                 {selectedGrow ? (

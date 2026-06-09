@@ -93,6 +93,7 @@ import { SensorSparkline } from "@/components/sparkline";
 import { CameraGrid } from "@/components/camera-grid";
 import { MultiMetricCard } from "@/components/multi-metric-card";
 import { useChat } from "@/components/chat-provider";
+import { useGrow } from "@/hooks/use-grow";
 
 import { formatCalendarDate, formatDateTime } from "@/lib/utils";
 import { BucketsTab } from "./buckets-tab";
@@ -136,6 +137,7 @@ export default function GrowDetailPage() {
   const router = useRouter();
   const confirm = useConfirm();
   const { prefs } = usePreferences();
+  const { setSelectedGrowId } = useGrow();
   const [grow, setGrow] = useState<GrowResponse | null>(null);
   const [tent, setTent] = useState<TentResponse | null>(null);
   const [buckets, setBuckets] = useState<BucketResponse[]>([]);
@@ -154,6 +156,11 @@ export default function GrowDetailPage() {
   const [ambientForm, setAmbientForm] = useState({ ambient_temp_f: "", ambient_humidity: "" });
   const [ambientSaving, setAmbientSaving] = useState(false);
   const [tentAmbient, setTentAmbient] = useState<TentReadingResponse | null>(null);
+
+  // Sync sidebar grow selector with the current page
+  useEffect(() => {
+    if (id) setSelectedGrowId(id);
+  }, [id, setSelectedGrowId]);
 
   // Edit grow dialog
   const [editGrowDialog, setEditGrowDialog] = useState(false);
