@@ -1,4 +1,4 @@
-ARG BASE_REGISTRY=192.168.4.10:30500/mirror
+ARG BASE_REGISTRY=registry.registry.svc.cluster.local:5000/mirror
 FROM ${BASE_REGISTRY}/python:3.14-slim-bookworm
 
 WORKDIR /app

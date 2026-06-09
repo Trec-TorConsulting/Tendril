@@ -1,4 +1,4 @@
-ARG BASE_REGISTRY=192.168.4.10:30500/mirror
+ARG BASE_REGISTRY=registry.registry.svc.cluster.local:5000/mirror
 FROM --platform=$BUILDPLATFORM ${BASE_REGISTRY}/node:26-slim AS builder
 WORKDIR /app
 ARG NEXT_PUBLIC_API_URL=https://api.tendrilgrow.com/v1
@@ -9,7 +9,7 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-ARG BASE_REGISTRY=192.168.4.10:30500/mirror
+ARG BASE_REGISTRY=registry.registry.svc.cluster.local:5000/mirror
 FROM ${BASE_REGISTRY}/node:26-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
