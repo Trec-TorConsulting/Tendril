@@ -240,7 +240,7 @@ export function SensorsTab({ buckets }: SensorsTabProps) {
                 <CardTitle className="text-sm font-medium">{m.label}</CardTitle>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={200}>
+                <ResponsiveContainer width="100%" height={200} minWidth={0}>
                   <LineChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                     <XAxis dataKey="time" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
@@ -260,7 +260,7 @@ export function SensorsTab({ buckets }: SensorsTabProps) {
                 <CardTitle className="text-sm font-medium">All Metrics</CardTitle>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
+                <ResponsiveContainer width="100%" height={300} minWidth={0}>
                   <LineChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                     <XAxis dataKey="time" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
