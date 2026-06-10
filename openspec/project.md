@@ -89,6 +89,38 @@ All code must be written with OWASP Top 10 2021 compliance as a baseline:
 - "Buckets" are monitored containers within a grow (DWC, Kratky, soil, etc.)
 - ESP32 devices publish sensor data (temperature, humidity, soil moisture) via MQTT
 - The AI assistant provides grow recommendations based on sensor data and grow history
+- **This is a cannabis-first platform** — all features, AI outputs, recommendations, and UX are designed for cannabis cultivation
+
+## Cannabis-First Quality Philosophy
+
+**Every AI response, recommendation, alert, and automated action in this platform MUST follow this priority order:**
+
+1. **Plant health & resin production** — healthy, unstressed plants channel energy into trichome development
+2. **Terpene preservation & expression** — protect volatile terpenes with proper environment (temps, airflow, timing)
+3. **Cannabinoid maturity & potency** — proper harvest windows, trichome development, never rush
+4. **Bag appeal & bud structure** — dense, frosty, properly cured flower
+5. **Yield (DEAD LAST)** — never recommend actions that trade quality for quantity
+
+### Cannabis-Specific Ideal Ranges (enforce across all AI and alerting)
+- Water temp (hydro): 65-68°F ideal. Above 70°F = warning. Above 72°F = critical.
+- Reservoir pH: 5.5-6.2 (sweet spot 5.8). Drift > 0.5/day = flag.
+- Air temp (veg): 75-82°F day, 65-72°F night.
+- Air temp (flower): 72-78°F day, 60-68°F night. Night drop (DIF) 10-15°F enhances terpenes.
+- Air temp (late flower): 68-75°F day, 58-65°F night — protect volatile terpenes.
+- Humidity (veg): 60-70%. VPD 0.8-1.2 kPa.
+- Humidity (flower): 40-55%. Above 55% = botrytis risk.
+- Humidity (late flower): 35-45%. Dense buds trap moisture — mold risk highest now.
+- EC: Veg 0.8-1.4, Flower 1.2-2.0 (peak mid-flower), reduce final 2 weeks.
+- Dissolved oxygen: >6mg/L. Below 5 = root health emergency.
+
+### Application of Quality Philosophy
+- **AI Health Checks**: Score based on how well environment supports quality flower, not biomass
+- **AI Chat**: All advice framed through cannabis science; never suggest yield-maximizing at quality's expense
+- **Coach Tips**: Every tip should optimize for terps/cannabinoids/quality
+- **Feeding Advice**: Dial for quality (proper EC curves, flush timing, terpene-protective temps)
+- **Alerts & Notifications**: Threshold alerts use cannabis-optimal ranges, not generic plant ranges
+- **Harvest Predictions**: Optimize for trichome maturity, never rush for speed
+- **Anomaly Detection**: Quality-threatening anomalies are always high severity
 
 ## Important Constraints
 - Must remain self-hostable — no hard dependency on proprietary cloud services
