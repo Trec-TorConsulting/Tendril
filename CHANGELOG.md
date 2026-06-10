@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.2.0] — 2026-06-10
+
+### Added
+- **Cannabis-first quality philosophy** — All AI outputs now enforce strict priority order: plant health > terpenes > cannabinoids > bag appeal > yield (last)
+- **Cannabis-specific ideal ranges** baked into openspec as binding project principles
+- **Camera direct-fetch fallback** — Browser fetches camera snapshots directly from LAN when API proxy fails (#148)
+- **Camera error UX** — Clear error states with retry button + 30s auto-retry (#148)
+
+### Changed
+- **AI prompts overhauled** — Health check, coach tips, feeding advice, insights, and chat all enforce cannabis-quality-first with explicit threshold ranges (#149)
+- **AI chat context always loads** — Fixed bug where missing grow_type_config caused chat to lose all grow context (sensors, tent, equipment) (#150)
+- **Grow type configs audited** — Water temp, EC, pH, and humidity thresholds corrected across all 12 grow mediums to match research-validated cannabis ranges (#151)
+- **Frontend indicators** — Dashboard green/warning zones now use cannabis-optimal ranges (water temp ≤70°F, pH ≤6.2, humidity ≤60%) (#152)
+- **Recharts dimension fix** — Added minWidth={0} to all ResponsiveContainer instances to prevent -1 width/height errors (#147)
+
+### Fixed
+- **Camera 503 spam** — Camera grid no longer re-requests failed cameras on every render
+- **go2rtc service** — Scaled deployment back to 1 replica, corrected port mapping (8000 for HTTP API)
+- **Treatment DB** — Water temp "ideal" corrected from 65-72°F to 66-68°F
+- **Automation engine** — DWC water temp warning threshold aligned with research
+
+---
+
 ## [1.1.0] — 2026-06-02
 
 ### Added
