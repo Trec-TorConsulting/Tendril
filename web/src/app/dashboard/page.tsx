@@ -273,7 +273,7 @@ export default function DashboardPage() {
       : "—";
   const envStatus =
     latestTemp != null && latestHumidity != null
-      ? (latestTemp >= 68 && latestTemp <= 82 && latestHumidity >= 40 && latestHumidity <= 70 ? "optimal" : "warning")
+      ? (latestTemp >= 68 && latestTemp <= 82 && latestHumidity >= 35 && latestHumidity <= 60 ? "optimal" : "warning")
       : "unknown";
   const updatedAgo = lastReadingAt ? timeAgo(lastReadingAt) : null;
   const isHydro = isActiveHydro(selectedGrow?.grow_type);
@@ -370,14 +370,14 @@ export default function DashboardPage() {
                       {
                         label: "Humidity",
                         value: latestHumidity != null ? `${latestHumidity.toFixed(0)}%` : "—",
-                        status: latestHumidity != null ? (latestHumidity >= 40 && latestHumidity <= 70 ? "optimal" : "warning") : "unknown",
-                        hint: latestHumidity != null && latestHumidity < 40 ? "Too dry — target 40–70%" : latestHumidity != null && latestHumidity > 70 ? "Too humid — target 40–70%" : undefined,
+                        status: latestHumidity != null ? (latestHumidity >= 35 && latestHumidity <= 60 ? "optimal" : "warning") : "unknown",
+                        hint: latestHumidity != null && latestHumidity < 35 ? "Too dry — target 40–60% (flower safe)" : latestHumidity != null && latestHumidity > 60 ? "Too humid — botrytis risk above 60% in flower" : undefined,
                       },
                       {
                         label: "Water Temp",
                         value: latestWaterTemp != null ? formatTemp(latestWaterTemp, "f", prefs.temp_unit, 0) : "—",
-                        status: latestWaterTemp != null ? (latestWaterTemp >= 62 && latestWaterTemp <= 72 ? "optimal" : "warning") : "unknown",
-                        hint: latestWaterTemp != null && latestWaterTemp < 62 ? "Too cold — target 62–72°F" : latestWaterTemp != null && latestWaterTemp > 72 ? "Too warm — risk of root rot. Target 62–72°F" : undefined,
+                        status: latestWaterTemp != null ? (latestWaterTemp >= 62 && latestWaterTemp <= 70 ? "optimal" : "warning") : "unknown",
+                        hint: latestWaterTemp != null && latestWaterTemp < 62 ? "Too cold — target 64–70°F" : latestWaterTemp != null && latestWaterTemp > 70 ? "Too warm — root rot risk above 72°F. Target 64–70°F" : undefined,
                       },
                     ]}
                     updatedAgo={updatedAgo}
@@ -389,8 +389,8 @@ export default function DashboardPage() {
                       {
                         label: "pH",
                         value: sensorTrends.ph.length > 0 ? sensorTrends.ph[sensorTrends.ph.length - 1].toFixed(1) : "—",
-                        status: sensorTrends.ph.length > 0 ? (sensorTrends.ph[sensorTrends.ph.length - 1] >= 5.5 && sensorTrends.ph[sensorTrends.ph.length - 1] <= 6.5 ? "optimal" : "warning") : "unknown",
-                        hint: sensorTrends.ph.length > 0 && sensorTrends.ph[sensorTrends.ph.length - 1] < 5.5 ? "Too acidic — target 5.5–6.5" : sensorTrends.ph.length > 0 && sensorTrends.ph[sensorTrends.ph.length - 1] > 6.5 ? "Too alkaline — target 5.5–6.5" : undefined,
+                        status: sensorTrends.ph.length > 0 ? (sensorTrends.ph[sensorTrends.ph.length - 1] >= 5.5 && sensorTrends.ph[sensorTrends.ph.length - 1] <= 6.2 ? "optimal" : "warning") : "unknown",
+                        hint: sensorTrends.ph.length > 0 && sensorTrends.ph[sensorTrends.ph.length - 1] < 5.5 ? "Too acidic — target 5.5–6.2" : sensorTrends.ph.length > 0 && sensorTrends.ph[sensorTrends.ph.length - 1] > 6.2 ? "Too alkaline — target 5.5–6.2" : undefined,
                       },
                       {
                         label: "PPM",
@@ -435,7 +435,7 @@ export default function DashboardPage() {
                   <EnvironmentBadgeCard
                     label="Humidity"
                     value={latestHumidity != null ? `${latestHumidity.toFixed(0)}%` : "—"}
-                    status={latestHumidity != null ? (latestHumidity >= 40 && latestHumidity <= 70 ? "optimal" : "warning") : "unknown"}
+                    status={latestHumidity != null ? (latestHumidity >= 35 && latestHumidity <= 60 ? "optimal" : "warning") : "unknown"}
                     icon={<Droplets className="size-5" />}
                     updatedAgo={updatedAgo}
                   />
