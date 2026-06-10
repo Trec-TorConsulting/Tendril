@@ -186,7 +186,11 @@ async def camera_snapshot(
             resp = await client.get(camera_url)
             resp.raise_for_status()
     except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"Camera fetch failed: {exc}") from exc
+        raise HTTPException(
+            status_code=503,
+            detail=f"Camera unavailable: {exc}",
+            headers={"Retry-After": "30"},
+        ) from exc
     content_type = resp.headers.get("content-type", "image/jpeg")
     return Response(content=resp.content, media_type=content_type, headers={"Cache-Control": "no-store"})
 
@@ -228,7 +232,13 @@ async def camera_snapshot_b64(
             resp = await client.get(camera_url)
             resp.raise_for_status()
     except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"Camera fetch failed: {exc}") from exc
+        # Use 503 with Retry-After instead of 502 to avoid Cloudflare error pages
+        # stripping CORS headers. 503 also signals the frontend to back off.
+        raise HTTPException(
+            status_code=503,
+            detail=f"Camera unavailable: {exc}",
+            headers={"Retry-After": "30"},
+        ) from exc
     image_b64 = base64.b64encode(resp.content).decode("ascii")
     return {"image_base64": image_b64, "timestamp": datetime.now(UTC).isoformat()}
 

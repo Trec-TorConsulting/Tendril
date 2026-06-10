@@ -538,7 +538,7 @@ export function deleteTentCamera(token: string, tentId: string, cameraId: string
 
 export function getCameraSnapshot(token: string, tentId: string, cameraId?: string) {
   const q = cameraId ? `?camera_id=${cameraId}` : "";
-  return apiFetch<{ image_base64: string; timestamp: string }>(`/tents/${tentId}/camera-snapshot-b64${q}`, { token });
+  return apiFetch<{ image_base64: string; timestamp: string }>(`/tents/${tentId}/camera-snapshot-b64${q}`, { token, retries: 0 });
 }
 
 // Grows
