@@ -212,7 +212,7 @@ AERO_STAGES: list[dict] = [
                 "off_sec": 300,
                 "notes": "5 seconds on, 5 minutes off at night. Reduced transpiration at night means roots stay wet longer.",
             },
-            "root_chamber_temp_f": {"min": 65, "max": 72, "target": 68},
+            "root_chamber_temp_f": {"min": 62, "max": 68, "target": 65},
             "droplet_size_microns": {
                 "hpa": {"min": 30, "max": 80, "target": 50},
                 "lpa": {"min": 100, "max": 500, "target": 200},
@@ -374,7 +374,7 @@ AERO_STAGES: list[dict] = [
                 "off_sec": 480,
                 "notes": "3 seconds on, 8 minutes off at night. Reduced transpiration. Roots stay wet longer. Longer off-time prevents waterlogging.",
             },
-            "root_chamber_temp_f": {"min": 65, "max": 72, "target": 68},
+            "root_chamber_temp_f": {"min": 62, "max": 68, "target": 65},
             "droplet_size_microns": {
                 "hpa": {"min": 30, "max": 80, "target": 50},
                 "lpa": {"min": 100, "max": 500, "target": 200},
@@ -551,7 +551,7 @@ AERO_STAGES: list[dict] = [
                 "off_sec": 600,
                 "notes": "3 seconds on, 10 minutes off at night. Plant transpires less at night. Roots need less frequent misting.",
             },
-            "root_chamber_temp_f": {"min": 65, "max": 72, "target": 68},
+            "root_chamber_temp_f": {"min": 62, "max": 68, "target": 65},
             "droplet_size_microns": {
                 "hpa": {"min": 30, "max": 80, "target": 50},
                 "lpa": {"min": 100, "max": 500, "target": 200},
@@ -700,7 +700,7 @@ AERO_STAGES: list[dict] = [
                 "off_sec": 480,
                 "notes": "3 seconds on, 8 minutes off at night. Night cycle stays similar to late veg.",
             },
-            "root_chamber_temp_f": {"min": 65, "max": 72, "target": 68},
+            "root_chamber_temp_f": {"min": 62, "max": 68, "target": 65},
             "droplet_size_microns": {
                 "hpa": {"min": 30, "max": 80, "target": 50},
                 "lpa": {"min": 100, "max": 500, "target": 200},
@@ -867,7 +867,7 @@ AERO_STAGES: list[dict] = [
                 "off_sec": 600,
                 "notes": "3 seconds on, 10 minutes off at night. Flower-stage night cycles can be extended as transpiration is minimal.",
             },
-            "root_chamber_temp_f": {"min": 64, "max": 70, "target": 67},
+            "root_chamber_temp_f": {"min": 62, "max": 68, "target": 65},
             "droplet_size_microns": {
                 "hpa": {"min": 30, "max": 80, "target": 50},
                 "lpa": {"min": 100, "max": 500, "target": 200},

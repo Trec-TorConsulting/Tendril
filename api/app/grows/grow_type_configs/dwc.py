@@ -48,7 +48,7 @@ DWC_STAGES: list[dict] = [
             "ph": {"min": 5.8, "max": 6.0, "target": 5.8},
             "ec": {"min": 0.0, "max": 0.0, "target": 0.0},
             "ppm_500": {"min": 0, "max": 0, "target": 0},
-            "water_temp_f": {"min": 68, "max": 75, "target": 72},
+            "water_temp_f": {"min": 65, "max": 72, "target": 68},
             "dissolved_oxygen_ppm": {"min": 6.0, "target": 8.0},
             "change_interval_days": None,
             "hydroguard_ml_per_gal": 0,
@@ -150,7 +150,7 @@ DWC_STAGES: list[dict] = [
             "ph": {"min": 5.5, "max": 6.0, "target": 5.8},
             "ec": {"min": 0.2, "max": 0.5, "target": 0.4},
             "ppm_500": {"min": 100, "max": 250, "target": 200},
-            "water_temp_f": {"min": 65, "max": 75, "target": 70},
+            "water_temp_f": {"min": 65, "max": 72, "target": 68},
             "dissolved_oxygen_ppm": {"min": 6.0, "target": 8.0},
             "change_interval_days": 10,
             "hydroguard_ml_per_gal": 2,
@@ -252,7 +252,7 @@ DWC_STAGES: list[dict] = [
                     "notes": "Keep seedling in partial shade outdoors. Direct summer sun is too intense for seedlings. Use a shade cloth (50%) or place bucket under a tree canopy for first 7-10 days. Gradually increase sun exposure.",
                 },
                 "reservoir_overrides": {
-                    "water_temp_f": {"min": 60, "max": 75, "target": 68},
+                    "water_temp_f": {"min": 60, "max": 72, "target": 68},
                     "notes": "Reservoir heats up fast in direct sun. Wrap bucket in reflective insulation (Reflectix). Place bucket in shaded area. Paint bucket white if dark-colored. Water temp is the #1 outdoor DWC challenge.",
                 },
                 "extra_tasks": [
@@ -476,7 +476,7 @@ DWC_STAGES: list[dict] = [
                     "notes": "Full sun is ideal now — acclimated plants thrive in direct sunlight. Reservoir temperature management becomes critical. Insulate buckets with Reflectix wrap. Paint buckets white. Consider burying bucket partially in ground for thermal mass.",
                 },
                 "reservoir_overrides": {
-                    "water_temp_f": {"min": 58, "max": 75, "target": 68},
+                    "water_temp_f": {"min": 58, "max": 72, "target": 68},
                     "change_interval_days": 5,
                     "notes": "Outdoor reservoirs need more frequent changes — heat and sunlight accelerate bacterial growth. Increase Hydroguard to 2.5 ml/gal in summer. Top off more often — evaporation is faster outdoors.",
                 },
@@ -993,7 +993,7 @@ DWC_STAGES: list[dict] = [
         },
         "nutrients": {
             "strength_pct": 75,
-            "approach": "Full bloom mix. High P and K for bud development. Nitrogen is still needed but reduced. This is where buds pack on most of their mass.",
+            "approach": "Full bloom mix. High P and K for bud development. Nitrogen is still needed but reduced. Bud structure and trichome density are established now.",
             "flora_micro_ml_per_gal": 1.875,
             "flora_gro_ml_per_gal": 0.625,
             "flora_bloom_ml_per_gal": 2.5,
@@ -1161,7 +1161,7 @@ DWC_STAGES: list[dict] = [
         "name": "Mid Flower (Bulk)",
         "order": 7,
         "duration_days": {"min": 14, "max": 21, "typical": 14},
-        "description": "Weeks 5-7. Buds swell and pack on most weight. Peak nutrient demand. Trichomes developing rapidly. This is where yield is made.",
+        "description": "Weeks 5-7. Buds ripen and trichome production peaks. Peak nutrient demand. Dense resin development and terpene expression define quality here.",
         "environment": {
             "temp_day_f": {"min": 68, "max": 78, "target": 75},
             "temp_night_f": {"min": 60, "max": 70, "target": 65},

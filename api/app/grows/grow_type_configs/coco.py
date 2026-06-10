@@ -748,7 +748,7 @@ COCO_STAGES: list[dict] = [
         },
         "nutrients": {
             "strength_pct": 100,
-            "approach": "Full bloom. Heavy PK. EC 2.2-2.6. CalMag maintained at every feeding.",
+            "approach": "Full bloom. Heavy PK. EC 1.6-2.0. CalMag maintained at every feeding.",
             "flora_micro_ml_per_gal": 2.5,
             "flora_gro_ml_per_gal": 1.0,
             "flora_bloom_ml_per_gal": 2.5,
@@ -872,7 +872,7 @@ COCO_STAGES: list[dict] = [
         "name": "Mid Flower (Peak Bloom)",
         "order": 7,
         "duration_days": {"min": 14, "max": 21, "typical": 14},
-        "description": "Peak bud development. Maximum generative steering: highest dryback (15-22%), highest EC (2.4-2.8), 4-5 feedings per day. Coco delivers nutrients efficiently so yields can match or exceed hydro. Flush every 7-10 days to prevent salt lockout at these high EC levels.",
+        "description": "Peak bud development. Maximum generative steering: highest dryback (15-22%), quality-focused EC (1.6-2.0), 4-5 feedings per day. Coco delivers nutrients efficiently so yields can match or exceed hydro. Flush every 7-10 days to prevent salt lockout at these high EC levels.",
         "environment": {
             "temp_day_f": {"min": 72, "max": 78, "target": 76},
             "temp_night_f": {"min": 60, "max": 68, "target": 64},
@@ -896,11 +896,11 @@ COCO_STAGES: list[dict] = [
             "calmag_mandatory": True,
             "pot_size": "3-5 gallon final pot",
             "coco_perlite_ratio": "70/30",
-            "notes": "PEAK GENERATIVE STEERING. Maximum dryback (15-22%), highest EC (2.4-2.8), delayed first feed. Every calorie goes to bud production. Flush every 7-10 days — at these EC levels, salts accumulate fast. Never let coco go completely dry — hydrophobic coco during peak flower is catastrophic.",
+            "notes": "PEAK GENERATIVE STEERING. Maximum dryback (15-22%), quality-focused EC (1.6-2.0), delayed first feed. Every calorie goes to bud production. Flush every 7-10 days — at these EC levels, salts accumulate fast. Never let coco go completely dry — hydrophobic coco during peak flower is catastrophic.",
         },
         "nutrients": {
             "strength_pct": 100,
-            "approach": "Full bloom. Peak PK. EC 2.4-2.8. CalMag at every feeding.",
+            "approach": "Full bloom. Peak PK. EC 1.6-2.0. CalMag at every feeding.",
             "flora_micro_ml_per_gal": 2.5,
             "flora_gro_ml_per_gal": 0.625,
             "flora_bloom_ml_per_gal": 2.5,
@@ -917,7 +917,7 @@ COCO_STAGES: list[dict] = [
         "tasks": [
             {
                 "name": "Peak generative steering",
-                "description": "Dryback 15-22%, EC 2.4-2.8, first feed delayed 1-2 hours. Monitor plant response daily.",
+                "description": "Dryback 15-22%, EC 1.6-2.0, first feed delayed 1-2 hours. Monitor plant response daily.",
                 "interval_days": None,
                 "priority": "high",
             },
@@ -968,7 +968,7 @@ COCO_STAGES: list[dict] = [
             {
                 "issue": "Nutrient burn escalating",
                 "cause": "EC too high for cultivar's tolerance",
-                "solution": "Reduce EC by 0.3-0.4. Some cultivars can't handle 2.8. Better slightly lower EC than burned plants.",
+                "solution": "Reduce EC by 0.3-0.4. Some cultivars can't handle high EC. Better slightly lower EC than burned plants.",
             },
         ],
         "training": [],
@@ -1033,7 +1033,7 @@ COCO_STAGES: list[dict] = [
         },
         "nutrients": {
             "strength_pct": 80,
-            "approach": "Reducing. EC 2.0-2.4. Lower nitrogen. Maintain PK for final ripening. CalMag reduced to 1.5 ml/gal.",
+            "approach": "Reducing. EC 1.2-1.6. Lower nitrogen. Maintain PK for final ripening. CalMag reduced to 1.5 ml/gal.",
             "flora_micro_ml_per_gal": 2.0,
             "flora_gro_ml_per_gal": 0.5,
             "flora_bloom_ml_per_gal": 2.0,
@@ -1773,7 +1773,7 @@ COCO_QUICK_REFERENCE: dict = {
     "ph_range": {
         "min": 5.8,
         "max": 6.2,
-        "sweet_spot": 5.9,
+        "sweet_spot": 6.0,
         "notes": "Coco is naturally pH-stable around 5.8-6.2. Less drift than other hydro methods.",
     },
     "ec_by_stage": {
@@ -1782,9 +1782,9 @@ COCO_QUICK_REFERENCE: dict = {
         "early_veg": 0.8,
         "late_veg": 1.4,
         "transition": 1.8,
-        "early_flower": 2.4,
-        "mid_flower": 2.6,
-        "late_flower": 2.2,
+        "early_flower": 1.8,
+        "mid_flower": 2.0,
+        "late_flower": 1.4,
         "flush": 0.0,
     },
     "fertigation_frequency_by_stage": {
