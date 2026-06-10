@@ -66,20 +66,51 @@ export function CameraGrid({ tentId, hideEmpty }: CameraGridProps) {
       const { image_base64 } = await getCameraSnapshot(token, cameras[index].camera.tent_id, cameras[index].camera.id);
       setCameras((prev) => prev.map((c, i) => i === index ? { ...c, imageBase64: image_base64, loading: false } : c));
     } catch {
-      setCameras((prev) => prev.map((c, i) => i === index ? { ...c, loading: false, error: "Camera unavailable" } : c));
+      // API proxy failed (503 = camera unreachable from server).
+      // Try fetching directly from the camera URL (works when user is on same LAN).
+      try {
+        const directUrl = cameras[index].camera.url;
+        if (directUrl && cameras[index].camera.camera_type === "http_snapshot") {
+          const resp = await fetch(directUrl, { mode: "cors", signal: AbortSignal.timeout(10_000) });
+          if (resp.ok) {
+            const blob = await resp.blob();
+            const reader = new FileReader();
+            const b64 = await new Promise<string>((resolve, reject) => {
+              reader.onloadend = () => resolve((reader.result as string).split(",")[1]);
+              reader.onerror = reject;
+              reader.readAsDataURL(blob);
+            });
+            setCameras((prev) => prev.map((c, i) => i === index ? { ...c, imageBase64: b64, loading: false } : c));
+            return;
+          }
+        }
+      } catch {
+        // Direct fetch also failed
+      }
+      setCameras((prev) => prev.map((c, i) => i === index ? { ...c, loading: false, error: "Camera unreachable" } : c));
     }
   }, [cameras]);
 
-  // Load snapshots for all cameras on mount (skip cameras that already errored)
+  // Load snapshots on mount and auto-retry every 30s for cameras without an image
   useEffect(() => {
-    let cancelled = false;
     cameras.forEach((cam, i) => {
-      if (!cancelled && !cam.imageBase64 && !cam.loading && !cam.error) {
+      if (!cam.imageBase64 && !cam.loading && !cam.error) {
         refreshCamera(i);
       }
     });
-    return () => { cancelled = true; };
   }, [cameras.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (cameras.length === 0) return;
+    const interval = setInterval(() => {
+      cameras.forEach((cam, i) => {
+        if (!cam.imageBase64 && !cam.loading) {
+          refreshCamera(i);
+        }
+      });
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [cameras.length, refreshCamera]);
 
   if (loading) {
     if (hideEmpty) return null;
@@ -154,6 +185,14 @@ export function CameraGrid({ tentId, hideEmpty }: CameraGridProps) {
                   alt={cam.camera.label}
                   className="w-full h-full object-cover"
                 />
+              ) : cam.error ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-3">
+                  <Camera className="size-6 text-muted-foreground/50" />
+                  <p className="text-[10px] text-muted-foreground text-center">{cam.error}</p>
+                  <Button variant="ghost" size="sm" className="h-6 text-[10px] gap-1" onClick={() => refreshCamera(i)}>
+                    <RefreshCw className="size-3" /> Retry
+                  </Button>
+                </div>
               ) : (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <Camera className="size-8 text-muted-foreground/30" />
