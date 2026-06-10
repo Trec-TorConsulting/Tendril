@@ -66,17 +66,19 @@ export function CameraGrid({ tentId, hideEmpty }: CameraGridProps) {
       const { image_base64 } = await getCameraSnapshot(token, cameras[index].camera.tent_id, cameras[index].camera.id);
       setCameras((prev) => prev.map((c, i) => i === index ? { ...c, imageBase64: image_base64, loading: false } : c));
     } catch {
-      setCameras((prev) => prev.map((c, i) => i === index ? { ...c, loading: false, error: "Failed to load" } : c));
+      setCameras((prev) => prev.map((c, i) => i === index ? { ...c, loading: false, error: "Camera unavailable" } : c));
     }
   }, [cameras]);
 
-  // Load snapshots for all cameras on mount
+  // Load snapshots for all cameras on mount (skip cameras that already errored)
   useEffect(() => {
-    cameras.forEach((_, i) => {
-      if (!cameras[i].imageBase64 && !cameras[i].loading) {
+    let cancelled = false;
+    cameras.forEach((cam, i) => {
+      if (!cancelled && !cam.imageBase64 && !cam.loading && !cam.error) {
         refreshCamera(i);
       }
     });
+    return () => { cancelled = true; };
   }, [cameras.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {

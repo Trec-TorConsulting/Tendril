@@ -253,7 +253,7 @@ export function BucketDetailModal({ bucket, growId, open, onClose }: BucketDetai
                   <CardContent className="p-4">
                     <h3 className="text-sm font-medium mb-3">Sensor Trends</h3>
                     <div className="h-64">
-                      <ResponsiveContainer width="100%" height="100%">
+                      <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                         <LineChart data={chartData}>
                           <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                           <XAxis dataKey="time" tick={{ fontSize: 10 }} interval="preserveStartEnd" />

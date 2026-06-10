@@ -393,7 +393,7 @@ export default function AnalyticsPage() {
                 {/* pH / EC / PPM */}
                 <div>
                   <p className="mb-2 text-xs font-medium text-muted-foreground">pH · EC · PPM</p>
-                  <ResponsiveContainer width="100%" height={240}>
+                  <ResponsiveContainer width="100%" height={240} minWidth={0}>
                     <LineChart data={chartData}>
                       <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                       <XAxis dataKey="time" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
@@ -410,7 +410,7 @@ export default function AnalyticsPage() {
                 {/* Temperature / Humidity */}
                 <div>
                   <p className="mb-2 text-xs font-medium text-muted-foreground">Temperature · Humidity</p>
-                  <ResponsiveContainer width="100%" height={200}>
+                  <ResponsiveContainer width="100%" height={200} minWidth={0}>
                     <AreaChart data={chartData}>
                       <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                       <XAxis dataKey="time" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
@@ -522,7 +522,7 @@ export default function AnalyticsPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <ResponsiveContainer width="100%" height={250}>
+                <ResponsiveContainer width="100%" height={250} minWidth={0}>
                   <AreaChart data={tentTrends.timestamps.map((ts, i) => ({
                     time: formatShortDateTime(ts),
                     temp: tentTrends.temps[i],
@@ -596,7 +596,7 @@ export default function AnalyticsPage() {
                   Complete harvests to see strain rankings
                 </p>
               ) : (
-                <ResponsiveContainer width="100%" height={Math.max(leaderboard.length * 40, 120)}>
+                <ResponsiveContainer width="100%" height={Math.max(leaderboard.length * 40, 120)} minWidth={0}>
                   <BarChart data={leaderboard} layout="vertical" margin={{ left: 80 }}>
                     <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
                     <XAxis type="number" tick={{ fontSize: 10 }} />
@@ -662,7 +662,7 @@ export default function AnalyticsPage() {
                   {qualityDistribution.some((q) => q.count > 0) && (
                     <div>
                       <p className="mb-2 text-xs font-medium text-muted-foreground">Quality Distribution</p>
-                      <ResponsiveContainer width="100%" height={160}>
+                      <ResponsiveContainer width="100%" height={160} minWidth={0}>
                         <PieChart>
                           <Pie
                             data={qualityDistribution.filter((q) => q.count > 0)}
