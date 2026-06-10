@@ -137,6 +137,39 @@ def create_app() -> FastAPI:
         expose_headers=["X-CSRF-Token"],
     )
 
+    # Ensure CORS headers are present on error responses (BaseHTTPMiddleware can
+    # interfere with CORSMiddleware's ability to inject headers on exceptions).
+    from fastapi import Request
+    from fastapi.exceptions import HTTPException as FastAPIHTTPException
+    from starlette.exceptions import HTTPException as StarletteHTTPException
+
+    def _cors_headers(request: Request) -> dict[str, str]:
+        origin = request.headers.get("origin", "")
+        if origin in settings.cors_origins:
+            return {
+                "Access-Control-Allow-Origin": origin,
+                "Access-Control-Allow-Credentials": "true",
+            }
+        return {}
+
+    @app.exception_handler(StarletteHTTPException)
+    async def cors_http_exception_handler(request: Request, exc: StarletteHTTPException):
+        headers = {**_cors_headers(request), **(exc.headers or {})}
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail},
+            headers=headers,
+        )
+
+    @app.exception_handler(FastAPIHTTPException)
+    async def cors_fastapi_exception_handler(request: Request, exc: FastAPIHTTPException):
+        headers = {**_cors_headers(request), **(exc.headers or {})}
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail},
+            headers=headers,
+        )
+
     # Routers
     app.include_router(auth_router, prefix=f"{settings.api_prefix}/auth", tags=["auth"])
     app.include_router(tenants_router, prefix=f"{settings.api_prefix}/tenants", tags=["tenants"])

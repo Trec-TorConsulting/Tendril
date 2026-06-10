@@ -33,8 +33,11 @@ function backoff(attempt: number): Promise<void> {
 export async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T> {
   const { token, retries: userRetries, timeout: userTimeout, ...fetchOptions } = options;
 
+  const method = (fetchOptions.method || "GET").toUpperCase();
+
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
+    // Only set Content-Type for methods that send a body (avoids unnecessary CORS preflights on GET)
+    ...(!["GET", "HEAD"].includes(method) ? { "Content-Type": "application/json" } : {}),
     ...(options.headers as Record<string, string>),
   };
 
@@ -44,7 +47,6 @@ export async function apiFetch<T>(path: string, options: FetchOptions = {}): Pro
   }
 
   // Attach CSRF token for unsafe methods
-  const method = (fetchOptions.method || "GET").toUpperCase();
   if (_UNSAFE_METHODS.has(method)) {
     const csrf = getCsrfToken();
     if (csrf) {
