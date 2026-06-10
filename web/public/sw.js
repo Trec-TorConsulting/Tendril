@@ -9,7 +9,7 @@
  * - POST/PATCH/DELETE: Queue offline, sync when back online (Background Sync)
  */
 
-const CACHE_VERSION = "v1";
+const CACHE_VERSION = "v2";
 const STATIC_CACHE = `tendril-static-${CACHE_VERSION}`;
 const API_CACHE = `tendril-api-${CACHE_VERSION}`;
 const OFFLINE_QUEUE_STORE = "tendril-offline-queue";
@@ -69,6 +69,11 @@ self.addEventListener("fetch", (event) => {
 
   // Skip WebSocket and non-http
   if (!url.protocol.startsWith("http")) return;
+
+  // Skip cross-origin requests (e.g. api.tendrilgrow.com) — let the browser
+  // handle CORS natively. Intercepting credentialed cross-origin fetches via
+  // respondWith() can produce opaque responses that strip CORS headers.
+  if (url.origin !== self.location.origin) return;
 
   // Static assets: cache-first
   if (isStaticAsset(url)) {
