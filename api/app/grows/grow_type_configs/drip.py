@@ -923,7 +923,7 @@ DRIP_STAGES: list[dict] = [
                     "shots_per_day": 4,
                     "shot_volume_ml": 300,
                     "dryback_pct": 15,
-                    "notes": "Coco: 4 shots/day but push dryback to 12-18% for generative steering. First shot delayed 1 hour after lights on (let the plant work for it). Higher EC (2.4-2.8) pushes flower production. CalMag still every feed.",
+                    "notes": "Coco: 4 shots/day but push dryback to 12-18% for generative steering. First shot delayed 1 hour after lights on (let the plant work for it). Higher EC (1.6-2.0) supports quality flower development. CalMag still every feed.",
                 },
                 "rockwool": {
                     "shots_per_day": 3,
@@ -2321,7 +2321,7 @@ DRIP_QUICK_REFERENCE: dict = {
             "first_shot": "Delayed (1-2 hours after lights on)",
             "last_shot": "Early (3-4 hours before lights off)",
             "dryback": "High (15-25%)",
-            "ec": "Higher (2.4-3.0)",
+            "ec": "Higher (1.6-2.2)",
             "shot_frequency": "Lower (fewer larger shots)",
             "effect": "Pushes flower development, terpene production, bud density.",
         },

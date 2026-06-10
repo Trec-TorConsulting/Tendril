@@ -539,7 +539,7 @@ SOIL_STAGES: list[dict] = [
         "environment": {
             "temp_day_f": {"min": 74, "max": 82, "target": 78},
             "temp_night_f": {"min": 65, "max": 72, "target": 68},
-            "humidity_pct": {"min": 50, "max": 60, "target": 55},
+            "humidity_pct": {"min": 45, "max": 55, "target": 50},
             "vpd_kpa": {"min": 1.0, "max": 1.4, "target": 1.2},
             "light_hours": 12,
             "light_ppfd": {"min": 500, "max": 700, "target": 600},

@@ -312,7 +312,7 @@ WICKING_STAGES: list[dict] = [
         "environment": {
             "temp_day_f": {"min": 72, "max": 80, "target": 76},
             "temp_night_f": {"min": 64, "max": 72, "target": 68},
-            "humidity_pct": {"min": 45, "max": 60, "target": 55},
+            "humidity_pct": {"min": 45, "max": 55, "target": 50},
             "vpd_kpa": {"min": 1.0, "max": 1.3, "target": 1.1},
             "light_hours": 12,
             "light_ppfd": {"min": 600, "max": 800, "target": 700},

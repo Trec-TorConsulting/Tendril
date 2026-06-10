@@ -102,15 +102,21 @@ All code must be written with OWASP Top 10 2021 compliance as a baseline:
 5. **Yield (DEAD LAST)** — never recommend actions that trade quality for quantity
 
 ### Cannabis-Specific Ideal Ranges (enforce across all AI and alerting)
-- Water temp (hydro): 65-68°F ideal. Above 70°F = warning. Above 72°F = critical.
-- Reservoir pH: 5.5-6.2 (sweet spot 5.8). Drift > 0.5/day = flag.
-- Air temp (veg): 75-82°F day, 65-72°F night.
-- Air temp (flower): 72-78°F day, 60-68°F night. Night drop (DIF) 10-15°F enhances terpenes.
+- Water temp (hydro): 66-68°F target, acceptable 64-70°F, caution 70-72°F, warning >72°F, critical >75°F.
+- Water temp (aeroponics): 62-68°F target 65°F (misted roots need cooler temps).
+- Reservoir pH (hydro): 5.5-6.2 (sweet spot 5.8). Drift > 0.5/day = flag.
+- Coco pH: 5.8-6.3 (sweet spot 6.0).
+- Soil pH: 6.0-7.0 (sweet spot 6.5).
+- Air temp (veg): 70-85°F day, 65-72°F night.
+- Air temp (flower): 65-80°F day (quality zone 72-78°F), 60-68°F night. Night drop (DIF) 10-15°F enhances terpenes.
 - Air temp (late flower): 68-75°F day, 58-65°F night — protect volatile terpenes.
 - Humidity (veg): 60-70%. VPD 0.8-1.2 kPa.
+- Humidity (transition): 45-55%. Drop from veg levels.
 - Humidity (flower): 40-55%. Above 55% = botrytis risk.
 - Humidity (late flower): 35-45%. Dense buds trap moisture — mold risk highest now.
-- EC: Veg 0.8-1.4, Flower 1.2-2.0 (peak mid-flower), reduce final 2 weeks.
+- EC (veg): 0.8-1.4 (strain dependent).
+- EC (flower): 1.2-2.0 (peak mid-flower at 1.8-2.0 MAX, reduce final 2 weeks to 1.0-1.4).
+- EC >2.2 is yield-chasing territory — salt stress destroys terpene expression.
 - Dissolved oxygen: >6mg/L. Below 5 = root health emergency.
 
 ### Application of Quality Philosophy

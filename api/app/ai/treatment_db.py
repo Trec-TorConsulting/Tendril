@@ -77,7 +77,7 @@ NITROGEN_DEFICIENCY = TreatmentEntry(
         "hydroponic": [
             "Increase base nutrient EC by 0.2-0.4",
             "Verify pH is 5.5-6.5 for proper N uptake",
-            "Check reservoir temperature (65-72°F ideal)",
+            "Check reservoir temperature (66-68°F ideal, above 70°F = caution)",
             "Consider foliar spray with 1/4 strength veg nutrients as fast fix",
         ],
         "coco": [
