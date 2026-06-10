@@ -6,6 +6,7 @@ Welcome to the Tendril documentation. Whether you're self-hosting, contributing 
 
 | Guide | Description |
 |-------|-------------|
+| [Cannabis Quality Philosophy](cannabis-quality-philosophy.md) | How Tendril optimizes for quality flower — ranges, thresholds, AI behavior |
 | [Self-Hosting Guide](self-hosting.md) | Deploy Tendril with Docker Compose or Kubernetes |
 | [Configuration Reference](configuration.md) | Every environment variable and config option |
 | [ESP32 Hardware Guide](esp32-hardware.md) | Bill of materials, wiring, calibration, flashing |
