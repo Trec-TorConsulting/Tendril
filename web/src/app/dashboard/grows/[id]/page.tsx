@@ -704,14 +704,14 @@ export default function GrowDetailPage() {
                     {
                       label: "Humidity",
                       value: latestEnvHumidity != null ? `${latestEnvHumidity.toFixed(0)}%` : "—",
-                      status: latestEnvHumidity != null ? (latestEnvHumidity >= 40 && latestEnvHumidity <= 70 ? "optimal" : "warning") : "unknown",
-                      hint: latestEnvHumidity != null && latestEnvHumidity < 40 ? "Too dry — target 40–70%" : latestEnvHumidity != null && latestEnvHumidity > 70 ? "Too humid — target 40–70%" : undefined,
+                      status: latestEnvHumidity != null ? (latestEnvHumidity >= 35 && latestEnvHumidity <= 60 ? "optimal" : "warning") : "unknown",
+                      hint: latestEnvHumidity != null && latestEnvHumidity < 35 ? "Too dry — target 40–60% (flower safe)" : latestEnvHumidity != null && latestEnvHumidity > 60 ? "Too humid — botrytis risk above 60% in flower" : undefined,
                     },
                     {
                       label: "Water Temp",
                       value: sensorTrends.water_temp.length > 0 ? formatTemp(sensorTrends.water_temp[sensorTrends.water_temp.length - 1], "f", prefs.temp_unit, 0) : "—",
-                      status: sensorTrends.water_temp.length > 0 ? (sensorTrends.water_temp[sensorTrends.water_temp.length - 1] >= 62 && sensorTrends.water_temp[sensorTrends.water_temp.length - 1] <= 72 ? "optimal" : "warning") : "unknown",
-                      hint: sensorTrends.water_temp.length > 0 && sensorTrends.water_temp[sensorTrends.water_temp.length - 1] < 62 ? "Too cold — target 62–72°F" : sensorTrends.water_temp.length > 0 && sensorTrends.water_temp[sensorTrends.water_temp.length - 1] > 72 ? "Too warm — risk of root rot. Target 62–72°F" : undefined,
+                      status: sensorTrends.water_temp.length > 0 ? (sensorTrends.water_temp[sensorTrends.water_temp.length - 1] >= 62 && sensorTrends.water_temp[sensorTrends.water_temp.length - 1] <= 70 ? "optimal" : "warning") : "unknown",
+                      hint: sensorTrends.water_temp.length > 0 && sensorTrends.water_temp[sensorTrends.water_temp.length - 1] < 62 ? "Too cold — target 64–70°F" : sensorTrends.water_temp.length > 0 && sensorTrends.water_temp[sensorTrends.water_temp.length - 1] > 70 ? "Too warm — root rot risk above 72°F. Target 64–70°F" : undefined,
                     },
                   ]}
                 />
@@ -726,8 +726,8 @@ export default function GrowDetailPage() {
                     {
                       label: "pH",
                       value: sensorTrends.ph.length > 0 ? sensorTrends.ph[sensorTrends.ph.length - 1].toFixed(1) : "—",
-                      status: sensorTrends.ph.length > 0 ? (sensorTrends.ph[sensorTrends.ph.length - 1] >= 5.5 && sensorTrends.ph[sensorTrends.ph.length - 1] <= 6.5 ? "optimal" : "warning") : "unknown",
-                      hint: sensorTrends.ph.length > 0 && sensorTrends.ph[sensorTrends.ph.length - 1] < 5.5 ? "Too acidic — target 5.5–6.5" : sensorTrends.ph.length > 0 && sensorTrends.ph[sensorTrends.ph.length - 1] > 6.5 ? "Too alkaline — target 5.5–6.5" : undefined,
+                      status: sensorTrends.ph.length > 0 ? (sensorTrends.ph[sensorTrends.ph.length - 1] >= 5.5 && sensorTrends.ph[sensorTrends.ph.length - 1] <= 6.2 ? "optimal" : "warning") : "unknown",
+                      hint: sensorTrends.ph.length > 0 && sensorTrends.ph[sensorTrends.ph.length - 1] < 5.5 ? "Too acidic — target 5.5–6.2" : sensorTrends.ph.length > 0 && sensorTrends.ph[sensorTrends.ph.length - 1] > 6.2 ? "Too alkaline — target 5.5–6.2" : undefined,
                     },
                     {
                       label: "PPM",
@@ -1479,7 +1479,7 @@ function getSettingsSchema(growType: string, tempUnit = "°F"): SettingsField[] 
         { key: "fertigation_frequency", label: "Fertigation Frequency", options: ["1x_daily", "2x_daily", "3x_daily", "4x_daily", "6x_daily", "as_needed"] },
         { key: "runoff_target_pct", label: "Runoff Target", type: "number", unit: "%", placeholder: "e.g. 20" },
         { key: "calmag_brand", label: "CalMag Product", placeholder: "e.g. Botanicare Cal-Mag Plus", hint: "CalMag is essential in coco" },
-        { key: "target_ph", label: "Target pH", type: "number", step: "0.1", placeholder: "e.g. 5.8", hint: "Coco optimal range: 5.5–6.5" },
+        { key: "target_ph", label: "Target pH", type: "number", step: "0.1", placeholder: "e.g. 5.8", hint: "Coco optimal range: 5.8–6.3" },
         { key: "target_ec", label: "Target EC", type: "number", step: "0.1", unit: "mS/cm", placeholder: "e.g. 1.4" },
         ...NUTRIENT_FIELDS,
         ...LIGHT_FIELDS,
