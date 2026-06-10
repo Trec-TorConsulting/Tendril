@@ -85,10 +85,21 @@ async def websocket_chat(ws: WebSocket):
                         timeout=10.0,
                     )
                     system_context = await build_chat_context(grow_data, session=session)
+                    logger.info(
+                        "Chat context loaded for grow %s (%s/%s), context length: %d chars",
+                        grow.name,
+                        grow.grow_type,
+                        grow.stage,
+                        len(system_context),
+                    )
+                else:
+                    logger.warning("Chat: grow_id %s not found or tenant mismatch", grow_id)
         except TimeoutError:
             logger.warning("Timed out loading grow context for chat, using default")
         except Exception:
             logger.exception("Failed to load grow context for chat")
+    else:
+        logger.info("Chat: no grow_id provided, using generic context")
 
     messages = [{"role": "system", "content": system_context}]
     await ws.send_json({"type": "ready", "message": "Connected to Tendril AI"})

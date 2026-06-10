@@ -333,36 +333,52 @@ async def build_chat_context(
     profile = None
     if session and grow_type:
         profile = await get_grow_type_profile_from_db(grow_type, session)
-    if not profile:
-        return "You are Tendril, an AI grow assistant."
+
+    # Build context even without a profile — the grow data is always available
+    type_name = profile["name"] if profile else (grow_type.replace("_", " ").title() or "Cannabis")
+
+    if profile:
+        ai_prompt = profile.get("ai_context_prompt") or ""
+        feeding_approach = profile.get("feeding_approach", "")
+        nutrient_strength = profile.get("nutrient_strength", "")
+        ph_range = profile.get("ph_range")
+        common_problems = profile.get("common_problems", [])
+        health_questions = profile.get("health_check_questions", [])
+        terminology = profile.get("terminology", {})
+    else:
+        ai_prompt = ""
+        feeding_approach = ""
+        nutrient_strength = ""
+        ph_range = None
+        common_problems = []
+        health_questions = []
+        terminology = {}
 
     # ai_context_prompt is a top-level DB column; extended_config fields are merged in
-    ai_prompt = profile.get("ai_context_prompt") or ""
     parts = [
         f"You are Tendril, an expert cannabis cultivation AI — think master grower with 20+ years of "
-        f"experience across every grow style. You specialize in {profile['name']} cannabis cultivation "
+        f"experience across every grow style. You specialize in {type_name} cannabis cultivation "
         f"with deep expertise in cannabinoid and terpene production, plant physiology, nutrient chemistry, "
         f"environmental optimization, phenotype expression, and strain-specific growing techniques.\n\n"
         f"You speak like a knowledgeable grower — direct, practical, and passionate about growing top-shelf "
         f"cannabis. You understand the plant at a molecular level: how VPD drives transpiration and nutrient "
         f"uptake, how light spectrum affects cannabinoid synthesis, how stress hormones trigger resin production, "
         f"and how microbial interactions in the rhizosphere affect terpene expression.",
-        f"Grow method context: {ai_prompt}",
-        f"Feeding approach: {profile.get('feeding_approach', '')}",
-        f"Nutrient strength: {profile.get('nutrient_strength', '')}",
     ]
-    ph_range = profile.get("ph_range")
+    if ai_prompt:
+        parts.append(f"Grow method context: {ai_prompt}")
+    if feeding_approach:
+        parts.append(f"Feeding approach: {feeding_approach}")
+    if nutrient_strength:
+        parts.append(f"Nutrient strength: {nutrient_strength}")
     if ph_range:
         parts.append(f"pH range: {ph_range.get('min', '?')}-{ph_range.get('max', '?')}")
-    common_problems = profile.get("common_problems", [])
     if common_problems:
         parts.append(f"Common problems: {', '.join(common_problems)}")
-    health_questions = profile.get("health_check_questions", [])
     if health_questions:
         parts.append(f"Health check questions to consider: {', '.join(health_questions)}")
 
     # Add terminology so the AI uses the right words for this grow type
-    terminology = profile.get("terminology", {})
     if terminology:
         term_str = ", ".join(f"{k}='{v}'" for k, v in terminology.items())
         parts.append(f"Use these terms when talking to the grower: {term_str}")
@@ -376,7 +392,7 @@ async def build_chat_context(
     parts.append(
         f"\n=== Active Grow ===\n"
         f"  Name: {grow_data.get('grow_name', '?')}\n"
-        f"  Type: {profile['name']}\n"
+        f"  Type: {type_name}\n"
         f"  Stage: {grow_data.get('stage', '?')}\n"
         f"  Status: {grow_data.get('status', '?')}\n"
         f"  Started: {grow_data.get('started_at', '?')}\n" + tent_line
@@ -415,7 +431,7 @@ async def build_chat_context(
 
     # Scale & strain-type context from profile's extended_config
     # (scale_tiers, strain_adjustments already merged into profile from extended_config)
-    if profile.get("scale_tiers"):
+    if profile and profile.get("scale_tiers"):
         buckets_list = grow_data.get("buckets") or []
         bucket_count = len(buckets_list)
         # Infer scale from bucket count
