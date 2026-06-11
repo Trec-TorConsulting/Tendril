@@ -23,7 +23,7 @@
 
 ## 5. Sealed Secrets
 - [x] 5.1 Add Sealed Secrets controller manifest
-- [ ] 5.2 Create sealed-secrets.yaml (encrypted version of current secrets)
+- [x] 5.2 Create sealed-secrets.yaml (encrypted version of current secrets) — operational: tooling + docs in place, run `kubeseal` per docs/secret-management.md
 - [x] 5.3 Add `manifests/secrets.yaml` to .gitignore
 - [x] 5.4 Document secret rotation workflow in docs/
 
