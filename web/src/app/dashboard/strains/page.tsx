@@ -317,11 +317,7 @@ export default function StrainsPage() {
                 }}
               >
                 <SelectTrigger>
-                  <SelectValue>
-                    {comparisonStrainId
-                      ? strains.find((s) => s.id === comparisonStrainId)?.name ?? "Select strain"
-                      : "Select strain"}
-                  </SelectValue>
+                  <SelectValue placeholder="Select strain" />
                 </SelectTrigger>
                 <SelectContent>
                   {strains.map((s) => (

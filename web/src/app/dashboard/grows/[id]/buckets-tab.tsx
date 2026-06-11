@@ -295,7 +295,7 @@ export function BucketsTab({ growId, growType, buckets, latestReadings, onRefres
               <Label className="text-xs">Strain (optional)</Label>
               <Select value={addStrainId} onValueChange={(v) => setAddStrainId(v ?? "")}>
                 <SelectTrigger>
-                  <SelectValue>{addStrainId ? strainMap[addStrainId]?.name ?? "Select strain" : "Select strain"}</SelectValue>
+                  <SelectValue placeholder="Select strain" />
                 </SelectTrigger>
                 <SelectContent>
                   {strains.map((s) => (
@@ -354,7 +354,7 @@ export function BucketsTab({ growId, growType, buckets, latestReadings, onRefres
               <Label className="text-xs">Strain</Label>
               <Select value={editForm.strain_id} onValueChange={(v) => setEditForm((p) => ({ ...p, strain_id: v ?? "" }))}>
                 <SelectTrigger>
-                  <SelectValue>{editForm.strain_id ? strainMap[editForm.strain_id]?.name ?? "Select strain" : "Select strain"}</SelectValue>
+                  <SelectValue placeholder="Select strain" />
                 </SelectTrigger>
                 <SelectContent>
                   {strains.map((s) => (

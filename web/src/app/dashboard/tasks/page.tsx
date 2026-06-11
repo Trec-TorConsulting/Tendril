@@ -373,7 +373,7 @@ export default function TasksPage() {
           {grows.length > 0 && (
             <Select value={growFilter || "all"} onValueChange={(v) => setGrowFilter(!v || v === "all" ? "" : v)}>
               <SelectTrigger className="h-8 w-full sm:w-[180px]">
-                <SelectValue>{growFilter ? grows.find((g) => g.id === growFilter)?.name ?? "Grow" : "All Grows"}</SelectValue>
+                <SelectValue placeholder="All Grows" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Grows</SelectItem>
@@ -642,7 +642,7 @@ export default function TasksPage() {
                   <Label>Priority</Label>
                   <Select value={priority} onValueChange={(v) => setPriority(v ?? "medium")}>
                     <SelectTrigger>
-                      <SelectValue>{priority}</SelectValue>
+                      <SelectValue placeholder="Medium" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="low">Low</SelectItem>
@@ -656,7 +656,7 @@ export default function TasksPage() {
                   <Label>Category</Label>
                   <Select value={category || "none"} onValueChange={(v) => setCategory(!v || v === "none" ? "" : v)}>
                     <SelectTrigger>
-                      <SelectValue>{category ? getCategoryLabel(category) : "None"}</SelectValue>
+                      <SelectValue placeholder="None" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">None</SelectItem>
@@ -692,7 +692,7 @@ export default function TasksPage() {
                   <Label>Grow</Label>
                   <Select value={growId || "none"} onValueChange={(v) => setGrowId(!v || v === "none" ? "" : v)}>
                     <SelectTrigger>
-                      <SelectValue>{growId ? growMap[growId] ?? "Select" : "None"}</SelectValue>
+                      <SelectValue placeholder="None" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">None</SelectItem>
@@ -706,7 +706,7 @@ export default function TasksPage() {
                   <Label>Recurring</Label>
                   <Select value={recurring || "none"} onValueChange={(v) => setRecurring(!v || v === "none" ? "" : v)}>
                     <SelectTrigger>
-                      <SelectValue>{recurring || "None"}</SelectValue>
+                      <SelectValue placeholder="None" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">None</SelectItem>
