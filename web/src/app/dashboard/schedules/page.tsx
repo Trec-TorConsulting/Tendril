@@ -274,9 +274,7 @@ function CreateScheduleDialog({
             <Label>Tent</Label>
             <Select value={tentId} onValueChange={(v) => setTentId(v ?? "")}>
               <SelectTrigger className="w-full">
-                <SelectValue>
-                  {tents.find((t) => t.id === tentId)?.name || "Select a tent"}
-                </SelectValue>
+                <SelectValue placeholder="Select a tent" />
               </SelectTrigger>
               <SelectContent>
                 {tents.map((t) => (
@@ -303,7 +301,7 @@ function CreateScheduleDialog({
               <Label>Stage (optional)</Label>
               <Select value={stage} onValueChange={(v) => setStage(v ?? "")}>
                 <SelectTrigger className="w-full">
-                  <SelectValue>{stage || "Any stage"}</SelectValue>
+                  <SelectValue placeholder="Any stage" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">Any stage</SelectItem>

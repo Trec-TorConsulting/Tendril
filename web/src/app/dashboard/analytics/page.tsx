@@ -345,11 +345,7 @@ export default function AnalyticsPage() {
         <div className="flex flex-wrap items-center gap-3">
           <Select value={analyticsGrowId} onValueChange={(v) => setAnalyticsGrowId(v ?? "all")}>
             <SelectTrigger className="w-56">
-              <SelectValue>
-                {analyticsGrowId === "all"
-                  ? "All Grows"
-                  : grows.find((g) => g.id === analyticsGrowId)?.name ?? "Select grow"}
-              </SelectValue>
+              <SelectValue placeholder="Select grow" />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Grows</SelectItem>
@@ -363,12 +359,7 @@ export default function AnalyticsPage() {
           {buckets.length > 1 && (
             <Select value={selectedBucketId} onValueChange={(v) => setSelectedBucketId(v ?? "")}>
               <SelectTrigger className="w-56">
-                <SelectValue>
-                  {(() => {
-                    const b = buckets.find((bk) => bk.id === selectedBucketId);
-                    return b ? `#${b.position} ${b.label || b.strain_name || "Unnamed"}` : "Select bucket";
-                  })()}
-                </SelectValue>
+                <SelectValue placeholder="Select bucket" />
               </SelectTrigger>
               <SelectContent>
                 {buckets.map((b) => (

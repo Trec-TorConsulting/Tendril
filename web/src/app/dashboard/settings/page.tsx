@@ -670,11 +670,7 @@ function DashboardPreferences() {
               disabled={disabled}
             >
               <SelectTrigger className="w-full sm:w-[180px] shrink-0">
-                <SelectValue>
-                  {prefs.default_grow_id
-                    ? grows.find((g) => g.id === prefs.default_grow_id)?.name ?? "Unknown grow"
-                    : "Auto (most recent)"}
-                </SelectValue>
+                <SelectValue placeholder="Auto (most recent)" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="_none">Auto (most recent)</SelectItem>
