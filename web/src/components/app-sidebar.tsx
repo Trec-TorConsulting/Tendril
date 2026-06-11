@@ -62,7 +62,9 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -155,28 +157,32 @@ export function AppSidebar({ user, onLogout }: AppSidebarProps) {
       {/* Global Grow Selector */}
       {grows.length > 0 && (
         <div className="px-3 pb-2 group-data-[collapsible=icon]:hidden">
-          <Select value={selectedGrow?.id || ""} onValueChange={handleGrowChange}>
+          <Select value={selectedGrow?.id} onValueChange={handleGrowChange}>
             <SelectTrigger className="h-8 w-full text-xs">
               <Sprout className="size-3 text-primary shrink-0" />
               <SelectValue placeholder="Select a grow" />
             </SelectTrigger>
             <SelectContent>
               {grows.filter((g) => g.status === "active").length > 0 && (
-                <div className="px-2 py-1 text-[10px] font-medium text-muted-foreground">Active</div>
+                <SelectGroup>
+                  <SelectLabel>Active</SelectLabel>
+                  {grows.filter((g) => g.status === "active").map((g) => (
+                    <SelectItem key={g.id} value={g.id}>
+                      {g.name}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
               )}
-              {grows.filter((g) => g.status === "active").map((g) => (
-                <SelectItem key={g.id} value={g.id}>
-                  {g.name}
-                </SelectItem>
-              ))}
               {grows.filter((g) => g.status !== "active").length > 0 && (
-                <div className="px-2 py-1 text-[10px] font-medium text-muted-foreground">Other</div>
+                <SelectGroup>
+                  <SelectLabel>Other</SelectLabel>
+                  {grows.filter((g) => g.status !== "active").map((g) => (
+                    <SelectItem key={g.id} value={g.id}>
+                      {g.name} ({g.status})
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
               )}
-              {grows.filter((g) => g.status !== "active").map((g) => (
-                <SelectItem key={g.id} value={g.id}>
-                  {g.name} ({g.status})
-                </SelectItem>
-              ))}
             </SelectContent>
           </Select>
         </div>
