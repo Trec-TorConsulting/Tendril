@@ -106,6 +106,7 @@ import { WeatherCard } from "./weather-card";
 import { isOutdoor, isActiveHydro, isSoil, t } from "@/lib/terminology";
 import { usePreferences } from "@/hooks/use-preferences";
 import { formatTemp, tempUnitLabel } from "@/lib/units";
+import { getHumidityThreshold } from "@/lib/humidity-thresholds";
 
 const STAGES = ["seedling", "vegetative", "flowering", "ripening", "drying", "curing"];
 const STAGE_DURATIONS: Record<string, number> = { seedling: 14, vegetative: 30, flowering: 56, ripening: 14, drying: 10, curing: 21 };
@@ -704,8 +705,8 @@ export default function GrowDetailPage() {
                     {
                       label: "Humidity",
                       value: latestEnvHumidity != null ? `${latestEnvHumidity.toFixed(0)}%` : "—",
-                      status: latestEnvHumidity != null ? (latestEnvHumidity >= 35 && latestEnvHumidity <= 60 ? "optimal" : "warning") : "unknown",
-                      hint: latestEnvHumidity != null && latestEnvHumidity < 35 ? "Too dry — target 40–60% (flower safe)" : latestEnvHumidity != null && latestEnvHumidity > 60 ? "Too humid — botrytis risk above 60% in flower" : undefined,
+                      status: getHumidityThreshold(latestEnvHumidity, grow?.stage).status,
+                      hint: getHumidityThreshold(latestEnvHumidity, grow?.stage).hint,
                     },
                     {
                       label: "Water Temp",

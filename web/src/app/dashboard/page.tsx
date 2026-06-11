@@ -27,6 +27,7 @@ import { PageHeader } from "@/components/page-header";
 import { OnboardingChecklist } from "@/components/onboarding-checklist";
 import { usePreferences } from "@/hooks/use-preferences";
 import { formatTemp, tempUnitLabel } from "@/lib/units";
+import { getHumidityThreshold } from "@/lib/humidity-thresholds";
 import { isActiveHydro } from "@/lib/terminology";
 import { CameraGrid } from "@/components/camera-grid";
 import { Sparkline, SensorSparkline } from "@/components/sparkline";
@@ -271,9 +272,10 @@ export default function DashboardPage() {
     latestTemp != null || latestHumidity != null
       ? `${latestTemp != null ? formatTemp(latestTemp, "f", prefs.temp_unit, 0) : "—"}${latestHumidity != null ? ` / ${latestHumidity.toFixed(0)}%` : ""}`
       : "—";
+  const humThreshold = getHumidityThreshold(latestHumidity, selectedGrow?.stage);
   const envStatus =
     latestTemp != null && latestHumidity != null
-      ? (latestTemp >= 68 && latestTemp <= 82 && latestHumidity >= 35 && latestHumidity <= 60 ? "optimal" : "warning")
+      ? (latestTemp >= 68 && latestTemp <= 82 && humThreshold.status === "optimal" ? "optimal" : "warning")
       : "unknown";
   const updatedAgo = lastReadingAt ? timeAgo(lastReadingAt) : null;
   const isHydro = isActiveHydro(selectedGrow?.grow_type);
@@ -370,8 +372,8 @@ export default function DashboardPage() {
                       {
                         label: "Humidity",
                         value: latestHumidity != null ? `${latestHumidity.toFixed(0)}%` : "—",
-                        status: latestHumidity != null ? (latestHumidity >= 35 && latestHumidity <= 60 ? "optimal" : "warning") : "unknown",
-                        hint: latestHumidity != null && latestHumidity < 35 ? "Too dry — target 40–60% (flower safe)" : latestHumidity != null && latestHumidity > 60 ? "Too humid — botrytis risk above 60% in flower" : undefined,
+                        status: getHumidityThreshold(latestHumidity, selectedGrow?.stage).status,
+                        hint: getHumidityThreshold(latestHumidity, selectedGrow?.stage).hint,
                       },
                       {
                         label: "Water Temp",
@@ -435,9 +437,10 @@ export default function DashboardPage() {
                   <EnvironmentBadgeCard
                     label="Humidity"
                     value={latestHumidity != null ? `${latestHumidity.toFixed(0)}%` : "—"}
-                    status={latestHumidity != null ? (latestHumidity >= 35 && latestHumidity <= 60 ? "optimal" : "warning") : "unknown"}
+                    status={getHumidityThreshold(latestHumidity, selectedGrow?.stage).status}
                     icon={<Droplets className="size-5" />}
                     updatedAgo={updatedAgo}
+                    hint={getHumidityThreshold(latestHumidity, selectedGrow?.stage).hint}
                   />
                   <EnvironmentBadgeCard
                     label="CO₂"
