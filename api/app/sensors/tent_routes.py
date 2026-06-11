@@ -23,6 +23,13 @@ class TentReadingCreate(BaseModel):
     device_id: str | None = None
     ambient_temp_f: float | None = None
     ambient_humidity: float | None = None
+    vpd: float | None = None
+    co2: float | None = None
+    lux: float | None = None
+    dew_point_f: float | None = None
+    par_ppfd: float | None = None
+    voc: float | None = None
+    air_pressure: float | None = None
 
 
 class TentReadingResponse(BaseModel):
@@ -31,6 +38,13 @@ class TentReadingResponse(BaseModel):
     device_id: str | None
     ambient_temp_f: float | None
     ambient_humidity: float | None
+    vpd: float | None = None
+    co2: float | None = None
+    lux: float | None = None
+    dew_point_f: float | None = None
+    par_ppfd: float | None = None
+    voc: float | None = None
+    air_pressure: float | None = None
     recorded_at: datetime
     model_config = {"from_attributes": True}
 
@@ -107,6 +121,9 @@ async def get_tent_trends(
         "timestamps": [r.recorded_at.isoformat() for r in readings],
         "temps": [r.ambient_temp_f for r in readings],
         "humidities": [r.ambient_humidity for r in readings],
+        "vpd": [r.vpd for r in readings],
+        "co2": [r.co2 for r in readings],
+        "lux": [r.lux for r in readings],
     }
 
 
