@@ -11,6 +11,7 @@ from app.admin.routes import router as admin_router
 from app.ai.conversation_routes import router as conversation_router
 from app.ai.diagnose_routes import router as diagnose_router
 from app.ai.routes import router as ai_router
+from app.analytics.routes import router as analytics_router
 from app.auth.routes import router as auth_router
 from app.automation.routes import router as automation_router
 from app.billing.account_deletion import router as account_deletion_router
@@ -225,6 +226,7 @@ def create_app() -> FastAPI:
     app.include_router(runoff_router, prefix=f"{settings.api_prefix}/grows", tags=["outdoor-runoff"])
     app.include_router(integrations_router, prefix=f"{settings.api_prefix}/integrations", tags=["integrations"])
     app.include_router(equipment_router, prefix=f"{settings.api_prefix}/equipment", tags=["equipment"])
+    app.include_router(analytics_router, prefix=f"{settings.api_prefix}/analytics", tags=["analytics"])
     app.include_router(expense_router, prefix=f"{settings.api_prefix}/grows", tags=["cost-roi"])
     app.include_router(support_tickets_router, prefix=f"{settings.api_prefix}/support/tickets", tags=["support"])
     app.include_router(support_admin_router, prefix=f"{settings.api_prefix}/support/admin", tags=["support-admin"])
