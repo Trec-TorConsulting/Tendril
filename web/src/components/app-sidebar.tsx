@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  Activity,
   LayoutDashboard,
   Warehouse,
   Sprout,
@@ -85,6 +86,7 @@ const MAIN_NAV = [
 
 const INSIGHTS_NAV = [
   { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/dashboard/vpd", label: "VPD Monitor", icon: Activity },
   { href: "/dashboard/ai", label: "AI Assistant", icon: Brain },
   { href: "/dashboard/cost-roi", label: "Cost & ROI", icon: DollarSign },
 ];
