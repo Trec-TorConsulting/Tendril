@@ -56,7 +56,7 @@ export function PageHeader({ title, description, breadcrumbs, actions }: PageHea
       {/* Mobile grow switcher — sidebar not rendered on mobile */}
       {isMobile && grows.length > 0 && (
         <>
-          <Select value={selectedGrow?.id || ""} onValueChange={handleMobileGrowChange}>
+          <Select value={selectedGrow?.id} onValueChange={handleMobileGrowChange}>
             <SelectTrigger className="h-8 w-auto max-w-[140px] gap-1.5 border-none bg-transparent px-1.5 text-xs font-medium shadow-none">
               <Sprout className="size-3 shrink-0 text-primary" />
               <SelectValue placeholder="Grow" />
