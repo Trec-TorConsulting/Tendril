@@ -29,6 +29,7 @@ from app.config_management.routes import router as config_mgmt_router
 from app.data.routes import router as data_router
 from app.devices.commands import router as device_commands_router
 from app.devices.routes import router as devices_router
+from app.equipment.routes import router as equipment_router
 from app.grows.bucket_routes import router as buckets_router
 from app.grows.expense_routes import router as expense_router
 from app.grows.feeding_routes import router as feeding_router
@@ -223,6 +224,7 @@ def create_app() -> FastAPI:
     app.include_router(container_router, prefix=f"{settings.api_prefix}/grows", tags=["outdoor-containers"])
     app.include_router(runoff_router, prefix=f"{settings.api_prefix}/grows", tags=["outdoor-runoff"])
     app.include_router(integrations_router, prefix=f"{settings.api_prefix}/integrations", tags=["integrations"])
+    app.include_router(equipment_router, prefix=f"{settings.api_prefix}/equipment", tags=["equipment"])
     app.include_router(expense_router, prefix=f"{settings.api_prefix}/grows", tags=["cost-roi"])
     app.include_router(support_tickets_router, prefix=f"{settings.api_prefix}/support/tickets", tags=["support"])
     app.include_router(support_admin_router, prefix=f"{settings.api_prefix}/support/admin", tags=["support-admin"])

@@ -42,6 +42,7 @@ async def _setup_db():
         TenantConfigOverride,
     )
     from app.database import Base
+    from app.equipment.models import ControllableEquipment, EquipmentStateLog  # noqa: F401
     from app.grows.models import (  # noqa: F401
         Bucket,
         BucketPhoto,

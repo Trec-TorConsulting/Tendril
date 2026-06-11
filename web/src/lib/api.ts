@@ -2756,3 +2756,111 @@ export function getDeviceCommand(token: string, commandId: string) {
 export function listCommandTypes(token: string) {
   return apiFetch<CommandTypeInfo[]>("/devices/commands/types", { token });
 }
+
+// ── Equipment Control ─────────────────────────────────────────────────────────
+
+export interface EquipmentResponse {
+  id: string;
+  tenant_id: string;
+  tent_id: string | null;
+  name: string;
+  equipment_type: string;
+  protocol: string;
+  protocol_config: Record<string, unknown>;
+  capabilities: string[];
+  requested_state: Record<string, unknown>;
+  confirmed_state: Record<string, unknown>;
+  last_confirmed_at: string | null;
+  max_on_minutes: number | null;
+  cooldown_minutes: number;
+  conflicts_with: string[];
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EquipmentCommandResponse {
+  equipment_id: string;
+  action: string;
+  success: boolean;
+  requested_state: Record<string, unknown>;
+  message: string | null;
+}
+
+export interface EquipmentStateLogResponse {
+  id: string;
+  equipment_id: string;
+  action: string;
+  source: string;
+  state_before: Record<string, unknown> | null;
+  state_after: Record<string, unknown> | null;
+  metadata_: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface TestConnectionResponse {
+  reachable: boolean;
+  protocol: string;
+  message: string;
+  device_info: Record<string, unknown> | null;
+}
+
+export function listEquipment(token: string, tentId?: string, enabled?: boolean) {
+  const qs = new URLSearchParams();
+  if (tentId) qs.set("tent_id", tentId);
+  if (enabled !== undefined) qs.set("enabled", String(enabled));
+  const q = qs.toString();
+  return apiFetch<PaginatedResponse<EquipmentResponse>>(`/equipment/${q ? `?${q}` : ""}`, { token });
+}
+
+export function getEquipment(token: string, id: string) {
+  return apiFetch<EquipmentResponse>(`/equipment/${id}`, { token });
+}
+
+export function createEquipment(token: string, data: {
+  name: string;
+  equipment_type: string;
+  protocol: string;
+  protocol_config: Record<string, unknown>;
+  capabilities?: string[];
+  tent_id?: string;
+  max_on_minutes?: number | null;
+  cooldown_minutes?: number;
+  conflicts_with?: string[];
+}) {
+  return apiFetch<EquipmentResponse>("/equipment/", { method: "POST", body: JSON.stringify(data), token });
+}
+
+export function updateEquipment(token: string, id: string, data: Partial<{
+  name: string;
+  equipment_type: string;
+  protocol: string;
+  protocol_config: Record<string, unknown>;
+  capabilities: string[];
+  tent_id: string | null;
+  max_on_minutes: number | null;
+  cooldown_minutes: number;
+  conflicts_with: string[];
+  enabled: boolean;
+}>) {
+  return apiFetch<EquipmentResponse>(`/equipment/${id}`, { method: "PATCH", body: JSON.stringify(data), token });
+}
+
+export function deleteEquipment(token: string, id: string) {
+  return apiFetch<void>(`/equipment/${id}`, { method: "DELETE", token });
+}
+
+export function sendEquipmentCommand(token: string, id: string, data: { action: string; value?: number }) {
+  return apiFetch<EquipmentCommandResponse>(`/equipment/${id}/command`, { method: "POST", body: JSON.stringify(data), token });
+}
+
+export function getEquipmentHistory(token: string, id: string, source?: string) {
+  const qs = new URLSearchParams();
+  if (source) qs.set("source", source);
+  const q = qs.toString();
+  return apiFetch<PaginatedResponse<EquipmentStateLogResponse>>(`/equipment/${id}/history${q ? `?${q}` : ""}`, { token });
+}
+
+export function testEquipmentConnection(token: string, id: string) {
+  return apiFetch<TestConnectionResponse>(`/equipment/${id}/test`, { method: "POST", token });
+}

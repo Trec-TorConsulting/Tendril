@@ -2,6 +2,7 @@
 
 from app.integrations.connectors.ecowitt import EcowittConnector  # noqa: F401
 from app.integrations.connectors.home_assistant import HomeAssistantConnector  # noqa: F401
+from app.integrations.connectors.mqtt_generic import MqttGenericConnector  # noqa: F401
 from app.integrations.connectors.opensprinkler import OpenSprinklerConnector  # noqa: F401
 from app.integrations.connectors.openweather import OpenWeatherConnector  # noqa: F401
 from app.integrations.connectors.pulse import PulseConnector  # noqa: F401
