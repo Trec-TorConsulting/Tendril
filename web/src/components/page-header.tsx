@@ -59,7 +59,7 @@ export function PageHeader({ title, description, breadcrumbs, actions }: PageHea
           <Select value={selectedGrow?.id || ""} onValueChange={handleMobileGrowChange}>
             <SelectTrigger className="h-8 w-auto max-w-[140px] gap-1.5 border-none bg-transparent px-1.5 text-xs font-medium shadow-none">
               <Sprout className="size-3 shrink-0 text-primary" />
-              <SelectValue>{selectedGrow?.name || "Grow"}</SelectValue>
+              <SelectValue placeholder="Grow" />
             </SelectTrigger>
             <SelectContent>
               {grows.filter((g) => g.status === "active").map((g) => (

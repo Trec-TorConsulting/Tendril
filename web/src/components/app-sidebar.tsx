@@ -157,14 +157,8 @@ export function AppSidebar({ user, onLogout }: AppSidebarProps) {
         <div className="px-3 pb-2 group-data-[collapsible=icon]:hidden">
           <Select value={selectedGrow?.id || ""} onValueChange={handleGrowChange}>
             <SelectTrigger className="h-8 w-full text-xs">
-              <SelectValue>
-                {selectedGrow ? (
-                  <span className="flex items-center gap-1.5">
-                    <Sprout className="size-3 text-primary" />
-                    {selectedGrow.name}
-                  </span>
-                ) : "Select a grow"}
-              </SelectValue>
+              <Sprout className="size-3 text-primary shrink-0" />
+              <SelectValue placeholder="Select a grow" />
             </SelectTrigger>
             <SelectContent>
               {grows.filter((g) => g.status === "active").length > 0 && (
