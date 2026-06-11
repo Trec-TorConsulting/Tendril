@@ -656,6 +656,9 @@ async def evaluate_rules(session: AsyncSession) -> list[AlertHistory]:
                 except Exception:
                     logger.exception("Failed to create task from rule alert")
 
+                # Dispatch device command if rule action is a device command type
+                await _dispatch_equipment_action(session, rule)
+
     if triggered:
         await session.commit()
         logger.info("Triggered %d automation alerts", len(triggered))
@@ -928,3 +931,76 @@ async def escalate_unacknowledged_alerts(session: AsyncSession) -> int:
         logger.warning("Escalated %d unacknowledged alerts", escalated_count)
 
     return escalated_count
+
+
+# ── Equipment Action Dispatch ──────────────────────────────────────────────────
+
+# Actions that trigger equipment commands
+_EQUIPMENT_ACTIONS = {"relay_on", "relay_off", "relay_pulse", "pump_start", "pump_stop"}
+
+
+async def _dispatch_equipment_action(session: AsyncSession, rule: AutomationRule) -> None:
+    """Dispatch a device command if the rule's action is a device command type.
+
+    Reads equipment_id from rule.action_params and sends the appropriate command.
+    This is additive — the alert has already been created regardless of dispatch success.
+    """
+    if rule.action not in _EQUIPMENT_ACTIONS:
+        return
+
+    action_params = rule.action_params or {}
+    equipment_id = action_params.get("equipment_id")
+    if not equipment_id:
+        logger.debug("Rule %s has action %s but no equipment_id in action_params", rule.id, rule.action)
+        return
+
+    try:
+        import uuid
+
+        from app.equipment.models import ControllableEquipment
+        from app.equipment.service import execute_equipment_command
+
+        equip = await session.get(ControllableEquipment, uuid.UUID(equipment_id))
+        if equip is None or equip.tenant_id != rule.tenant_id:
+            logger.warning("Equipment %s not found for automation rule %s", equipment_id, rule.id)
+            return
+
+        if not equip.enabled:
+            logger.info("Equipment %s is disabled, skipping automation action", equipment_id)
+            return
+
+        # Map rule action to equipment command action
+        action_map = {
+            "relay_on": "on",
+            "relay_off": "off",
+            "pump_start": "on",
+            "pump_stop": "off",
+        }
+        command_action = action_map.get(rule.action, "on")
+
+        success, message, _ = await execute_equipment_command(
+            session=session,
+            equipment=equip,
+            action=command_action,
+            source="automation",
+        )
+
+        if success:
+            logger.info(
+                "Automation rule %s dispatched %s to equipment %s: %s",
+                rule.name,
+                command_action,
+                equip.name,
+                message,
+            )
+        else:
+            logger.warning(
+                "Automation rule %s failed to dispatch %s to equipment %s: %s",
+                rule.name,
+                command_action,
+                equip.name,
+                message,
+            )
+
+    except Exception:
+        logger.exception("Failed to dispatch equipment action for rule %s", rule.id)

@@ -32,6 +32,7 @@ import {
   DollarSign,
   LifeBuoy,
   User,
+  Zap,
 } from "lucide-react";
 import {
   Sidebar,
@@ -92,6 +93,7 @@ const AUTOMATION_NAV = [
   { href: "/dashboard/automation", label: "Rules", icon: Bot },
   { href: "/dashboard/schedules", label: "Schedules", icon: Clock },
   { href: "/dashboard/notifications", label: "Notifications", icon: Bell },
+  { href: "/dashboard/equipment", label: "Equipment", icon: Zap },
   { href: "/dashboard/devices", label: "Devices", icon: Cpu },
   { href: "/dashboard/integrations", label: "Integrations", icon: Plug },
 ];

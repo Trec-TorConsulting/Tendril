@@ -196,7 +196,16 @@ async def create_device_map(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Create a device mapping between an integration and a local device."""
-    await _get_config_or_404(integration_id, session)
+    config = await _get_config_or_404(integration_id, session)
+
+    # Validate MQTT topic for generic MQTT integrations
+    if config.type == "mqtt_generic" and body.external_id:
+        from app.integrations.connectors.mqtt_generic import validate_mqtt_topic
+
+        topic_error = validate_mqtt_topic(body.external_id)
+        if topic_error:
+            raise HTTPException(status_code=400, detail=f"Invalid MQTT topic: {topic_error}")
+
     dm = IntegrationDeviceMap(
         tenant_id=user.tenant_id,
         integration_id=integration_id,

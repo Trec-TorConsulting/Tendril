@@ -134,6 +134,22 @@ All code must be written with OWASP Top 10 2021 compliance as a baseline:
 - PWA must work offline for core journal/feeding features
 - Enterprise-grade quality: comprehensive testing, security hardening, documentation
 
+## Quality Mandate (Effective 2026-06-11)
+
+**All new code MUST meet enterprise-grade standards. Perfect is the only acceptable outcome.**
+
+### Non-Negotiable Requirements
+1. **Zero regression policy** — No new feature or change may introduce errors, failures, or degradation in existing functionality. All existing tests must continue to pass.
+2. **Comprehensive test coverage** — Every new module, endpoint, service, and UI component MUST have corresponding unit tests. Integration tests for cross-module flows. E2E tests for critical user paths.
+3. **Type safety everywhere** — Full type annotations on all Python public interfaces. Strict TypeScript with no `any` escape hatches.
+4. **Security by default** — OWASP Top 10 compliance on every new endpoint. Input validation, output encoding, parameterized queries, proper auth checks.
+5. **Graceful error handling** — No unhandled exceptions in production paths. Proper error boundaries in frontend. Structured error responses from API.
+6. **Breaking changes require migration** — Any schema, API, or config change must include a reversible migration plan with rollback tested before merge.
+7. **Code review standards** — Clean, readable, well-structured code. No dead code, no TODO hacks, no commented-out blocks in production.
+8. **Performance awareness** — No N+1 queries, proper pagination, async where appropriate, connection pooling.
+9. **Documentation** — API endpoints documented with OpenAPI. Complex logic has inline comments explaining WHY, not WHAT.
+10. **CI must pass** — Linting (ruff, eslint), formatting (black, prettier), type checking, and all tests green before any merge.
+
 ## External Dependencies
 - PostgreSQL (primary datastore)
 - EMQX or compatible MQTT broker

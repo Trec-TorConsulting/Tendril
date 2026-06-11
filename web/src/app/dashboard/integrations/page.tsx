@@ -86,6 +86,7 @@ const INTEGRATION_TYPES = [
   { value: "pulse", label: "Pulse (Autopot)" },
   { value: "tuya", label: "Tuya Smart" },
   { value: "vivosun", label: "VIVOSUN GrowHub" },
+  { value: "mqtt_generic", label: "Generic MQTT Device" },
   { value: "mqtt_bridge", label: "MQTT Bridge" },
   { value: "generic_webhook", label: "Generic Webhook" },
 ];
@@ -127,6 +128,9 @@ const CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
     { key: "username", label: "Username", type: "text", placeholder: "mqtt-user" },
     { key: "password", label: "Password", type: "password", placeholder: "mqtt-password" },
     { key: "topic_prefix", label: "Topic Prefix", type: "text", placeholder: "tendril/" },
+  ],
+  mqtt_generic: [
+    { key: "description", label: "Description", type: "text", placeholder: "e.g., Zigbee2MQTT sensors, Tasmota plugs" },
   ],
 };
 
