@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.3.0] — 2026-06-11
+
+### Added
+- **Enterprise-grade Terms of Service** — 24-section ToS: NJ jurisdiction, binding arbitration, class action waiver, jury trial waiver, 1-year statute of limitations, $50 liability cap, cannabis/controlled substance disclaimers, hardware no-certification, AI/sensor/automation disclaimers, 12-category indemnification, export controls
+- **GDPR/CCPA-compliant Privacy Policy** — 18-section policy: full GDPR (Art. 6 legal bases, DPO, SCCs, 72hr breach notification), CCPA/CPRA, NJDPA, VCDPA, CPA, CTDPA coverage, AI-specific disclosures, data retention schedule, self-hosted carve-out
+- **Mandatory ToS acceptance on signup** — Checkbox required before account creation; submit button disabled until accepted; links to ToS and Privacy Policy in new tabs
+- **Root legal documents** — `TERMS_OF_SERVICE.md` and `PRIVACY_POLICY.md` added for repo reference
+
+### Changed
+- Registration form now blocks account creation without explicit legal agreement
+- Archived blocked integration proposals (Bluelab, Growee, TrolMaster) — pending third-party API access
+
+---
+
 ## [1.2.0] — 2026-06-10
 
 ### Added
