@@ -66,7 +66,6 @@ import {
   SelectItem,
   SelectLabel,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -160,7 +159,9 @@ export function AppSidebar({ user, onLogout }: AppSidebarProps) {
           <Select value={selectedGrow?.id} onValueChange={handleGrowChange}>
             <SelectTrigger className="h-8 w-full text-xs">
               <Sprout className="size-3 text-primary shrink-0" />
-              <SelectValue placeholder="Select a grow" />
+              <span className="flex-1 text-left truncate">
+                {selectedGrow?.name || "Select a grow"}
+              </span>
             </SelectTrigger>
             <SelectContent>
               {grows.filter((g) => g.status === "active").length > 0 && (
