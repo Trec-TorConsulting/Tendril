@@ -11,9 +11,9 @@
 - [x] 2.4 Create `add-offline-pwa-support` proposal
 
 ## 3. Future (P1 proposals — not yet created)
-- [ ] 3.1 Create `add-equipment-relay-control` proposal
-- [ ] 3.2 Create `add-vpd-dashboard` proposal
-- [ ] 3.3 Create `add-season-comparison` proposal
-- [ ] 3.4 Create `add-treatment-spray-log` proposal
-- [ ] 3.5 Create `add-pest-disease-library` proposal
-- [ ] 3.6 Create `add-notification-channels` proposal
+- [x] 3.1 Create `add-equipment-relay-control` proposal
+- [x] 3.2 Create `add-vpd-dashboard` proposal
+- [x] 3.3 Create `add-season-comparison` proposal
+- [x] 3.4 Create `add-treatment-spray-log` proposal — already implemented (treatment-database.tsx + API)
+- [x] 3.5 Create `add-pest-disease-library` proposal — already implemented (pest_routes.py + pest scouting UI)
+- [x] 3.6 Create `add-notification-channels` proposal — already implemented (Discord, Slack, Email, SMS channels)

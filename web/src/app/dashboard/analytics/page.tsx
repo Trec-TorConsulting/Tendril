@@ -12,6 +12,8 @@ import {
   getLatestReading,
   getLatestTentReading,
   getTentSensorTrends,
+  listTasks,
+  listJournalEntries,
   type BucketResponse,
   type SensorReadingResponse,
   type TentReadingResponse,
@@ -21,6 +23,9 @@ import { useGrow } from "@/hooks/use-grow";
 import { usePreferences } from "@/hooks/use-preferences";
 import { formatTemp, tempUnitLabel } from "@/lib/units";
 import { PageHeader } from "@/components/page-header";
+import { HeatMapCalendar } from "@/components/heat-map-calendar";
+import { SensorGauge, GAUGE_PRESETS } from "@/components/sensor-gauge";
+import { GrowStageIndicator } from "@/components/grow-stage-indicator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -44,6 +49,8 @@ import {
   Trophy,
   Scale,
   Timer,
+  CalendarDays,
+  Gauge,
 } from "lucide-react";
 import {
   LineChart,
@@ -118,6 +125,7 @@ export default function AnalyticsPage() {
   const [envSnapshots, setEnvSnapshots] = useState<EnvSnapshot[]>([]);
   const [tentAmbient, setTentAmbient] = useState<TentReadingResponse | null>(null);
   const [tentTrends, setTentTrends] = useState<{ timestamps: string[]; temps: (number | null)[]; humidities: (number | null)[] } | null>(null);
+  const [heatMapData, setHeatMapData] = useState<{ date: string; count: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [sensorLoading, setSensorLoading] = useState(false);
 
@@ -129,12 +137,26 @@ export default function AnalyticsPage() {
       const token = getAccessToken();
       if (!token) return;
       try {
-        const [lb, ylds] = await Promise.all([
+        const [lb, ylds, tasks, journal] = await Promise.all([
           getStrainLeaderboard(token).catch(() => [] as LeaderboardEntry[]),
           listYields(token).catch(() => [] as YieldResponse[]),
+          listTasks(token, {}).catch(() => []),
+          listJournalEntries(token).catch(() => []),
         ]);
         setLeaderboard(lb);
         setAllYields(ylds);
+
+        // Build heat map from tasks + journal entries
+        const activityByDate = new Map<string, number>();
+        for (const t of tasks) {
+          const d = (t.completed_at || t.created_at).slice(0, 10);
+          activityByDate.set(d, (activityByDate.get(d) || 0) + 1);
+        }
+        for (const j of journal) {
+          const d = j.created_at.slice(0, 10);
+          activityByDate.set(d, (activityByDate.get(d) || 0) + 1);
+        }
+        setHeatMapData(Array.from(activityByDate.entries()).map(([date, count]) => ({ date, count })));
       } finally {
         setLoading(false);
       }
@@ -695,6 +717,55 @@ export default function AnalyticsPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Activity Heat Map */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CalendarDays className="size-4" /> Grow Activity
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {heatMapData.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                Complete tasks and log journal entries to see your activity heat map.
+              </p>
+            ) : (
+              <HeatMapCalendar data={heatMapData} />
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Sensor Gauges + Stage Indicator */}
+        {tentAmbient && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Gauge className="size-4" /> Live Environment
+                {activeGrow && <GrowStageIndicator stage={activeGrow.stage} size="sm" className="ml-auto" />}
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+                {tentAmbient.ambient_temp_f != null && (
+                  <SensorGauge value={tentAmbient.ambient_temp_f} {...GAUGE_PRESETS.temp} />
+                )}
+                {tentAmbient.ambient_humidity != null && (
+                  <SensorGauge value={tentAmbient.ambient_humidity} {...GAUGE_PRESETS.humidity} />
+                )}
+                {envSnapshots.length > 0 && envSnapshots[0].ph != null && (
+                  <SensorGauge value={envSnapshots[0].ph} {...GAUGE_PRESETS.ph} />
+                )}
+                {envSnapshots.length > 0 && envSnapshots[0].ec != null && (
+                  <SensorGauge value={envSnapshots[0].ec} {...GAUGE_PRESETS.ec} />
+                )}
+                {envSnapshots.length > 0 && envSnapshots[0].water_temp_f != null && (
+                  <SensorGauge value={envSnapshots[0].water_temp_f} {...GAUGE_PRESETS.waterTemp} />
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </>
   );
