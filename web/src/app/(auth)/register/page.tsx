@@ -38,6 +38,7 @@ function RegisterForm() {
     display_name: "",
     tenant_name: "",
   });
+  const [tosAccepted, setTosAccepted] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -47,6 +48,10 @@ function RegisterForm() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!tosAccepted) {
+      setError("You must agree to the Terms of Service and Privacy Policy to create an account.");
+      return;
+    }
     setError("");
     setLoading(true);
     try {
@@ -140,7 +145,28 @@ function RegisterForm() {
             />
             <p className="text-xs text-muted-foreground">At least 8 characters</p>
           </div>
-          <Button type="submit" className="w-full" disabled={loading}>
+          <div className="flex items-start space-x-2">
+            <input
+              id="tos_accepted"
+              type="checkbox"
+              checked={tosAccepted}
+              onChange={(e) => setTosAccepted(e.target.checked)}
+              className="mt-1 size-4 rounded border-input accent-primary"
+              required
+            />
+            <label htmlFor="tos_accepted" className="text-xs text-muted-foreground leading-tight">
+              I have read and agree to the{" "}
+              <Link href="/terms" target="_blank" className="font-medium text-primary hover:underline">
+                Terms of Service
+              </Link>{" "}
+              and{" "}
+              <Link href="/privacy" target="_blank" className="font-medium text-primary hover:underline">
+                Privacy Policy
+              </Link>
+              . I understand that I am solely responsible for compliance with all applicable laws in my jurisdiction.
+            </label>
+          </div>
+          <Button type="submit" className="w-full" disabled={loading || !tosAccepted}>
             {loading && <Loader2 className="mr-2 size-4 animate-spin" />}
             {loading ? "Creating account…" : "Create account"}
           </Button>
