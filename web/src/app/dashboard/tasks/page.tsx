@@ -6,12 +6,15 @@ import { fireRain } from "@/lib/confetti";
 import {
   listTasks,
   createTask,
+  updateTask,
   completeTask,
   deleteTask,
   getCalendarTasks,
   listGrows,
+  listTenantMembers,
   type TaskItem,
   type GrowResponse,
+  type TenantMember,
 } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -57,9 +60,11 @@ import {
   ChevronRight,
   Bot,
   Zap,
+  UserCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useConfirm } from "@/components/confirm-dialog";
+import { useUser } from "@/hooks/use-user";
 
 const PRIORITY_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
   low: "secondary",
@@ -147,8 +152,10 @@ function fmtMonthYear(year: number, month: number) {
 
 export default function TasksPage() {
   const confirm = useConfirm();
+  const { user } = useUser();
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [grows, setGrows] = useState<GrowResponse[]>([]);
+  const [members, setMembers] = useState<TenantMember[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [filter, setFilter] = useState<string>("pending");
   const [growFilter, setGrowFilter] = useState<string>("");
@@ -160,6 +167,7 @@ export default function TasksPage() {
   const [growId, setGrowId] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [recurring, setRecurring] = useState("");
+  const [assignTo, setAssignTo] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -176,9 +184,10 @@ export default function TasksPage() {
       const filters: Record<string, string> = {};
       if (filter) filters.status = filter;
       if (growFilter) filters.grow_cycle_id = growFilter;
-      const [t, g] = await Promise.all([listTasks(token, filters), listGrows(token)]);
+      const [t, g, m] = await Promise.all([listTasks(token, filters), listGrows(token), listTenantMembers(token).catch(() => [] as TenantMember[])]);
       setTasks(t);
       setGrows(g);
+      setMembers(m);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to load tasks");
     } finally { setLoading(false); }
@@ -216,6 +225,7 @@ export default function TasksPage() {
           description: description || undefined,
           priority,
           category: category || undefined,
+          assigned_to: assignTo || undefined,
           grow_cycle_id: growId || undefined,
           due_date: dueDate || undefined,
           recurring: recurring || undefined,
@@ -228,6 +238,7 @@ export default function TasksPage() {
       setDescription("");
       setPriority("medium");
       setCategory("");
+      setAssignTo("");
       setGrowId("");
       setDueDate("");
       setRecurring("");
@@ -271,6 +282,21 @@ export default function TasksPage() {
       toast.error(e instanceof Error ? e.message : "Failed to delete task");
     }
   };
+
+  const handleAssign = async (taskId: string, memberId: string | null) => {
+    const token = getAccessToken();
+    if (!token) return;
+    try {
+      await updateTask(taskId, { assigned_to: memberId }, token);
+      toast.success(memberId ? "Task assigned" : "Task unassigned");
+      refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to assign task");
+    }
+  };
+
+  const isOwner = user?.role === "owner";
+  const memberMap = Object.fromEntries(members.map((m) => [m.id, m.display_name || m.email]));
 
   const activeTasks = tasks
     .filter((t) => t.status !== "completed" && t.status !== "cancelled")
@@ -397,20 +423,84 @@ export default function TasksPage() {
               </Card>
             )}
 
-            {activeTasks.map((t) => (
-              <SwipeableCard
-                key={t.id}
-                onSwipeRight={() => handleComplete(t.id)}
-                onSwipeLeft={() => handleDelete(t.id)}
-              >
-                <TaskCard
-                  task={t}
-                  growName={t.grow_cycle_id ? growMap[t.grow_cycle_id] : undefined}
-                  onComplete={handleComplete}
-                  onDelete={handleDelete}
-                />
-              </SwipeableCard>
-            ))}
+            {/* Assigned to me — shown first */}
+            {(() => {
+              const myTasks = activeTasks.filter((t) => t.assigned_to === user?.id);
+              const unassigned = activeTasks.filter((t) => !t.assigned_to);
+              const othersAssigned = activeTasks.filter((t) => t.assigned_to && t.assigned_to !== user?.id);
+
+              return (
+                <>
+                  {myTasks.length > 0 && (
+                    <>
+                      <h2 className="text-sm font-semibold text-primary flex items-center gap-1.5">
+                        <UserCircle className="size-4" />
+                        Assigned to Me ({myTasks.length})
+                      </h2>
+                      {myTasks.map((t) => (
+                        <SwipeableCard key={t.id} onSwipeRight={() => handleComplete(t.id)} onSwipeLeft={() => handleDelete(t.id)}>
+                          <TaskCard
+                            task={t}
+                            growName={t.grow_cycle_id ? growMap[t.grow_cycle_id] : undefined}
+                            assigneeName={memberMap[t.assigned_to!]}
+                            members={members}
+                            onComplete={handleComplete}
+                            onDelete={handleDelete}
+                            onAssign={handleAssign}
+                            showAssign={isOwner}
+                          />
+                        </SwipeableCard>
+                      ))}
+                    </>
+                  )}
+
+                  {unassigned.length > 0 && (
+                    <>
+                      {myTasks.length > 0 && (
+                        <h2 className="pt-3 text-sm font-semibold text-muted-foreground">
+                          Unassigned ({unassigned.length})
+                        </h2>
+                      )}
+                      {unassigned.map((t) => (
+                        <SwipeableCard key={t.id} onSwipeRight={() => handleComplete(t.id)} onSwipeLeft={() => handleDelete(t.id)}>
+                          <TaskCard
+                            task={t}
+                            growName={t.grow_cycle_id ? growMap[t.grow_cycle_id] : undefined}
+                            members={members}
+                            onComplete={handleComplete}
+                            onDelete={handleDelete}
+                            onAssign={handleAssign}
+                            showAssign={isOwner}
+                          />
+                        </SwipeableCard>
+                      ))}
+                    </>
+                  )}
+
+                  {isOwner && othersAssigned.length > 0 && (
+                    <>
+                      <h2 className="pt-3 text-sm font-semibold text-muted-foreground">
+                        Assigned to Team ({othersAssigned.length})
+                      </h2>
+                      {othersAssigned.map((t) => (
+                        <SwipeableCard key={t.id} onSwipeRight={() => handleComplete(t.id)} onSwipeLeft={() => handleDelete(t.id)}>
+                          <TaskCard
+                            task={t}
+                            growName={t.grow_cycle_id ? growMap[t.grow_cycle_id] : undefined}
+                            assigneeName={memberMap[t.assigned_to!]}
+                            members={members}
+                            onComplete={handleComplete}
+                            onDelete={handleDelete}
+                            onAssign={handleAssign}
+                            showAssign={isOwner}
+                          />
+                        </SwipeableCard>
+                      ))}
+                    </>
+                  )}
+                </>
+              );
+            })()}
 
             {completedTasks.length > 0 && (
               <>
@@ -637,6 +727,22 @@ export default function TasksPage() {
                   onChange={(e) => setDueDate(e.target.value)}
                 />
               </div>
+              {members.length > 0 && (
+                <div className="space-y-2">
+                  <Label>Assign To</Label>
+                  <Select value={assignTo || "none"} onValueChange={(v) => setAssignTo(!v || v === "none" ? "" : v)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Unassigned" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Unassigned</SelectItem>
+                      {members.map((m) => (
+                        <SelectItem key={m.id} value={m.id}>{m.display_name || m.email}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShowCreate(false)}>
@@ -655,13 +761,21 @@ export default function TasksPage() {
 function TaskCard({
   task,
   growName,
+  assigneeName,
+  members,
   onComplete,
   onDelete,
+  onAssign,
+  showAssign,
 }: {
   task: TaskItem;
   growName?: string;
+  assigneeName?: string;
+  members?: TenantMember[];
   onComplete: (id: string) => void;
   onDelete: (id: string) => void;
+  onAssign?: (taskId: string, memberId: string | null) => void;
+  showAssign?: boolean;
 }) {
   const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== "completed";
 
@@ -696,6 +810,12 @@ function TaskCard({
             {task.estimated_minutes && (
               <span className="text-xs text-muted-foreground">~{task.estimated_minutes} min</span>
             )}
+            {assigneeName && (
+              <Badge variant="outline" className="text-xs border-violet-500/30 text-violet-600 dark:text-violet-400 gap-1">
+                <UserCircle className="size-3" />
+                {assigneeName}
+              </Badge>
+            )}
           </div>
           {task.description && (
             <p className={cn(
@@ -729,6 +849,22 @@ function TaskCard({
               <CheckCircle2 className="mr-2 h-4 w-4" />
               Complete
             </DropdownMenuItem>
+            {showAssign && onAssign && members && members.length > 0 && (
+              <>
+                {members.map((m) => (
+                  <DropdownMenuItem key={m.id} onClick={() => onAssign(task.id, m.id)}>
+                    <UserCircle className="mr-2 h-4 w-4" />
+                    Assign → {m.display_name || m.email}
+                  </DropdownMenuItem>
+                ))}
+                {task.assigned_to && (
+                  <DropdownMenuItem onClick={() => onAssign(task.id, null)}>
+                    <UserCircle className="mr-2 h-4 w-4 text-muted-foreground" />
+                    Unassign
+                  </DropdownMenuItem>
+                )}
+              </>
+            )}
             <DropdownMenuItem
               className="text-destructive focus:text-destructive"
               onClick={() => onDelete(task.id)}
