@@ -9,6 +9,7 @@ import {
   Sprout,
   FlaskConical,
   BarChart3,
+  GitCompare,
   Cpu,
   MessageSquare,
   Bot,
@@ -86,6 +87,7 @@ const MAIN_NAV = [
 
 const INSIGHTS_NAV = [
   { href: "/dashboard/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/dashboard/analytics/compare", label: "Compare Grows", icon: GitCompare },
   { href: "/dashboard/vpd", label: "VPD Monitor", icon: Activity },
   { href: "/dashboard/ai", label: "AI Assistant", icon: Brain },
   { href: "/dashboard/cost-roi", label: "Cost & ROI", icon: DollarSign },
