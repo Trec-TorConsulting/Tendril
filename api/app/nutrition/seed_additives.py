@@ -15,7 +15,7 @@ from __future__ import annotations
 # ═══════════════════════════════════════════════════════════════════════════════
 
 HYDRO_TYPES = ["dwc", "rdwc", "nft", "ebb_flow", "aeroponics", "drip", "kratky"]
-ALL_TYPES = HYDRO_TYPES + ["coco", "soil", "rockwool", "outdoor_soil", "outdoor_container", "living_soil", "wicking_bed"]
+ALL_TYPES = [*HYDRO_TYPES, "coco", "soil", "rockwool", "outdoor_soil", "outdoor_container", "living_soil", "wicking_bed"]
 
 ADDITIVES = [
     # === ROOT HEALTH ===
@@ -80,7 +80,7 @@ ADDITIVES = [
         "description": "Enzymatic formula that breaks down dead root matter, salt buildup, and organic debris. Keeps root zone and reservoir clean. Works synergistically with Hydroguard.",
         "dose_ml_per_gallon": 1.0,
         "when_to_use": "Every reservoir change throughout entire cycle including flush. Safe to use with beneficial microbes. Particularly important in recirculating systems.",
-        "grow_type_slugs": HYDRO_TYPES + ["coco"],
+        "grow_type_slugs": [*HYDRO_TYPES, "coco"],
     },
     # === BENEFICIAL MICROBES (SOIL/COCO) ===
     {

@@ -20,10 +20,8 @@ from app.nutrition import (
     NutrientConflict,
     NutrientFeedChart,
     NutrientLine,
-    NutrientProduct,
     OrganicRecipe,
 )
-from app.pagination import PaginatedResponse, PaginationParams, paginate
 
 router = APIRouter()
 
@@ -557,7 +555,9 @@ async def create_grow_nutrient_profile(
         select(GrowNutrientProfile).where(GrowNutrientProfile.grow_cycle_id == body.grow_cycle_id)
     )
     if existing.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail="Nutrient profile already exists for this grow. Use PATCH to update.")
+        raise HTTPException(
+            status_code=409, detail="Nutrient profile already exists for this grow. Use PATCH to update."
+        )
 
     profile = GrowNutrientProfile(tenant_id=user.tenant_id, **body.model_dump())
     session.add(profile)

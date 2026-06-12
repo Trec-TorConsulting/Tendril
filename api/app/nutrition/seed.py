@@ -40,9 +40,7 @@ async def sync_nutrition_seed(session: AsyncSession) -> None:
 async def _sync_brands(session: AsyncSession) -> None:
     """Upsert brands by slug."""
     for brand_data in BRANDS:
-        result = await session.execute(
-            select(NutrientBrand).where(NutrientBrand.slug == brand_data["slug"])
-        )
+        result = await session.execute(select(NutrientBrand).where(NutrientBrand.slug == brand_data["slug"]))
         existing = result.scalar_one_or_none()
         if existing:
             for key, value in brand_data.items():
@@ -59,9 +57,7 @@ async def _sync_lines(session: AsyncSession, all_lines: list[dict]) -> None:
         products_data = line_data.pop("products", [])
 
         # Look up brand
-        result = await session.execute(
-            select(NutrientBrand).where(NutrientBrand.slug == brand_slug)
-        )
+        result = await session.execute(select(NutrientBrand).where(NutrientBrand.slug == brand_slug))
         brand = result.scalar_one_or_none()
         if not brand:
             logger.warning("Brand %s not found, skipping line %s", brand_slug, line_data["slug"])
@@ -112,9 +108,7 @@ async def _sync_feed_charts(session: AsyncSession) -> None:
     """Upsert feed charts by line_slug + week_number."""
     for line_slug, chart_data in FEED_CHARTS.items():
         # Find line by slug (across all brands)
-        result = await session.execute(
-            select(NutrientLine).where(NutrientLine.slug == line_slug)
-        )
+        result = await session.execute(select(NutrientLine).where(NutrientLine.slug == line_slug))
         line = result.scalar_one_or_none()
         if not line:
             logger.warning("Line %s not found for feed chart, skipping", line_slug)
@@ -142,9 +136,7 @@ async def _sync_additives(session: AsyncSession) -> None:
     for additive_data in ADDITIVES:
         brand_slug = additive_data.pop("brand_slug")
 
-        result = await session.execute(
-            select(NutrientBrand).where(NutrientBrand.slug == brand_slug)
-        )
+        result = await session.execute(select(NutrientBrand).where(NutrientBrand.slug == brand_slug))
         brand = result.scalar_one_or_none()
         if not brand:
             logger.warning("Brand %s not found for additive %s", brand_slug, additive_data.get("slug"))
@@ -191,9 +183,7 @@ async def _sync_conflicts(session: AsyncSession) -> None:
 async def _sync_recipes(session: AsyncSession) -> None:
     """Upsert organic recipes by slug."""
     for recipe_data in ORGANIC_RECIPES:
-        result = await session.execute(
-            select(OrganicRecipe).where(OrganicRecipe.slug == recipe_data["slug"])
-        )
+        result = await session.execute(select(OrganicRecipe).where(OrganicRecipe.slug == recipe_data["slug"]))
         existing = result.scalar_one_or_none()
         if existing:
             for key, value in recipe_data.items():

@@ -20,7 +20,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
-
 # ─── Nutrient Brands ───────────────────────────────────────────────────────────
 
 
@@ -62,7 +61,9 @@ class NutrientLine(Base):
     line_type: Mapped[str] = mapped_column(String(50), nullable=False)  # synthetic | organic | hybrid
     part_count: Mapped[int] = mapped_column(Integer, nullable=False, default=3)  # 1-part, 2-part, 3-part
     format: Mapped[str] = mapped_column(String(50), nullable=False, default="liquid")  # liquid | powder | dry_amendment
-    difficulty: Mapped[str] = mapped_column(String(20), nullable=False, default="intermediate")  # beginner | intermediate | advanced
+    difficulty: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="intermediate"
+    )  # beginner | intermediate | advanced
     ph_buffered: Mapped[bool] = mapped_column(Boolean, default=False)  # e.g., AN pH Perfect
     grow_type_slugs: Mapped[list] = mapped_column(ARRAY(String(100)), nullable=False)  # compatible grow types
     is_system: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -106,9 +107,7 @@ class NutrientFeedChart(Base):
     """Week-by-week dosing for a nutrient line, organized by stage."""
 
     __tablename__ = "nutrient_feed_charts"
-    __table_args__ = (
-        UniqueConstraint("line_id", "week_number", name="uq_feed_chart_line_week"),
-    )
+    __table_args__ = (UniqueConstraint("line_id", "week_number", name="uq_feed_chart_line_week"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     line_id: Mapped[uuid.UUID] = mapped_column(
@@ -145,7 +144,9 @@ class NutrientAdditive(Base):
     )
     slug: Mapped[str] = mapped_column(String(100), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    category: Mapped[str] = mapped_column(String(50), nullable=False)  # calmag | silica | enzyme | microbe | pk_booster | root_enhancer | flush
+    category: Mapped[str] = mapped_column(
+        String(50), nullable=False
+    )  # calmag | silica | enzyme | microbe | pk_booster | root_enhancer | flush
     description: Mapped[str | None] = mapped_column(Text)
     dose_ml_per_gallon: Mapped[float | None] = mapped_column(Float)
     dose_grams_per_gallon: Mapped[float | None] = mapped_column(Float)
@@ -188,7 +189,9 @@ class OrganicRecipe(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     slug: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, index=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    category: Mapped[str] = mapped_column(String(50), nullable=False)  # compost_tea | dry_amendment | knf | foliar | top_dress | ferment
+    category: Mapped[str] = mapped_column(
+        String(50), nullable=False
+    )  # compost_tea | dry_amendment | knf | foliar | top_dress | ferment
     description: Mapped[str | None] = mapped_column(Text)
     ingredients: Mapped[list] = mapped_column(JSON, nullable=False)  # [{name, amount, unit, notes}]
     instructions: Mapped[str] = mapped_column(Text, nullable=False)
@@ -215,7 +218,9 @@ class CustomNutrient(Base):
         UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
-    nutrient_type: Mapped[str] = mapped_column(String(50), nullable=False)  # liquid | powder | dry_amendment | tea | custom
+    nutrient_type: Mapped[str] = mapped_column(
+        String(50), nullable=False
+    )  # liquid | powder | dry_amendment | tea | custom
     npk: Mapped[str | None] = mapped_column(String(30))
     dose_ml_per_gallon: Mapped[float | None] = mapped_column(Float)
     dose_grams_per_gallon: Mapped[float | None] = mapped_column(Float)
