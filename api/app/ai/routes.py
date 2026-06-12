@@ -395,9 +395,24 @@ async def run_health_check(
         score = parsed.get("score")
         raw_issues = parsed.get("issues", [])
         raw_actions = parsed.get("actions", [])
+
         # Normalize: AI may return list[dict] or list[str]
-        issues = [i if isinstance(i, str) else i.get("message", i.get("issue", str(i))) for i in raw_issues]
-        actions = [a if isinstance(a, str) else a.get("message", a.get("action", str(a))) for a in raw_actions]
+        def _normalize_issue(i):
+            if isinstance(i, str):
+                return i
+            desc = i.get("description") or i.get("message") or i.get("issue")
+            if desc:
+                cat = i.get("category")
+                return f"[{cat}] {desc}" if cat else desc
+            return str(i)
+
+        def _normalize_action(a):
+            if isinstance(a, str):
+                return a
+            return a.get("action") or a.get("message") or a.get("description") or str(a)
+
+        issues = [_normalize_issue(i) for i in raw_issues]
+        actions = [_normalize_action(a) for a in raw_actions]
     except json.JSONDecodeError:
         logger.warning("Gemini returned non-JSON: %s", raw[:200])
 
@@ -1113,7 +1128,10 @@ async def diagnose_plant_photo(
 
     # Normalize actions to strings
     raw_actions = parsed.get("actions", [])
-    actions_list = [a if isinstance(a, str) else a.get("message", a.get("action", str(a))) for a in raw_actions]
+    actions_list = [
+        a if isinstance(a, str) else (a.get("action") or a.get("message") or a.get("description") or str(a))
+        for a in raw_actions
+    ]
 
     return DiagnoseResponse(
         overall_score=parsed.get("overall_score", 0),

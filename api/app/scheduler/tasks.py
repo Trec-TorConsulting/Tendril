@@ -172,8 +172,23 @@ class TaskRunner:
                             cleaned = cleaned.strip()
                             parsed = json.loads(cleaned)
                             score = parsed.get("score")
-                            issues = parsed.get("issues", [])
-                            actions = parsed.get("actions", [])
+                            raw_issues = parsed.get("issues", [])
+                            raw_actions = parsed.get("actions", [])
+                            # Normalize: AI may return list[dict] or list[str]
+                            issues = []
+                            for i in raw_issues:
+                                if isinstance(i, str):
+                                    issues.append(i)
+                                else:
+                                    desc = i.get("description") or i.get("message") or i.get("issue") or str(i)
+                                    cat = i.get("category")
+                                    issues.append(f"[{cat}] {desc}" if cat else desc)
+                            actions = [
+                                a
+                                if isinstance(a, str)
+                                else (a.get("action") or a.get("message") or a.get("description") or str(a))
+                                for a in raw_actions
+                            ]
                         except json.JSONDecodeError:
                             logger.warning("Gemini returned non-JSON for grow %s", grow.id)
 
