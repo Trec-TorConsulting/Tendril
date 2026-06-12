@@ -70,18 +70,18 @@ class NutrientLine(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
     brand: Mapped[NutrientBrand] = relationship(back_populates="lines")
-    products: Mapped[list[NutrientProduct]] = relationship(back_populates="line", cascade="all, delete-orphan")
+    products: Mapped[list[NutrientLineProduct]] = relationship(back_populates="line", cascade="all, delete-orphan")
     feed_charts: Mapped[list[NutrientFeedChart]] = relationship(back_populates="line", cascade="all, delete-orphan")
 
 
 # ─── Nutrient Products ─────────────────────────────────────────────────────────
 
 
-class NutrientProduct(Base):
+class NutrientLineProduct(Base):
     """An individual product within a line (e.g., FloraMicro, FloraGro)."""
 
-    __tablename__ = "nutrient_products"
-    __table_args__ = (UniqueConstraint("line_id", "slug", name="uq_nutrient_product_line_slug"),)
+    __tablename__ = "nutrient_line_products"
+    __table_args__ = (UniqueConstraint("line_id", "slug", name="uq_nutrient_line_product_slug"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     line_id: Mapped[uuid.UUID] = mapped_column(

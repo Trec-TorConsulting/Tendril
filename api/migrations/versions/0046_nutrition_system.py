@@ -53,9 +53,9 @@ def upgrade() -> None:
     )
     op.create_index("ix_nutrient_lines_brand_id", "nutrient_lines", ["brand_id"])
 
-    # --- Nutrient Products ---
+    # --- Nutrient Line Products ---
     op.create_table(
-        "nutrient_products",
+        "nutrient_line_products",
         sa.Column("id", UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
         sa.Column(
             "line_id", UUID(as_uuid=True), sa.ForeignKey("nutrient_lines.id", ondelete="CASCADE"), nullable=False
@@ -69,9 +69,9 @@ def upgrade() -> None:
         sa.Column("is_required", sa.Boolean, server_default=sa.text("true")),
         sa.Column("sort_order", sa.Integer, server_default="0"),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
-        sa.UniqueConstraint("line_id", "slug", name="uq_nutrient_product_line_slug"),
+        sa.UniqueConstraint("line_id", "slug", name="uq_nutrient_line_product_slug"),
     )
-    op.create_index("ix_nutrient_products_line_id", "nutrient_products", ["line_id"])
+    op.create_index("ix_nutrient_line_products_line_id", "nutrient_line_products", ["line_id"])
 
     # --- Feed Charts ---
     op.create_table(
@@ -208,6 +208,6 @@ def downgrade() -> None:
     op.drop_table("nutrient_conflicts")
     op.drop_table("nutrient_additives")
     op.drop_table("nutrient_feed_charts")
-    op.drop_table("nutrient_products")
+    op.drop_table("nutrient_line_products")
     op.drop_table("nutrient_lines")
     op.drop_table("nutrient_brands")

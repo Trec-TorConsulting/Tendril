@@ -13,7 +13,7 @@ from app.nutrition import (
     NutrientConflict,
     NutrientFeedChart,
     NutrientLine,
-    NutrientProduct,
+    NutrientLineProduct,
     OrganicRecipe,
 )
 from app.nutrition.seed_additives import ADDITIVES, CONFLICTS
@@ -85,9 +85,9 @@ async def _sync_lines(session: AsyncSession, all_lines: list[dict]) -> None:
         # Upsert products
         for product_data in products_data:
             result = await session.execute(
-                select(NutrientProduct).where(
-                    NutrientProduct.line_id == line.id,
-                    NutrientProduct.slug == product_data["slug"],
+                select(NutrientLineProduct).where(
+                    NutrientLineProduct.line_id == line.id,
+                    NutrientLineProduct.slug == product_data["slug"],
                 )
             )
             existing_product = result.scalar_one_or_none()
@@ -95,7 +95,7 @@ async def _sync_lines(session: AsyncSession, all_lines: list[dict]) -> None:
                 for key, value in product_data.items():
                     setattr(existing_product, key, value)
             else:
-                session.add(NutrientProduct(line_id=line.id, **product_data))
+                session.add(NutrientLineProduct(line_id=line.id, **product_data))
 
         # Restore popped keys for potential re-use
         line_data["brand_slug"] = brand_slug
