@@ -26,6 +26,14 @@ logger = logging.getLogger("tendril.integrations.vivosun")
 
 _TIMEOUT = 30.0
 _BASE_URL = "https://api-prod.next.vivosun.com"
+# App version headers required by the Vivosun cloud API.
+# Without these the API returns "Your app version is outdated" errors.
+_APP_VERSION = "3.3.0"
+_APP_HEADERS: dict[str, str] = {
+    "appVersion": _APP_VERSION,
+    "platform": "android",
+    "User-Agent": f"GrowHub/{_APP_VERSION} (Android)",
+}
 
 # Vivosun GrowHub E42A/E42A+ PointLog fields → TentSensorReading columns
 # All temp/humidity/VPD values are raw integers divided by 100.
@@ -79,6 +87,7 @@ class VivosunConnector(BaseConnector):
     def _headers(self) -> dict[str, str]:
         """Return auth headers using stored tokens."""
         return {
+            **_APP_HEADERS,
             "login-token": self._login_token,
             "access-token": self._access_token,
             "Content-Type": "application/json",
@@ -102,6 +111,7 @@ class VivosunConnector(BaseConnector):
         try:
             resp = await client.post(
                 f"{_BASE_URL}/user/login",
+                headers=_APP_HEADERS,
                 json={"email": email, "password": password},
             )
             resp.raise_for_status()
