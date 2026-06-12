@@ -29,13 +29,26 @@ _logger = logging.getLogger("tendril.tents")
 
 
 async def _fetch_camera_image(camera_url: str, camera_type: str = "http_snapshot") -> bytes:
-    """Fetch a JPEG snapshot from a camera URL, routing RTSP through go2rtc."""
+    """Fetch a JPEG snapshot from a camera URL, routing RTSP through go2rtc.
+
+    For RTSP cameras, the camera_url can be:
+    - A full RTSP URL (rtsp://user:pass@host/stream) — passed as go2rtc src
+    - A go2rtc stream name (e.g. "growtent4k_camera") — passed as go2rtc src
+    """
     if camera_type == "rtsp" or camera_url.startswith("rtsp://"):
         # Route through go2rtc frame API
         settings = get_settings()
         go2rtc_base = settings.go2rtc_url.rstrip("/")
-        # go2rtc accepts the RTSP URL directly as ?src= parameter
+        # Strip any trailing path from base URL in case user misconfigured it
+        # (e.g. set it to http://host:8000/api/frame.jpeg?src=... instead of just http://host:8000)
+        from urllib.parse import urlparse
+
+        parsed_base = urlparse(go2rtc_base)
+        go2rtc_base = f"{parsed_base.scheme}://{parsed_base.netloc}"
+
+        # go2rtc accepts either a stream name or full RTSP URL as ?src=
         frame_url = f"{go2rtc_base}/api/frame.jpeg?src={quote_plus(camera_url)}"
+        _logger.debug("Fetching camera frame from go2rtc: %s", frame_url)
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.get(frame_url)
             resp.raise_for_status()
