@@ -7,13 +7,15 @@ import { JournalTab } from "./journal-tab";
 import type { BucketResponse, JournalEntryResponse } from "@/lib/api";
 
 interface ActivityTabProps {
+  growId: string;
+  growType: string;
   buckets: BucketResponse[];
   journalEntries: JournalEntryResponse[];
   bucketLabelMap: Record<string, string>;
   onRefresh: () => void;
 }
 
-export function ActivityTab({ buckets, journalEntries, bucketLabelMap, onRefresh }: ActivityTabProps) {
+export function ActivityTab({ growId, growType, buckets, journalEntries, bucketLabelMap, onRefresh }: ActivityTabProps) {
   const [sub, setSub] = useState("journal");
 
   return (
@@ -25,6 +27,8 @@ export function ActivityTab({ buckets, journalEntries, bucketLabelMap, onRefresh
         </TabsList>
         <TabsContent value="journal" className="mt-4">
           <JournalTab
+            growId={growId}
+            growType={growType}
             buckets={buckets}
             journalEntries={journalEntries}
             bucketLabelMap={bucketLabelMap}

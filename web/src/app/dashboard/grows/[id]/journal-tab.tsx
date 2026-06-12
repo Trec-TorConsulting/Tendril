@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
 import { useConfirm } from "@/components/confirm-dialog";
 import { formatDate, formatTime } from "@/lib/utils";
@@ -9,8 +9,10 @@ import {
   createQuickJournalEntry,
   updateJournalEntry,
   deleteJournalEntry,
+  listFeedingSchedules,
   type JournalEntryResponse,
   type BucketResponse,
+  type FeedingScheduleResponse,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,17 +40,39 @@ import { toast } from "sonner";
 const EVENT_TYPES = ["note", "feeding", "water_change", "training", "transplant", "defoliation", "topping", "flushing", "other"];
 
 interface JournalTabProps {
+  growId: string;
+  growType: string;
   buckets: BucketResponse[];
   journalEntries: JournalEntryResponse[];
   bucketLabelMap: Record<string, string>;
   onRefresh: () => void;
 }
 
-export function JournalTab({ buckets, journalEntries, bucketLabelMap, onRefresh }: JournalTabProps) {
+export function JournalTab({ growId, growType, buckets, journalEntries, bucketLabelMap, onRefresh }: JournalTabProps) {
   const [dialog, setDialog] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState({ bucket_id: "", event_type: "note", content: "", ph: "", ec: "", water_temp_f: "", volume_gal: "" });
   const [saving, setSaving] = useState(false);
+
+  // Feeding schedule nutrients for the nutrient checklist
+  const [scheduleNutrients, setScheduleNutrients] = useState<{ name: string; brand?: string; ml_per_gallon?: number }[]>([]);
+  const [selectedNutrients, setSelectedNutrients] = useState<Set<string>>(new Set());
+
+  // Load feeding schedule nutrients when dialog opens for water_change/feeding
+  useEffect(() => {
+    if (!dialog || editId) return;
+    const token = getAccessToken();
+    if (!token || !growId) return;
+    listFeedingSchedules(token, growId).then((schedules) => {
+      // Find the active schedule (matching current grow stage) or just use the first
+      const allNutrients = schedules.flatMap((s) => s.nutrients || []);
+      // Deduplicate by name
+      const unique = Array.from(new Map(allNutrients.map((n) => [n.name, n])).values());
+      setScheduleNutrients(unique);
+      // Pre-select all by default
+      setSelectedNutrients(new Set(unique.map((n) => n.name)));
+    }).catch(() => {});
+  }, [dialog, growId, editId]);
 
   const showMeasurements = !editId && (form.event_type === "water_change" || form.event_type === "feeding" || form.event_type === "flushing");
 
@@ -64,6 +88,9 @@ export function JournalTab({ buckets, journalEntries, bucketLabelMap, onRefresh 
         });
       } else if (showMeasurements) {
         // Use the quick endpoint to save journal + sensor reading atomically
+        const nutrientPayload = scheduleNutrients
+          .filter((n) => selectedNutrients.has(n.name))
+          .map((n) => ({ name: n.name, ml_per_gallon: n.ml_per_gallon }));
         await createQuickJournalEntry(token, {
           bucket_id: form.bucket_id,
           event_type: form.event_type,
@@ -72,6 +99,7 @@ export function JournalTab({ buckets, journalEntries, bucketLabelMap, onRefresh 
           ec: form.ec ? parseFloat(form.ec) : undefined,
           water_temp_f: form.water_temp_f ? parseFloat(form.water_temp_f) : undefined,
           volume_gallons: form.volume_gal ? parseFloat(form.volume_gal) : undefined,
+          payload: nutrientPayload.length > 0 ? { nutrients: nutrientPayload, volume_gal: form.volume_gal ? parseFloat(form.volume_gal) : undefined } : undefined,
         });
       } else {
         await createJournalEntry(token, {
@@ -202,6 +230,35 @@ export function JournalTab({ buckets, journalEntries, bucketLabelMap, onRefresh 
                     <Label className="text-xs">Volume (gal)</Label>
                     <Input type="number" step="0.5" placeholder="5" value={form.volume_gal} onChange={(e) => setForm((p) => ({ ...p, volume_gal: e.target.value }))} />
                   </div>
+                </div>
+              </div>
+            )}
+            {showMeasurements && scheduleNutrients.length > 0 && (
+              <div className="space-y-2 rounded-md border p-3">
+                <p className="text-xs font-medium text-muted-foreground">Nutrients Used (from feeding schedule)</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {scheduleNutrients.map((n) => {
+                    const isSelected = selectedNutrients.has(n.name);
+                    return (
+                      <button
+                        key={n.name}
+                        type="button"
+                        onClick={() => setSelectedNutrients((prev) => {
+                          const next = new Set(prev);
+                          if (isSelected) next.delete(n.name);
+                          else next.add(n.name);
+                          return next;
+                        })}
+                        className={`rounded-md border px-2 py-1 text-xs transition-colors ${
+                          isSelected
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border text-muted-foreground hover:border-primary/50"
+                        }`}
+                      >
+                        {n.name}{n.ml_per_gallon ? ` (${n.ml_per_gallon} ml/gal)` : ""}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
