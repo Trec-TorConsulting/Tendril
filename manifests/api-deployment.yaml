@@ -101,6 +101,8 @@ spec:
           value: "INFO"
         - name: CORS_ORIGINS
           value: "https://tendrilgrow.com,https://www.tendrilgrow.com"
+        - name: GO2RTC_URL
+          value: "http://go2rtc.go2rtc.svc.cluster.local:8000"
         - name: RATE_LIMIT_IP
           value: "120"
         - name: RATE_LIMIT_TENANT
