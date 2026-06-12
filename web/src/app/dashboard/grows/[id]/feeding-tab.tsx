@@ -553,9 +553,15 @@ export function FeedingTab({ growId, growStage, growStartedAt, milestones, setti
     if (activeBuckets.length === 0) return null;
     const sortedItems = buildMixingList(phase);
 
-    // Determine total system volume
+    // Usable water volume — buckets are never filled to the brim.
+    // Header/reservoir: ~90% (small gap for overflow protection)
+    // Site buckets (DWC/RDWC): ~80% (air gap above water line for roots)
+    const HEADER_FILL = 0.9;
+    const SITE_FILL = 0.8;
+
+    // Determine total system volume (RDWC: sum header + all site buckets, adjusted for usable fill)
     const totalGal = isSharedReservoir && headerBucket?.volume_gallons
-      ? headerBucket.volume_gallons
+      ? (headerBucket.volume_gallons * HEADER_FILL + activeBuckets.filter((b) => b.role !== "header").reduce((sum, b) => sum + (b.volume_gallons || 0) * SITE_FILL, 0))
       : null;
 
     // RDWC or any grow with a known total: show system total + optional batch splitting
@@ -566,7 +572,7 @@ export function FeedingTab({ growId, growStage, growStartedAt, milestones, setti
       return (
         <div className="mt-3 rounded-md border bg-muted/30 p-2 space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-xs font-medium text-muted-foreground">System Total ({totalGal} gal reservoir)</p>
+            <p className="text-xs font-medium text-muted-foreground">System Total (~{totalGal.toFixed(1)} gal usable)</p>
             <div className="flex items-center gap-1.5">
               <span className="text-[11px] text-muted-foreground whitespace-nowrap">Mix in:</span>
               <Select value={mixingBucketSize?.toString() || "full"} onValueChange={(v) => setMixingBucketSize(v === "full" ? null : parseFloat(v))}>
@@ -633,14 +639,15 @@ export function FeedingTab({ growId, growStage, growStartedAt, milestones, setti
         </div>
         <div className="space-y-1">
           {activeBuckets.map((b) => {
-            const bucketGal = b.volume_gallons || 0;
+            const rawGal = b.volume_gallons || 0;
+            const bucketGal = rawGal * (b.role === "header" ? HEADER_FILL : SITE_FILL);
             const batches = mixingBucketSize ? Math.ceil(bucketGal / mixingBucketSize) : 1;
             const galPerBatch = mixingBucketSize ? Math.min(mixingBucketSize, bucketGal / batches) : bucketGal;
             return (
               <div key={b.id} className="text-xs">
                 <div className="flex flex-wrap items-baseline gap-x-3">
                   <span className="font-medium min-w-[5rem]">
-                    #{b.position} {b.label || "Unnamed"} ({bucketGal}g)
+                    #{b.position} {b.label || "Unnamed"} ({bucketGal.toFixed(1)}g)
                     {mixingBucketSize && bucketGal > mixingBucketSize && (
                       <span className="text-muted-foreground font-normal"> — {batches} batches × {galPerBatch.toFixed(1)}g</span>
                     )}
