@@ -45,6 +45,8 @@ spec:
         env:
         - name: LOG_LEVEL
           value: "INFO"
+        - name: GO2RTC_URL
+          value: "http://go2rtc.go2rtc.svc.cluster.local:8000"
         volumeMounts:
         - name: tmp
           mountPath: /tmp
