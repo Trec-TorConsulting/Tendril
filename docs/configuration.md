@@ -73,8 +73,21 @@ JWT settings (not configurable via env, set in code):
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `VAPID_PRIVATE_KEY` | No | `""` | VAPID private key for web push. Generate with `npx web-push generate-vapid-keys`. |
+| `VAPID_PRIVATE_KEY` | No | `""` | VAPID private key for web push. Generate with `npx web-push generate-vapid-keys`. Without it, push notifications are disabled. |
 | `VAPID_EMAIL` | No | `mailto:admin@tendrilgrow.com` | Contact email included in VAPID headers. |
+
+### Email (Resend)
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `RESEND_API_KEY` | No | `""` | [Resend](https://resend.com) API key for transactional email. Without it, email verification, password reset, and billing notifications are disabled. |
+| `EMAIL_FROM` | No | `Tendril <noreply@tendrilgrow.com>` | Sender address for outgoing emails. Must be a verified domain in Resend. |
+
+### Integrations
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `INTEGRATION_ENCRYPTION_KEY` | Yes* | `""` | Fernet key for encrypting third-party credentials (Vivosun, Ecowitt, etc.). Generate with `python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. *Required if using integrations. |
 
 ### Application
 
