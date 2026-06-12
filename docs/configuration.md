@@ -84,6 +84,14 @@ JWT settings (not configurable via env, set in code):
 | `CORS_ORIGINS` | No | `https://tendrilgrow.com` | Comma-separated list of allowed CORS origins. |
 | `LOG_LEVEL` | No | `INFO` | Logging level: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. |
 
+### Camera / go2rtc
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `GO2RTC_URL` | No | `http://go2rtc.go2rtc.svc.cluster.local:8000` | go2rtc HTTP API base URL. Required for RTSP camera support. For Docker Compose: `http://go2rtc:8000`. |
+
+**Note:** go2rtc is required for RTSP/RTMP camera streams. HTTP snapshot cameras (e.g., Reolink HTTP) work without it. When an RTSP camera URL is configured, Tendril requests a JPEG frame from go2rtc's `/api/frame.jpeg` endpoint, passing the RTSP URL as the stream source.
+
 ### Rate Limiting & Security
 
 | Variable | Required | Default | Description |

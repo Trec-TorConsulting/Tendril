@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Annotated
+from urllib.parse import quote_plus
 from uuid import UUID
 
 import httpx
@@ -15,12 +17,36 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import record_audit
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
+from app.config import get_settings
 from app.database import async_session_factory
 from app.grows.models import Tent, TentCamera
 from app.pagination import PaginatedResponse, PaginationParams, paginate
 from app.utils.url_validation import validate_url_safe
 
 router = APIRouter()
+
+_logger = logging.getLogger("tendril.tents")
+
+
+async def _fetch_camera_image(camera_url: str, camera_type: str = "http_snapshot") -> bytes:
+    """Fetch a JPEG snapshot from a camera URL, routing RTSP through go2rtc."""
+    if camera_type == "rtsp" or camera_url.startswith("rtsp://"):
+        # Route through go2rtc frame API
+        settings = get_settings()
+        go2rtc_base = settings.go2rtc_url.rstrip("/")
+        # go2rtc accepts the RTSP URL directly as ?src= parameter
+        frame_url = f"{go2rtc_base}/api/frame.jpeg?src={quote_plus(camera_url)}"
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(frame_url)
+            resp.raise_for_status()
+            return resp.content
+    else:
+        # Direct HTTP snapshot
+        validate_url_safe(camera_url, allow_private=True)
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(camera_url)
+            resp.raise_for_status()
+            return resp.content
 
 
 class EquipmentItem(BaseModel):
@@ -180,19 +206,16 @@ async def camera_snapshot(
 
     if not camera_url:
         raise HTTPException(status_code=404, detail="No camera configured for this tent")
-    validate_url_safe(camera_url, allow_private=True)  # cameras are on local network
+    camera_type = cam.camera_type if cam else "http_snapshot"
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(camera_url)
-            resp.raise_for_status()
+        image_bytes = await _fetch_camera_image(camera_url, camera_type)
     except httpx.HTTPError as exc:
         raise HTTPException(
             status_code=503,
             detail=f"Camera unavailable: {exc}",
             headers={"Retry-After": "30"},
         ) from exc
-    content_type = resp.headers.get("content-type", "image/jpeg")
-    return Response(content=resp.content, media_type=content_type, headers={"Cache-Control": "no-store"})
+    return Response(content=image_bytes, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
 
 
 @router.get("/{tent_id}/camera-snapshot-b64")
@@ -226,20 +249,16 @@ async def camera_snapshot_b64(
 
     if not camera_url:
         raise HTTPException(status_code=404, detail="No camera configured for this tent")
-    validate_url_safe(camera_url, allow_private=True)
+    camera_type = cam.camera_type if cam else "http_snapshot"
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.get(camera_url)
-            resp.raise_for_status()
+        image_bytes = await _fetch_camera_image(camera_url, camera_type)
     except httpx.HTTPError as exc:
-        # Use 503 with Retry-After instead of 502 to avoid Cloudflare error pages
-        # stripping CORS headers. 503 also signals the frontend to back off.
         raise HTTPException(
             status_code=503,
             detail=f"Camera unavailable: {exc}",
             headers={"Retry-After": "30"},
         ) from exc
-    image_b64 = base64.b64encode(resp.content).decode("ascii")
+    image_b64 = base64.b64encode(image_bytes).decode("ascii")
     return {"image_base64": image_b64, "timestamp": datetime.now(UTC).isoformat()}
 
 
