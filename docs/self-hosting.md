@@ -17,9 +17,24 @@ This guide walks through deploying Tendril on your own infrastructure. Choose Do
 
 | Tool | Purpose |
 |------|---------|
-| Ollama | Local AI models — install from [ollama.com](https://ollama.com) |
+| Ollama | Local AI models (text + vision). Install from [ollama.com](https://ollama.com) |
 | go2rtc | RTSP camera proxy — required for RTSP/RTMP camera streams. Install from [github.com/AlexxIT/go2rtc](https://github.com/AlexxIT/go2rtc) |
+| Google Gemini API key | Cloud AI fallback for health checks when Ollama is unavailable |
+| Stripe account | Only if enabling paid billing tiers (free tier works without it) |
+| Resend API key | Transactional email (verification, password reset, billing notifications). Without it, email features are disabled |
+| Google/GitHub OAuth credentials | Social login (optional — email/password auth always works) |
 | PlatformIO | Only if flashing ESP32 firmware |
+
+### Bundled Infrastructure (included in Docker Compose)
+
+These are started automatically — no external setup needed:
+
+| Service | Purpose |
+|---------|---------|
+| PostgreSQL 16 | Primary database |
+| EMQX | MQTT broker for ESP32 sensor data |
+| MinIO | S3-compatible object storage for photos and snapshots |
+| Redis 7 | Rate limiting, brute-force protection, caching. Falls back to in-memory if unavailable |
 
 ## Quick Start with Docker Compose
 
