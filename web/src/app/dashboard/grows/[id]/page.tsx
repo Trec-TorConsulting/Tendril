@@ -1013,6 +1013,8 @@ export default function GrowDetailPage() {
 
           <TabsContent value="activity" className="mt-0">
             <ActivityTab
+              growId={grow.id}
+              growType={grow.grow_type}
               buckets={buckets}
               journalEntries={journalEntries}
               bucketLabelMap={bucketLabelMap}
