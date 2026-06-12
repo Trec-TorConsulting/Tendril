@@ -60,7 +60,7 @@ def _encrypt_request_body(plaintext: bytes, *, timestamp_ms: int) -> tuple[str, 
     from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
     from cryptography.hazmat.primitives.padding import PKCS7
 
-    md5_hex = hashlib.md5(str(timestamp_ms).encode()).hexdigest()  # noqa: S324
+    md5_hex = hashlib.md5(str(timestamp_ms).encode(), usedforsecurity=False).hexdigest()
 
     key_len = secrets.choice(_AES_KEY_LENGTHS)
     key_start = secrets.randbelow(_MD5_HEX_LENGTH - key_len + 1)
