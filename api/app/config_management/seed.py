@@ -280,7 +280,7 @@ async def seed_grow_type_stages(session: AsyncSession) -> int:
                         INSERT INTO grow_type_nutrients (id, stage_id, week, ec_min, ec_max, ec_target,
                             ph_min, ph_max, ph_target, base_nutrients, supplements, notes)
                         VALUES (:id, :stage_id, 1, :ec_min, :ec_max, :ec_target,
-                            :ph_min, :ph_max, :ph_target, :base_nutrients::jsonb, :supplements::jsonb, :notes)
+                            :ph_min, :ph_max, :ph_target, CAST(:base_nutrients AS jsonb), CAST(:supplements AS jsonb), :notes)
                     """),
                     {
                         "id": str(uuid.uuid4()),
