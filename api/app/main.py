@@ -47,6 +47,7 @@ from app.integrations.routes import router as integrations_router
 from app.logging_config import setup_logging
 from app.notifications.internal_routes import router as internal_alerts_router
 from app.notifications.routes import router as notifications_router
+from app.nutrition.routes import router as nutrition_router
 from app.outdoor.companion_routes import router as companion_router
 from app.outdoor.container_routes import router as container_router
 from app.outdoor.intelligence_routes import router as intelligence_router
@@ -78,6 +79,7 @@ async def lifespan(app: FastAPI):
     try:
         from app.data.seed_treatments import seed_treatments
         from app.database import async_session_factory
+        from app.nutrition.seed import sync_nutrition_seed
         from app.reference.nutrient_sync import sync_seed_nutrients
         from app.reference.strain_sync import sync_seed_strains
         from app.support.kb_seed import sync_kb_seed
@@ -86,6 +88,8 @@ async def lifespan(app: FastAPI):
             await sync_seed_strains(session)
             await sync_seed_nutrients(session)
             await seed_treatments(session)
+        async with async_session_factory() as session:
+            await sync_nutrition_seed(session)
         async with async_session_factory() as session:
             await sync_kb_seed(session)
         logger.info("Reference data seeding complete")
@@ -232,6 +236,7 @@ def create_app() -> FastAPI:
     app.include_router(support_admin_router, prefix=f"{settings.api_prefix}/support/admin", tags=["support-admin"])
     app.include_router(kb_router, prefix=f"{settings.api_prefix}/support/kb", tags=["knowledge-base"])
     app.include_router(forum_router, prefix=f"{settings.api_prefix}/support/forum", tags=["forum"])
+    app.include_router(nutrition_router, prefix=f"{settings.api_prefix}/nutrition", tags=["nutrition"])
 
     @app.get("/health")
     async def health():

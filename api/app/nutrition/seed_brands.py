@@ -1,0 +1,258 @@
+"""Nutrition seed data — brands and product lines.
+
+Sources:
+- GrowWeedEasy.com (Nebula Haze) — tested in documented grow journals since 2010
+- Manufacturer published feed charts (GH, Fox Farm, Canna, AN, Jack's)
+- CocoForCannabis.com (Dr. Coco) — coco-specific nutrient research
+- Cannabis Business Times commercial cultivation surveys
+"""
+
+from __future__ import annotations
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# BRANDS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+BRANDS = [
+    {
+        "slug": "general-hydroponics",
+        "name": "General Hydroponics",
+        "description": "Industry standard since 1976. Flora Series used by NASA for space research. Works in soil, coco, and all hydro systems.",
+        "website": "https://generalhydroponics.com",
+        "country": "USA",
+    },
+    {
+        "slug": "fox-farm",
+        "name": "Fox Farm",
+        "description": "Most popular nutrient brand among home cannabis growers (GrowWeedEasy survey). Contains organic ingredients like earthworm castings and bat guano for enhanced flavor.",
+        "website": "https://foxfarm.com",
+        "country": "USA",
+    },
+    {
+        "slug": "advanced-nutrients",
+        "name": "Advanced Nutrients",
+        "description": "Premium cannabis-specific nutrients with pH Perfect technology that auto-buffers pH to 5.6. Developed and tested on cannabis plants directly.",
+        "website": "https://advancednutrients.com",
+        "country": "Canada",
+    },
+    {
+        "slug": "canna",
+        "name": "Canna",
+        "description": "Dutch company, one of the only nutrient lines developed and tested specifically for cannabis for 30+ years. Known for coco-specific formulations.",
+        "website": "https://canna.com",
+        "country": "Netherlands",
+    },
+    {
+        "slug": "jacks-nutrients",
+        "name": "Jack's Nutrients",
+        "description": "Professional-grade dry powder nutrients. 321 formula is the cheapest cost-per-gallon option. Used in large-scale commercial cannabis operations.",
+        "website": "https://jacksnutrients.com",
+        "country": "USA",
+    },
+    {
+        "slug": "athena",
+        "name": "Athena",
+        "description": "Commercial cannabis-focused brand used by large-scale licensed producers. Simple 2-part system designed for consistency at scale.",
+        "website": "https://athenaag.com",
+        "country": "USA",
+    },
+    {
+        "slug": "botanicare",
+        "name": "Botanicare",
+        "description": "Makers of Hydroguard (the gold standard root rot prevention). KIND series for hydro/coco, Pure Blend Pro for soil.",
+        "website": "https://botanicare.com",
+        "country": "USA",
+    },
+    {
+        "slug": "dyna-gro",
+        "name": "Dyna-Gro / Superthrive",
+        "description": "Simplest nutrient system — just 2 bottles from seed to harvest. Originally designed for orchids, proven excellent for cannabis in all media.",
+        "website": "https://dframecompanies.com",
+        "country": "USA",
+    },
+    {
+        "slug": "house-and-garden",
+        "name": "House & Garden",
+        "description": "Premium Dutch brand founded by a top Canna researcher. All nutrients made in-house near Amsterdam. Expensive but highly effective.",
+        "website": "https://house-garden.us",
+        "country": "Netherlands",
+    },
+    {
+        "slug": "megacrop",
+        "name": "Greenleaf Nutrients (Mega Crop)",
+        "description": "One-part powder nutrient providing complete nutrition seed-to-harvest. Extremely popular for simplicity and low cost.",
+        "website": "https://greenleafnutrients.com",
+        "country": "USA",
+    },
+    {
+        "slug": "down-to-earth",
+        "name": "Down to Earth",
+        "description": "Premium organic dry amendments for living soil. Industry standard for organic cannabis cultivation. OMRI-listed.",
+        "website": "https://downtoearthfertilizer.com",
+        "country": "USA",
+    },
+    {
+        "slug": "buildasoil",
+        "name": "BuildASoil",
+        "description": "Complete living soil system. Craft-quality inputs, soil recipes, cover crops, and amendments for no-till organic cannabis.",
+        "website": "https://buildasoil.com",
+        "country": "USA",
+    },
+    {
+        "slug": "gaia-green",
+        "name": "Gaia Green",
+        "description": "Canadian organic dry amendment brand. All-purpose and power bloom are the staples. Simple top-dress every 3-4 weeks.",
+        "website": "https://gaiagreen.com",
+        "country": "Canada",
+    },
+    {
+        "slug": "roots-organics",
+        "name": "Roots Organics / Aurora Innovations",
+        "description": "Terp Tea brew system and organic soil amendments. Known for terpene-enhancing formulations.",
+        "website": "https://rootsorganics.com",
+        "country": "USA",
+    },
+    {
+        "slug": "natures-living-soil",
+        "name": "Nature's Living Soil",
+        "description": "Just-add-water super soil concentrate. Mix into bottom 1/3 of container, plant, and only water. Simplest organic method.",
+        "website": "https://natureslivingsoil.com",
+        "country": "USA",
+    },
+]
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# NUTRIENT LINES — HYDROPONIC
+# Compatible with: dwc, rdwc, nft, ebb_flow, aeroponics, drip, kratky
+# ═══════════════════════════════════════════════════════════════════════════════
+
+HYDRO_GROW_TYPES = ["dwc", "rdwc", "nft", "ebb_flow", "aeroponics", "drip", "kratky"]
+
+HYDRO_LINES = [
+    {
+        "brand_slug": "general-hydroponics",
+        "slug": "flora-series",
+        "name": "Flora Series (Flora Trio)",
+        "description": "The original 3-part system. Industry standard for 40+ years. Used by NASA. GrowWeedEasy's #1 recommendation for all media. Follow at half manufacturer strength.",
+        "line_type": "synthetic",
+        "part_count": 3,
+        "format": "liquid",
+        "difficulty": "beginner",
+        "ph_buffered": False,
+        "grow_type_slugs": HYDRO_GROW_TYPES + ["coco", "soil", "rockwool"],
+        "products": [
+            {"slug": "flora-micro", "name": "FloraMicro", "product_type": "base", "npk": "5-0-1", "description": "Provides nitrogen, calcium, and all trace micronutrients. Always add to water FIRST.", "is_required": True, "sort_order": 1},
+            {"slug": "flora-gro", "name": "FloraGro", "product_type": "base", "npk": "2-1-6", "description": "Promotes strong vegetative growth with higher nitrogen and potassium.", "is_required": True, "sort_order": 2},
+            {"slug": "flora-bloom", "name": "FloraBloom", "product_type": "base", "npk": "0-5-4", "description": "Provides phosphorus and potassium for flower development. Used in all stages at varying ratios.", "is_required": True, "sort_order": 3},
+            {"slug": "calimagic", "name": "CaliMagic", "product_type": "supplement", "npk": "1-0-0", "description": "Calcium and magnesium supplement. Essential with RO/filtered water, LED grows, or coco.", "is_required": False, "sort_order": 4},
+            {"slug": "liquid-koolbloom", "name": "Liquid KoolBloom", "product_type": "booster", "npk": "0-10-10", "description": "PK booster for weeks 1-6 of flower. Increases bud weight and essential oil production.", "is_required": False, "sort_order": 5},
+            {"slug": "florakleen", "name": "FloraKleen", "product_type": "flush", "npk": "0-0-0", "description": "Salt-dissolving flush solution. Use between reservoir changes and final 2 days before harvest.", "is_required": False, "sort_order": 6},
+        ],
+    },
+    {
+        "brand_slug": "jacks-nutrients",
+        "slug": "jacks-321",
+        "name": "Jack's 321",
+        "description": "3-part dry powder system. Cheapest cost per gallon in cannabis cultivation. 3.6g Part A + 2.4g Part B + 1.2g Epsom per gallon. Same formula veg through flower.",
+        "line_type": "synthetic",
+        "part_count": 3,
+        "format": "powder",
+        "difficulty": "beginner",
+        "ph_buffered": False,
+        "grow_type_slugs": HYDRO_GROW_TYPES + ["coco", "soil", "rockwool"],
+        "products": [
+            {"slug": "part-a", "name": "Part A (5-12-26)", "product_type": "base", "npk": "5-12-26", "description": "Calcium nitrate base. Provides calcium, nitrogen, phosphorus, potassium, and micronutrients. Dissolve separately from Part B.", "is_required": True, "sort_order": 1},
+            {"slug": "part-b", "name": "Part B (15-0-0)", "product_type": "base", "npk": "15-0-0", "description": "Calcium nitrate. Provides calcium and additional nitrogen. Never pre-mix concentrated with Part A.", "is_required": True, "sort_order": 2},
+            {"slug": "epsom-salt", "name": "Epsom Salt (Magnesium Sulfate)", "product_type": "base", "npk": "0-0-0", "description": "Provides magnesium and sulfur. Can dissolve with either Part A or B.", "is_required": True, "sort_order": 3},
+            {"slug": "finish", "name": "Jack's Finish (MKP)", "product_type": "booster", "npk": "0-52-34", "description": "Monopotassium phosphate for final 2 weeks of flower. Reduces nitrogen while maintaining P/K.", "is_required": False, "sort_order": 4},
+        ],
+    },
+    {
+        "brand_slug": "advanced-nutrients",
+        "slug": "ph-perfect-sensi",
+        "name": "pH Perfect Sensi Grow/Bloom",
+        "description": "Auto-pH buffering 2-part system. No need to manually adjust pH between 4.5-8.5 input range. Tested on cannabis directly. Premium price but removes pH management.",
+        "line_type": "synthetic",
+        "part_count": 2,
+        "format": "liquid",
+        "difficulty": "beginner",
+        "ph_buffered": True,
+        "grow_type_slugs": HYDRO_GROW_TYPES + ["coco", "rockwool"],
+        "products": [
+            {"slug": "sensi-grow-a", "name": "Sensi Grow A", "product_type": "base", "npk": "4-0-0", "description": "Part A of the vegetative growth formula. pH Perfect technology automatically buffers to 5.6.", "is_required": True, "sort_order": 1},
+            {"slug": "sensi-grow-b", "name": "Sensi Grow B", "product_type": "base", "npk": "1-2-7", "description": "Part B of the vegetative growth formula. Use equal parts with Part A.", "is_required": True, "sort_order": 2},
+            {"slug": "sensi-bloom-a", "name": "Sensi Bloom A", "product_type": "base", "npk": "4-0-0", "description": "Part A of the flowering formula. Switch from Grow to Bloom when flowers appear.", "is_required": True, "sort_order": 3},
+            {"slug": "sensi-bloom-b", "name": "Sensi Bloom B", "product_type": "base", "npk": "1-3-6", "description": "Part B of the flowering formula. Higher P/K ratio for bud development.", "is_required": True, "sort_order": 4},
+            {"slug": "big-bud", "name": "Big Bud", "product_type": "booster", "npk": "0-1-3", "description": "PK booster for weeks 2-4 of flower. Increases bud size and density.", "is_required": False, "sort_order": 5},
+            {"slug": "overdrive", "name": "Overdrive", "product_type": "booster", "npk": "1-5-4", "description": "Late-flower booster for final 2-3 weeks. Pushes plants for maximum yield during ripening.", "is_required": False, "sort_order": 6},
+        ],
+    },
+    {
+        "brand_slug": "athena",
+        "slug": "athena-pro",
+        "name": "Athena Pro Line",
+        "description": "Commercial-grade 2-part powder system. Used by major licensed cannabis producers. Simple: Core + Bloom at consistent ratios. Designed for repeatability at scale.",
+        "line_type": "synthetic",
+        "part_count": 2,
+        "format": "powder",
+        "difficulty": "intermediate",
+        "ph_buffered": False,
+        "grow_type_slugs": HYDRO_GROW_TYPES + ["coco", "rockwool"],
+        "products": [
+            {"slug": "pro-core", "name": "Pro Core", "product_type": "base", "npk": "5-0-3", "description": "Calcium, magnesium, nitrogen, and micronutrient base. Dissolve first, separately from Bloom.", "is_required": True, "sort_order": 1},
+            {"slug": "pro-grow", "name": "Pro Grow", "product_type": "base", "npk": "4-7-5", "description": "Vegetative macronutrient blend. Higher N for green growth. Use with Core.", "is_required": True, "sort_order": 2},
+            {"slug": "pro-bloom", "name": "Pro Bloom", "product_type": "base", "npk": "1-12-8", "description": "Flowering macronutrient blend. High P/K for bud development. Transition from Grow to Bloom over 1 week.", "is_required": True, "sort_order": 3},
+            {"slug": "fade", "name": "Fade", "product_type": "flush", "npk": "0-0-0", "description": "Controlled reduction formula for final week. Enables clean nutrient fade without plain-water flush.", "is_required": False, "sort_order": 4},
+        ],
+    },
+    {
+        "brand_slug": "botanicare",
+        "slug": "kind-series",
+        "name": "KIND Series",
+        "description": "3-part system giving advanced control over nitrogen and calcium independently. Base provides N+Ca, Grow and Bloom provide minerals, kelp, and NPK ratios. Proven in hydro and coco.",
+        "line_type": "synthetic",
+        "part_count": 3,
+        "format": "liquid",
+        "difficulty": "intermediate",
+        "ph_buffered": False,
+        "grow_type_slugs": HYDRO_GROW_TYPES + ["coco", "rockwool"],
+        "products": [
+            {"slug": "kind-base", "name": "KIND Base", "product_type": "base", "npk": "4-0-0", "description": "Nitrogen and calcium foundation. Used throughout entire grow at consistent rate.", "is_required": True, "sort_order": 1},
+            {"slug": "kind-grow", "name": "KIND Grow", "product_type": "base", "npk": "2-2-4", "description": "Vegetative minerals with kelp extracts. Contains copper, manganese, and other micronutrients.", "is_required": True, "sort_order": 2},
+            {"slug": "kind-bloom", "name": "KIND Bloom", "product_type": "base", "npk": "0-6-6", "description": "Flowering phosphorus and potassium. Transition from Grow to Bloom ratios when flowers form.", "is_required": True, "sort_order": 3},
+        ],
+    },
+    {
+        "brand_slug": "dyna-gro",
+        "slug": "foliage-pro-bloom",
+        "name": "Foliage Pro + Bloom",
+        "description": "Simplest possible nutrient system — 2 bottles, complete nutrition. GrowWeedEasy's #1 pick for beginners. One for veg, one for flower. Works in any medium.",
+        "line_type": "synthetic",
+        "part_count": 2,
+        "format": "liquid",
+        "difficulty": "beginner",
+        "ph_buffered": False,
+        "grow_type_slugs": HYDRO_GROW_TYPES + ["coco", "soil", "rockwool"],
+        "products": [
+            {"slug": "foliage-pro", "name": "Foliage Pro 9-3-6", "product_type": "base", "npk": "9-3-6", "description": "Complete vegetative nutrition in one bottle. Contains all macro and micro nutrients. 1/4-1 tsp per gallon.", "is_required": True, "sort_order": 1},
+            {"slug": "bloom", "name": "Bloom 3-12-6", "product_type": "base", "npk": "3-12-6", "description": "Complete flowering nutrition. Low N, high P for bud development. Switch when flowers appear.", "is_required": True, "sort_order": 2},
+        ],
+    },
+    {
+        "brand_slug": "megacrop",
+        "slug": "megacrop-one-part",
+        "name": "Mega Crop (One Part)",
+        "description": "All-in-one powder nutrient. One product from seed to harvest — just adjust dose by growth stage. Extremely popular on cannabis forums for cost and simplicity.",
+        "line_type": "synthetic",
+        "part_count": 1,
+        "format": "powder",
+        "difficulty": "beginner",
+        "ph_buffered": False,
+        "grow_type_slugs": HYDRO_GROW_TYPES + ["coco", "soil", "rockwool"],
+        "products": [
+            {"slug": "megacrop", "name": "Mega Crop 2-Part (v2)", "product_type": "base", "npk": "9-6-17", "description": "Complete nutrition powder. 2-5g per gallon depending on stage. Contains chelated micronutrients, humic acid, and amino acids.", "is_required": True, "sort_order": 1},
+            {"slug": "bud-explosion", "name": "Bud Explosion", "product_type": "booster", "npk": "0-39-25", "description": "PK booster for weeks 3-6 of flower. Optional but increases yield.", "is_required": False, "sort_order": 2},
+            {"slug": "sweet-candy", "name": "Sweet Candy", "product_type": "supplement", "npk": "0-0-0", "description": "Carbohydrate supplement to enhance resin and terpene production in flower.", "is_required": False, "sort_order": 3},
+        ],
+    },
+]
