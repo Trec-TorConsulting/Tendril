@@ -10,6 +10,7 @@ with email/password and poll historical sensor data via the PointLog endpoint.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -102,24 +103,51 @@ class VivosunConnector(BaseConnector):
         return self.decrypted_config.get("access_token", "")
 
     async def _authenticate(self, client: httpx.AsyncClient) -> bool:
-        """Authenticate with email/password, store tokens in decrypted_config."""
+        """Authenticate with email/password, store tokens in decrypted_config.
+
+        The Vivosun cloud API (v3.3+) requires the password as an MD5 hash
+        and additional fields in the login body.
+        """
         email = self.decrypted_config.get("email", "")
         password = self.decrypted_config.get("password", "")
         if not email or not password:
             return False
 
+        # Vivosun API expects MD5-hashed password
+        password_md5 = hashlib.md5(password.encode()).hexdigest()  # noqa: S324
+
         try:
             resp = await client.post(
                 f"{_BASE_URL}/user/login",
-                headers=_APP_HEADERS,
-                json={"email": email, "password": password},
+                headers={**_APP_HEADERS, "Content-Type": "application/json"},
+                json={
+                    "email": email,
+                    "password": password_md5,
+                    "appVersion": _APP_VERSION,
+                    "clientType": "android",
+                },
             )
+            if resp.status_code == 401 or (resp.status_code == 200 and not resp.json().get("success", True)):
+                # Retry with raw password for accounts that haven't migrated
+                resp = await client.post(
+                    f"{_BASE_URL}/user/login",
+                    headers={**_APP_HEADERS, "Content-Type": "application/json"},
+                    json={
+                        "email": email,
+                        "password": password,
+                        "appVersion": _APP_VERSION,
+                        "clientType": "android",
+                    },
+                )
             resp.raise_for_status()
         except (httpx.HTTPStatusError, httpx.RequestError) as exc:
             logger.warning("Vivosun login failed: %s", exc)
             return False
 
         data = resp.json()
+        if not data.get("success", True):
+            logger.warning("Vivosun login rejected: %s", data.get("message", "unknown"))
+            return False
         result_data = data.get("data", data)
         self.decrypted_config["login_token"] = result_data.get("loginToken", "")
         self.decrypted_config["access_token"] = result_data.get("accessToken", "")
@@ -230,7 +258,9 @@ class VivosunConnector(BaseConnector):
                 json=payload,
             )
             if resp.status_code == 401:
-                # Try re-authenticating once
+                # Clear stale tokens and try re-authenticating once
+                self.decrypted_config.pop("login_token", None)
+                self.decrypted_config.pop("access_token", None)
                 if await self._authenticate(client):
                     resp = await client.post(
                         f"{_BASE_URL}/iot/data/getPointLog",
