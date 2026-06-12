@@ -6,6 +6,7 @@ import { useConfirm } from "@/components/confirm-dialog";
 import { formatDate, formatTime } from "@/lib/utils";
 import {
   createJournalEntry,
+  createQuickJournalEntry,
   updateJournalEntry,
   deleteJournalEntry,
   type JournalEntryResponse,
@@ -46,8 +47,10 @@ interface JournalTabProps {
 export function JournalTab({ buckets, journalEntries, bucketLabelMap, onRefresh }: JournalTabProps) {
   const [dialog, setDialog] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  const [form, setForm] = useState({ bucket_id: "", event_type: "note", content: "" });
+  const [form, setForm] = useState({ bucket_id: "", event_type: "note", content: "", ph: "", ec: "", water_temp_f: "", volume_gal: "" });
   const [saving, setSaving] = useState(false);
+
+  const showMeasurements = !editId && (form.event_type === "water_change" || form.event_type === "feeding" || form.event_type === "flushing");
 
   const handleSubmit = async () => {
     const token = getAccessToken();
@@ -59,6 +62,17 @@ export function JournalTab({ buckets, journalEntries, bucketLabelMap, onRefresh 
           event_type: form.event_type,
           content: form.content.trim() || undefined,
         });
+      } else if (showMeasurements) {
+        // Use the quick endpoint to save journal + sensor reading atomically
+        await createQuickJournalEntry(token, {
+          bucket_id: form.bucket_id,
+          event_type: form.event_type,
+          content: form.content.trim() || undefined,
+          ph: form.ph ? parseFloat(form.ph) : undefined,
+          ec: form.ec ? parseFloat(form.ec) : undefined,
+          water_temp_f: form.water_temp_f ? parseFloat(form.water_temp_f) : undefined,
+          volume_gallons: form.volume_gal ? parseFloat(form.volume_gal) : undefined,
+        });
       } else {
         await createJournalEntry(token, {
           bucket_id: form.bucket_id,
@@ -68,7 +82,7 @@ export function JournalTab({ buckets, journalEntries, bucketLabelMap, onRefresh 
       }
       setDialog(false);
       setEditId(null);
-      setForm({ bucket_id: "", event_type: "note", content: "" });
+      setForm({ bucket_id: "", event_type: "note", content: "", ph: "", ec: "", water_temp_f: "", volume_gal: "" });
       onRefresh();
     } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to save journal entry"); } finally { setSaving(false); }
   };
@@ -91,7 +105,7 @@ export function JournalTab({ buckets, journalEntries, bucketLabelMap, onRefresh 
         <h3 className="text-sm font-medium">Grow Journal</h3>
         <Button size="sm" onClick={() => {
           setEditId(null);
-          setForm({ bucket_id: buckets[0]?.id || "", event_type: "note", content: "" });
+          setForm({ bucket_id: buckets[0]?.id || "", event_type: "note", content: "", ph: "", ec: "", water_temp_f: "", volume_gal: "" });
           setDialog(true);
         }} disabled={buckets.length === 0}>
           <Plus className="mr-1 size-3" /> Add Entry
@@ -121,7 +135,7 @@ export function JournalTab({ buckets, journalEntries, bucketLabelMap, onRefresh 
                 <div className="flex items-center gap-1">
                   <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => {
                     setEditId(je.id);
-                    setForm({ bucket_id: je.bucket_id, event_type: je.event_type, content: je.content || "" });
+                    setForm({ bucket_id: je.bucket_id, event_type: je.event_type, content: je.content || "", ph: "", ec: "", water_temp_f: "", volume_gal: "" });
                     setDialog(true);
                   }}>
                     <Pencil className="size-3" />
@@ -168,6 +182,29 @@ export function JournalTab({ buckets, journalEntries, bucketLabelMap, onRefresh 
               <Label className="text-xs">Notes</Label>
               <Input placeholder="What happened?" value={form.content} onChange={(e) => setForm((p) => ({ ...p, content: e.target.value }))} />
             </div>
+            {showMeasurements && (
+              <div className="space-y-2 rounded-md border p-3">
+                <p className="text-xs font-medium text-muted-foreground">Measurements (recommended)</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">pH</Label>
+                    <Input type="number" step="0.1" placeholder="5.8" value={form.ph} onChange={(e) => setForm((p) => ({ ...p, ph: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">EC</Label>
+                    <Input type="number" step="0.1" placeholder="1.2" value={form.ec} onChange={(e) => setForm((p) => ({ ...p, ec: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Water Temp (°F)</Label>
+                    <Input type="number" step="0.1" placeholder="68" value={form.water_temp_f} onChange={(e) => setForm((p) => ({ ...p, water_temp_f: e.target.value }))} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Volume (gal)</Label>
+                    <Input type="number" step="0.5" placeholder="5" value={form.volume_gal} onChange={(e) => setForm((p) => ({ ...p, volume_gal: e.target.value }))} />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" type="button" onClick={() => setDialog(false)}>Cancel</Button>
