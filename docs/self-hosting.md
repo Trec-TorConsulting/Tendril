@@ -18,6 +18,7 @@ This guide walks through deploying Tendril on your own infrastructure. Choose Do
 | Tool | Purpose |
 |------|---------|
 | Ollama | Local AI models — install from [ollama.com](https://ollama.com) |
+| go2rtc | RTSP camera proxy — required for RTSP/RTMP camera streams. Install from [github.com/AlexxIT/go2rtc](https://github.com/AlexxIT/go2rtc) |
 | PlatformIO | Only if flashing ESP32 firmware |
 
 ## Quick Start with Docker Compose

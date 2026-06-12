@@ -88,6 +88,11 @@ class Settings:
     # Dunning
     dunning_grace_days: int = field(default_factory=lambda: int(os.environ.get("DUNNING_GRACE_DAYS", "14")))
 
+    # go2rtc (camera proxy for RTSP streams)
+    go2rtc_url: str = field(
+        default_factory=lambda: os.environ.get("GO2RTC_URL", "http://go2rtc.go2rtc.svc.cluster.local:8000")
+    )
+
     # Account deletion
     data_retention_days: int = field(default_factory=lambda: int(os.environ.get("DATA_RETENTION_DAYS", "30")))
 

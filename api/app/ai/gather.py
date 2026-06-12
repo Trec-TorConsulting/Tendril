@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime, timedelta
 
-import httpx
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,7 +22,6 @@ from app.grows.models import (
     TentSensorReading,
     WeatherReading,
 )
-from app.utils.url_validation import validate_url_safe
 
 logger = logging.getLogger("tendril.ai.gather")
 
@@ -413,6 +411,7 @@ async def gather_grow_data(
     if include_camera and tent:
         # Resolve camera URL from tent_cameras or legacy field
         cam_url = None
+        cam_type = "http_snapshot"
         primary_cam = (
             await session.execute(
                 select(TentCamera).where(TentCamera.tent_id == tent.id, TentCamera.is_primary.is_(True)).limit(1)
@@ -420,16 +419,15 @@ async def gather_grow_data(
         ).scalar_one_or_none()
         if primary_cam:
             cam_url = primary_cam.url
+            cam_type = primary_cam.camera_type
         elif tent.camera_url:
             cam_url = tent.camera_url
 
         if cam_url:
             try:
-                validate_url_safe(cam_url, allow_private=True)
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    resp = await client.get(cam_url)
-                    resp.raise_for_status()
-                    camera_image = resp.content
+                from app.grows.tent_routes import _fetch_camera_image
+
+                camera_image = await _fetch_camera_image(cam_url, cam_type)
             except Exception:
                 logger.warning("Failed to fetch camera snapshot from %s", cam_url)
     data["camera_image"] = camera_image
