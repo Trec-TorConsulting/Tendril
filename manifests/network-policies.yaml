@@ -14,6 +14,7 @@ spec:
 
 ---
 # Allow Traefik → API (port 8000)
+# Traefik runs in kube-system (k3s default)
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -29,13 +30,14 @@ spec:
   - from:
     - namespaceSelector:
         matchLabels:
-          kubernetes.io/metadata.name: traefik
+          kubernetes.io/metadata.name: kube-system
     ports:
     - protocol: TCP
       port: 8000
 
 ---
 # Allow Traefik → Web (port 3000)
+# Traefik runs in kube-system (k3s default)
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -51,7 +53,7 @@ spec:
   - from:
     - namespaceSelector:
         matchLabels:
-          kubernetes.io/metadata.name: traefik
+          kubernetes.io/metadata.name: kube-system
     ports:
     - protocol: TCP
       port: 3000
@@ -179,6 +181,30 @@ spec:
       port: 1883
     - protocol: TCP
       port: 8883
+
+---
+# Egress: API/Scheduler → go2rtc (camera proxy, port 8000)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-apps-to-go2rtc
+  namespace: tendril
+spec:
+  podSelector:
+    matchExpressions:
+    - key: app
+      operator: In
+      values: [tendril-api, tendril-scheduler]
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: go2rtc
+    ports:
+    - protocol: TCP
+      port: 8000
 
 ---
 # Egress: Scheduler/API → external AI services (Gemini, Ollama)
