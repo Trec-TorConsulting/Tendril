@@ -48,6 +48,7 @@ ignore = [
 "**/migrations/**/*.py" = ["E501"]  # Migrations contain long SQL strings
 "**/email_service.py" = ["E501"]  # Email HTML templates with long inline styles
 "**/outdoor/**_routes.py" = ["E501"]  # Route handlers with long descriptions
+"**/nutrition/seed_*.py" = ["E501", "RUF005"]  # Seed data files with long description strings
 "**/data/reports.py" = ["E501", "RUF001"]  # HTML report templates with long inline styles and en-dashes
 "**/mqtt/auth_webhook.py" = ["E402", "S104"]  # Prometheus import after app setup, binds to 0.0.0.0
 "**/config_management/seed.py" = ["E501", "T201"]  # SQL strings and seed script print
