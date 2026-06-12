@@ -153,38 +153,69 @@ class VivosunConnector(BaseConnector):
         email = self.decrypted_config.get("email", "")
         password = self.decrypted_config.get("password", "")
         if not email or not password:
+            logger.warning("Vivosun login skipped: missing email or password in config")
             return False
+
+        login_body = json_mod.dumps(
+            {
+                "email": email,
+                "password": password,
+                "spAppId": _SP_APP_ID,
+                "spClientId": str(uuid4()),
+                "spSessionId": str(uuid4()),
+            },
+            separators=(",", ":"),
+        ).encode()
 
         try:
             resp = await client.post(
                 f"{_BASE_URL}/user/login",
                 headers={**_BASE_HEADERS, "Content-Type": "application/json"},
-                json={
-                    "email": email,
-                    "password": password,
-                    "spAppId": _SP_APP_ID,
-                    "spClientId": str(uuid4()),
-                    "spSessionId": str(uuid4()),
-                },
+                content=login_body,
             )
             resp.raise_for_status()
         except (httpx.HTTPStatusError, httpx.RequestError) as exc:
-            logger.warning("Vivosun login failed: %s", exc)
+            logger.warning(
+                "Vivosun login HTTP error: %s (status=%s)",
+                exc,
+                getattr(getattr(exc, "response", None), "status_code", "?"),
+            )
             return False
 
         data = resp.json()
         if not data.get("success", True):
-            logger.warning("Vivosun login rejected: %s", data.get("message", "unknown"))
+            logger.warning(
+                "Vivosun login rejected: %s (code=%s)", data.get("message", "unknown"), data.get("code", "?")
+            )
             return False
         result_data = data.get("data", data)
         self.decrypted_config["login_token"] = result_data.get("loginToken", "")
         self.decrypted_config["access_token"] = result_data.get("accessToken", "")
-        return bool(self._login_token and self._access_token)
+        if not self._login_token or not self._access_token:
+            logger.warning("Vivosun login response missing tokens: keys=%s", list(result_data.keys()))
+            return False
+        return True
 
     async def _ensure_auth(self, client: httpx.AsyncClient) -> bool:
-        """Ensure we have valid tokens, re-authenticating if needed."""
+        """Ensure we have valid tokens, re-authenticating if needed.
+
+        Always re-authenticate fresh — tokens from previous protocol versions
+        may be stored but invalid.
+        """
         if self._login_token and self._access_token:
-            return True
+            # Validate tokens with a lightweight request
+            try:
+                resp = await client.get(
+                    f"{_BASE_URL}/iot/device/getTotalList",
+                    headers=self._headers(),
+                )
+                if resp.status_code != 401:
+                    return True
+            except httpx.RequestError:
+                pass
+            # Tokens are stale, clear and re-authenticate
+            self.decrypted_config.pop("login_token", None)
+            self.decrypted_config.pop("access_token", None)
         return await self._authenticate(client)
 
     async def _encrypted_post(self, client: httpx.AsyncClient, path: str, payload: dict[str, Any]) -> httpx.Response:
