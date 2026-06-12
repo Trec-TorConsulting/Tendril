@@ -11,9 +11,14 @@ with email/password and poll historical sensor data via the PointLog endpoint.
 from __future__ import annotations
 
 import hashlib
+import json as json_mod
 import logging
-from datetime import UTC, datetime, timedelta
+import secrets
+import string
+import time
+from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 import httpx
 from pydantic import BaseModel, Field
@@ -27,14 +32,56 @@ logger = logging.getLogger("tendril.integrations.vivosun")
 
 _TIMEOUT = 30.0
 _BASE_URL = "https://api-prod.next.vivosun.com"
-# App version headers required by the Vivosun cloud API.
-# Without these the API returns "Your app version is outdated" errors.
-_APP_VERSION = "3.3.0"
-_APP_HEADERS: dict[str, str] = {
-    "appVersion": _APP_VERSION,
-    "platform": "android",
-    "User-Agent": f"GrowHub/{_APP_VERSION} (Android)",
+
+# Must match current Play Store release or the API rejects requests.
+_APP_VERSION = "4.63.1"
+_API_PROTOCOL_VERSION = "1.0.5"
+_SERVER_PLATFORM = "android"
+_SP_APP_ID = "com.vivosun.android"
+
+_BASE_HEADERS: dict[str, str] = {
+    "Server-Platform": _SERVER_PLATFORM,
+    "Api-Version": _API_PROTOCOL_VERSION,
+    "App-Version": _APP_VERSION,
 }
+
+# ── POST body encryption ────────────────────────────────────────────────
+# The Vivosun cloud rejects unencrypted production POST requests (except login)
+# with a misleading "Your app version is outdated" (code 60001). This mirrors
+# the official Android app's VSHttpHeaderInterceptor encryption scheme.
+_ALPHABET = string.ascii_uppercase + string.ascii_lowercase + string.digits
+_AES_KEY_LENGTHS = (16, 24, 32)
+_IV_LENGTH = 16
+_MD5_HEX_LENGTH = 32
+
+
+def _encrypt_request_body(plaintext: bytes, *, timestamp_ms: int) -> tuple[str, str, bytes]:
+    """Encrypt a POST body, returning (request_time, request_code, encrypted_body)."""
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    from cryptography.hazmat.primitives.padding import PKCS7
+
+    md5_hex = hashlib.md5(str(timestamp_ms).encode()).hexdigest()  # noqa: S324
+
+    key_len = secrets.choice(_AES_KEY_LENGTHS)
+    key_start = secrets.randbelow(_MD5_HEX_LENGTH - key_len + 1)
+    key_end = key_start + key_len
+    aes_key = md5_hex[key_start:key_end].encode()
+
+    salt_len = _IV_LENGTH + secrets.randbelow(84)  # 16..99, matches app
+    salt = "".join(secrets.choice(_ALPHABET) for _ in range(salt_len))
+    iv_start = secrets.randbelow(salt_len - _IV_LENGTH + 1)
+    iv_end = iv_start + _IV_LENGTH
+    aes_iv = salt[iv_start:iv_end].encode()
+
+    padder = PKCS7(algorithms.AES.block_size).padder()
+    padded = padder.update(plaintext) + padder.finalize()
+    encryptor = Cipher(algorithms.AES(aes_key), modes.CBC(aes_iv)).encryptor()
+    content_hex = (encryptor.update(padded) + encryptor.finalize()).hex()
+
+    request_code = f"AC5-{key_start}-{key_end}-{iv_start}-{iv_end}-{salt}"
+    body = json_mod.dumps({"content": content_hex}, separators=(",", ":")).encode()
+    return str(timestamp_ms), request_code, body
+
 
 # Vivosun GrowHub E42A/E42A+ PointLog fields → TentSensorReading columns
 # All temp/humidity/VPD values are raw integers divided by 100.
@@ -86,12 +133,11 @@ class VivosunConnector(BaseConnector):
     integration_type = "vivosun"
 
     def _headers(self) -> dict[str, str]:
-        """Return auth headers using stored tokens."""
+        """Return auth headers for authenticated endpoints."""
         return {
-            **_APP_HEADERS,
+            **_BASE_HEADERS,
             "login-token": self._login_token,
             "access-token": self._access_token,
-            "Content-Type": "application/json",
         }
 
     @property
@@ -103,42 +149,24 @@ class VivosunConnector(BaseConnector):
         return self.decrypted_config.get("access_token", "")
 
     async def _authenticate(self, client: httpx.AsyncClient) -> bool:
-        """Authenticate with email/password, store tokens in decrypted_config.
-
-        The Vivosun cloud API (v3.3+) requires the password as an MD5 hash
-        and additional fields in the login body.
-        """
+        """Authenticate with email/password, store tokens in decrypted_config."""
         email = self.decrypted_config.get("email", "")
         password = self.decrypted_config.get("password", "")
         if not email or not password:
             return False
 
-        # Vivosun API expects MD5-hashed password
-        password_md5 = hashlib.md5(password.encode()).hexdigest()  # noqa: S324
-
         try:
             resp = await client.post(
                 f"{_BASE_URL}/user/login",
-                headers={**_APP_HEADERS, "Content-Type": "application/json"},
+                headers={**_BASE_HEADERS, "Content-Type": "application/json"},
                 json={
                     "email": email,
-                    "password": password_md5,
-                    "appVersion": _APP_VERSION,
-                    "clientType": "android",
+                    "password": password,
+                    "spAppId": _SP_APP_ID,
+                    "spClientId": str(uuid4()),
+                    "spSessionId": str(uuid4()),
                 },
             )
-            if resp.status_code == 401 or (resp.status_code == 200 and not resp.json().get("success", True)):
-                # Retry with raw password for accounts that haven't migrated
-                resp = await client.post(
-                    f"{_BASE_URL}/user/login",
-                    headers={**_APP_HEADERS, "Content-Type": "application/json"},
-                    json={
-                        "email": email,
-                        "password": password,
-                        "appVersion": _APP_VERSION,
-                        "clientType": "android",
-                    },
-                )
             resp.raise_for_status()
         except (httpx.HTTPStatusError, httpx.RequestError) as exc:
             logger.warning("Vivosun login failed: %s", exc)
@@ -158,6 +186,20 @@ class VivosunConnector(BaseConnector):
         if self._login_token and self._access_token:
             return True
         return await self._authenticate(client)
+
+    async def _encrypted_post(self, client: httpx.AsyncClient, path: str, payload: dict[str, Any]) -> httpx.Response:
+        """Send an encrypted POST request (required for all non-login POSTs)."""
+        plaintext = json_mod.dumps(payload, separators=(",", ":")).encode()
+        timestamp_ms = int(time.time() * 1000)
+        request_time, request_code, body = _encrypt_request_body(plaintext, timestamp_ms=timestamp_ms)
+
+        headers = {
+            **self._headers(),
+            "Content-Type": "application/json",
+            "Request-Time": request_time,
+            "Request-Code": request_code,
+        }
+        return await client.post(f"{_BASE_URL}{path}", headers=headers, content=body)
 
     # ── Poll ─────────────────────────────────────────────────────
 
@@ -222,15 +264,15 @@ class VivosunConnector(BaseConnector):
         """Build the correct getPointLog payload.
 
         Requires sceneId + deviceId, reportType=0, timeLevel=ONE_MINUTE,
-        and a recent time window.
+        and a recent time window. Times are epoch milliseconds.
         """
-        now = datetime.now(UTC)
-        start = now - timedelta(minutes=15)
+        now_ms = int(time.time() * 1000)
+        start_ms = now_ms - (15 * 60 * 1000)  # 15 minutes ago
 
         payload: dict[str, Any] = {
             "deviceId": external_id,
-            "startTime": start.strftime("%Y-%m-%d %H:%M:%S"),
-            "endTime": now.strftime("%Y-%m-%d %H:%M:%S"),
+            "startTime": start_ms,
+            "endTime": now_ms,
             "reportType": 0,
             "orderBy": "asc",
             "timeLevel": "ONE_MINUTE",
@@ -252,21 +294,13 @@ class VivosunConnector(BaseConnector):
         payload = self._build_pointlog_payload(external_id, scene_id)
 
         try:
-            resp = await client.post(
-                f"{_BASE_URL}/iot/data/getPointLog",
-                headers=self._headers(),
-                json=payload,
-            )
+            resp = await self._encrypted_post(client, "/iot/data/getPointLog", payload)
             if resp.status_code == 401:
                 # Clear stale tokens and try re-authenticating once
                 self.decrypted_config.pop("login_token", None)
                 self.decrypted_config.pop("access_token", None)
                 if await self._authenticate(client):
-                    resp = await client.post(
-                        f"{_BASE_URL}/iot/data/getPointLog",
-                        headers=self._headers(),
-                        json=payload,
-                    )
+                    resp = await self._encrypted_post(client, "/iot/data/getPointLog", payload)
                     resp.raise_for_status()
                 else:
                     result.errors.append("Vivosun re-authentication failed")
