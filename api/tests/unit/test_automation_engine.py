@@ -98,7 +98,7 @@ async def grow_with_buckets(tenant_factory):
 
 class TestEvaluateRules:
     async def test_fires_alert_only_on_violating_bucket(self, grow_with_buckets, tenant_factory):
-        tenant, grow, buckets = grow_with_buckets
+        tenant, grow, _buckets = grow_with_buckets
         session = tenant_factory.session
 
         rule = AutomationRule(
@@ -148,7 +148,7 @@ class TestEvaluateRules:
 
     async def test_tenant_scoped_rule_with_no_grow_cycle_id(self, grow_with_buckets, tenant_factory):
         """Rule with grow_cycle_id=NULL should evaluate ALL tenant buckets."""
-        tenant, _grow, buckets = grow_with_buckets
+        tenant, _grow, _buckets = grow_with_buckets
         session = tenant_factory.session
 
         rule = AutomationRule(
