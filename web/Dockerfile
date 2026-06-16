@@ -5,7 +5,9 @@ ARG NEXT_PUBLIC_API_URL=https://api.tendrilgrow.com/v1
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 COPY package.json package-lock.json ./
-RUN npm ci
+# --legacy-peer-deps needed for openapi-typescript@7 (peer-warns on TS 6
+# but output is pure .d.ts text and works fine). See PR #189.
+RUN npm ci --legacy-peer-deps
 COPY . .
 RUN npm run build
 
