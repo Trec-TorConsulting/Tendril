@@ -180,6 +180,65 @@ jobs:
           kubectl rollout status deployment/tendril-mqtt-worker -n tendril --timeout=300s
           kubectl rollout status deployment/tendril-scheduler -n tendril --timeout=300s
 
+      # ── Post-deploy smoke test ──────────────────────────────
+      # Verifies the rolled-out pods are actually serving HTTP traffic via
+      # the production ingress, not just "Ready" per kubelet. Failing here
+      # marks the deploy job red so on-call gets a clear signal that the
+      # rollout completed but the service is broken (DB unreachable, env
+      # var typo, ingress misroute, etc.). Each check retries to absorb
+      # warmup latency without flapping.
+      - name: Post-deploy smoke test
+        env:
+          API_BASE: https://api.tendrilgrow.com
+          WEB_BASE: https://tendrilgrow.com
+        run: |
+          set -euo pipefail
+
+          # Generic retry: $1=description, $2=URL, $3=expected status,
+          # $4=optional grep pattern that response body must contain.
+          check() {
+            local desc="$1" url="$2" want_status="$3" want_body="${4:-}"
+            local attempt
+            for attempt in 1 2 3 4 5 6; do
+              echo "→ [$attempt/6] $desc — $url"
+              local response status body
+              response=$(curl --silent --show-error --max-time 15 \
+                --write-out '\nHTTP_STATUS:%{http_code}' "$url" || true)
+              status="${response##*HTTP_STATUS:}"
+              body="${response%HTTP_STATUS:*}"
+              if [ "$status" = "$want_status" ]; then
+                if [ -z "$want_body" ] || echo "$body" | grep -q "$want_body"; then
+                  echo "  ✓ $desc"
+                  return 0
+                fi
+                echo "  ✗ status OK but body missing '$want_body':"
+                echo "$body" | head -5
+              else
+                echo "  ✗ got status $status (want $want_status)"
+                echo "$body" | head -5
+              fi
+              sleep 10
+            done
+            echo "::error::Smoke check failed: $desc"
+            return 1
+          }
+
+          # API liveness — must respond OK even with DB down.
+          check "API /health" "$API_BASE/health" 200 '"status":"ok"'
+
+          # API readiness — must report DB connected.
+          check "API /health/ready" "$API_BASE/health/ready" 200 '"db":"connected"'
+
+          # API system status endpoint — full dependency surface.
+          check "API /v1/status" "$API_BASE/v1/status" 200 '"database":"connected"'
+
+          # Web shell — root must render. Marketing page is unauthenticated
+          # and a 200 with HTML means Next.js is serving and the upstream
+          # API URL resolves.
+          check "Web /" "$WEB_BASE/" 200 'Tendril'
+
+          echo "All post-deploy smoke checks passed."
+
   # ── Re-enable when going public ──────────────────────────────
   # api-test:
   #   name: API Tests
