@@ -18,6 +18,8 @@ Create Date: 2026-06-16
 
 from __future__ import annotations
 
+import uuid
+
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects.postgresql import UUID
@@ -128,6 +130,12 @@ def upgrade() -> None:
                     continue
                 rows_to_insert.append(
                     {
+                        # ``automation_rules.id`` is a Python-side
+                        # ``default=uuid.uuid4`` on the ORM model; this raw
+                        # ``sa.table()`` insert bypasses that default, so
+                        # generate the UUID explicitly. The column has no
+                        # server-side default.
+                        "id": uuid.uuid4(),
                         "tenant_id": tenant_id,
                         "name": default["message"],
                         "sensor": default["sensor"],
