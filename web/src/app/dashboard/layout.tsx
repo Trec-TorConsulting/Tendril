@@ -12,6 +12,7 @@ import { LayoutShell } from "@/components/layout-shell";
 import { ChatProvider } from "@/components/chat-provider";
 import { OnboardingGate } from "@/components/onboarding-gate";
 import { UpgradePrompt } from "@/components/upgrade-prompt";
+import { AppSWRProvider } from "@/lib/swr";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -35,6 +36,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
+    <AppSWRProvider>
     <GrowProvider defaultGrowId={user?.preferences?.default_grow_id}>
       <ConfirmProvider>
       <ChatProvider>
@@ -51,5 +53,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </ChatProvider>
       </ConfirmProvider>
     </GrowProvider>
+    </AppSWRProvider>
   );
 }

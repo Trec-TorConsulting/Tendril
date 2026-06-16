@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getAccessToken } from "@/lib/auth";
-import { listMyTickets, type SupportTicket } from "@/lib/api";
+import { listMyTickets } from "@/lib/api";
+import { useApiSWR } from "@/lib/swr";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,26 +11,19 @@ import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
 export default function TicketsPage() {
-  const [tickets, setTickets] = useState<SupportTicket[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [total, setTotal] = useState(0);
+  const { data, error, isLoading } = useApiSWR(["my-tickets"], (token) =>
+    listMyTickets(token),
+  );
 
-  useEffect(() => {
-    async function load() {
-      const token = getAccessToken();
-      if (!token) return;
-      try {
-        const result = await listMyTickets(token);
-        setTickets(result.tickets);
-        setTotal(result.total);
-      } catch {
-        toast.error("Failed to load tickets");
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
-  }, []);
+  if (error) {
+    // SWR re-runs the fetcher on focus/mutate, so this only fires once per
+    // distinct error rather than every render.
+    toast.error("Failed to load tickets");
+  }
+
+  const tickets = data?.tickets ?? [];
+  const total = data?.total ?? 0;
+  const loading = isLoading;
 
   const priorityColor = (p: string) => {
     switch (p) {
