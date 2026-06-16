@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.grows.models import BucketSensorReading, TentSensorReading
 from app.integrations.connectors.base import BaseConnector, ConnectorResult, register_connector
+from app.integrations.connectors.retry import retry_request
 
 logger = logging.getLogger(__name__)
 
@@ -77,9 +78,12 @@ class HomeAssistantConnector(BaseConnector):
                     continue
                 entity_id = dm.external_id
                 try:
-                    resp = await client.get(
-                        f"{self.base_url}/api/states/{entity_id}",
-                        headers=self.headers,
+                    resp = await retry_request(
+                        lambda url=f"{self.base_url}/api/states/{entity_id}": client.get(
+                            url,
+                            headers=self.headers,
+                        ),
+                        description=f"home_assistant.poll {entity_id}",
                     )
                     if resp.status_code == 200:
                         data = resp.json()
@@ -179,7 +183,10 @@ class HomeAssistantConnector(BaseConnector):
         relevant_domains = {"sensor", "binary_sensor", "switch", "light", "fan", "climate"}
         try:
             async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.get(f"{self.base_url}/api/states", headers=self.headers)
+                resp = await retry_request(
+                    lambda: client.get(f"{self.base_url}/api/states", headers=self.headers),
+                    description="home_assistant.discover_devices",
+                )
                 resp.raise_for_status()
                 entities = resp.json()
         except Exception as e:
@@ -213,16 +220,25 @@ class HomeAssistantConnector(BaseConnector):
         Used by Tendril automation rules to control devices via HA.
         """
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(
-                f"{self.base_url}/api/services/{domain}/{service}",
-                headers=self.headers,
-                json=data or {},
+            resp = await retry_request(
+                lambda: client.post(
+                    f"{self.base_url}/api/services/{domain}/{service}",
+                    headers=self.headers,
+                    json=data or {},
+                ),
+                description=f"home_assistant.call_service {domain}.{service}",
             )
             resp.raise_for_status()
             return resp.json()
 
     async def test_connection(self) -> dict[str, Any]:
-        """Test connectivity to HA instance."""
+        """Test connectivity to HA instance.
+
+        Intentionally does NOT use ``retry_request`` — this endpoint
+        is called from the UI's 'Test connection' button and the user
+        is waiting for a verdict. Surfacing the first failure quickly
+        is better UX than spending up to ~7s retrying.
+        """
         try:
             async with httpx.AsyncClient(timeout=10) as client:
                 resp = await client.get(f"{self.base_url}/api/", headers=self.headers)
