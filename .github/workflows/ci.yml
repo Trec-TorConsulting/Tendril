@@ -61,7 +61,8 @@ jobs:
       - run: |
           mypy --config-file api/pyproject.toml \
             api/app/automation/suppression.py \
-            api/app/automation/critical_alerts_defaults.py
+            api/app/automation/critical_alerts_defaults.py \
+            api/app/mqtt/dedup.py
 
   lint-web:
     name: Lint (web)

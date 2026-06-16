@@ -16,6 +16,7 @@ from app.grows.models import (
     GrowCycle,
     TentSensorReading,
 )
+from app.mqtt.dedup import claim_message
 from app.tenants.models import Device
 
 logger = logging.getLogger("tendril.mqtt.handlers")
@@ -48,6 +49,19 @@ async def handle_sensor_message(tenant_id: UUID, device_id_str: str, sensor_type
     sensor_type "ambient" → tent_sensor_readings (tent-level)
     sensor_type "readings" → bucket_sensor_readings (per-bucket)
     """
+    # Idempotency check — drop QoS-1 redeliveries and firmware re-sends
+    # before doing any DB work or alert evaluation. The dedup window is
+    # 60s by default; see ``app.mqtt.dedup``.
+    raw_bytes = payload_bytes if isinstance(payload_bytes, bytes | bytearray) else bytes(str(payload_bytes), "utf-8")
+    if not await claim_message(tenant_id, device_id_str, sensor_type, bytes(raw_bytes)):
+        logger.debug(
+            "Dropping duplicate MQTT message: tenant=%s device=%s type=%s",
+            tenant_id,
+            device_id_str,
+            sensor_type,
+        )
+        return
+
     try:
         payload = json.loads(payload_bytes)
     except (json.JSONDecodeError, TypeError):

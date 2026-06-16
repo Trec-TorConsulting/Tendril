@@ -124,6 +124,7 @@ JWT settings (not configurable via env, set in code):
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `ALERT_SUPPRESSION_MINUTES` | No | `30` | Window during which a repeat alert on the same `(tenant, rule, device)` is suppressed. Backed by Redis TTL with in-memory fallback. |
+| `MQTT_DEDUP_SECONDS` | No | `60` | Window during which a byte-identical MQTT sensor payload from the same `(tenant, device, sensor_type)` is dropped before storage. Catches QoS-1 redeliveries and firmware re-sends. Backed by Redis `SET NX EX` with in-memory fallback. Set to `0` to disable. |
 
 ### Web Frontend
 

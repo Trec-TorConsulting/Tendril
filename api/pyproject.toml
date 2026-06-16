@@ -106,6 +106,7 @@ exclude = [
 module = [
     "app.automation.suppression",
     "app.automation.critical_alerts_defaults",
+    "app.mqtt.dedup",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
