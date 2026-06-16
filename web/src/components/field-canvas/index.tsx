@@ -32,6 +32,7 @@ export function FieldCanvas({ growId }: Props) {
   const [error, setError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
+  const [rightPanelOpen, setRightPanelOpen] = useState(true);
 
   const loadCanvas = useCanvasStore((s) => s.loadCanvas);
   const addElement = useCanvasStore((s) => s.addElement);
@@ -142,8 +143,6 @@ export function FieldCanvas({ growId }: Props) {
       </div>
     );
   }
-
-  const [rightPanelOpen, setRightPanelOpen] = useState(true);
 
   return (
     <div className="flex h-full flex-col">

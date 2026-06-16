@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generated artifacts (Playwright HTML report bundles, etc.)
+    "qa-output/**",
   ]),
   {
     rules: {
