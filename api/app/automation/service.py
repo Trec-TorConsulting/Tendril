@@ -20,7 +20,9 @@ from uuid import UUID
 from sqlalchemy import Select, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.automation.critical_alerts_defaults import CRITICAL_ALERTS, DEFAULTS_VERSION
 from app.automation.models import AlertHistory, AutomationRule, EnvironmentSchedule
+from app.tenants.models import Tenant
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Automation rules
@@ -82,6 +84,117 @@ async def update_rule(
 async def delete_rule(session: AsyncSession, rule: AutomationRule) -> None:
     await session.delete(rule)
     await session.commit()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# System-default alert rules (seeding)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def list_critical_rules_query(*, tenant_id: UUID, grow_type: str) -> Select:
+    """Query for active critical rules a tenant has for a given grow type.
+
+    Returns enabled rules where:
+      * ``tenant_id`` matches,
+      * ``grow_type`` matches (system defaults are always grow-type-keyed),
+      * ``enabled`` is True.
+
+    Used by the engine's ``evaluate_critical_alerts`` in place of the
+    previously-hardcoded ``CRITICAL_ALERTS`` dict, so tenants can disable
+    or override safety thresholds without code changes.
+    """
+    return select(AutomationRule).where(
+        AutomationRule.tenant_id == tenant_id,
+        AutomationRule.grow_type == grow_type,
+        AutomationRule.enabled.is_(True),
+    )
+
+
+async def seed_system_alert_rules(
+    session: AsyncSession,
+    tenant_id: UUID,
+    *,
+    commit: bool = True,
+) -> int:
+    """Seed (or top-up) ``CRITICAL_ALERTS`` defaults into a tenant.
+
+    Strategy:
+      * Reads existing system-default rules for this tenant once.
+      * Skips any default whose ``(grow_type, sensor, condition, threshold)``
+        tuple already exists (matches both system rows and tenant-edited
+        copies — we never overwrite or duplicate).
+      * Stamps ``Tenant.system_alert_rules_seeded_version`` to the current
+        ``DEFAULTS_VERSION`` so subsequent calls become no-ops until the
+        version bumps.
+
+    Returns the number of new rules inserted. Idempotent and safe to call
+    repeatedly. The Alembic ``0047`` migration runs this for every existing
+    tenant; ``app.auth.routes`` calls it for newly registered tenants.
+
+    Caller controls the commit boundary via ``commit``. The migration
+    runs inside its own transaction and passes ``commit=False``; the
+    runtime hook in the registration flow commits the wider transaction
+    itself.
+    """
+    tenant = await session.get(Tenant, tenant_id)
+    if tenant is None:
+        return 0
+
+    # Pull existing rules once so the per-default check is in-memory.
+    # The natural key of a system default is (grow_type, sensor, condition,
+    # severity) — NOT threshold, because tenants edit threshold. Tiered
+    # alerts (e.g. DWC water_temp_f gt 72 warning + gt 78 critical) are
+    # disambiguated by severity. Verified unique across all 47 defaults.
+    existing_rules = (
+        await session.execute(
+            select(
+                AutomationRule.grow_type,
+                AutomationRule.sensor,
+                AutomationRule.condition,
+                AutomationRule.severity,
+            ).where(AutomationRule.tenant_id == tenant_id)
+        )
+    ).all()
+    existing_signatures = {(gt, sensor, condition, severity) for gt, sensor, condition, severity in existing_rules}
+
+    inserted = 0
+    for grow_type, defaults in CRITICAL_ALERTS.items():
+        for default in defaults:
+            signature = (grow_type, default["sensor"], default["condition"], default["severity"])
+            if signature in existing_signatures:
+                continue
+            session.add(
+                AutomationRule(
+                    tenant_id=tenant_id,
+                    name=default["message"],
+                    sensor=default["sensor"],
+                    condition=default["condition"],
+                    threshold=default["threshold"],
+                    action="alert",
+                    severity=default["severity"],
+                    grow_type=grow_type,
+                    is_system_default=True,
+                    # Per-(rule, device) suppression is handled by
+                    # ``app.automation.suppression``; rule cooldown is
+                    # the legacy back-compat field. 0 here avoids any
+                    # double-suppression for system defaults.
+                    cooldown_minutes=0,
+                )
+            )
+            inserted += 1
+
+    if inserted and tenant.system_alert_rules_seeded_version < DEFAULTS_VERSION:
+        tenant.system_alert_rules_seeded_version = DEFAULTS_VERSION
+    elif not inserted and tenant.system_alert_rules_seeded_version < DEFAULTS_VERSION:
+        # All defaults already exist (e.g. backfilled in migration), just
+        # mark the version so the no-op detection works next time.
+        tenant.system_alert_rules_seeded_version = DEFAULTS_VERSION
+
+    if commit:
+        await session.commit()
+    else:
+        await session.flush()
+    return inserted
 
 
 # ─────────────────────────────────────────────────────────────────────────────

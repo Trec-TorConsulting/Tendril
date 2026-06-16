@@ -40,6 +40,14 @@ class AutomationRule(Base):
     cooldown_minutes: Mapped[int] = mapped_column(Integer, default=30)
     severity: Mapped[str] = mapped_column(String(20), default="warning")  # info, warning, critical
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Grow-type-keyed system rules. Nullable for tenant-authored rules that
+    # apply to all grow types (or that target a specific grow_cycle_id).
+    grow_type: Mapped[str | None] = mapped_column(String(50), index=True)
+    # True for safety-net defaults seeded from
+    # ``app.automation.critical_alerts_defaults.CRITICAL_ALERTS``. UI may
+    # surface these differently (e.g. "system default — reset to default"
+    # control) but the engine treats them identically.
+    is_system_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     last_triggered: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
