@@ -119,6 +119,12 @@ JWT settings (not configurable via env, set in code):
 |----------|----------|---------|-------------|
 | `REDIS_URL` | No | `redis://localhost:6379` | Redis connection URL for rate limiting state. Falls back to in-memory if unavailable. |
 
+### Automation / Alerts
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `ALERT_SUPPRESSION_MINUTES` | No | `30` | Window during which a repeat alert on the same `(tenant, rule, device)` is suppressed. Backed by Redis TTL with in-memory fallback. |
+
 ### Web Frontend
 
 The Next.js app uses build-time environment variables:

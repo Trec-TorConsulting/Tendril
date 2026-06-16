@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.automation.models import AlertHistory, AutomationRule
+from app.automation.suppression import is_suppressed, mark_fired
 from app.grows.models import Bucket, BucketSensorReading
 
 logger = logging.getLogger("tendril.automation.engine")
@@ -626,6 +627,12 @@ async def evaluate_rules(session: AsyncSession) -> list[AlertHistory]:
                 continue
 
             if op_fn(value, rule.threshold):
+                # Per-(rule, bucket) suppression — keeps multiple buckets from
+                # spamming when a rule trips them all simultaneously, and
+                # prevents the same bucket from re-firing within the window.
+                if await is_suppressed(rule.tenant_id, rule.id, bucket.id):
+                    continue
+
                 alert = AlertHistory(
                     tenant_id=rule.tenant_id,
                     rule_id=rule.id,
@@ -638,6 +645,7 @@ async def evaluate_rules(session: AsyncSession) -> list[AlertHistory]:
                 session.add(alert)
                 rule.last_triggered = now
                 triggered.append(alert)
+                await mark_fired(rule.tenant_id, rule.id, bucket.id)
 
                 # Create urgent task from automation alert
                 from app.scheduler.task_generator import create_task_from_alert
@@ -687,20 +695,11 @@ async def evaluate_critical_alerts(
             continue
 
         if op_fn(value, rule["threshold"]):
-            # Check cooldown — avoid duplicate alerts within 30 min
+            # Per-(rule, bucket) suppression — avoids spamming when multiple
+            # readings on the same bucket cross the threshold in quick
+            # succession, and lets distinct buckets fire independently.
             alert_type = f"critical_{rule['sensor']}_{rule['condition']}_{rule['threshold']}"
-            existing = (
-                await session.execute(
-                    select(AlertHistory)
-                    .where(
-                        AlertHistory.tenant_id == tenant_id,
-                        AlertHistory.alert_type == alert_type,
-                        AlertHistory.created_at > datetime.now(UTC) - timedelta(minutes=30),
-                    )
-                    .limit(1)
-                )
-            ).scalar_one_or_none()
-            if existing:
+            if await is_suppressed(tenant_id, alert_type, reading.bucket_id):
                 continue
 
             alert = AlertHistory(
@@ -713,6 +712,7 @@ async def evaluate_critical_alerts(
             )
             session.add(alert)
             triggered.append(alert)
+            await mark_fired(tenant_id, alert_type, reading.bucket_id)
 
     if triggered:
         await session.commit()
@@ -791,20 +791,10 @@ async def evaluate_trend_alerts(
         if not triggered_flag:
             continue
 
-        # Cooldown: don't fire same trend alert within the window period
+        # Per-(rule, bucket) suppression — same trend on same bucket won't
+        # re-fire within the window; other buckets remain independent.
         alert_type = f"trend_{alert_key}"
-        existing = (
-            await session.execute(
-                select(AlertHistory)
-                .where(
-                    AlertHistory.tenant_id == tenant_id,
-                    AlertHistory.alert_type == alert_type,
-                    AlertHistory.created_at > now - window,
-                )
-                .limit(1)
-            )
-        ).scalar_one_or_none()
-        if existing:
+        if await is_suppressed(tenant_id, alert_type, bucket_id):
             continue
 
         message = rule["message"].format(
@@ -821,6 +811,7 @@ async def evaluate_trend_alerts(
         )
         session.add(alert)
         triggered.append(alert)
+        await mark_fired(tenant_id, alert_type, bucket_id)
 
     if triggered:
         await session.commit()
@@ -861,20 +852,10 @@ async def evaluate_composite_alerts(
         if not all_met:
             continue
 
-        # Cooldown: 1 hour for composite alerts
+        # Per-(rule, bucket) suppression — same composite on same bucket won't
+        # re-fire within the window; other buckets remain independent.
         alert_type = f"composite_{rule['name']}"
-        existing = (
-            await session.execute(
-                select(AlertHistory)
-                .where(
-                    AlertHistory.tenant_id == tenant_id,
-                    AlertHistory.alert_type == alert_type,
-                    AlertHistory.created_at > datetime.now(UTC) - timedelta(hours=1),
-                )
-                .limit(1)
-            )
-        ).scalar_one_or_none()
-        if existing:
+        if await is_suppressed(tenant_id, alert_type, reading.bucket_id):
             continue
 
         message = rule["message"].format(**sensor_values)
@@ -888,6 +869,7 @@ async def evaluate_composite_alerts(
         )
         session.add(alert)
         triggered.append(alert)
+        await mark_fired(tenant_id, alert_type, reading.bucket_id)
 
     if triggered:
         await session.commit()
