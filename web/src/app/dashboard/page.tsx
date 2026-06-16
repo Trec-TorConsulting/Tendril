@@ -127,9 +127,10 @@ export default function DashboardPage() {
     ppm: number[];
     water_temp: number[];
     water_level: number[];
+    orp: number[];
     temp: number[];
     humidity: number[];
-  }>({ ph: [], ec: [], ppm: [], water_temp: [], water_level: [], temp: [], humidity: [] });
+  }>({ ph: [], ec: [], ppm: [], water_temp: [], water_level: [], orp: [], temp: [], humidity: [] });
   const [lastReadingAt, setLastReadingAt] = useState<string | null>(null);
   const [bucketLastReading, setBucketLastReading] = useState<Map<string, string>>(new Map());
   const [climateData, setClimateData] = useState<ClimateDataPoint[]>([]);
@@ -187,13 +188,14 @@ export default function DashboardPage() {
       const ppmVals = growSensorReadings.map((r) => r.ppm).filter((v): v is number => v != null).slice(0, 30).reverse();
       const waterTempVals = growSensorReadings.map((r) => r.water_temp_f).filter((v): v is number => v != null).slice(0, 30).reverse();
       const waterLevelVals = growSensorReadings.map((r) => r.water_level_pct).filter((v): v is number => v != null).slice(0, 30).reverse();
+      const orpVals = growSensorReadings.map((r) => r.orp).filter((v): v is number => v != null).slice(0, 30).reverse();
       const tentTempVals = tentReadings.map((r) => r.ambient_temp_f).filter((v): v is number => v != null).reverse();
       const tentHumVals = tentReadings.map((r) => r.ambient_humidity).filter((v): v is number => v != null).reverse();
       const bucketTempVals = growSensorReadings.map((r) => r.ambient_temp_f).filter((v): v is number => v != null).slice(0, 30).reverse();
       const bucketHumVals = growSensorReadings.map((r) => r.ambient_humidity).filter((v): v is number => v != null).slice(0, 30).reverse();
       const tempVals = tentTempVals.length > 0 ? tentTempVals : bucketTempVals;
       const humVals = tentHumVals.length > 0 ? tentHumVals : bucketHumVals;
-      setSensorTrends({ ph: phVals, ec: ecVals, ppm: ppmVals, water_temp: waterTempVals, water_level: waterLevelVals, temp: tempVals, humidity: humVals });
+      setSensorTrends({ ph: phVals, ec: ecVals, ppm: ppmVals, water_temp: waterTempVals, water_level: waterLevelVals, orp: orpVals, temp: tempVals, humidity: humVals });
       // Track when the latest reading was recorded — use the most recent of tent or bucket
       const latestTentReading = tentReadings[0];
       const latestBucketReading = growSensorReadings[0];
@@ -400,6 +402,12 @@ export default function DashboardPage() {
                         status: latestPpm != null ? (latestPpm >= 400 && latestPpm <= 1500 ? "optimal" : "warning") : "unknown",
                         hint: latestPpm != null && latestPpm < 400 ? "Nutrients too low — target 400–1500 PPM" : latestPpm != null && latestPpm > 1500 ? "Nutrients too high — target 400–1500 PPM" : undefined,
                       },
+                      ...(sensorTrends.orp.length > 0 ? [{
+                        label: "ORP",
+                        value: `${Math.round(sensorTrends.orp[sensorTrends.orp.length - 1])} mV`,
+                        status: (sensorTrends.orp[sensorTrends.orp.length - 1] >= 300 && sensorTrends.orp[sensorTrends.orp.length - 1] <= 450 ? "optimal" : "warning") as "optimal" | "warning",
+                        hint: sensorTrends.orp[sensorTrends.orp.length - 1] < 300 ? "ORP low — anaerobic risk. Target 300–450 mV" : sensorTrends.orp[sensorTrends.orp.length - 1] > 450 ? "ORP high — too oxidizing. Target 300–450 mV" : undefined,
+                      }] : []),
                     ]}
                     updatedAgo={updatedAgo}
                   />
