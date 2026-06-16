@@ -168,3 +168,67 @@ class TestTentSensorCRUD:
             )
         resp = await client.get(f"/v1/tent-sensors/trends/{tent_id}?hours=24", headers=tenant["headers"])
         assert resp.status_code == 200
+
+
+# ---------- Service-layer unit tests ----------
+
+
+class TestSensorsServiceHelpers:
+    """Direct coverage for ``app.sensors.service`` pure helpers and queries."""
+
+    def test_compute_drift_stats_returns_none_for_too_few_samples(self):
+        from app.sensors.service import compute_drift_stats
+
+        assert compute_drift_stats([]) is None
+        assert compute_drift_stats([6.0]) is None
+
+    def test_compute_drift_stats_basic(self):
+        from app.sensors.service import compute_drift_stats
+
+        stats = compute_drift_stats([6.0, 6.1, 6.2, 6.4])
+        assert stats == {
+            "min": 6.0,
+            "max": 6.4,
+            "first": 6.0,
+            "last": 6.4,
+            "delta": 0.4,
+            "count": 4,
+        }
+
+    def test_compute_drift_stats_handles_decreasing_series(self):
+        from app.sensors.service import compute_drift_stats
+
+        stats = compute_drift_stats([6.5, 6.3, 6.0])
+        assert stats is not None
+        assert stats["delta"] == -0.5
+        assert stats["min"] == 6.0
+        assert stats["max"] == 6.5
+
+    def test_derive_ec_ppm_fills_ppm_from_ec(self):
+        from app.sensors.service import _derive_ec_ppm
+
+        out = _derive_ec_ppm({"ec": 1.4, "ppm": None})
+        assert out["ppm"] == 700.0  # 1.4 * 500
+        assert out["ec"] == 1.4
+
+    def test_derive_ec_ppm_fills_ec_from_ppm(self):
+        from app.sensors.service import _derive_ec_ppm
+
+        out = _derive_ec_ppm({"ec": None, "ppm": 1000.0})
+        assert out["ec"] == 2.0  # 1000 / 500
+        assert out["ppm"] == 1000.0
+
+    def test_derive_ec_ppm_leaves_both_provided_alone(self):
+        from app.sensors.service import _derive_ec_ppm
+
+        out = _derive_ec_ppm({"ec": 1.5, "ppm": 800.0})
+        # Both already set — no derivation
+        assert out["ec"] == 1.5
+        assert out["ppm"] == 800.0
+
+    def test_derive_ec_ppm_leaves_both_none_alone(self):
+        from app.sensors.service import _derive_ec_ppm
+
+        out = _derive_ec_ppm({"ec": None, "ppm": None})
+        assert out["ec"] is None
+        assert out["ppm"] is None
