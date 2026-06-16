@@ -1210,6 +1210,10 @@ export interface paths {
         /**
          * Delete Rule
          * @description Delete an automation rule by ID.
+         *
+         *     System-default rules (``is_system_default == True``) cannot be deleted
+         *     because they may be re-seeded by a later deploy. Tenants can disable
+         *     them via ``PATCH /rules/{id}`` with ``{"enabled": false}`` instead.
          */
         delete: operations["delete_rule_v1_automation_rules__rule_id__delete"];
         options?: never;
@@ -9655,6 +9659,8 @@ export interface components {
             cooldown_minutes: number;
             /** Grow Cycle Id */
             grow_cycle_id?: string | null;
+            /** Grow Type */
+            grow_type?: string | null;
             /** Name */
             name: string;
             /** Sensor */
@@ -9683,11 +9689,15 @@ export interface components {
             enabled: boolean;
             /** Grow Cycle Id */
             grow_cycle_id: string | null;
+            /** Grow Type */
+            grow_type: string | null;
             /**
              * Id
              * Format: uuid
              */
             id: string;
+            /** Is System Default */
+            is_system_default: boolean;
             /** Last Triggered */
             last_triggered: string | null;
             /** Name */
