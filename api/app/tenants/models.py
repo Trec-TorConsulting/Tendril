@@ -97,6 +97,13 @@ class Tenant(Base):
     account_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="SET NULL")
     )
+    # Highest ``DEFAULTS_VERSION`` from
+    # ``app.automation.critical_alerts_defaults`` that has been seeded into
+    # this tenant's ``automation_rules``. New deploys reseed missing rules
+    # (never overwriting tenant edits) when the in-code version is higher.
+    system_alert_rules_seeded_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
     account: Mapped[Account | None] = relationship(back_populates="tenants")

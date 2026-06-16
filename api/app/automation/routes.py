@@ -35,6 +35,10 @@ class RuleCreate(BaseModel):
     action_params: dict | None = None
     cooldown_minutes: int = 30
     severity: str = "warning"
+    # Optional grow-type scoping for tenant-authored critical rules
+    # (e.g. a custom DWC-only humidity alarm). Defaults to None which
+    # means "all grow types".
+    grow_type: str | None = None
 
 
 class RuleUpdate(BaseModel):
@@ -58,6 +62,8 @@ class RuleResponse(BaseModel):
     cooldown_minutes: int
     severity: str
     enabled: bool
+    grow_type: str | None
+    is_system_default: bool
     last_triggered: datetime | None
     model_config = {"from_attributes": True}
 
@@ -131,10 +137,20 @@ async def delete_rule(
     user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
-    """Delete an automation rule by ID."""
+    """Delete an automation rule by ID.
+
+    System-default rules (``is_system_default == True``) cannot be deleted
+    because they may be re-seeded by a later deploy. Tenants can disable
+    them via ``PATCH /rules/{id}`` with ``{"enabled": false}`` instead.
+    """
     rule = await service.get_rule(session, rule_id)
     if not rule:
         raise HTTPException(status_code=404, detail="Rule not found")
+    if rule.is_system_default:
+        raise HTTPException(
+            status_code=409,
+            detail="System-default rules cannot be deleted; disable instead",
+        )
     await service.delete_rule(session, rule)
 
 

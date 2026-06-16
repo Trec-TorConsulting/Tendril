@@ -253,6 +253,13 @@ async def register(body: RegisterRequest, response: Response, db: Annotated[Asyn
     await db.commit()
     await db.refresh(user)
 
+    # Seed system-default critical alert rules (e.g. NFT pump-failure,
+    # DWC pythium-risk, coco runoff-EC) for every grow type. Tenants can
+    # later disable or retune these via the standard rule CRUD endpoints.
+    from app.automation.service import seed_system_alert_rules
+
+    await seed_system_alert_rules(db, tenant.id)
+
     # Send email verification
     verify_token = create_email_verification_token(user.id)
     from app.auth.email import send_verification_email
