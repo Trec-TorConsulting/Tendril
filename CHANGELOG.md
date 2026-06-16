@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 - `ALERT_SUPPRESSION_MINUTES` environment variable to control alert dedup window.
 - **Grow-type config snapshot test** — `tests/unit/test_grow_type_configs_snapshot.py` captures a golden-master JSON of all 17 fully-enhanced grow-type configurations (`api/tests/snapshots/grow_type_configs.json`). Any structural drift fails CI. Intentional changes can regenerate the snapshot with `SNAPSHOT_UPDATE=1 pytest tests/unit/test_grow_type_configs_snapshot.py`. Also locks in the registered grow-type id set so accidental removal fails.
+- **SWR foundation for web data fetching** — Added `swr@^2.4.1` and a new `web/src/lib/swr.tsx` module exporting `AppSWRProvider` (mounted in `app/dashboard/layout.tsx`) and `useApiSWR(key, fetcher)` — a token-aware hook that folds the current access token into the cache key so requests for different users never collide and sign-out evicts everything for the old user. Defaults to `revalidateOnFocus: true`, `revalidateOnReconnect: false`, `shouldRetryOnError: false`, 5s dedupe. Pilot conversion: `dashboard/support/tickets/page.tsx` now uses `useApiSWR` in place of the hand-rolled `useEffect` + `useState` fetch. Future PRs migrate the remaining ~93 client pages incrementally.
 
 ---
 
