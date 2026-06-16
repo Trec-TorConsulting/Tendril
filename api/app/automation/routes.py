@@ -1,4 +1,8 @@
-"""Automation API routes — rules CRUD, alert history, environment schedules."""
+"""Automation API routes — rules CRUD, alert history, environment schedules.
+
+This module is HTTP-only. All persistence and domain logic lives in
+``app.automation.service``.
+"""
 
 from __future__ import annotations
 
@@ -8,11 +12,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
-from app.automation.models import AlertHistory, AutomationRule, EnvironmentSchedule
+from app.automation import service
 from app.billing.tier_gate import require_usage_limit
 from app.pagination import PaginatedResponse, PaginationParams, paginate
 
@@ -71,18 +74,12 @@ async def create_rule(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Create a new automation rule for threshold-based alerts."""
-    rule = AutomationRule(
+    return await service.create_rule(
+        session,
         tenant_id=user.tenant_id,
         grow_cycle_id=UUID(body.grow_cycle_id) if body.grow_cycle_id else None,
-        **body.model_dump(exclude={"grow_cycle_id"}),
+        data=body.model_dump(exclude={"grow_cycle_id"}),
     )
-    session.add(rule)
-    from app.billing.metering import record_usage
-
-    await record_usage(session, user.tenant_id, "automations")
-    await session.commit()
-    await session.refresh(rule)
-    return rule
 
 
 @router.get("/rules", response_model=PaginatedResponse[RuleResponse])
@@ -93,9 +90,10 @@ async def list_rules(
     grow_cycle_id: str | None = None,
 ):
     """List all automation rules for the current tenant."""
-    q = select(AutomationRule).where(AutomationRule.tenant_id == user.tenant_id)
-    if grow_cycle_id:
-        q = q.where(AutomationRule.grow_cycle_id == UUID(grow_cycle_id))
+    q = service.list_rules_query(
+        tenant_id=user.tenant_id,
+        grow_cycle_id=UUID(grow_cycle_id) if grow_cycle_id else None,
+    )
     items, total = await paginate(session, q, pagination)
     return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
 
@@ -107,7 +105,7 @@ async def get_rule(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Get a single automation rule by ID."""
-    rule = await session.get(AutomationRule, rule_id)
+    rule = await service.get_rule(session, rule_id)
     if not rule:
         raise HTTPException(status_code=404, detail="Rule not found")
     return rule
@@ -121,14 +119,10 @@ async def update_rule(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Update an existing automation rule."""
-    rule = await session.get(AutomationRule, rule_id)
+    rule = await service.get_rule(session, rule_id)
     if not rule:
         raise HTTPException(status_code=404, detail="Rule not found")
-    for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(rule, field, value)
-    await session.commit()
-    await session.refresh(rule)
-    return rule
+    return await service.update_rule(session, rule, body.model_dump(exclude_unset=True))
 
 
 @router.delete("/rules/{rule_id}", status_code=204)
@@ -138,11 +132,10 @@ async def delete_rule(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Delete an automation rule by ID."""
-    rule = await session.get(AutomationRule, rule_id)
+    rule = await service.get_rule(session, rule_id)
     if not rule:
         raise HTTPException(status_code=404, detail="Rule not found")
-    await session.delete(rule)
-    await session.commit()
+    await service.delete_rule(session, rule)
 
 
 # ---------- Alert History ----------
@@ -169,9 +162,7 @@ async def list_alerts(
     acknowledged: bool | None = None,
 ):
     """List triggered alerts with optional status filtering."""
-    q = select(AlertHistory).order_by(desc(AlertHistory.created_at))
-    if acknowledged is not None:
-        q = q.where(AlertHistory.acknowledged == acknowledged)
+    q = service.list_alerts_query(acknowledged=acknowledged)
     items, total = await paginate(session, q, pagination)
     return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
 
@@ -183,7 +174,7 @@ async def get_alert(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Get a single alert by ID."""
-    alert = await session.get(AlertHistory, alert_id)
+    alert = await service.get_alert(session, alert_id)
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
     return alert
@@ -196,11 +187,10 @@ async def acknowledge_alert(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Acknowledge a triggered alert."""
-    alert = await session.get(AlertHistory, alert_id)
+    alert = await service.get_alert(session, alert_id)
     if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
-    alert.acknowledged = True
-    await session.commit()
+    await service.acknowledge_alert(session, alert)
     return {"status": "acknowledged"}
 
 
@@ -246,15 +236,12 @@ async def create_schedule(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Create a scheduled automation action."""
-    schedule = EnvironmentSchedule(
+    return await service.create_schedule(
+        session,
         tenant_id=user.tenant_id,
         tent_id=UUID(body.tent_id),
-        **body.model_dump(exclude={"tent_id"}),
+        data=body.model_dump(exclude={"tent_id"}),
     )
-    session.add(schedule)
-    await session.commit()
-    await session.refresh(schedule)
-    return schedule
 
 
 @router.get("/schedules", response_model=PaginatedResponse[ScheduleResponse])
@@ -265,9 +252,7 @@ async def list_schedules(
     tent_id: str | None = None,
 ):
     """List all automation schedules for the current tenant."""
-    q = select(EnvironmentSchedule)
-    if tent_id:
-        q = q.where(EnvironmentSchedule.tent_id == UUID(tent_id))
+    q = service.list_schedules_query(tent_id=UUID(tent_id) if tent_id else None)
     items, total = await paginate(session, q, pagination)
     return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
 
@@ -279,7 +264,7 @@ async def get_schedule(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Get a single environment schedule by ID."""
-    schedule = await session.get(EnvironmentSchedule, schedule_id)
+    schedule = await service.get_schedule(session, schedule_id)
     if not schedule:
         raise HTTPException(status_code=404, detail="Schedule not found")
     return schedule
@@ -293,14 +278,10 @@ async def update_schedule(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Update an existing automation schedule."""
-    schedule = await session.get(EnvironmentSchedule, schedule_id)
+    schedule = await service.get_schedule(session, schedule_id)
     if not schedule:
         raise HTTPException(status_code=404, detail="Schedule not found")
-    for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(schedule, field, value)
-    await session.commit()
-    await session.refresh(schedule)
-    return schedule
+    return await service.update_schedule(session, schedule, body.model_dump(exclude_unset=True))
 
 
 @router.delete("/schedules/{schedule_id}", status_code=204)
@@ -310,8 +291,7 @@ async def delete_schedule(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Delete an automation schedule by ID."""
-    schedule = await session.get(EnvironmentSchedule, schedule_id)
+    schedule = await service.get_schedule(session, schedule_id)
     if not schedule:
         raise HTTPException(status_code=404, detail="Schedule not found")
-    await session.delete(schedule)
-    await session.commit()
+    await service.delete_schedule(session, schedule)

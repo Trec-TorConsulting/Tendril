@@ -11,6 +11,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 - **Alert dedup keyed per-device** — Suppression now uses `(tenant, rule, device)` instead of `(tenant, rule)`. Two zones tripping the same critical rule will each fire an alert; a single zone re-tripping within the window is still suppressed.
 - **Alert dedup backed by Redis TTL** — Replaced per-evaluation `AlertHistory` `SELECT` cooldown queries with Redis `SET key EX ttl`. Falls back to in-process dict when Redis is unavailable. Window controlled by `ALERT_SUPPRESSION_MINUTES` (default 30).
+- **Automation routes refactored to service layer** — `app/automation/routes.py` is now HTTP-only; all persistence and domain logic moved to new `app/automation/service.py`. Matches the existing `app/<feature>/service.py` convention used by `billing`, `notifications`, `nutrition`, etc. No public API changes; all 13 existing HTTP tests pass unchanged.
 
 ### Added
 - `ALERT_SUPPRESSION_MINUTES` environment variable to control alert dedup window.
