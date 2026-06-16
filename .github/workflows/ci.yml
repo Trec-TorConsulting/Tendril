@@ -24,6 +24,42 @@ jobs:
       - run: pip install ruff
       - run: ruff check --config api/pyproject.toml api/
 
+  # Whole-codebase mypy check. Non-blocking on purpose — see the comment
+  # at the top of api/pyproject.toml's [tool.mypy] section. The strict
+  # subset is enforced by the separate ``mypy-strict`` job below.
+  mypy:
+    name: mypy (baseline, non-blocking)
+    runs-on: arc-runner-arm64
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - run: pip install -r api/requirements.txt -r api/requirements-dev.txt
+      - run: mypy --config-file api/pyproject.toml
+
+  # Strict-mode mypy on the modules listed under
+  # ``[[tool.mypy.overrides]]`` in api/pyproject.toml. This IS blocking —
+  # adding a module to the strict list is a one-way ratchet that ensures
+  # we don't regress.
+  mypy-strict:
+    name: mypy (strict subset)
+    runs-on: arc-runner-arm64
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+      - run: pip install -r api/requirements.txt -r api/requirements-dev.txt
+      # The strict modules are referenced explicitly so this job fails fast
+      # if any of them stop type-checking. Keep this list in sync with the
+      # [[tool.mypy.overrides]] block in api/pyproject.toml.
+      - run: |
+          mypy --config-file api/pyproject.toml \
+            api/app/automation/suppression.py \
+            api/app/automation/critical_alerts_defaults.py
+
   lint-web:
     name: Lint (web)
     runs-on: arc-runner-arm64
