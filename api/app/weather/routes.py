@@ -1,4 +1,8 @@
-"""Weather API — current conditions, forecast, history, alerts for outdoor/greenhouse tents."""
+"""Weather API — current conditions, forecast, history, alerts for outdoor/greenhouse tents.
+
+This module is HTTP-only. All persistence and tent-validation logic
+lives in ``app.weather.service``.
+"""
 
 from __future__ import annotations
 
@@ -7,11 +11,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session
-from app.grows.models import Tent, WeatherReading
+from app.weather import service
 from app.weather.client import evaluate_weather_alerts, fetch_weather
 
 router = APIRouter()
@@ -55,15 +58,14 @@ async def get_current_weather(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Get live weather data for an outdoor/greenhouse tent."""
-    tent = await session.get(Tent, tent_id)
-    if tent is None:
+    try:
+        capable = await service.get_weather_capable_tent(session, tent_id)
+    except service.WeatherUnavailableError as exc:
+        raise HTTPException(status_code=400, detail=exc.reason) from exc
+    if capable is None:
         raise HTTPException(status_code=404, detail="Tent not found")
-    if tent.environment_type == "indoor":
-        raise HTTPException(status_code=400, detail="Weather data only for outdoor/greenhouse tents")
-    if tent.latitude is None or tent.longitude is None:
-        raise HTTPException(status_code=400, detail="Tent location (lat/lng) not set")
 
-    data = await fetch_weather(tent.latitude, tent.longitude)
+    data = await fetch_weather(capable.latitude, capable.longitude)
     alerts = evaluate_weather_alerts(data["current"], data["forecast"])
 
     return {
@@ -80,15 +82,14 @@ async def get_forecast(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Get 7-day weather forecast for an outdoor/greenhouse tent."""
-    tent = await session.get(Tent, tent_id)
-    if tent is None:
+    try:
+        capable = await service.get_weather_capable_tent(session, tent_id)
+    except service.WeatherUnavailableError as exc:
+        raise HTTPException(status_code=400, detail=exc.reason) from exc
+    if capable is None:
         raise HTTPException(status_code=404, detail="Tent not found")
-    if tent.environment_type == "indoor":
-        raise HTTPException(status_code=400, detail="Weather data only for outdoor/greenhouse tents")
-    if tent.latitude is None or tent.longitude is None:
-        raise HTTPException(status_code=400, detail="Tent location (lat/lng) not set")
 
-    data = await fetch_weather(tent.latitude, tent.longitude)
+    data = await fetch_weather(capable.latitude, capable.longitude)
     return {
         "tent_id": str(tent_id),
         "forecast": data["forecast"],
@@ -103,13 +104,7 @@ async def get_weather_history(
     limit: int = 48,
 ):
     """Get stored weather reading history for a tent."""
-    result = await session.execute(
-        select(WeatherReading)
-        .where(WeatherReading.tent_id == tent_id)
-        .order_by(desc(WeatherReading.recorded_at))
-        .limit(limit)
-    )
-    readings = result.scalars().all()
+    readings = await service.list_weather_history(session, tent_id=tent_id, limit=limit)
     return [
         {
             "temperature_c": r.temperature_c,
