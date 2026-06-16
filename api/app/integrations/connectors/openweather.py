@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.grows.models import WeatherReading
 from app.integrations.connectors.base import BaseConnector, ConnectorResult, register_connector
+from app.integrations.connectors.retry import retry_request
 from app.integrations.models import IntegrationDeviceMap
 
 logger = logging.getLogger("tendril.integrations.openweather")
@@ -131,17 +132,23 @@ class OpenWeatherConnector(BaseConnector):
     async def _fetch_weather_25(self, client: httpx.AsyncClient, lat: str, lng: str, api_key: str) -> dict[str, Any]:
         """Fetch using free Weather API 2.5 (current + 5-day forecast)."""
         # Current weather
-        resp = await client.get(
-            "/data/2.5/weather",
-            params={"lat": lat, "lon": lng, "appid": api_key, "units": "metric"},
+        resp = await retry_request(
+            lambda: client.get(
+                "/data/2.5/weather",
+                params={"lat": lat, "lon": lng, "appid": api_key, "units": "metric"},
+            ),
+            description="openweather.weather_2_5",
         )
         resp.raise_for_status()
         current_data = resp.json()
 
         # 5-day / 3-hour forecast
-        resp_fc = await client.get(
-            "/data/2.5/forecast",
-            params={"lat": lat, "lon": lng, "appid": api_key, "units": "metric", "cnt": 40},
+        resp_fc = await retry_request(
+            lambda: client.get(
+                "/data/2.5/forecast",
+                params={"lat": lat, "lon": lng, "appid": api_key, "units": "metric", "cnt": 40},
+            ),
+            description="openweather.forecast_2_5",
         )
         resp_fc.raise_for_status()
         forecast_data = resp_fc.json()
@@ -169,9 +176,12 @@ class OpenWeatherConnector(BaseConnector):
 
     async def _fetch_onecall_30(self, client: httpx.AsyncClient, lat: str, lng: str, api_key: str) -> dict[str, Any]:
         """Fetch using One Call API 3.0 (current + daily + minutely + alerts)."""
-        resp = await client.get(
-            "/data/3.0/onecall",
-            params={"lat": lat, "lon": lng, "appid": api_key, "units": "metric"},
+        resp = await retry_request(
+            lambda: client.get(
+                "/data/3.0/onecall",
+                params={"lat": lat, "lon": lng, "appid": api_key, "units": "metric"},
+            ),
+            description="openweather.onecall_3_0",
         )
         resp.raise_for_status()
         data = resp.json()
