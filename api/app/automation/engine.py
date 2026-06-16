@@ -217,45 +217,108 @@ async def evaluate_rules(session: AsyncSession) -> list[AlertHistory]:
     """Evaluate all enabled automation rules against latest sensor readings.
 
     Returns a list of newly triggered alerts.
+
+    Query plan
+    ----------
+    Previously this function ran ``1 + R + (R \u00d7 B)`` queries (one rule
+    fetch, one bucket fetch per rule, one latest-reading fetch per bucket
+    per rule). After PR #194 seeded 47 system-default rules per tenant
+    this grew to hundreds of round trips per scheduler tick.
+
+    The optimised path is two queries:
+      1. All enabled rules (1 query).
+      2. The latest ``BucketSensorReading`` per bucket for every
+         ``(tenant, grow_cycle)`` pair that any rule cares about, using
+         a single ``DISTINCT ON (bucket_id)`` ordered by
+         ``recorded_at DESC``. Postgres reads this from the
+         ``(bucket_id, recorded_at)`` index in a single sequential pass.
+
+    Latest-reading rows are then matched in-memory against the rules.
     """
     now = datetime.now(UTC)
     triggered: list[AlertHistory] = []
 
     rules = (await session.execute(select(AutomationRule).where(AutomationRule.enabled.is_(True)))).scalars().all()
+    if not rules:
+        return triggered
+
+    # Cooldown is cheap and lets us skip the latest-reading query entirely
+    # for rules that aren't due yet. Filter before issuing query #2.
+    rules = [
+        rule
+        for rule in rules
+        if not (rule.last_triggered and (rule.last_triggered + timedelta(minutes=rule.cooldown_minutes)) > now)
+    ]
+    if not rules:
+        return triggered
+
+    # Group rules by the scope they care about: either a specific
+    # grow_cycle_id, or all buckets in a tenant. We issue one bucket
+    # latest-reading query per distinct scope. In the common case there
+    # is one scope per tenant (a few dozen buckets), so this stays at
+    # ~1 query per tenant rather than scaling with the rule count.
+    grow_cycle_scopes: set[tuple[object, object]] = set()  # (tenant_id, grow_cycle_id)
+    tenant_scopes: set[object] = set()  # tenant_id only
+    for rule in rules:
+        if rule.grow_cycle_id is not None:
+            grow_cycle_scopes.add((rule.tenant_id, rule.grow_cycle_id))
+        else:
+            tenant_scopes.add(rule.tenant_id)
+
+    # latest_by_bucket: bucket_id -> (Bucket, latest BucketSensorReading)
+    latest_by_bucket: dict[object, tuple[Bucket, BucketSensorReading]] = {}
+    # buckets_for_tenant: tenant_id -> list[bucket_id] (only fully tenant-scoped rules)
+    buckets_for_tenant: dict[object, list[object]] = {}
+    # buckets_for_grow: grow_cycle_id -> list[bucket_id]
+    buckets_for_grow: dict[object, list[object]] = {}
+
+    async def _fetch_latest(filter_clause):
+        """Run a single DISTINCT ON query and merge results into the
+        ``latest_by_bucket`` map. Also returns the matched bucket rows so
+        the caller can populate the per-scope lookup maps."""
+        # DISTINCT ON (Bucket.id) + ORDER BY (Bucket.id, recorded_at DESC)
+        # is the Postgres idiom for "latest row per group". The outer
+        # ORDER BY is what makes DISTINCT ON keep the *latest* reading.
+        # Buckets with no readings are still returned via the LEFT OUTER
+        # JOIN, with reading columns NULL.
+        stmt = (
+            select(Bucket, BucketSensorReading)
+            .distinct(Bucket.id)
+            .outerjoin(BucketSensorReading, BucketSensorReading.bucket_id == Bucket.id)
+            .where(filter_clause)
+            .order_by(Bucket.id, BucketSensorReading.recorded_at.desc().nullslast())
+        )
+        result = await session.execute(stmt)
+        matched_buckets: list[Bucket] = []
+        for bucket, reading in result.all():
+            matched_buckets.append(bucket)
+            if reading is not None:
+                latest_by_bucket[bucket.id] = (bucket, reading)
+        return matched_buckets
+
+    for tenant_id, grow_cycle_id in grow_cycle_scopes:
+        bs = await _fetch_latest(Bucket.grow_cycle_id == grow_cycle_id)
+        buckets_for_grow[grow_cycle_id] = [b.id for b in bs if b.tenant_id == tenant_id]
+
+    for tenant_id in tenant_scopes:
+        bs = await _fetch_latest(Bucket.tenant_id == tenant_id)
+        buckets_for_tenant[tenant_id] = [b.id for b in bs]
 
     for rule in rules:
-        # Check cooldown
-        if rule.last_triggered:
-            cooldown_until = rule.last_triggered + timedelta(minutes=rule.cooldown_minutes)
-            if now < cooldown_until:
-                continue
-
         op_fn = OPERATORS.get(rule.condition)
         if not op_fn:
             continue
 
-        # Get latest reading for buckets in this grow cycle
-        if rule.grow_cycle_id:
-            buckets = (
-                (await session.execute(select(Bucket).where(Bucket.grow_cycle_id == rule.grow_cycle_id)))
-                .scalars()
-                .all()
-            )
+        if rule.grow_cycle_id is not None:
+            bucket_ids = buckets_for_grow.get(rule.grow_cycle_id, [])
         else:
-            buckets = (await session.execute(select(Bucket).where(Bucket.tenant_id == rule.tenant_id))).scalars().all()
+            bucket_ids = buckets_for_tenant.get(rule.tenant_id, [])
 
-        for bucket in buckets:
-            reading = (
-                await session.execute(
-                    select(BucketSensorReading)
-                    .where(BucketSensorReading.bucket_id == bucket.id)
-                    .order_by(BucketSensorReading.recorded_at.desc())
-                    .limit(1)
-                )
-            ).scalar_one_or_none()
-
-            if not reading:
+        for bucket_id in bucket_ids:
+            pair = latest_by_bucket.get(bucket_id)
+            if pair is None:
                 continue
+            _bucket, reading = pair
 
             value = getattr(reading, rule.sensor, None)
             if value is None:
@@ -265,7 +328,7 @@ async def evaluate_rules(session: AsyncSession) -> list[AlertHistory]:
                 # Per-(rule, bucket) suppression — keeps multiple buckets from
                 # spamming when a rule trips them all simultaneously, and
                 # prevents the same bucket from re-firing within the window.
-                if await is_suppressed(rule.tenant_id, rule.id, bucket.id):
+                if await is_suppressed(rule.tenant_id, rule.id, bucket_id):
                     continue
 
                 alert = AlertHistory(
@@ -280,7 +343,7 @@ async def evaluate_rules(session: AsyncSession) -> list[AlertHistory]:
                 session.add(alert)
                 rule.last_triggered = now
                 triggered.append(alert)
-                await mark_fired(rule.tenant_id, rule.id, bucket.id)
+                await mark_fired(rule.tenant_id, rule.id, bucket_id)
 
                 # Create urgent task from automation alert
                 from app.scheduler.task_generator import create_task_from_alert
