@@ -400,12 +400,6 @@ export default function DashboardPage() {
                         status: latestPpm != null ? (latestPpm >= 400 && latestPpm <= 1500 ? "optimal" : "warning") : "unknown",
                         hint: latestPpm != null && latestPpm < 400 ? "Nutrients too low — target 400–1500 PPM" : latestPpm != null && latestPpm > 1500 ? "Nutrients too high — target 400–1500 PPM" : undefined,
                       },
-                      {
-                        label: "Water Level",
-                        value: sensorTrends.water_level.length > 0 ? `${Math.round(sensorTrends.water_level[sensorTrends.water_level.length - 1])}%` : "—",
-                        status: sensorTrends.water_level.length > 0 ? (sensorTrends.water_level[sensorTrends.water_level.length - 1] >= 20 ? "optimal" : "warning") : "unknown",
-                        hint: sensorTrends.water_level.length > 0 && sensorTrends.water_level[sensorTrends.water_level.length - 1] < 20 ? "Water level critically low — refill reservoir" : undefined,
-                      },
                     ]}
                     updatedAgo={updatedAgo}
                   />

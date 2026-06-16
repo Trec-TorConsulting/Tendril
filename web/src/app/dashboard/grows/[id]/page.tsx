@@ -737,12 +737,6 @@ export default function GrowDetailPage() {
                       status: sensorTrends.ppm.length > 0 ? (sensorTrends.ppm[sensorTrends.ppm.length - 1] >= 400 && sensorTrends.ppm[sensorTrends.ppm.length - 1] <= 1500 ? "optimal" : "warning") : "unknown",
                       hint: sensorTrends.ppm.length > 0 && sensorTrends.ppm[sensorTrends.ppm.length - 1] < 400 ? "Nutrients too low — target 400–1500 PPM" : sensorTrends.ppm.length > 0 && sensorTrends.ppm[sensorTrends.ppm.length - 1] > 1500 ? "Nutrients too high — target 400–1500 PPM" : undefined,
                     },
-                    {
-                      label: "Water Level",
-                      value: sensorTrends.water_level.length > 0 ? `${Math.round(sensorTrends.water_level[sensorTrends.water_level.length - 1])}%` : "—",
-                      status: sensorTrends.water_level.length > 0 ? (sensorTrends.water_level[sensorTrends.water_level.length - 1] >= 20 ? "optimal" : "warning") : "unknown",
-                      hint: sensorTrends.water_level.length > 0 && sensorTrends.water_level[sensorTrends.water_level.length - 1] < 20 ? "Water level critically low — refill reservoir" : undefined,
-                    },
                     ...(sensorTrends.orp.length > 0 ? [{
                       label: "ORP",
                       value: `${Math.round(sensorTrends.orp[sensorTrends.orp.length - 1])} mV`,
