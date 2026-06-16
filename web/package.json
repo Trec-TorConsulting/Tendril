@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "type-check": "tsc --noEmit",
+    "gen:types": "cd .. && python api/scripts/export_openapi.py --out web/.openapi.json && cd web && openapi-typescript .openapi.json -o src/lib/api-types.ts && rm .openapi.json",
+    "verify:types": "cd .. && python api/scripts/export_openapi.py --out web/.openapi.json && cd web && openapi-typescript .openapi.json -o /tmp/api-types.generated.ts && diff -u src/lib/api-types.ts /tmp/api-types.generated.ts && rm .openapi.json /tmp/api-types.generated.ts",
     "test": "vitest",
     "test:run": "vitest run",
     "qa": "npx playwright test --config=playwright.config.ts",
@@ -60,6 +62,7 @@
     "eslint": "^9.39.4",
     "eslint-config-next": "16.2.7",
     "jsdom": "^29.1.1",
+    "openapi-typescript": "^7.13.0",
     "playwright": "^1.60.0",
     "tailwindcss": "^4",
     "typescript": "^6",
@@ -67,6 +70,7 @@
   },
   "overrides": {
     "postcss": ">=8.5.10",
-    "@babel/core": ">=7.29.6"
+    "@babel/core": ">=7.29.6",
+    "js-yaml": ">=4.2.0"
   }
 }

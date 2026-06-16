@@ -9,7 +9,9 @@ repos:
         args: ['--allow-multiple-documents']
       - id: check-json
       - id: check-added-large-files
-        args: ['--maxkb=500']
+        # 1024KB to accommodate web/src/lib/api-types.ts (generated from
+        # the FastAPI OpenAPI schema, currently ~686KB).
+        args: ['--maxkb=1024']
       - id: detect-private-key
       - id: check-merge-conflict
 
