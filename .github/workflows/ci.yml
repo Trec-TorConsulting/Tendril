@@ -30,14 +30,17 @@ jobs:
   mypy:
     name: mypy (baseline, non-blocking)
     runs-on: arc-runner-arm64
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
       - run: pip install -r api/requirements.txt -r api/requirements-dev.txt
-      - run: mypy --config-file api/pyproject.toml
+      # ``|| true`` keeps this job green so branch protection does not
+      # block PRs on the baseline errors. The CI output still surfaces
+      # every error for developers to chip away at; the strict subset
+      # below is the actual enforcement gate.
+      - run: mypy --config-file api/pyproject.toml || true
 
   # Strict-mode mypy on the modules listed under
   # ``[[tool.mypy.overrides]]`` in api/pyproject.toml. This IS blocking —
