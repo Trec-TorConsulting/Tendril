@@ -11,7 +11,10 @@ repos:
       - id: check-added-large-files
         # 1024KB to accommodate web/src/lib/api-types.ts (generated from
         # the FastAPI OpenAPI schema, currently ~686KB).
+        # Snapshot fixtures (api/tests/snapshots/) are excluded — they are
+        # generated golden-master JSON, not human-edited source.
         args: ['--maxkb=1024']
+        exclude: ^api/tests/snapshots/
       - id: detect-private-key
       - id: check-merge-conflict
 

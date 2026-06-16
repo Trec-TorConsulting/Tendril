@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 - `ALERT_SUPPRESSION_MINUTES` environment variable to control alert dedup window.
+- **Grow-type config snapshot test** — `tests/unit/test_grow_type_configs_snapshot.py` captures a golden-master JSON of all 17 fully-enhanced grow-type configurations (`api/tests/snapshots/grow_type_configs.json`). Any structural drift fails CI. Intentional changes can regenerate the snapshot with `SNAPSHOT_UPDATE=1 pytest tests/unit/test_grow_type_configs_snapshot.py`. Also locks in the registered grow-type id set so accidental removal fails.
 
 ---
 
