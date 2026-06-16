@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.grows.models import TentSensorReading
 from app.integrations.connectors.base import BaseConnector, ConnectorResult, register_connector
+from app.integrations.connectors.retry import retry_request
 from app.integrations.models import IntegrationDeviceMap
 
 logger = logging.getLogger("tendril.integrations.vivosun")
@@ -168,10 +169,13 @@ class VivosunConnector(BaseConnector):
         ).encode()
 
         try:
-            resp = await client.post(
-                f"{_BASE_URL}/user/login",
-                headers={**_BASE_HEADERS, "Content-Type": "application/json"},
-                content=login_body,
+            resp = await retry_request(
+                lambda: client.post(
+                    f"{_BASE_URL}/user/login",
+                    headers={**_BASE_HEADERS, "Content-Type": "application/json"},
+                    content=login_body,
+                ),
+                description="vivosun.login",
             )
             resp.raise_for_status()
         except (httpx.HTTPStatusError, httpx.RequestError) as exc:
@@ -205,9 +209,12 @@ class VivosunConnector(BaseConnector):
         if self._login_token and self._access_token:
             # Validate tokens with a lightweight request
             try:
-                resp = await client.get(
-                    f"{_BASE_URL}/iot/device/getTotalList",
-                    headers=self._headers(),
+                resp = await retry_request(
+                    lambda: client.get(
+                        f"{_BASE_URL}/iot/device/getTotalList",
+                        headers=self._headers(),
+                    ),
+                    description="vivosun.validate_tokens",
                 )
                 if resp.status_code != 401:
                     return True
@@ -230,7 +237,10 @@ class VivosunConnector(BaseConnector):
             "Request-Time": request_time,
             "Request-Code": request_code,
         }
-        return await client.post(f"{_BASE_URL}{path}", headers=headers, content=body)
+        return await retry_request(
+            lambda: client.post(f"{_BASE_URL}{path}", headers=headers, content=body),
+            description=f"vivosun.encrypted_post {path}",
+        )
 
     # ── Poll ─────────────────────────────────────────────────────
 
@@ -266,9 +276,12 @@ class VivosunConnector(BaseConnector):
     async def _fetch_scene_map(self, client: httpx.AsyncClient) -> dict[str, int]:
         """Fetch device list to build device_id -> scene_id mapping."""
         try:
-            resp = await client.get(
-                f"{_BASE_URL}/iot/device/getTotalList",
-                headers=self._headers(),
+            resp = await retry_request(
+                lambda: client.get(
+                    f"{_BASE_URL}/iot/device/getTotalList",
+                    headers=self._headers(),
+                ),
+                description="vivosun.fetch_scene_map",
             )
             resp.raise_for_status()
         except (httpx.HTTPStatusError, httpx.RequestError) as exc:
@@ -413,9 +426,12 @@ class VivosunConnector(BaseConnector):
                 raise RuntimeError("Vivosun authentication failed — check email/password")
 
             try:
-                resp = await client.get(
-                    f"{_BASE_URL}/iot/device/getTotalList",
-                    headers=self._headers(),
+                resp = await retry_request(
+                    lambda: client.get(
+                        f"{_BASE_URL}/iot/device/getTotalList",
+                        headers=self._headers(),
+                    ),
+                    description="vivosun.discover_devices",
                 )
                 resp.raise_for_status()
             except httpx.HTTPStatusError as exc:
@@ -493,7 +509,7 @@ class VivosunConnector(BaseConnector):
 
             try:
                 numeric_val = float(val) / 100.0
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 continue
 
             # Convert °C → °F for temperature fields
