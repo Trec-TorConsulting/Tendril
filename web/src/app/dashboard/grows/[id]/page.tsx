@@ -185,7 +185,7 @@ export default function GrowDetailPage() {
   const [openTaskCount, setOpenTaskCount] = useState(0);
 
   // Sensor trends for overview sparklines
-  const [sensorTrends, setSensorTrends] = useState<{ ph: number[]; ec: number[]; ppm: number[]; temp: number[]; humidity: number[]; water_temp: number[]; water_level: number[] }>({ ph: [], ec: [], ppm: [], temp: [], humidity: [], water_temp: [], water_level: [] });
+  const [sensorTrends, setSensorTrends] = useState<{ ph: number[]; ec: number[]; ppm: number[]; temp: number[]; humidity: number[]; water_temp: number[]; water_level: number[]; orp: number[] }>({ ph: [], ec: [], ppm: [], temp: [], humidity: [], water_temp: [], water_level: [], orp: [] });
 
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -258,6 +258,7 @@ export default function GrowDetailPage() {
         ppm: waterReadings.map((r: { ppm: number | null }) => r.ppm).filter((v: number | null): v is number => v != null).slice(0, 30).reverse(),
         water_temp: waterReadings.map((r: { water_temp_f: number | null }) => r.water_temp_f).filter((v: number | null): v is number => v != null).slice(0, 30).reverse(),
         water_level: waterReadings.map((r: { water_level_pct: number | null }) => r.water_level_pct).filter((v: number | null): v is number => v != null).slice(0, 30).reverse(),
+        orp: waterReadings.map((r: { orp: number | null }) => r.orp).filter((v: number | null): v is number => v != null).slice(0, 30).reverse(),
         temp: (() => {
           const tentTemps = tentReadings2.map((r: { ambient_temp_f: number | null }) => r.ambient_temp_f).filter((v: number | null): v is number => v != null).reverse();
           if (tentTemps.length > 0) return tentTemps;
@@ -742,6 +743,12 @@ export default function GrowDetailPage() {
                       status: sensorTrends.water_level.length > 0 ? (sensorTrends.water_level[sensorTrends.water_level.length - 1] >= 20 ? "optimal" : "warning") : "unknown",
                       hint: sensorTrends.water_level.length > 0 && sensorTrends.water_level[sensorTrends.water_level.length - 1] < 20 ? "Water level critically low — refill reservoir" : undefined,
                     },
+                    ...(sensorTrends.orp.length > 0 ? [{
+                      label: "ORP",
+                      value: `${Math.round(sensorTrends.orp[sensorTrends.orp.length - 1])} mV`,
+                      status: (sensorTrends.orp[sensorTrends.orp.length - 1] >= 300 && sensorTrends.orp[sensorTrends.orp.length - 1] <= 450 ? "optimal" : "warning") as "optimal" | "warning",
+                      hint: sensorTrends.orp[sensorTrends.orp.length - 1] < 300 ? "ORP low — anaerobic risk. Target 300–450 mV" : sensorTrends.orp[sensorTrends.orp.length - 1] > 450 ? "ORP high — too oxidizing. Target 300–450 mV" : undefined,
+                    }] : []),
                   ]}
                 />
               </motion.div>

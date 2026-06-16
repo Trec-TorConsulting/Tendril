@@ -110,6 +110,7 @@ interface EnvSnapshot {
   water_temp_f: number | null;
   ph: number | null;
   ec: number | null;
+  orp: number | null;
 }
 
 export default function AnalyticsPage() {
@@ -212,6 +213,7 @@ export default function AnalyticsPage() {
                 water_temp_f: latest.water_temp_f,
                 ph: latest.ph,
                 ec: latest.ec,
+                orp: latest.orp,
               };
             }
           } catch { /* skip */ }
@@ -752,6 +754,9 @@ export default function AnalyticsPage() {
                 )}
                 {envSnapshots.length > 0 && envSnapshots[0].water_temp_f != null && (
                   <SensorGauge value={envSnapshots[0].water_temp_f} {...GAUGE_PRESETS.waterTemp} />
+                )}
+                {envSnapshots.length > 0 && envSnapshots[0].orp != null && (
+                  <SensorGauge value={envSnapshots[0].orp} {...GAUGE_PRESETS.orp} />
                 )}
               </div>
             </CardContent>

@@ -190,4 +190,17 @@ export const GAUGE_PRESETS = {
       { start: 74, end: 80, color: "#ef4444" },     // red — root rot risk
     ],
   },
+  orp: {
+    label: "ORP",
+    unit: "mV",
+    min: 0,
+    max: 600,
+    zones: [
+      { start: 0, end: 200, color: "#ef4444" },     // red — anaerobic / root rot risk
+      { start: 200, end: 300, color: "#f59e0b" },   // amber — low oxidation
+      { start: 300, end: 450, color: "#22c55e" },   // green — optimal
+      { start: 450, end: 500, color: "#f59e0b" },   // amber — high (H2O2 excess)
+      { start: 500, end: 600, color: "#ef4444" },   // red — too oxidizing
+    ],
+  },
 } as const;
