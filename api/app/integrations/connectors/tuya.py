@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.grows.models import BucketSensorReading, TentSensorReading
 from app.integrations.connectors.base import BaseConnector, ConnectorResult, register_connector
+from app.integrations.connectors.retry import retry_request
 
 logger = logging.getLogger(__name__)
 
@@ -160,22 +161,35 @@ class TuyaConnector(BaseConnector):
         )
 
     async def _get_token(self, client: httpx.AsyncClient) -> str:
-        """Get or refresh Tuya access token."""
+        """Get or refresh Tuya access token.
+
+        Re-signs the request on every retry attempt because the Tuya
+        signature is bound to ``t`` (timestamp) and the OpenAPI rejects
+        signatures older than ~5 minutes with HTTP 401. Using a closure
+        that recomputes ``timestamp`` and ``sign`` per call is required;
+        retrying the same request would 401-loop.
+        """
         if self._access_token and time.time() < self._token_expiry:
             return self._access_token
 
-        timestamp = str(int(time.time() * 1000))
         path = "/v1.0/token?grant_type=1"
-        sign = self._sign("GET", path, timestamp)
 
-        resp = await client.get(
-            f"{self.base_url}{path}",
-            headers={
-                "client_id": self.access_id,
-                "sign": sign,
-                "t": timestamp,
-                "sign_method": "HMAC-SHA256",
-            },
+        async def _do_token() -> httpx.Response:
+            timestamp = str(int(time.time() * 1000))
+            sign = self._sign("GET", path, timestamp)
+            return await client.get(
+                f"{self.base_url}{path}",
+                headers={
+                    "client_id": self.access_id,
+                    "sign": sign,
+                    "t": timestamp,
+                    "sign_method": "HMAC-SHA256",
+                },
+            )
+
+        resp = await retry_request(
+            lambda: _do_token(),
+            description="tuya.get_token",
         )
         resp.raise_for_status()
         data = resp.json()
@@ -189,20 +203,29 @@ class TuyaConnector(BaseConnector):
         return self._access_token
 
     async def _api_get(self, client: httpx.AsyncClient, path: str) -> dict:
-        """Make authenticated GET request to Tuya OpenAPI."""
-        token = await self._get_token(client)
-        timestamp = str(int(time.time() * 1000))
-        sign = self._sign("GET", path, timestamp, token)
+        """Make authenticated GET request to Tuya OpenAPI.
 
-        resp = await client.get(
-            f"{self.base_url}{path}",
-            headers={
-                "client_id": self.access_id,
-                "access_token": token,
-                "sign": sign,
-                "t": timestamp,
-                "sign_method": "HMAC-SHA256",
-            },
+        See ``_get_token`` for why this re-signs on every retry attempt.
+        """
+        token = await self._get_token(client)
+
+        async def _do_get() -> httpx.Response:
+            timestamp = str(int(time.time() * 1000))
+            sign = self._sign("GET", path, timestamp, token)
+            return await client.get(
+                f"{self.base_url}{path}",
+                headers={
+                    "client_id": self.access_id,
+                    "access_token": token,
+                    "sign": sign,
+                    "t": timestamp,
+                    "sign_method": "HMAC-SHA256",
+                },
+            )
+
+        resp = await retry_request(
+            lambda: _do_get(),
+            description=f"tuya.api_get {path}",
         )
         resp.raise_for_status()
         return resp.json()
@@ -554,27 +577,39 @@ class TuyaConnector(BaseConnector):
     # ── Device Control ───────────────────────────────────────────
 
     async def toggle_device(self, device_id: str, on: bool) -> dict:
-        """Turn a Tuya device on or off. Used by Tendril automation."""
+        """Turn a Tuya device on or off. Used by Tendril automation.
+
+        See ``_get_token`` for why this re-signs on every retry attempt.
+        The underlying "switch_1" command is idempotent at the device
+        level (setting the same value twice produces the same state),
+        so safe to retry.
+        """
         import json as _json
 
         async with httpx.AsyncClient(timeout=10) as client:
             token = await self._get_token(client)
-            timestamp = str(int(time.time() * 1000))
             path = f"/v1.0/devices/{device_id}/commands"
             body = _json.dumps({"commands": [{"code": "switch_1", "value": on}]})
-            sign = self._sign("POST", path, timestamp, token, body=body)
 
-            resp = await client.post(
-                f"{self.base_url}{path}",
-                headers={
-                    "client_id": self.access_id,
-                    "access_token": token,
-                    "sign": sign,
-                    "t": timestamp,
-                    "sign_method": "HMAC-SHA256",
-                    "Content-Type": "application/json",
-                },
-                content=body,
+            async def _do_post() -> httpx.Response:
+                timestamp = str(int(time.time() * 1000))
+                sign = self._sign("POST", path, timestamp, token, body=body)
+                return await client.post(
+                    f"{self.base_url}{path}",
+                    headers={
+                        "client_id": self.access_id,
+                        "access_token": token,
+                        "sign": sign,
+                        "t": timestamp,
+                        "sign_method": "HMAC-SHA256",
+                        "Content-Type": "application/json",
+                    },
+                    content=body,
+                )
+
+            resp = await retry_request(
+                lambda: _do_post(),
+                description=f"tuya.toggle_device {device_id}={on}",
             )
             resp.raise_for_status()
             return resp.json()
