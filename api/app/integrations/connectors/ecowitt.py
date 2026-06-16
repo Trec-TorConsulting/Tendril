@@ -40,6 +40,7 @@ from app.integrations.connectors.base import (
     propagate_header_bucket_readings,
     register_connector,
 )
+from app.integrations.connectors.retry import retry_request
 
 logger = logging.getLogger("tendril.integrations.ecowitt")
 
@@ -172,19 +173,22 @@ class EcowittConnector(BaseConnector):
 
         async with self._client() as client:
             try:
-                resp = await client.get(
-                    "/api/v3/device/real_time",
-                    params={
-                        "application_key": app_key,
-                        "api_key": api_key,
-                        "mac": mac,
-                        "call_back": "all",
-                        "temp_unitid": "1",  # Celsius
-                        "pressure_unitid": "3",  # hPa
-                        "wind_speed_unitid": "7",  # km/h
-                        "rainfall_unitid": "12",  # mm
-                        "solar_irradiance_unitid": "16",  # W/m²
-                    },
+                resp = await retry_request(
+                    lambda: client.get(
+                        "/api/v3/device/real_time",
+                        params={
+                            "application_key": app_key,
+                            "api_key": api_key,
+                            "mac": mac,
+                            "call_back": "all",
+                            "temp_unitid": "1",  # Celsius
+                            "pressure_unitid": "3",  # hPa
+                            "wind_speed_unitid": "7",  # km/h
+                            "rainfall_unitid": "12",  # mm
+                            "solar_irradiance_unitid": "16",  # W/m²
+                        },
+                    ),
+                    description="ecowitt.poll_real_time",
                 )
                 resp.raise_for_status()
             except httpx.HTTPStatusError as exc:
@@ -263,18 +267,21 @@ class EcowittConnector(BaseConnector):
 
         async with self._client() as client:
             try:
-                resp = await client.get(
-                    "/api/v3/device/real_time",
-                    params={
-                        "application_key": app_key,
-                        "api_key": api_key,
-                        "mac": mac,
-                        "call_back": "all",
-                        "temp_unitid": "1",
-                        "pressure_unitid": "3",
-                        "wind_speed_unitid": "7",
-                        "rainfall_unitid": "12",
-                    },
+                resp = await retry_request(
+                    lambda: client.get(
+                        "/api/v3/device/real_time",
+                        params={
+                            "application_key": app_key,
+                            "api_key": api_key,
+                            "mac": mac,
+                            "call_back": "all",
+                            "temp_unitid": "1",
+                            "pressure_unitid": "3",
+                            "wind_speed_unitid": "7",
+                            "rainfall_unitid": "12",
+                        },
+                    ),
+                    description="ecowitt.discover_real_time",
                 )
                 resp.raise_for_status()
                 body = resp.json()
