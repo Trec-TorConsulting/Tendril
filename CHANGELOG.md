@@ -21,6 +21,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **`grow_type` and `is_system_default` columns on `automation_rules`** — `grow_type` (nullable, indexed; system defaults are always grow-type-keyed) and `is_system_default` (boolean, defaults to false). Exposed in `RuleCreate` (optional) and always returned by `RuleResponse`.
 - **`system_alert_rules_seeded_version` column on `tenants`** — Tracks the highest `DEFAULTS_VERSION` from `app.automation.critical_alerts_defaults` that has been seeded for this tenant; lets future deploys top up new rules without re-running expensive idempotence checks.
 - **`app/automation/critical_alerts_defaults.py`** — New constants module that owns the safety-net alarm dictionary, decoupled from the engine. To add a new system default, edit the dict and bump `DEFAULTS_VERSION`.
+- **mypy on the backend** — Added `mypy>=1.18.0` and `sqlalchemy[mypy]` as dev dependencies. Two-tier configuration in `api/pyproject.toml`:
+  - **Baseline** (`mypy` CI job, **non-blocking**, `continue-on-error: true`) — runs across all of `api/app` with permissive settings (`ignore_missing_imports`, `follow_imports=silent`, untyped defs allowed). Reports the current error count (173 errors in 49 files at adoption) without breaking the build.
+  - **Strict subset** (`mypy-strict` CI job, **blocking**) — runs only the modules listed under `[[tool.mypy.overrides]]` in `pyproject.toml` with `disallow_untyped_defs`, `warn_unused_ignores`, `warn_return_any`. Adding a module to the strict list is a one-way ratchet. Initial modules: `app.automation.suppression`, `app.automation.critical_alerts_defaults`.
+  - SQLAlchemy mypy plugin enabled so ORM model attributes type-check correctly.
 
 ---
 

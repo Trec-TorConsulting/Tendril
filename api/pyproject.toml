@@ -62,3 +62,53 @@ known-first-party = ["app", "tests"]
 
 [tool.ruff.format]
 quote-style = "double"
+
+# ─── mypy ────────────────────────────────────────────────────────────────────
+# Two-tier configuration:
+#   * Global defaults are deliberately permissive so adopting mypy on the
+#     existing codebase is incremental and non-blocking.
+#   * Per-module overrides (``[[tool.mypy.overrides]]`` below) opt specific
+#     packages into strict checking; expand the strict list one module at a
+#     time as code is cleaned up. CI runs ``mypy api/app`` and reports errors
+#     but does not fail the build (see ``.github/workflows/ci.yml`` job
+#     ``mypy``) \u2014 the strict-mode overrides ARE allowed to fail the
+#     ``mypy-strict`` job, which serves as the locked-in regression gate.
+
+[tool.mypy]
+python_version = "3.14"
+files = ["api/app"]
+plugins = ["sqlalchemy.ext.mypy.plugin"]
+
+# Permissive defaults \u2014 see header comment.
+ignore_missing_imports = true
+follow_imports = "silent"
+check_untyped_defs = false
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+warn_unused_ignores = false
+warn_return_any = false
+warn_redundant_casts = true
+no_implicit_optional = true
+strict_equality = true
+
+# Some packages (mostly migrations and ad-hoc seed scripts) aren't worth
+# typing. Exclude them rather than ignoring their errors one by one.
+exclude = [
+    '^api/migrations/',
+    '^api/app/.+/seed_.*\.py$',
+    '^api/app/config_management/seed\.py$',
+]
+
+# Modules that have been audited and locked into strict mode. The
+# ``mypy-strict`` CI job runs these in isolation and fails the build on
+# any new error. Add new modules here one at a time.
+[[tool.mypy.overrides]]
+module = [
+    "app.automation.suppression",
+    "app.automation.critical_alerts_defaults",
+]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+warn_unused_ignores = true
+warn_return_any = true
+strict_equality = true
