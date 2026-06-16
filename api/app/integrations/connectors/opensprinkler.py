@@ -20,6 +20,7 @@ from typing import Any
 import httpx
 
 from app.integrations.connectors.base import BaseConnector, ConnectorResult, register_connector
+from app.integrations.connectors.retry import retry_request
 
 
 @register_connector
@@ -42,9 +43,12 @@ class OpenSprinklerConnector(BaseConnector):
     async def _get(self, endpoint: str) -> dict:
         """Make GET request to OpenSprinkler API."""
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(
-                f"{self.base_url}/{endpoint}",
-                params={"pw": self.password_hash},
+            resp = await retry_request(
+                lambda: client.get(
+                    f"{self.base_url}/{endpoint}",
+                    params={"pw": self.password_hash},
+                ),
+                description=f"opensprinkler.get {endpoint}",
             )
             resp.raise_for_status()
             return resp.json()
@@ -124,14 +128,17 @@ class OpenSprinklerConnector(BaseConnector):
         Used by Tendril automation to water plants based on AI recommendations.
         """
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(
-                f"{self.base_url}/cm",
-                params={
-                    "pw": self.password_hash,
-                    "sid": station_index,
-                    "en": 1,
-                    "t": duration_seconds,
-                },
+            resp = await retry_request(
+                lambda: client.get(
+                    f"{self.base_url}/cm",
+                    params={
+                        "pw": self.password_hash,
+                        "sid": station_index,
+                        "en": 1,
+                        "t": duration_seconds,
+                    },
+                ),
+                description=f"opensprinkler.run_station sid={station_index}",
             )
             resp.raise_for_status()
             return resp.json()
@@ -139,14 +146,17 @@ class OpenSprinklerConnector(BaseConnector):
     async def stop_station(self, station_index: int) -> dict:
         """Stop a running station."""
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(
-                f"{self.base_url}/cm",
-                params={
-                    "pw": self.password_hash,
-                    "sid": station_index,
-                    "en": 0,
-                    "t": 0,
-                },
+            resp = await retry_request(
+                lambda: client.get(
+                    f"{self.base_url}/cm",
+                    params={
+                        "pw": self.password_hash,
+                        "sid": station_index,
+                        "en": 0,
+                        "t": 0,
+                    },
+                ),
+                description=f"opensprinkler.stop_station sid={station_index}",
             )
             resp.raise_for_status()
             return resp.json()
