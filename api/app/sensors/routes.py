@@ -176,6 +176,7 @@ async def get_drift(
 
     ph_values = [r.ph for r in readings if r.ph is not None]
     ec_values = [r.ec for r in readings if r.ec is not None]
+    orp_values = [r.orp for r in readings if r.orp is not None]
 
     def drift_stats(values: list[float]) -> dict | None:
         if len(values) < 2:
@@ -194,6 +195,7 @@ async def get_drift(
         "hours": hours,
         "ph": drift_stats(ph_values),
         "ec": drift_stats(ec_values),
+        "orp": drift_stats(orp_values),
     }
 
 

@@ -36,6 +36,7 @@ function getMetrics(tu: string) {
     { key: "ppm", label: "PPM", color: "#f59e0b", unit: "" },
     { key: "water_temp_f", label: "Water Temp", color: "#ef4444", unit: tu },
     { key: "dissolved_oxygen", label: "DO", color: "#8b5cf6", unit: " mg/L" },
+    { key: "orp", label: "ORP", color: "#06b6d4", unit: " mV" },
     { key: "water_level_pct", label: "Water Level", color: "#64748b", unit: "%" },
     { key: "soil_moisture", label: "Soil Moisture", color: "#84cc16", unit: "%" },
     { key: "soil_temp", label: "Soil Temp", color: "#d946ef", unit: tu },
@@ -63,7 +64,7 @@ export function SensorsTab({ buckets }: SensorsTabProps) {
   const [timeRange, setTimeRange] = useState(0); // index into TIME_RANGES
   const [readings, setReadings] = useState<SensorReadingResponse[]>([]);
   const [loading, setLoading] = useState(false);
-  const [drift, setDrift] = useState<{ bucket_id: string; hours: number; ph: { min: number; max: number; first: number; last: number; delta: number; count: number } | null; ec: { min: number; max: number; first: number; last: number; delta: number; count: number } | null } | null>(null);
+  const [drift, setDrift] = useState<{ bucket_id: string; hours: number; ph: { min: number; max: number; first: number; last: number; delta: number; count: number } | null; ec: { min: number; max: number; first: number; last: number; delta: number; count: number } | null; orp: { min: number; max: number; first: number; last: number; delta: number; count: number } | null } | null>(null);
 
   const loadReadings = useCallback(async () => {
     if (!selectedBucket) return;
@@ -187,13 +188,13 @@ export function SensorsTab({ buckets }: SensorsTabProps) {
           </div>
 
           {/* Sensor Drift Analysis */}
-          {drift && (drift.ph || drift.ec) && (
+          {drift && (drift.ph || drift.ec || drift.orp) && (
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium">pH / EC Drift ({drift.hours}h)</CardTitle>
+                <CardTitle className="text-sm font-medium">pH / EC / ORP Drift ({drift.hours}h)</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {drift.ph && drift.ph.count > 0 && (
                     <div className="rounded-lg border p-3 space-y-1">
                       <div className="flex items-center justify-between">
@@ -226,6 +227,23 @@ export function SensorsTab({ buckets }: SensorsTabProps) {
                         <span>Last: <strong className="text-foreground">{drift.ec.last.toFixed(3)}</strong></span>
                       </div>
                       <p className="text-[10px] text-muted-foreground">{drift.ec.count} readings</p>
+                    </div>
+                  )}
+                  {drift.orp && drift.orp.count > 0 && (
+                    <div className="rounded-lg border p-3 space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">ORP Drift</span>
+                        <Badge variant="outline" className={`text-xs ${drift.orp.delta > 0 ? "text-green-600" : drift.orp.delta < 0 ? "text-red-600" : ""}`}>
+                          {drift.orp.delta >= 0 ? "+" : ""}{drift.orp.delta.toFixed(0)} mV
+                        </Badge>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                        <span>Min: <strong className="text-foreground">{drift.orp.min.toFixed(0)} mV</strong></span>
+                        <span>Max: <strong className="text-foreground">{drift.orp.max.toFixed(0)} mV</strong></span>
+                        <span>First: <strong className="text-foreground">{drift.orp.first.toFixed(0)} mV</strong></span>
+                        <span>Last: <strong className="text-foreground">{drift.orp.last.toFixed(0)} mV</strong></span>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground">{drift.orp.count} readings</p>
                     </div>
                   )}
                 </div>
