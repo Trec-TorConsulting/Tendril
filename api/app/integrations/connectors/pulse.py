@@ -23,6 +23,7 @@ from app.integrations.connectors.base import (
     propagate_header_bucket_readings,
     register_connector,
 )
+from app.integrations.connectors.retry import retry_request
 from app.integrations.models import IntegrationDeviceMap
 
 logger = logging.getLogger("tendril.integrations.pulse")
@@ -119,7 +120,10 @@ class PulseConnector(BaseConnector):
             return
 
         try:
-            resp = await client.get("/all-devices")
+            resp = await retry_request(
+                lambda: client.get("/all-devices"),
+                description="pulse.poll_devices",
+            )
             resp.raise_for_status()
         except httpx.HTTPStatusError as exc:
             self._handle_http_error(exc, result)
@@ -149,8 +153,15 @@ class PulseConnector(BaseConnector):
             return
 
         for external_id, dm in bucket_maps.items():
+
+            async def _get_recent(eid: str = external_id) -> httpx.Response:
+                return await client.get(f"/sensors/{eid}/recent-data")
+
             try:
-                resp = await client.get(f"/sensors/{external_id}/recent-data")
+                resp = await retry_request(
+                    lambda: _get_recent(),
+                    description=f"pulse.poll_hub_sensor {external_id}",
+                )
                 resp.raise_for_status()
             except httpx.HTTPStatusError as exc:
                 self._handle_http_error(exc, result)
@@ -191,7 +202,10 @@ class PulseConnector(BaseConnector):
         async with self._client() as client:
             # Discover Pulse devices
             try:
-                resp = await client.get("/all-devices")
+                resp = await retry_request(
+                    lambda: client.get("/all-devices"),
+                    description="pulse.discover_all_devices",
+                )
                 resp.raise_for_status()
                 data = resp.json()
 
@@ -231,13 +245,24 @@ class PulseConnector(BaseConnector):
 
             # Discover Hub sensors
             try:
-                resp = await client.get("/sensors/ids")
+                resp = await retry_request(
+                    lambda: client.get("/sensors/ids"),
+                    description="pulse.discover_sensor_ids",
+                )
                 resp.raise_for_status()
                 sensor_ids = resp.json()
 
                 for sid in sensor_ids:
+                    sid_str = str(sid)
+
+                    async def _get_details(s: str = sid_str) -> httpx.Response:
+                        return await client.get(f"/sensors/{s}/details")
+
                     try:
-                        detail_resp = await client.get(f"/sensors/{sid}/details")
+                        detail_resp = await retry_request(
+                            lambda: _get_details(),
+                            description=f"pulse.discover_sensor_details {sid_str}",
+                        )
                         detail_resp.raise_for_status()
                         details = detail_resp.json()
                         # details is a list with one item
