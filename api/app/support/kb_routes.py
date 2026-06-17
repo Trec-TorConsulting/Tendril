@@ -1,20 +1,22 @@
-"""Knowledge Base — Public and Admin endpoints."""
+"""Knowledge Base — Public and Admin endpoints.
+
+This module is HTTP-only. All persistence, slug generation, view-count
+bookkeeping, and vote tallying live in ``app.support.service``.
+"""
 
 from __future__ import annotations
 
 import logging
-import re
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, require_role
 from app.database import async_session_factory
-from app.support.models import KBArticle, KBCategory
+from app.support import service
 
 router = APIRouter()
 logger = logging.getLogger("tendril.support.kb")
@@ -55,14 +57,6 @@ class ArticleUpdate(BaseModel):
     category_id: UUID | None = None
 
 
-def _slugify(text: str) -> str:
-    """Generate a URL-safe slug from text."""
-    slug = text.lower().strip()
-    slug = re.sub(r"[^\w\s-]", "", slug)
-    slug = re.sub(r"[\s_]+", "-", slug)
-    return re.sub(r"-+", "-", slug).strip("-")
-
-
 # ─── Public Endpoints ─────────────────────────────────────────────────────────
 
 
@@ -71,36 +65,18 @@ async def list_categories(
     session: Annotated[AsyncSession, Depends(_get_db)],
 ) -> list[dict]:
     """List published KB categories with article counts."""
-    categories = (
-        (
-            await session.execute(
-                select(KBCategory).where(KBCategory.is_published.is_(True)).order_by(KBCategory.sort_order)
-            )
-        )
-        .scalars()
-        .all()
-    )
-
-    result = []
-    for cat in categories:
-        article_count = (
-            await session.execute(
-                select(func.count(KBArticle.id)).where(
-                    KBArticle.category_id == cat.id, KBArticle.is_published.is_(True)
-                )
-            )
-        ).scalar() or 0
-        result.append(
-            {
-                "id": str(cat.id),
-                "name": cat.name,
-                "slug": cat.slug,
-                "description": cat.description,
-                "icon": cat.icon,
-                "article_count": article_count,
-            }
-        )
-    return result
+    rows = await service.list_kb_categories_with_counts(session)
+    return [
+        {
+            "id": str(row.category.id),
+            "name": row.category.name,
+            "slug": row.category.slug,
+            "description": row.category.description,
+            "icon": row.category.icon,
+            "article_count": row.article_count,
+        }
+        for row in rows
+    ]
 
 
 @router.get("/articles")
@@ -111,21 +87,9 @@ async def list_articles(
     per_page: int = 20,
 ) -> dict:
     """List published KB articles, optionally filtered by category."""
-    query = select(KBArticle).where(KBArticle.is_published.is_(True))
-
-    if category_slug:
-        cat = (await session.execute(select(KBCategory).where(KBCategory.slug == category_slug))).scalar_one_or_none()
-        if cat:
-            query = query.where(KBArticle.category_id == cat.id)
-
-    total = (await session.execute(select(func.count()).select_from(query.subquery()))).scalar() or 0
-
-    articles = (
-        (await session.execute(query.order_by(KBArticle.sort_order).offset((page - 1) * per_page).limit(per_page)))
-        .scalars()
-        .all()
+    articles, total = await service.list_kb_articles_page(
+        session, category_slug=category_slug, page=page, per_page=per_page
     )
-
     return {
         "articles": [
             {
@@ -152,26 +116,7 @@ async def search_articles(
     session: Annotated[AsyncSession, Depends(_get_db)],
 ) -> list[dict]:
     """Full-text search across KB articles."""
-    # Simple ILIKE search (can upgrade to tsvector later)
-    pattern = f"%{q}%"
-    articles = (
-        (
-            await session.execute(
-                select(KBArticle)
-                .where(
-                    KBArticle.is_published.is_(True),
-                    or_(
-                        KBArticle.title.ilike(pattern),
-                        KBArticle.body_markdown.ilike(pattern),
-                    ),
-                )
-                .limit(20)
-            )
-        )
-        .scalars()
-        .all()
-    )
-
+    articles = await service.search_kb_articles(session, q)
     return [
         {
             "id": str(a.id),
@@ -189,17 +134,10 @@ async def get_article(
     session: Annotated[AsyncSession, Depends(_get_db)],
 ) -> dict:
     """Get a single KB article by slug."""
-    article = (
-        await session.execute(select(KBArticle).where(KBArticle.slug == slug, KBArticle.is_published.is_(True)))
-    ).scalar_one_or_none()
-
-    if not article:
+    article = await service.get_published_kb_article_by_slug(session, slug)
+    if article is None:
         raise HTTPException(status_code=404, detail="Article not found")
-
-    # Increment view count
-    article.views += 1
-    await session.commit()
-
+    await service.increment_kb_article_views(session, article)
     return {
         "id": str(article.id),
         "title": article.title,
@@ -221,17 +159,10 @@ async def vote_article(
     helpful: bool = True,
 ):
     """Vote on article helpfulness."""
-    article = (await session.execute(select(KBArticle).where(KBArticle.slug == slug))).scalar_one_or_none()
-
-    if not article:
+    article = await service.get_kb_article_by_slug(session, slug)
+    if article is None:
         raise HTTPException(status_code=404, detail="Article not found")
-
-    if helpful:
-        article.helpful_yes += 1
-    else:
-        article.helpful_no += 1
-
-    await session.commit()
+    await service.vote_kb_article(session, article, helpful=helpful)
     return {"helpful_yes": article.helpful_yes, "helpful_no": article.helpful_no}
 
 
@@ -244,31 +175,31 @@ async def create_category(
     session: Annotated[AsyncSession, Depends(_get_db)],
 ) -> dict:
     """Create a KB category."""
-    slug = body.slug or _slugify(body.name)
-    cat = KBCategory(
+    cat = await service.create_kb_category(
+        session,
         name=body.name,
-        slug=slug,
+        slug=body.slug,
         description=body.description,
         icon=body.icon,
         sort_order=body.sort_order,
     )
-    session.add(cat)
-    await session.commit()
-    await session.refresh(cat)
     return {"id": str(cat.id), "slug": cat.slug}
 
 
-@router.delete("/admin/categories/{category_id}", dependencies=[Depends(require_role("admin"))], status_code=204)
+@router.delete(
+    "/admin/categories/{category_id}",
+    dependencies=[Depends(require_role("admin"))],
+    status_code=204,
+)
 async def delete_category(
     category_id: UUID,
     session: Annotated[AsyncSession, Depends(_get_db)],
 ):
     """Delete a KB category and all its articles."""
-    cat = await session.get(KBCategory, category_id)
-    if not cat:
+    cat = await service.get_kb_category(session, category_id)
+    if cat is None:
         raise HTTPException(status_code=404, detail="Category not found")
-    await session.delete(cat)
-    await session.commit()
+    await service.delete_kb_category(session, cat)
 
 
 @router.post("/admin/articles", dependencies=[Depends(require_role("admin"))], status_code=201)
@@ -278,20 +209,17 @@ async def create_article(
     session: Annotated[AsyncSession, Depends(_get_db)],
 ) -> dict:
     """Create a KB article."""
-    slug = body.slug or _slugify(body.title)
-    article = KBArticle(
+    article = await service.create_kb_article(
+        session,
         category_id=body.category_id,
+        author_id=user.user_id,
         title=body.title,
-        slug=slug,
+        slug=body.slug,
         body_markdown=body.body_markdown,
-        tags=body.tags or [],
+        tags=body.tags,
         is_published=body.is_published,
         sort_order=body.sort_order,
-        author_id=user.id,
     )
-    session.add(article)
-    await session.commit()
-    await session.refresh(article)
     return {"id": str(article.id), "slug": article.slug}
 
 
@@ -302,35 +230,33 @@ async def update_article(
     session: Annotated[AsyncSession, Depends(_get_db)],
 ) -> dict:
     """Update a KB article."""
-    article = await session.get(KBArticle, article_id)
-    if not article:
+    article = await service.get_kb_article(session, article_id)
+    if article is None:
         raise HTTPException(status_code=404, detail="Article not found")
-
-    if body.title is not None:
-        article.title = body.title
-    if body.body_markdown is not None:
-        article.body_markdown = body.body_markdown
-    if body.tags is not None:
-        article.tags = body.tags
-    if body.is_published is not None:
-        article.is_published = body.is_published
-    if body.sort_order is not None:
-        article.sort_order = body.sort_order
-    if body.category_id is not None:
-        article.category_id = body.category_id
-
-    await session.commit()
+    await service.update_kb_article(
+        session,
+        article,
+        title=body.title,
+        body_markdown=body.body_markdown,
+        tags=body.tags,
+        is_published=body.is_published,
+        sort_order=body.sort_order,
+        category_id=body.category_id,
+    )
     return {"status": "updated"}
 
 
-@router.delete("/admin/articles/{article_id}", dependencies=[Depends(require_role("admin"))], status_code=204)
+@router.delete(
+    "/admin/articles/{article_id}",
+    dependencies=[Depends(require_role("admin"))],
+    status_code=204,
+)
 async def delete_article(
     article_id: UUID,
     session: Annotated[AsyncSession, Depends(_get_db)],
 ):
     """Delete a KB article."""
-    article = await session.get(KBArticle, article_id)
-    if not article:
+    article = await service.get_kb_article(session, article_id)
+    if article is None:
         raise HTTPException(status_code=404, detail="Article not found")
-    await session.delete(article)
-    await session.commit()
+    await service.delete_kb_article(session, article)

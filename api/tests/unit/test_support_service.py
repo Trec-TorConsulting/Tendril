@@ -13,6 +13,7 @@ from app.support.service import (
     coerce_priority,
     compute_sla_due,
     is_ticket_closed,
+    slugify,
 )
 
 
@@ -91,3 +92,31 @@ class TestIsTicketClosed:
     )
     def test_open_states_are_not_closed(self, status):
         assert is_ticket_closed(_FakeTicket(status)) is False
+
+
+# ---------- KB service helpers ----------
+
+
+class TestSlugify:
+    def test_basic_lowercase(self):
+        assert slugify("Hello World") == "hello-world"
+
+    def test_strips_punctuation(self):
+        assert slugify("How To: Use the AI! (Beginner's Guide)") == "how-to-use-the-ai-beginners-guide"
+
+    def test_collapses_whitespace_and_underscores(self):
+        assert slugify("a  b\t_c") == "a-b-c"
+
+    def test_dedupes_dashes(self):
+        assert slugify("a---b---c") == "a-b-c"
+
+    def test_trims_leading_trailing_dashes(self):
+        assert slugify("---hello---") == "hello"
+
+    def test_empty_string_stays_empty(self):
+        assert slugify("") == ""
+
+    def test_keeps_alphanumeric_and_underscore(self):
+        # ``[^\w\s-]`` keeps word chars (alphanumeric + underscore); the next
+        # rule collapses them. So "v2_release" becomes "v2-release".
+        assert slugify("v2_release") == "v2-release"

@@ -25,14 +25,18 @@ surface — matching the convention established for ``app/sensors``.
 
 from __future__ import annotations
 
+import re
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.support.models import (
+    KBArticle,
+    KBCategory,
     SupportTicket,
     TicketCategory,
     TicketMessage,
@@ -269,3 +273,235 @@ async def rate_ticket(
     ticket.satisfaction_comment = comment
     await session.commit()
     return ticket
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Knowledge Base — categories + articles
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+_SLUG_NON_WORD_RE = re.compile(r"[^\w\s-]")
+_SLUG_SEP_RE = re.compile(r"[\s_]+")
+_SLUG_DUP_DASH_RE = re.compile(r"-+")
+
+
+def slugify(text: str) -> str:
+    """Generate a URL-safe slug from ``text``.
+
+    Lowercases, strips diacritics-less punctuation, collapses runs of
+    whitespace/underscores into hyphens, and dedupes hyphen runs. Matches
+    the previous private ``_slugify`` in ``kb_routes`` byte-for-byte so
+    existing slugs remain stable.
+    """
+    slug = text.lower().strip()
+    slug = _SLUG_NON_WORD_RE.sub("", slug)
+    slug = _SLUG_SEP_RE.sub("-", slug)
+    return _SLUG_DUP_DASH_RE.sub("-", slug).strip("-")
+
+
+@dataclass(frozen=True, slots=True)
+class KBCategoryWithCount:
+    """A KB category joined with its published-article count."""
+
+    category: KBCategory
+    article_count: int
+
+
+async def list_kb_categories_with_counts(
+    session: AsyncSession,
+) -> list[KBCategoryWithCount]:
+    """Return all published KB categories with their published-article counts."""
+    categories = (
+        (
+            await session.execute(
+                select(KBCategory).where(KBCategory.is_published.is_(True)).order_by(KBCategory.sort_order)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    out: list[KBCategoryWithCount] = []
+    for cat in categories:
+        count = (
+            await session.execute(
+                select(func.count(KBArticle.id)).where(
+                    KBArticle.category_id == cat.id,
+                    KBArticle.is_published.is_(True),
+                )
+            )
+        ).scalar() or 0
+        out.append(KBCategoryWithCount(category=cat, article_count=int(count)))
+    return out
+
+
+async def get_kb_category_by_slug(session: AsyncSession, slug: str) -> KBCategory | None:
+    return (await session.execute(select(KBCategory).where(KBCategory.slug == slug))).scalar_one_or_none()
+
+
+async def list_kb_articles_page(
+    session: AsyncSession,
+    *,
+    category_slug: str | None,
+    page: int,
+    per_page: int,
+) -> tuple[list[KBArticle], int]:
+    """Return ``(articles, total)`` for the published-articles listing."""
+    query = select(KBArticle).where(KBArticle.is_published.is_(True))
+    if category_slug:
+        cat = await get_kb_category_by_slug(session, category_slug)
+        if cat is not None:
+            query = query.where(KBArticle.category_id == cat.id)
+
+    total = (await session.execute(select(func.count()).select_from(query.subquery()))).scalar() or 0
+
+    articles = (
+        (await session.execute(query.order_by(KBArticle.sort_order).offset((page - 1) * per_page).limit(per_page)))
+        .scalars()
+        .all()
+    )
+    return list(articles), int(total)
+
+
+async def search_kb_articles(session: AsyncSession, query_text: str, *, limit: int = 20) -> list[KBArticle]:
+    """Simple ILIKE search across published KB title + body. Capped at ``limit``."""
+    pattern = f"%{query_text}%"
+    result = await session.execute(
+        select(KBArticle)
+        .where(
+            KBArticle.is_published.is_(True),
+            or_(
+                KBArticle.title.ilike(pattern),
+                KBArticle.body_markdown.ilike(pattern),
+            ),
+        )
+        .limit(limit)
+    )
+    return list(result.scalars().all())
+
+
+async def get_published_kb_article_by_slug(session: AsyncSession, slug: str) -> KBArticle | None:
+    """Fetch a *published* article by slug; unpublished drafts return ``None``."""
+    return (
+        await session.execute(select(KBArticle).where(KBArticle.slug == slug, KBArticle.is_published.is_(True)))
+    ).scalar_one_or_none()
+
+
+async def get_kb_article_by_slug(session: AsyncSession, slug: str) -> KBArticle | None:
+    """Fetch any article by slug (published or not). Used by the vote endpoint."""
+    return (await session.execute(select(KBArticle).where(KBArticle.slug == slug))).scalar_one_or_none()
+
+
+async def increment_kb_article_views(session: AsyncSession, article: KBArticle) -> KBArticle:
+    """Bump the article's view counter and commit."""
+    article.views += 1
+    await session.commit()
+    return article
+
+
+async def vote_kb_article(session: AsyncSession, article: KBArticle, *, helpful: bool) -> KBArticle:
+    """Record a helpful/not-helpful vote on an article."""
+    if helpful:
+        article.helpful_yes += 1
+    else:
+        article.helpful_no += 1
+    await session.commit()
+    return article
+
+
+async def create_kb_category(
+    session: AsyncSession,
+    *,
+    name: str,
+    slug: str | None,
+    description: str | None,
+    icon: str | None,
+    sort_order: int,
+) -> KBCategory:
+    """Create a KB category, generating a slug from ``name`` when absent."""
+    cat = KBCategory(
+        name=name,
+        slug=slug or slugify(name),
+        description=description,
+        icon=icon,
+        sort_order=sort_order,
+    )
+    session.add(cat)
+    await session.commit()
+    await session.refresh(cat)
+    return cat
+
+
+async def get_kb_category(session: AsyncSession, category_id: UUID) -> KBCategory | None:
+    return await session.get(KBCategory, category_id)
+
+
+async def delete_kb_category(session: AsyncSession, cat: KBCategory) -> None:
+    await session.delete(cat)
+    await session.commit()
+
+
+async def create_kb_article(
+    session: AsyncSession,
+    *,
+    category_id: UUID,
+    author_id: UUID,
+    title: str,
+    slug: str | None,
+    body_markdown: str,
+    tags: list[str] | None,
+    is_published: bool,
+    sort_order: int,
+) -> KBArticle:
+    """Create a KB article, generating a slug from ``title`` when absent."""
+    article = KBArticle(
+        category_id=category_id,
+        title=title,
+        slug=slug or slugify(title),
+        body_markdown=body_markdown,
+        tags=tags or [],
+        is_published=is_published,
+        sort_order=sort_order,
+        author_id=author_id,
+    )
+    session.add(article)
+    await session.commit()
+    await session.refresh(article)
+    return article
+
+
+async def get_kb_article(session: AsyncSession, article_id: UUID) -> KBArticle | None:
+    return await session.get(KBArticle, article_id)
+
+
+async def update_kb_article(
+    session: AsyncSession,
+    article: KBArticle,
+    *,
+    title: str | None = None,
+    body_markdown: str | None = None,
+    tags: list[str] | None = None,
+    is_published: bool | None = None,
+    sort_order: int | None = None,
+    category_id: UUID | None = None,
+) -> KBArticle:
+    """Apply partial updates to a KB article and commit."""
+    if title is not None:
+        article.title = title
+    if body_markdown is not None:
+        article.body_markdown = body_markdown
+    if tags is not None:
+        article.tags = tags
+    if is_published is not None:
+        article.is_published = is_published
+    if sort_order is not None:
+        article.sort_order = sort_order
+    if category_id is not None:
+        article.category_id = category_id
+    await session.commit()
+    return article
+
+
+async def delete_kb_article(session: AsyncSession, article: KBArticle) -> None:
+    await session.delete(article)
+    await session.commit()
