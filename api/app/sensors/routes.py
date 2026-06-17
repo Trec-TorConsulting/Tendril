@@ -1,22 +1,23 @@
-"""Sensor readings API — CRUD + latest + drift analysis."""
+"""Sensor readings API — bucket-level CRUD + latest + drift analysis.
+
+This module is HTTP-only. All persistence, EC↔PPM derivation,
+RDWC propagation, alert evaluation, and drift math live in
+``app.sensors.service``.
+"""
 
 from __future__ import annotations
 
-import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
-from app.grows.models import BucketSensorReading
 from app.pagination import PaginatedResponse, PaginationParams, paginate
-
-logger = logging.getLogger("tendril.sensors")
+from app.sensors import service
 
 router = APIRouter()
 
@@ -78,46 +79,12 @@ async def create_reading(
 ):
     """Record a new bucket sensor reading (pH, EC, temperature, etc.).
 
-    For RDWC header buckets, the reading is automatically propagated to all site buckets.
+    For RDWC header buckets, the reading is automatically propagated to all
+    site buckets. Real-time alerts (critical/composite/trend) are evaluated
+    best-effort and never block ingest.
     """
-    from app.integrations.connectors.base import propagate_header_bucket_readings
-
-    data = body.model_dump()
-    # Auto-derive EC↔PPM when only one is provided
-    if data.get("ec") is not None and data.get("ppm") is None:
-        data["ppm"] = round(data["ec"] * 500.0, 1)
-    elif data.get("ppm") is not None and data.get("ec") is None:
-        data["ec"] = round(data["ppm"] / 500.0, 3)
-    reading = BucketSensorReading(tenant_id=user.tenant_id, **data)
-    session.add(reading)
-    await session.flush()  # Flush to get the reading in the session
-
-    # Propagate header readings to all site buckets in RDWC grows
-    await propagate_header_bucket_readings(session, str(reading.bucket_id), reading)
-
-    await session.commit()
-    await session.refresh(reading)
-
-    # Evaluate real-time alerts in background (non-blocking)
-    try:
-        from app.automation.engine import (
-            evaluate_composite_alerts,
-            evaluate_critical_alerts,
-            evaluate_trend_alerts,
-        )
-        from app.grows.models import Bucket, GrowCycle
-
-        bucket = await session.get(Bucket, reading.bucket_id)
-        if bucket and bucket.grow_cycle_id:
-            grow = await session.get(GrowCycle, bucket.grow_cycle_id)
-            if grow:
-                await evaluate_critical_alerts(session, grow.grow_type, user.tenant_id, grow.id, reading)
-                await evaluate_composite_alerts(session, grow.grow_type, user.tenant_id, grow.id, reading)
-                await evaluate_trend_alerts(session, grow.grow_type, user.tenant_id, grow.id, reading.bucket_id)
-    except Exception:
-        logger.debug("Alert evaluation failed for reading %s", reading.id, exc_info=True)
-
-    return reading
+    assert user.tenant_id is not None  # guaranteed by get_tenant_session
+    return await service.create_bucket_reading(session, tenant_id=user.tenant_id, data=body.model_dump())
 
 
 @router.get("", response_model=PaginatedResponse[SensorReadingResponse])
@@ -128,13 +95,8 @@ async def list_readings(
     bucket_id: UUID | None = None,
 ):
     """List bucket sensor readings with optional bucket filtering."""
-    q = (
-        select(BucketSensorReading)
-        .where(BucketSensorReading.tenant_id == user.tenant_id)
-        .order_by(desc(BucketSensorReading.recorded_at))
-    )
-    if bucket_id:
-        q = q.where(BucketSensorReading.bucket_id == bucket_id)
+    assert user.tenant_id is not None  # guaranteed by get_tenant_session
+    q = service.list_bucket_readings_query(tenant_id=user.tenant_id, bucket_id=bucket_id)
     items, total = await paginate(session, q, pagination)
     return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
 
@@ -146,14 +108,8 @@ async def get_latest_reading(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Get the most recent sensor reading for a bucket."""
-    result = await session.execute(
-        select(BucketSensorReading)
-        .where(BucketSensorReading.tenant_id == user.tenant_id)
-        .where(BucketSensorReading.bucket_id == bucket_id)
-        .order_by(desc(BucketSensorReading.recorded_at))
-        .limit(1)
-    )
-    return result.scalar_one_or_none()
+    assert user.tenant_id is not None  # guaranteed by get_tenant_session
+    return await service.get_latest_bucket_reading(session, tenant_id=user.tenant_id, bucket_id=bucket_id)
 
 
 @router.get("/drift/{bucket_id}")
@@ -163,39 +119,13 @@ async def get_drift(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
     hours: int = Query(default=24, le=168),
 ):
-    """Get pH and EC drift over the specified hours for a bucket."""
-    cutoff = datetime.now(UTC) - timedelta(hours=hours)
-    result = await session.execute(
-        select(BucketSensorReading)
-        .where(BucketSensorReading.tenant_id == user.tenant_id)
-        .where(BucketSensorReading.bucket_id == bucket_id)
-        .where(BucketSensorReading.recorded_at >= cutoff)
-        .order_by(BucketSensorReading.recorded_at)
-    )
-    readings = result.scalars().all()
-
-    ph_values = [r.ph for r in readings if r.ph is not None]
-    ec_values = [r.ec for r in readings if r.ec is not None]
-    orp_values = [r.orp for r in readings if r.orp is not None]
-
-    def drift_stats(values: list[float]) -> dict | None:
-        if len(values) < 2:
-            return None
-        return {
-            "min": min(values),
-            "max": max(values),
-            "first": values[0],
-            "last": values[-1],
-            "delta": round(values[-1] - values[0], 3),
-            "count": len(values),
-        }
-
+    """Get pH / EC / ORP drift over the specified hours for a bucket."""
+    assert user.tenant_id is not None  # guaranteed by get_tenant_session
+    stats = await service.compute_bucket_drift(session, tenant_id=user.tenant_id, bucket_id=bucket_id, hours=hours)
     return {
         "bucket_id": str(bucket_id),
         "hours": hours,
-        "ph": drift_stats(ph_values),
-        "ec": drift_stats(ec_values),
-        "orp": drift_stats(orp_values),
+        **stats,
     }
 
 
@@ -206,7 +136,7 @@ async def get_reading(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Get a single sensor reading by ID."""
-    reading = await session.get(BucketSensorReading, reading_id)
+    reading = await service.get_bucket_reading(session, reading_id)
     if reading is None:
         raise HTTPException(status_code=404, detail="Sensor reading not found")
     return reading
@@ -219,8 +149,7 @@ async def delete_reading(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Delete a sensor reading."""
-    reading = await session.get(BucketSensorReading, reading_id)
+    reading = await service.get_bucket_reading(session, reading_id)
     if reading is None:
         raise HTTPException(status_code=404, detail="Sensor reading not found")
-    await session.delete(reading)
-    await session.commit()
+    await service.delete_bucket_reading(session, reading)

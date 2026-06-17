@@ -4574,7 +4574,9 @@ export interface paths {
          * Create Reading
          * @description Record a new bucket sensor reading (pH, EC, temperature, etc.).
          *
-         *     For RDWC header buckets, the reading is automatically propagated to all site buckets.
+         *     For RDWC header buckets, the reading is automatically propagated to all
+         *     site buckets. Real-time alerts (critical/composite/trend) are evaluated
+         *     best-effort and never block ingest.
          */
         post: operations["create_reading_v1_sensors_post"];
         delete?: never;
@@ -4592,7 +4594,7 @@ export interface paths {
         };
         /**
          * Get Drift
-         * @description Get pH and EC drift over the specified hours for a bucket.
+         * @description Get pH / EC / ORP drift over the specified hours for a bucket.
          */
         get: operations["get_drift_v1_sensors_drift__bucket_id__get"];
         put?: never;
