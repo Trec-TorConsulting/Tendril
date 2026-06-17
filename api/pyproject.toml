@@ -108,6 +108,9 @@ module = [
     "app.automation.critical_alerts_defaults",
     "app.mqtt.dedup",
     "app.integrations.connectors.retry",
+    "app.analytics.service",
+    "app.admin.service",
+    "app.devices.service",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
