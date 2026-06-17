@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any, cast
 import re
 
 from sqlalchemy import select
@@ -951,40 +952,42 @@ async def sync_kb_seed(session: AsyncSession) -> dict:
     # Upsert categories
     category_map: dict[str, KBCategory] = {}
     for cat_data in SEED_CATEGORIES:
+        cat_slug = cast(str, cat_data["slug"])
         existing = (
-            await session.execute(select(KBCategory).where(KBCategory.slug == cat_data["slug"]))
+            await session.execute(select(KBCategory).where(KBCategory.slug == cat_slug))
         ).scalar_one_or_none()
 
         if existing:
             for k, v in cat_data.items():
                 setattr(existing, k, v)
-            category_map[cat_data["slug"]] = existing
+            category_map[cat_slug] = existing
         else:
-            cat = KBCategory(**cat_data)
+            cat = KBCategory(**cast(dict[str, Any], cat_data))
             session.add(cat)
-            category_map[cat_data["slug"]] = cat
+            category_map[cat_slug] = cat
             cat_added += 1
 
     await session.flush()  # Ensure category IDs are generated
 
     # Upsert articles
     for art_data in SEED_ARTICLES:
-        cat_slug = art_data.pop("category_slug")
+        cat_slug = cast(str, art_data.pop("category_slug"))
         category = category_map.get(cat_slug)
         if not category:
             art_data["category_slug"] = cat_slug  # Restore for safety
             continue
 
-        existing = (
-            await session.execute(select(KBArticle).where(KBArticle.slug == art_data["slug"]))
+        article_slug = cast(str, art_data["slug"])
+        existing_article = (
+            await session.execute(select(KBArticle).where(KBArticle.slug == article_slug))
         ).scalar_one_or_none()
 
-        if existing:
+        if existing_article:
             for k, v in art_data.items():
-                setattr(existing, k, v)
-            existing.category_id = category.id
+                setattr(existing_article, k, v)
+            existing_article.category_id = category.id
         else:
-            article = KBArticle(**art_data, category_id=category.id)
+            article = KBArticle(**cast(dict[str, Any], art_data), category_id=category.id)
             session.add(article)
             art_added += 1
 

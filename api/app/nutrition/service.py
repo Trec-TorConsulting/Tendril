@@ -57,10 +57,10 @@ async def compute_recommendation(
 
     # Selected additives
     if profile.selected_additives:
-        result = await session.execute(
+        additive_result = await session.execute(
             select(NutrientAdditive).where(NutrientAdditive.slug.in_(profile.selected_additives))
         )
-        for additive in result.scalars().all():
+        for additive in additive_result.scalars().all():
             additive_info.append(
                 {
                     "slug": additive.slug,
@@ -74,8 +74,8 @@ async def compute_recommendation(
 
     # Selected recipes
     if profile.selected_recipes:
-        result = await session.execute(select(OrganicRecipe).where(OrganicRecipe.slug.in_(profile.selected_recipes)))
-        for recipe in result.scalars().all():
+        recipe_result = await session.execute(select(OrganicRecipe).where(OrganicRecipe.slug.in_(profile.selected_recipes)))
+        for recipe in recipe_result.scalars().all():
             # Only include if recipe is appropriate for current stage
             if recipe.best_for_stages and stage not in recipe.best_for_stages:
                 continue
@@ -91,8 +91,8 @@ async def compute_recommendation(
 
     # Custom nutrients
     if profile.custom_nutrient_ids:
-        result = await session.execute(select(CustomNutrient).where(CustomNutrient.id.in_(profile.custom_nutrient_ids)))
-        for custom in result.scalars().all():
+        custom_result = await session.execute(select(CustomNutrient).where(CustomNutrient.id.in_(profile.custom_nutrient_ids)))
+        for custom in custom_result.scalars().all():
             custom_info.append(
                 {
                     "id": str(custom.id),

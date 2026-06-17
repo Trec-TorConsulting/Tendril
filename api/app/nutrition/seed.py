@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from typing import Any, cast
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -57,8 +58,8 @@ async def _sync_lines(session: AsyncSession, all_lines: list[dict]) -> None:
         products_data = line_data.pop("products", [])
 
         # Look up brand
-        result = await session.execute(select(NutrientBrand).where(NutrientBrand.slug == brand_slug))
-        brand = result.scalar_one_or_none()
+        brand_result = await session.execute(select(NutrientBrand).where(NutrientBrand.slug == brand_slug))
+        brand = brand_result.scalar_one_or_none()
         if not brand:
             logger.warning("Brand %s not found, skipping line %s", brand_slug, line_data["slug"])
             line_data["brand_slug"] = brand_slug
@@ -66,13 +67,14 @@ async def _sync_lines(session: AsyncSession, all_lines: list[dict]) -> None:
             continue
 
         # Upsert line
-        result = await session.execute(
+        line_result = await session.execute(
             select(NutrientLine).where(
                 NutrientLine.brand_id == brand.id,
                 NutrientLine.slug == line_data["slug"],
             )
         )
-        existing_line = result.scalar_one_or_none()
+        existing_line = line_result.scalar_one_or_none()
+        line: NutrientLine
         if existing_line:
             for key, value in line_data.items():
                 setattr(existing_line, key, value)
@@ -115,18 +117,19 @@ async def _sync_feed_charts(session: AsyncSession) -> None:
             continue
 
         for week_data in chart_data:
+            week_payload = cast(dict[str, Any], week_data)
             result = await session.execute(
                 select(NutrientFeedChart).where(
                     NutrientFeedChart.line_id == line.id,
-                    NutrientFeedChart.week_number == week_data["week_number"],
+                    NutrientFeedChart.week_number == cast(int, week_payload["week_number"]),
                 )
             )
             existing = result.scalar_one_or_none()
             if existing:
-                for key, value in week_data.items():
+                for key, value in week_payload.items():
                     setattr(existing, key, value)
             else:
-                session.add(NutrientFeedChart(line_id=line.id, **week_data))
+                session.add(NutrientFeedChart(line_id=line.id, **week_payload))
 
     await session.flush()
 
@@ -183,12 +186,13 @@ async def _sync_conflicts(session: AsyncSession) -> None:
 async def _sync_recipes(session: AsyncSession) -> None:
     """Upsert organic recipes by slug."""
     for recipe_data in ORGANIC_RECIPES:
-        result = await session.execute(select(OrganicRecipe).where(OrganicRecipe.slug == recipe_data["slug"]))
+        recipe_payload = cast(dict[str, Any], recipe_data)
+        result = await session.execute(select(OrganicRecipe).where(OrganicRecipe.slug == cast(str, recipe_payload["slug"])))
         existing = result.scalar_one_or_none()
         if existing:
-            for key, value in recipe_data.items():
+            for key, value in recipe_payload.items():
                 setattr(existing, key, value)
         else:
-            session.add(OrganicRecipe(**recipe_data))
+            session.add(OrganicRecipe(**recipe_payload))
 
     await session.flush()
