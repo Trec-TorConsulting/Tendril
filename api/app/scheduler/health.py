@@ -32,7 +32,7 @@ LEADER_STATUS = Gauge(
 )
 
 # Global state updated by the task runner
-_state = {
+_state: dict[str, bool | datetime | None] = {
     "is_leader": False,
     "last_task_run": None,
     "started_at": None,
@@ -69,8 +69,16 @@ async def _readyz(request: web.Request) -> web.Response:
         {
             "status": "ready",
             "is_leader": True,
-            "last_task_run": _state["last_task_run"].isoformat() if _state["last_task_run"] else None,
-            "started_at": _state["started_at"].isoformat() if _state["started_at"] else None,
+            "last_task_run": (
+                _state["last_task_run"].isoformat()
+                if isinstance(_state["last_task_run"], datetime)
+                else None
+            ),
+            "started_at": (
+                _state["started_at"].isoformat()
+                if isinstance(_state["started_at"], datetime)
+                else None
+            ),
         }
     )
 

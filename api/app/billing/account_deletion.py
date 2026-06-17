@@ -207,6 +207,11 @@ async def export_user_data(session: AsyncSession, user_id, tenant_id) -> dict:
     user = await session.get(User, user_id)
     tenant = await session.get(Tenant, tenant_id)
 
+    if user is None:
+        raise ValueError(f"User {user_id} not found")
+    if tenant is None:
+        raise ValueError(f"Tenant {tenant_id} not found")
+
     grows = (await session.execute(select(GrowCycle).where(GrowCycle.tenant_id == tenant_id))).scalars().all()
 
     expenses = (await session.execute(select(Expense).where(Expense.tenant_id == tenant_id))).scalars().all()

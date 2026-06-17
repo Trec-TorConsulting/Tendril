@@ -106,6 +106,10 @@ class Tenant(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
+    # Account deletion (GDPR) — used when tenant has no associated Account
+    deletion_scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deletion_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     account: Mapped[Account | None] = relationship(back_populates="tenants")
     memberships: Mapped[list[TenantMembership]] = relationship(back_populates="tenant", cascade="all, delete-orphan")
     devices: Mapped[list[Device]] = relationship(back_populates="tenant", cascade="all, delete-orphan")

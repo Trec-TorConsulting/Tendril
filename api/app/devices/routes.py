@@ -202,13 +202,12 @@ async def get_device_qr(
 ):
     """Generate a QR code PNG containing the device_id for pairing."""
     from app.auth.signed_url import verify_signed_url
+    from app.database import set_rls_tenant
 
     tenant_id = verify_signed_url(request.url.path, sig, exp, tid)
 
     async with async_session_factory() as session:
-        from app.database import set_rls_tenant
-
-        await set_rls_tenant(session, tenant_id)
+        await set_rls_tenant(session, UUID(tenant_id))
         result = await session.execute(select(Device).where(Device.device_id == device_id))
         device = result.scalar_one_or_none()
     if device is None:

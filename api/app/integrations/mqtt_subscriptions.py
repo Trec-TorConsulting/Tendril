@@ -157,7 +157,8 @@ async def _process_message(session: AsyncSession, topic: str, raw_payload: dict[
         if connector_cls is None:
             continue
 
-        decrypted = decrypt_config(config.encrypted_config) if config.encrypted_config else {}
+        _enc_cfg = getattr(config, "encrypted_config", None)
+        decrypted = decrypt_config(_enc_cfg) if _enc_cfg else {}
         connector = connector_cls(config, decrypted, maps)
 
         # Build webhook-style payload

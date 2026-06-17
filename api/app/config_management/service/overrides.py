@@ -116,7 +116,7 @@ async def delete_override(
     )
     await session.commit()
     cache.invalidate(f"override:{tenant_id}:{config_type}:{config_key}")
-    return result.rowcount > 0
+    return result.rowcount > 0  # type: ignore[attr-defined]
 
 
 def _deep_merge(base: dict, override: dict) -> dict:

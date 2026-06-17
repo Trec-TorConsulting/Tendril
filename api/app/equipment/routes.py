@@ -49,12 +49,12 @@ async def list_equipment(
         stmt = stmt.where(ControllableEquipment.enabled == enabled)
     stmt = stmt.order_by(ControllableEquipment.name)
 
-    page = await paginate(session, stmt, pagination)
+    eq_items, eq_total = await paginate(session, stmt, pagination)
     return PaginatedResponse(
-        items=[_to_response(e) for e in page.items],
-        total=page.total,
-        page=page.page,
-        page_size=page.page_size,
+        items=[_to_response(e) for e in eq_items],
+        total=eq_total,
+        page=pagination.page,
+        page_size=pagination.page_size,
     )
 
 
@@ -205,12 +205,12 @@ async def get_state_history(
         stmt = stmt.where(EquipmentStateLog.source == source)
     stmt = stmt.order_by(EquipmentStateLog.created_at.desc())
 
-    page = await paginate(session, stmt, pagination)
+    log_items, log_total = await paginate(session, stmt, pagination)
     return PaginatedResponse(
-        items=[_to_log_response(log) for log in page.items],
-        total=page.total,
-        page=page.page,
-        page_size=page.page_size,
+        items=[_to_log_response(log) for log in log_items],
+        total=log_total,
+        page=pagination.page,
+        page_size=pagination.page_size,
     )
 
 
@@ -241,9 +241,11 @@ async def test_connection_endpoint(
 async def _get_equipment_or_404(
     session: AsyncSession,
     equipment_id: str,
-    tenant_id: uuid.UUID,
+    tenant_id: uuid.UUID | None,
 ) -> ControllableEquipment:
     """Load equipment by ID, raise 404 if not found or wrong tenant."""
+    if tenant_id is None:
+        raise HTTPException(status_code=403, detail="Tenant context required")
     try:
         uid = uuid.UUID(equipment_id)
     except ValueError as err:

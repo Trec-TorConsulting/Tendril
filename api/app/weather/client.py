@@ -46,7 +46,7 @@ _DAILY_VARS = ",".join(
 
 async def fetch_weather(latitude: float, longitude: float) -> dict[str, Any]:
     """Fetch current weather + 7-day forecast from Open-Meteo API."""
-    params = {
+    params: dict[str, str | int | float] = {
         "latitude": latitude,
         "longitude": longitude,
         "current": _CURRENT_VARS,

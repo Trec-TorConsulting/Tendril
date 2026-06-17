@@ -96,7 +96,7 @@ async def create_integration(
         name=body.name,
         config=body.config,
         enabled=body.enabled,
-        poll_interval_s=body.poll_interval_s,
+        poll_interval_s=body.poll_interval_s or 60,
     )
     logger.info("Integration created: %s (%s) for tenant %s", cfg.id, cfg.type, user.tenant_id)
     return _config_to_response(cfg)

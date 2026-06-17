@@ -184,12 +184,12 @@ async def list_commands(
     if status:
         q = q.where(DeviceCommand.status == status)
     q = q.order_by(DeviceCommand.created_at.desc())
-    page = await paginate(session, q, pagination)
+    cmd_items, cmd_total = await paginate(session, q, pagination)
     return PaginatedResponse(
-        items=[_to_response(c) for c in page.items],
-        total=page.total,
-        page=page.page,
-        page_size=page.page_size,
+        items=[_to_response(c) for c in cmd_items],
+        total=cmd_total,
+        page=pagination.page,
+        page_size=pagination.page_size,
     )
 
 

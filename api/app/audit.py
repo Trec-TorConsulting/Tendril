@@ -10,8 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 async def record_audit(
     session: AsyncSession,
-    tenant_id: UUID,
-    user_id: UUID,
+    tenant_id: UUID | None,
+    user_id: UUID | None,
     action: str,
     resource_type: str,
     resource_id: str,
@@ -21,9 +21,11 @@ async def record_audit(
 ) -> None:
     """Record an audit log entry. Only writes for commercial-plan tenants.
 
-    Safe to call for any tenant — silently skips if not on commercial plan
-    or if the audit_logs table doesn't exist yet.
+    Safe to call for any tenant — silently skips if not on commercial plan,
+    if tenant_id/user_id is None, or if the audit_logs table doesn't exist yet.
     """
+    if tenant_id is None or user_id is None:
+        return
     try:
         from app.commercial.models import AuditLog
 

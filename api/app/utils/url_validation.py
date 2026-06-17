@@ -77,7 +77,7 @@ def validate_url_safe(url: str, *, allow_private: bool = False) -> str:
 
         for _, _, _, _, sockaddr in resolved:
             ip_str = sockaddr[0]
-            if _is_private_ip(ip_str):
+            if _is_private_ip(str(ip_str)):
                 raise HTTPException(
                     status_code=400,
                     detail="URL must not point to a private or reserved IP address.",

@@ -486,7 +486,7 @@ class TuyaConnector(BaseConnector):
                 temp_c = reading.get("temperature_c")
                 ambient_temp_f = (temp_c * 9 / 5 + 32) if temp_c is not None else None
 
-                row = TentSensorReading(
+                row = TentSensorReading(  # type: ignore[assignment]
                     tenant_id=tenant_id,
                     tent_id=tent_id,
                     device_id=f"tuya:{external_id}",

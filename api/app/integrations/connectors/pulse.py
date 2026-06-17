@@ -398,7 +398,7 @@ async def write_pulse_readings(
             bucket_id = reading.pop("bucket_id", None)
             if not bucket_id or not tenant_id:
                 continue
-            row = BucketSensorReading(
+            row = BucketSensorReading(  # type: ignore[assignment]
                 tenant_id=tenant_id,
                 bucket_id=bucket_id,
                 device_id=f"pulse:{external_id}",

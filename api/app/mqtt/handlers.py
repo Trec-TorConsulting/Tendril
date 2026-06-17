@@ -210,7 +210,7 @@ async def store_sensor_reading(tenant_id: UUID, device_id_str: str, sensor_type:
             if not values:
                 return
             _derive_ec_ppm(values)
-            reading = BucketSensorReading(
+            reading = BucketSensorReading(  # type: ignore[assignment]
                 tenant_id=tenant_id,
                 bucket_id=bucket.id,
                 device_id=device_id_str,
@@ -238,8 +238,8 @@ async def store_sensor_reading(tenant_id: UUID, device_id_str: str, sensor_type:
 
                 grow = await session.get(GrowCycle, bucket.grow_cycle_id)
                 if grow:
-                    await evaluate_critical_alerts(session, grow.grow_type, tenant_id, grow.id, reading)
-                    await evaluate_composite_alerts(session, grow.grow_type, tenant_id, grow.id, reading)
+                    await evaluate_critical_alerts(session, grow.grow_type, tenant_id, grow.id, reading)  # type: ignore[arg-type]
+                    await evaluate_composite_alerts(session, grow.grow_type, tenant_id, grow.id, reading)  # type: ignore[arg-type]
                     await evaluate_trend_alerts(session, grow.grow_type, tenant_id, grow.id, bucket.id)
             except Exception:
                 logger.debug("Alert evaluation failed for bucket %s", bucket.id, exc_info=True)

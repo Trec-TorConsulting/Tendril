@@ -115,7 +115,7 @@ async def check_max_on_violations(
             continue
 
         on_duration = now - last_on_log.created_at
-        max_duration = timedelta(minutes=equip.max_on_minutes)
+        max_duration = timedelta(minutes=equip.max_on_minutes or 0)
 
         if on_duration > max_duration:
             violations.append(equip)

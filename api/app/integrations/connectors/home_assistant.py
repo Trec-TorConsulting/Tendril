@@ -79,7 +79,7 @@ class HomeAssistantConnector(BaseConnector):
                 entity_id = dm.external_id
                 try:
                     resp = await retry_request(
-                        lambda url=f"{self.base_url}/api/states/{entity_id}": client.get(
+                                lambda url=f"{self.base_url}/api/states/{entity_id}": client.get(  # type: ignore[misc]
                             url,
                             headers=self.headers,
                         ),
@@ -163,7 +163,7 @@ class HomeAssistantConnector(BaseConnector):
                 if not bucket_id or not tenant_id:
                     continue
 
-                row = BucketSensorReading(
+                row = BucketSensorReading(  # type: ignore[assignment]
                     tenant_id=tenant_id,
                     bucket_id=bucket_id,
                     device_id=f"ha:{external_id}",
@@ -272,7 +272,7 @@ class HomeAssistantConnector(BaseConnector):
 
         # Try to get numeric value
         try:
-            numeric = float(state)
+            numeric = float(state) if state is not None else None
         except (ValueError, TypeError):
             numeric = None
 

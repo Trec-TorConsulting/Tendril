@@ -369,14 +369,16 @@ def _build_timelapse_gif(frames: list[tuple[bytes, str]]) -> bytes:
         img = Image.open(BytesIO(img_bytes)).convert("RGB")
         # Resize proportionally to fixed width
         ratio = frame_width / img.width
-        img = img.resize((frame_width, int(img.height * ratio)), Image.LANCZOS)
+        img = img.resize((frame_width, int(img.height * ratio)), getattr(Image, 'Resampling', Image).LANCZOS)
 
         # Overlay timestamp caption at the bottom
         draw = ImageDraw.Draw(img)
+        font_obj: ImageFont.FreeTypeFont | ImageFont.ImageFont
         try:
-            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
+            font_obj = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
         except OSError:
-            font = ImageFont.load_default()
+            font_obj = ImageFont.load_default()  # type: ignore[assignment]
+        font = font_obj  # type: ignore[assignment]
         bbox = draw.textbbox((0, 0), caption, font=font)
         tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
         y = img.height - th - 10

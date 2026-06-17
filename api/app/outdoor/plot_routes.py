@@ -159,7 +159,7 @@ async def batch_update_cells(
         cell = result.scalar_one_or_none()
 
         if cell is None:
-            cell = PlotCell(
+            cell = PlotCell(  # type: ignore[assignment]
                 tenant_id=user.tenant_id,
                 plot_grid_id=grid.id,
                 **cell_data.model_dump(),
@@ -168,7 +168,7 @@ async def batch_update_cells(
         else:
             for k, v in cell_data.model_dump().items():
                 setattr(cell, k, v)
-        updated.append(cell)
+        updated.append(cell)  # type: ignore[arg-type]
 
     grid.updated_at = datetime.now(UTC)
     await session.commit()

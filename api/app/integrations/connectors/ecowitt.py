@@ -669,7 +669,7 @@ async def write_ecowitt_readings(
             tent_id = reading.pop("tent_id", None)
             if not tent_id or not tenant_id:
                 continue
-            row = TentSensorReading(
+            row = TentSensorReading(  # type: ignore[assignment]
                 tenant_id=tenant_id,
                 tent_id=tent_id,
                 device_id=f"ecowitt:{external_id}",
@@ -684,7 +684,7 @@ async def write_ecowitt_readings(
             if not bucket_id or not tenant_id:
                 continue
             allowed = {"soil_moisture", "soil_temp", "ec"}
-            row = BucketSensorReading(
+            row = BucketSensorReading(  # type: ignore[assignment]
                 tenant_id=tenant_id,
                 bucket_id=bucket_id,
                 device_id=f"ecowitt:{external_id}",

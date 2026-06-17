@@ -216,7 +216,7 @@ async def update_grow_type_profile(slug: str, body: ProfileUpdate):
 async def delete_grow_type_profile(slug: str):
     async with async_session_factory() as session:
         result = await session.execute(delete(GrowTypeProfile).where(GrowTypeProfile.slug == slug))
-        if result.rowcount == 0:
+        if result.rowcount == 0:  # type: ignore[attr-defined]
             raise HTTPException(404, "Profile not found")
         await session.commit()
         cache.invalidate_prefix("profile")
@@ -303,7 +303,7 @@ async def delete_stage(slug: str, stage_slug: str):
                 GrowTypeStage.profile_id.in_(select(GrowTypeProfile.id).where(GrowTypeProfile.slug == slug)),
             )
         )
-        if result.rowcount == 0:
+        if result.rowcount == 0:  # type: ignore[attr-defined]
             raise HTTPException(404, "Stage not found")
         await session.commit()
         cache.invalidate_prefix(f"profile:{slug}")
@@ -441,7 +441,7 @@ async def update_task_template(template_id: str, body: TaskTemplateUpdate):
 async def delete_task_template(template_id: str):
     async with async_session_factory() as session:
         result = await session.execute(delete(TaskTemplate).where(TaskTemplate.id == uuid.UUID(template_id)))
-        if result.rowcount == 0:
+        if result.rowcount == 0:  # type: ignore[attr-defined]
             raise HTTPException(404, "Template not found")
         await session.commit()
         cache.invalidate_prefix("template")
@@ -524,7 +524,7 @@ async def export_config(config_type: str):
             templates = result.scalars().all()
             from app.config_management.service.task_templates import _serialize_template
 
-            data = [_serialize_template(t) for t in templates]
+            data = [_serialize_template(t) for t in templates]  # type: ignore[arg-type]
         else:
             raise HTTPException(400, f"Unknown config type: {config_type}")
 

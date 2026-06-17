@@ -118,7 +118,7 @@ async def _get_tuya_connector(integration_id: str, tenant_id: uuid.UUID):
         config = await session.get(IntegrationConfig, uuid.UUID(integration_id))
         if config is None or config.tenant_id != tenant_id:
             return None
-        if config.integration_type != "tuya":
+        if getattr(config, "integration_type", config.type) != "tuya":
             return None
 
         device_maps = (
@@ -135,7 +135,8 @@ async def _get_tuya_connector(integration_id: str, tenant_id: uuid.UUID):
         if connector_cls is None:
             return None
 
-        decrypted = decrypt_config(config.encrypted_config)
+        _raw_cfg = getattr(config, "encrypted_config", "")
+        decrypted = decrypt_config(str(_raw_cfg)) if isinstance(_raw_cfg, str) else {}
         return connector_cls(config, decrypted, list(device_maps))
 
 

@@ -117,7 +117,7 @@ async def diagnose_plant(
         grow = await session.get(GrowCycle, UUID(body.grow_id))
         if grow:
             grow_type = grow_type or grow.grow_type
-            current_stage = current_stage or grow.current_stage
+            current_stage = current_stage or grow.stage
 
     prompt = service.build_diagnosis_prompt(grow_type, current_stage, body.observations)
 

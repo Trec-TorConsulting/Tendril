@@ -189,13 +189,12 @@ async def camera_snapshot(
 ):
     """Proxy camera snapshot — uses HMAC-signed URLs for <img> tags."""
     from app.auth.signed_url import verify_signed_url
+    from app.database import set_rls_tenant
 
     tenant_id = verify_signed_url(request.url.path, sig, exp, tid)
 
     async with async_session_factory() as session:
-        from app.database import set_rls_tenant
-
-        await set_rls_tenant(session, tenant_id)
+        await set_rls_tenant(session, UUID(tenant_id))
         tent = await session.get(Tent, tent_id)
         if tent is None:
             raise HTTPException(status_code=404, detail="Tent not found")

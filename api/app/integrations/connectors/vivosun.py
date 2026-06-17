@@ -455,7 +455,7 @@ class VivosunConnector(BaseConnector):
                             device_list.extend(group_devices)
                 else:
                     # Fallback for flat list responses
-                    device_list = raw.get("list", raw.get("devices", []))
+                    device_list = raw.get("list", raw.get("devices", []))  # type: ignore[assignment]
             elif isinstance(raw, list):
                 device_list = raw
 

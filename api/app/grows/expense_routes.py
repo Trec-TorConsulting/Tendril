@@ -228,7 +228,7 @@ async def delete_harvest_value(
 # ─── ROI Calculation ──────────────────────────────────────────────────────────
 
 
-async def _calculate_roi(session: AsyncSession, grow: GrowCycle, tenant_id: UUID) -> ROISummary:
+async def _calculate_roi(session: AsyncSession, grow: GrowCycle, tenant_id: UUID | None) -> ROISummary:
     """Calculate ROI metrics for a single grow cycle."""
     # Sum expenses by category
     expense_rows = await session.execute(
