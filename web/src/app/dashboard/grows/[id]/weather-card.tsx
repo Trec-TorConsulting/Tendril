@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { getAccessToken } from "@/lib/auth";
+import { useEffect, useState } from "react";
 import { formatWeekday } from "@/lib/utils";
 import { getCurrentWeather, getWeatherForecast, getWeatherHistory } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Cloud, Sun, Droplets, Wind, Thermometer, AlertTriangle } from "lucide-react";
 import { usePreferences } from "@/hooks/use-preferences";
 import { formatTemp, formatWind } from "@/lib/units";
+import { useApiSWR } from "@/lib/swr";
 
 interface WeatherCardProps {
   tentId: string;
@@ -18,32 +18,38 @@ interface WeatherCardProps {
 
 export function WeatherCard({ tentId, tentName, environmentType }: WeatherCardProps) {
   const { prefs } = usePreferences();
-  const [current, setCurrent] = useState<Record<string, unknown> | null>(null);
-  const [alerts, setAlerts] = useState<unknown[]>([]);
-  const [forecast, setForecast] = useState<unknown[]>([]);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async () => {
-    if (environmentType !== "outdoor" && environmentType !== "greenhouse") return;
-    const token = getAccessToken();
-    if (!token) return;
-    setLoading(true);
-    setError(null);
-    try {
+  const {
+    data,
+    isLoading: loading,
+    error: loadError,
+  } = useApiSWR(
+    environmentType === "outdoor" || environmentType === "greenhouse"
+      ? ["grow", "weather", tentId, environmentType]
+      : null,
+    async (token) => {
       const [cur, fc] = await Promise.all([
         getCurrentWeather(token, tentId),
         getWeatherForecast(token, tentId),
       ]);
-      setCurrent(cur.current);
-      setAlerts(cur.alerts || []);
-      setForecast(fc.forecast || []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load weather");
-    } finally { setLoading(false); }
-  }, [tentId, environmentType]);
+      return {
+        current: cur.current,
+        alerts: cur.alerts || [],
+        forecast: fc.forecast || [],
+      };
+    },
+  );
+  const current = data?.current ?? null;
+  const alerts = data?.alerts ?? [];
+  const forecast = data?.forecast ?? [];
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Failed to load weather");
+    } else {
+      setError(null);
+    }
+  }, [loadError]);
 
   // Only show for outdoor/greenhouse
   if (environmentType !== "outdoor" && environmentType !== "greenhouse") return null;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
 import { useConfirm } from "@/components/confirm-dialog";
 import { formatDate } from "@/lib/utils";
@@ -37,6 +37,7 @@ import {
 import { ImageIcon, Plus, Trash2, Pencil, Loader2, Upload, Camera, Film, Stethoscope } from "lucide-react";
 import { toast } from "sonner";
 import { PhotoAIDialog } from "@/components/photo-ai-dialog";
+import { useApiSWR } from "@/lib/swr";
 
 /** Image component with retry logic for signed URLs. */
 function RetryImage({ url, alt, className, maxRetries = 3 }: { url: string; alt: string; className?: string; maxRetries?: number }) {
@@ -81,8 +82,12 @@ interface PhotosTabProps {
 }
 
 export function PhotosTab({ growId, buckets }: PhotosTabProps) {
-  const [photos, setPhotos] = useState<GrowPhotoResponse[]>([]);
-  const [loading, setLoading] = useState(false);
+  const {
+    data: rawPhotos,
+    isLoading: loading,
+    mutate,
+  } = useApiSWR(["grow", "photos", growId], (token) => listGrowPhotos(token, growId));
+  const photos: GrowPhotoResponse[] = rawPhotos ?? [];
   const [addDialog, setAddDialog] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string>("");
@@ -99,18 +104,7 @@ export function PhotosTab({ growId, buckets }: PhotosTabProps) {
   const bucketLabelMap: Record<string, string> = {};
   buckets.forEach((b) => { bucketLabelMap[b.id] = `#${b.position} ${b.label || "Unnamed"}`; });
 
-  const loadPhotos = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-    setLoading(true);
-    try {
-      const data = await listGrowPhotos(token, growId);
-      setPhotos(data);
-    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to load photos"); }
-    setLoading(false);
-  }, [growId]);
-
-  useEffect(() => { loadPhotos(); }, [loadPhotos]);
+  const loadPhotos = mutate;
 
   // Clean up object URLs on unmount
   useEffect(() => {

@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getAccessToken } from "@/lib/auth";
 import { apiFetch } from "@/lib/api";
+import { useApiSWR } from "@/lib/swr";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -37,24 +37,19 @@ const PLAN_COLORS: Record<string, string> = {
 
 export default function BusinessMetricsPage() {
   const [metrics, setMetrics] = useState<RevenueMetrics | null>(null);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const { data, isLoading: loading, error: loadError } = useApiSWR(
+    ["dashboard", "admin", "metrics"],
+    (token) => apiFetch<RevenueMetrics>("/billing/metrics", { token }),
+  );
 
   useEffect(() => {
-    async function load() {
-      const token = getAccessToken();
-      if (!token) return;
-      try {
-        const data = await apiFetch<RevenueMetrics>("/billing/metrics", { token });
-        setMetrics(data);
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : "Access denied — platform admin required");
-      } finally {
-        setLoading(false);
-      }
-    }
-    load();
-  }, []);
+    if (data) setMetrics(data);
+  }, [data]);
+
+  useEffect(() => {
+    if (loadError) setError(loadError instanceof Error ? loadError.message : "Access denied — platform admin required");
+  }, [loadError]);
 
   if (error) {
     return (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, GitCompare, Minus } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -20,8 +20,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/page-header";
-import { getAccessToken } from "@/lib/auth";
 import { apiFetch, type GrowResponse, listGrows } from "@/lib/api";
+import { useApiSWR } from "@/lib/swr";
 
 const METRICS = [
   { value: "ph", label: "pH", unit: "" },
@@ -71,53 +71,41 @@ interface CompareResponse {
 }
 
 export default function SeasonComparisonPage() {
-  const [grows, setGrows] = useState<GrowResponse[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [metric, setMetric] = useState("ph");
-  const [compareData, setCompareData] = useState<CompareResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [growsLoading, setGrowsLoading] = useState(true);
+  const { data: growsData, isLoading: growsLoading, error: growsError } = useApiSWR(
+    ["analytics", "compare", "grows"],
+    (token) => listGrows(token),
+  );
+  const grows: GrowResponse[] = growsData ?? [];
 
-  // Load all grows
-  useEffect(() => {
-    async function load() {
-      try {
-        const token = getAccessToken() ?? "";
-        const items = await listGrows(token);
-        setGrows(items);
-      } catch {
-        toast.error("Failed to load grows");
-      } finally {
-        setGrowsLoading(false);
-      }
-    }
-    load();
-  }, []);
-
-  // Fetch comparison when selections change
-  const fetchComparison = useCallback(async () => {
-    if (selectedIds.length < 2) {
-      setCompareData(null);
-      return;
-    }
-    setLoading(true);
-    try {
-      const token = getAccessToken() ?? "";
+  const {
+    data: compareData,
+    isLoading: loading,
+    error: compareError,
+  } = useApiSWR(
+    selectedIds.length >= 2
+      ? ["analytics", "compare", metric, ...selectedIds]
+      : null,
+    async (token) => {
       const params = new URLSearchParams();
       selectedIds.forEach((id) => params.append("grow_id", id));
       params.set("metric", metric);
-      const data = await apiFetch<CompareResponse>(`/analytics/compare?${params.toString()}`, { token });
-      setCompareData(data);
-    } catch {
-      toast.error("Failed to load comparison data");
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedIds, metric]);
+      return apiFetch<CompareResponse>(`/analytics/compare?${params.toString()}`, { token });
+    },
+  );
 
   useEffect(() => {
-    fetchComparison();
-  }, [fetchComparison]);
+    if (growsError) {
+      toast.error("Failed to load grows");
+    }
+  }, [growsError]);
+
+  useEffect(() => {
+    if (compareError) {
+      toast.error("Failed to load comparison data");
+    }
+  }, [compareError]);
 
   // Build chart data (merge all series into single dataset by day)
   const chartData = compareData

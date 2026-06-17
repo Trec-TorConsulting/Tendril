@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
 import { adminListTenants, adminListTenantUsers, adminUpdateTenantPlan, adminListPlans, adminCreateTenant, adminDeleteTenant } from "@/lib/api";
 import type { AdminTenantSummary, AdminUserSummary, AdminBillingPlan } from "@/lib/api";
+import { useApiSWR } from "@/lib/swr";
 import { cn, formatDate } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -55,24 +56,34 @@ export default function PlatformTenantsPage() {
   const [createPlan, setCreatePlan] = useState("free");
   const [creating, setCreating] = useState(false);
 
-  const refresh = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-    try {
+  const { data, error: loadError, mutate } = useApiSWR(
+    ["platform", "tenants"],
+    async (token) => {
       const [t, p] = await Promise.all([
         adminListTenants(token),
         adminListPlans(token),
       ]);
-      setTenants(t);
-      setPlans(p.filter((pl) => pl.is_active));
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to load");
-    }
-  }, []);
+      return {
+        tenants: t,
+        plans: p.filter((pl) => pl.is_active),
+      };
+    },
+  );
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    if (data) {
+      setTenants(data.tenants);
+      setPlans(data.plans);
+    }
+  }, [data]);
+
+  useEffect(() => {
+    if (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Failed to load");
+    }
+  }, [loadError]);
+
+  const refresh = mutate;
 
   const toggleExpand = async (tenantId: string) => {
     if (expandedId === tenantId) {

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { getAccessToken } from "@/lib/auth";
 import { getTicket, addTicketMessage, closeTicket, rateTicket, type TicketDetail } from "@/lib/api";
+import { useApiSWR } from "@/lib/swr";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,31 +15,24 @@ import { toast } from "sonner";
 export default function TicketDetailPage() {
   const params = useParams();
   const ticketId = params.id as string;
-  const [ticket, setTicket] = useState<TicketDetail | null>(null);
-  const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
-  const [refreshCount, setRefreshCount] = useState(0);
+  const [hasShownLoadError, setHasShownLoadError] = useState(false);
+  const {
+    data: ticket,
+    isLoading: loading,
+    error,
+    mutate,
+  } = useApiSWR(["support", "ticket", ticketId], (token) => getTicket(token, ticketId));
 
   useEffect(() => {
-    let cancelled = false;
-    async function fetchTicket() {
-      const token = getAccessToken();
-      if (!token) return;
-      try {
-        const data = await getTicket(token, ticketId);
-        if (!cancelled) setTicket(data);
-      } catch {
-        if (!cancelled) toast.error("Failed to load ticket");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+    if (error && !hasShownLoadError) {
+      toast.error("Failed to load ticket");
+      setHasShownLoadError(true);
     }
-    fetchTicket();
-    return () => { cancelled = true; };
-  }, [ticketId, refreshCount]);
+  }, [error, hasShownLoadError]);
 
-  const reload = () => setRefreshCount((c) => c + 1);
+  const reload = mutate;
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();

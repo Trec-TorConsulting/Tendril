@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { getKBArticle, voteKBArticle, type KBArticle } from "@/lib/api";
+import { useApiSWR } from "@/lib/swr";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -15,21 +16,23 @@ export default function KBArticlePage() {
   const params = useParams();
   const slug = params.slug as string;
   const [article, setArticle] = useState<KBArticle | null>(null);
-  const [loading, setLoading] = useState(true);
   const [voted, setVoted] = useState(false);
+  const [hasShownLoadError, setHasShownLoadError] = useState(false);
+  const { data: fetchedArticle, isLoading: loading, error } = useApiSWR(
+    ["support", "kb", "article", slug],
+    () => getKBArticle(slug),
+  );
 
   useEffect(() => {
-    async function load() {
-      try {
-        setArticle(await getKBArticle(slug));
-      } catch {
-        toast.error("Article not found");
-      } finally {
-        setLoading(false);
-      }
+    setArticle(fetchedArticle ?? null);
+  }, [fetchedArticle]);
+
+  useEffect(() => {
+    if (error && !hasShownLoadError) {
+      toast.error("Article not found");
+      setHasShownLoadError(true);
     }
-    load();
-  }, [slug]);
+  }, [error, hasShownLoadError]);
 
   const handleVote = async (helpful: boolean) => {
     if (voted) return;

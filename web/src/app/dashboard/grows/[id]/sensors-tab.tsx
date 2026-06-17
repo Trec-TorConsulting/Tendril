@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { getAccessToken } from "@/lib/auth";
 import { formatShortDateTime } from "@/lib/utils";
 import { listSensorReadings, deleteSensorReading, getSensorDrift, type SensorReadingResponse, type BucketResponse } from "@/lib/api";
@@ -28,6 +28,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts";
+import { useApiSWR } from "@/lib/swr";
 
 function getMetrics(tu: string) {
   return [
@@ -52,6 +53,23 @@ const TIME_RANGES = [
   { label: "All", limit: 10000 },
 ];
 
+type DriftSnapshot = {
+  min: number;
+  max: number;
+  first: number;
+  last: number;
+  delta: number;
+  count: number;
+};
+
+type DriftData = {
+  bucket_id: string;
+  hours: number;
+  ph: DriftSnapshot | null;
+  ec: DriftSnapshot | null;
+  orp: DriftSnapshot | null;
+};
+
 interface SensorsTabProps {
   buckets: BucketResponse[];
 }
@@ -62,27 +80,25 @@ export function SensorsTab({ buckets }: SensorsTabProps) {
   const METRICS = getMetrics(tempUnitLabel(prefs.temp_unit));
   const [selectedBucket, setSelectedBucket] = useState<string>(buckets[0]?.id || "");
   const [timeRange, setTimeRange] = useState(0); // index into TIME_RANGES
-  const [readings, setReadings] = useState<SensorReadingResponse[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [drift, setDrift] = useState<{ bucket_id: string; hours: number; ph: { min: number; max: number; first: number; last: number; delta: number; count: number } | null; ec: { min: number; max: number; first: number; last: number; delta: number; count: number } | null; orp: { min: number; max: number; first: number; last: number; delta: number; count: number } | null } | null>(null);
-
-  const loadReadings = useCallback(async () => {
-    if (!selectedBucket) return;
-    const token = getAccessToken();
-    if (!token) return;
-    setLoading(true);
-    try {
+  const {
+    data: rawData,
+    isLoading: loading,
+    mutate,
+  } = useApiSWR(
+    selectedBucket
+      ? ["grow", "sensors", selectedBucket, TIME_RANGES[timeRange].limit, timeRange]
+      : null,
+    async (token) => {
       const [data, driftData] = await Promise.all([
         listSensorReadings(token, selectedBucket, TIME_RANGES[timeRange].limit),
         getSensorDrift(token, selectedBucket, [24, 168, 720, 720][timeRange]).catch(() => null),
       ]);
-      setReadings(data);
-      setDrift(driftData);
-    } catch { setReadings([]); setDrift(null); }
-    finally { setLoading(false); }
-  }, [selectedBucket, timeRange]);
-
-  useEffect(() => { loadReadings(); }, [loadReadings]);
+      return { readings: data, drift: driftData };
+    },
+  );
+  const readings: SensorReadingResponse[] = rawData?.readings ?? [];
+  const drift = (rawData?.drift as DriftData | null | undefined) ?? null;
+  const loadReadings = mutate;
 
   // Helper to get metric value from reading
   const getMetricValue = (r: SensorReadingResponse, key: string): number | null => {

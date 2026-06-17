@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
 import {
   adminListProviders,
@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CreditCard, Plus, Trash2, CheckCircle, XCircle, Zap } from "lucide-react";
 import { toast } from "sonner";
+import { useApiSWR } from "@/lib/swr";
 
 const PROVIDER_TYPES = [
   { value: "stripe", label: "Stripe", fields: ["secret_key", "publishable_key", "webhook_secret"] },
@@ -38,23 +39,29 @@ export default function AdminProvidersPage() {
   const [formName, setFormName] = useState("");
   const [formConfig, setFormConfig] = useState<Record<string, string>>({});
 
-  const refresh = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-    try {
-      const list = await adminListProviders(token);
-      setProviders(list);
-      setError("");
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Access denied — platform admin required");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const { data, isLoading, error: loadError, mutate } = useApiSWR(
+    ["dashboard", "admin", "providers"],
+    (token) => adminListProviders(token),
+  );
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    setLoading(isLoading);
+  }, [isLoading]);
+
+  useEffect(() => {
+    if (data) {
+      setProviders(data);
+      setError("");
+    }
+  }, [data]);
+
+  useEffect(() => {
+    if (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Access denied — platform admin required");
+    }
+  }, [loadError]);
+
+  const refresh = mutate;
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();

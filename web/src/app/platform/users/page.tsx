@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
 import { adminListUsers, adminUpdateUserFlags, adminDeleteUser } from "@/lib/api";
 import type { AdminUserSummary } from "@/lib/api";
+import { useApiSWR } from "@/lib/swr";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,20 +27,25 @@ export default function PlatformUsersPage() {
   const [search, setSearch] = useState("");
   const [error, setError] = useState("");
 
-  const refresh = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-    try {
-      setUsers(await adminListUsers(token));
-      setError("");
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to load");
-    }
-  }, []);
+  const { data, error: loadError, mutate } = useApiSWR(
+    ["platform", "users"],
+    (token) => adminListUsers(token),
+  );
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    if (data) {
+      setUsers(data);
+      setError("");
+    }
+  }, [data]);
+
+  useEffect(() => {
+    if (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Failed to load");
+    }
+  }, [loadError]);
+
+  const refresh = mutate;
 
   const toggleFlag = async (
     userId: string,

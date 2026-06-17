@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
-import { getAccessToken, clearTokens } from "@/lib/auth";
+import { useEffect, useState } from "react";
+import { clearTokens } from "@/lib/auth";
 import { getMe, logout as apiLogout } from "@/lib/api";
+import { useApiSWR } from "@/lib/swr";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -41,28 +42,24 @@ export default function PlatformLayout({ children }: { children: React.ReactNode
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [userEmail, setUserEmail] = useState("");
 
-  const checkAccess = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) {
+  const { data: me, isLoading, error } = useApiSWR(["platform", "me"], (token) => getMe(token));
+
+  useEffect(() => {
+    if (isLoading) {
+      setAuthorized(null);
+      return;
+    }
+    if (error || !me) {
       router.push("/login");
       return;
     }
-    try {
-      const me = await getMe(token);
-      if (!me.is_platform_admin && !me.is_support) {
-        setAuthorized(false);
-        return;
-      }
-      setUserEmail(me.email);
-      setAuthorized(true);
-    } catch {
-      router.push("/login");
+    if (!me.is_platform_admin && !me.is_support) {
+      setAuthorized(false);
+      return;
     }
-  }, [router]);
-
-  useEffect(() => {
-    checkAccess();
-  }, [checkAccess]);
+    setUserEmail(me.email);
+    setAuthorized(true);
+  }, [isLoading, error, me, router]);
 
   if (authorized === null) {
     return (

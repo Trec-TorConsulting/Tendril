@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
 import {
   adminListPlans,
@@ -51,6 +51,7 @@ import {
   X,
   Loader2,
 } from "lucide-react";
+import { useApiSWR } from "@/lib/swr";
 
 const LIMIT_FIELDS = [
   { key: "max_grows", label: "Grows" },
@@ -77,19 +78,20 @@ export default function PlatformBillingPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<AdminBillingPlan | null>(null);
 
-  const refresh = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-    try {
-      setPlans(await adminListPlans(token));
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to load plans");
-    }
-  }, []);
+  const { data, error: loadError, mutate } = useApiSWR(
+    ["platform", "billing", "plans"],
+    (token) => adminListPlans(token),
+  );
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    if (data) setPlans(data);
+  }, [data]);
+
+  useEffect(() => {
+    if (loadError) setError(loadError instanceof Error ? loadError.message : "Failed to load plans");
+  }, [loadError]);
+
+  const refresh = mutate;
 
   const handleSync = async (planId: string) => {
     const token = getAccessToken();
