@@ -63,7 +63,10 @@ jobs:
             api/app/automation/suppression.py \
             api/app/automation/critical_alerts_defaults.py \
             api/app/mqtt/dedup.py \
-            api/app/integrations/connectors/retry.py
+            api/app/integrations/connectors/retry.py \
+            api/app/analytics/service.py \
+            api/app/admin/service.py \
+            api/app/devices/service.py
 
   lint-web:
     name: Lint (web)
