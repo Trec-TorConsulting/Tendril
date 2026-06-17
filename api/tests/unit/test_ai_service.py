@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import base64
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 from uuid import UUID, uuid4
 
 import pytest
@@ -13,9 +15,20 @@ from app.ai.service import (
     DIAGNOSIS_SYSTEM_PROMPT,
     HEALTH_HISTORY_MAX_LIMIT,
     MAX_DIAGNOSE_IMAGE_BYTES,
+    Conversation,
     DiagnoseImageError,
     build_diagnosis_prompt,
+    build_photo_url_base,
+    create_conversation,
     decode_diagnose_image,
+    delete_conversation,
+    get_conversation,
+    get_conversation_with_messages,
+    get_health_eval,
+    get_treatment,
+    list_health_evals_query,
+    list_treatments_query,
+    list_user_conversations_query,
     normalize_health_action,
     normalize_health_history_action,
     normalize_health_history_issue,
@@ -23,6 +36,9 @@ from app.ai.service import (
     parse_diagnosis_response,
     parse_health_check_json,
     parse_optional_uuid,
+    photo_url_for_key,
+    search_treatments_query,
+    update_conversation_title,
 )
 
 
@@ -281,3 +297,173 @@ class TestHealthHistoryMaxLimit:
         # The history endpoint silently caps the caller's `limit` here —
         # if this changes, the API contract changes too.
         assert HEALTH_HISTORY_MAX_LIMIT == 50
+
+
+@pytest.mark.asyncio(loop_scope="session")
+class TestConversationServiceMethods:
+    async def test_create_conversation_persists_and_returns_model(self):
+        session = AsyncMock()
+        session.add = Mock()
+        tenant_id = uuid4()
+        user_id = uuid4()
+        grow_cycle_id = uuid4()
+
+        conv = await create_conversation(
+            session,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            grow_cycle_id=grow_cycle_id,
+            title="My Run",
+        )
+
+        assert isinstance(conv, Conversation)
+        assert conv.tenant_id == tenant_id
+        assert conv.user_id == user_id
+        assert conv.grow_cycle_id == grow_cycle_id
+        assert conv.title == "My Run"
+        session.add.assert_called_once_with(conv)
+        session.commit.assert_awaited_once()
+        session.refresh.assert_awaited_once_with(conv)
+
+    async def test_get_conversation_returns_none_for_cross_tenant(self):
+        session = AsyncMock()
+        conv = Conversation(tenant_id=uuid4(), user_id=uuid4(), grow_cycle_id=None, title="x")
+        session.get.return_value = conv
+
+        got = await get_conversation(session, tenant_id=uuid4(), conversation_id=uuid4())
+        assert got is None
+
+    async def test_get_conversation_returns_match_for_same_tenant(self):
+        session = AsyncMock()
+        tenant_id = uuid4()
+        conv = Conversation(tenant_id=tenant_id, user_id=uuid4(), grow_cycle_id=None, title="x")
+        conv_id = uuid4()
+        session.get.return_value = conv
+
+        got = await get_conversation(session, tenant_id=tenant_id, conversation_id=conv_id)
+        assert got is conv
+        session.get.assert_awaited_once_with(Conversation, conv_id)
+
+    async def test_get_conversation_with_messages_uses_execute_result(self):
+        session = AsyncMock()
+        result = Mock()
+        conv = Conversation(tenant_id=uuid4(), user_id=uuid4(), grow_cycle_id=None, title="chat")
+        result.scalar_one_or_none.return_value = conv
+        session.execute.return_value = result
+
+        got = await get_conversation_with_messages(session, tenant_id=uuid4(), conversation_id=uuid4())
+
+        assert got is conv
+        session.execute.assert_awaited_once()
+        result.scalar_one_or_none.assert_called_once_with()
+
+    async def test_update_title_commits_refreshes_and_returns(self):
+        session = AsyncMock()
+        conv = Conversation(tenant_id=uuid4(), user_id=uuid4(), grow_cycle_id=None, title="old")
+
+        got = await update_conversation_title(session, conv, title="new")
+
+        assert got is conv
+        assert conv.title == "new"
+        session.commit.assert_awaited_once()
+        session.refresh.assert_awaited_once_with(conv)
+
+    async def test_delete_conversation_deletes_and_commits(self):
+        session = AsyncMock()
+        conv = Conversation(tenant_id=uuid4(), user_id=uuid4(), grow_cycle_id=None, title=None)
+
+        await delete_conversation(session, conv)
+
+        session.delete.assert_awaited_once_with(conv)
+        session.commit.assert_awaited_once()
+
+    async def test_get_health_eval_delegates_to_session_get(self):
+        from app.grows.models import HealthEval
+
+        session = AsyncMock()
+        eval_id = uuid4()
+        expected = object()
+        session.get.return_value = expected
+
+        got = await get_health_eval(session, eval_id)
+
+        assert got is expected
+        session.get.assert_awaited_once_with(HealthEval, eval_id)
+
+    async def test_get_treatment_delegates_to_session_get(self):
+        from app.grows.models import PlantHealthTreatment
+
+        session = AsyncMock()
+        expected = object()
+        session.get.return_value = expected
+
+        got = await get_treatment(session, "nitrogen_deficiency")
+
+        assert got is expected
+        session.get.assert_awaited_once_with(PlantHealthTreatment, "nitrogen_deficiency")
+
+
+class TestAiServiceQueries:
+    def test_list_user_conversations_query_filters_by_tenant_user_and_optional_grow(self):
+        tenant_id = uuid4()
+        user_id = uuid4()
+        grow_id = uuid4()
+
+        q_no_grow = list_user_conversations_query(tenant_id=tenant_id, user_id=user_id)
+        params_no_grow = q_no_grow.compile().params
+        assert tenant_id in params_no_grow.values()
+        assert user_id in params_no_grow.values()
+        assert grow_id not in params_no_grow.values()
+
+        q_with_grow = list_user_conversations_query(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            grow_cycle_id=grow_id,
+        )
+        params_with_grow = q_with_grow.compile().params
+        assert tenant_id in params_with_grow.values()
+        assert user_id in params_with_grow.values()
+        assert grow_id in params_with_grow.values()
+
+    def test_list_health_evals_query_caps_limit(self):
+        grow_id = uuid4()
+
+        capped = list_health_evals_query(grow_id=grow_id, limit=999)
+        small = list_health_evals_query(grow_id=grow_id, limit=7)
+
+        capped_params = capped.compile().params
+        small_params = small.compile().params
+        assert grow_id in capped_params.values()
+        assert grow_id in small_params.values()
+        assert HEALTH_HISTORY_MAX_LIMIT in capped_params.values()
+        assert 7 in small_params.values()
+
+    def test_list_treatments_query_optionally_filters_category(self):
+        all_q = list_treatments_query()
+        all_params = all_q.compile().params
+        assert all_params == {}
+
+        filtered_q = list_treatments_query(category="deficiency")
+        filtered_params = filtered_q.compile().params
+        assert "deficiency" in filtered_params.values()
+
+    def test_search_treatments_query_sets_ilike_term(self):
+        q = search_treatments_query(query_text="Yellow")
+        params = q.compile().params
+        assert "%yellow%" in params.values()
+
+
+class TestAiServicePhotoUrls:
+    def test_build_photo_url_base_prod_domain(self, monkeypatch):
+        monkeypatch.setattr("app.config.get_settings", lambda: SimpleNamespace(domain="tendril.dev"))
+        assert build_photo_url_base() == "https://api.tendril.dev/v1"
+
+    def test_build_photo_url_base_dev_default(self, monkeypatch):
+        monkeypatch.setattr("app.config.get_settings", lambda: SimpleNamespace(domain=""))
+        assert build_photo_url_base() == "http://localhost:8000/v1"
+
+    def test_photo_url_for_key_handles_none_and_value(self, monkeypatch):
+        monkeypatch.setattr("app.config.get_settings", lambda: SimpleNamespace(domain="tendril.dev"))
+        assert photo_url_for_key(None) is None
+        assert photo_url_for_key("") is None
+        assert photo_url_for_key("photos/abc.jpg") == "https://api.tendril.dev/v1/photos/grow/key/photos/abc.jpg"
