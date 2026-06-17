@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
+import { useApiSWR } from "@/lib/swr";
 import { fireRain } from "@/lib/confetti";
 import {
   listTasks,
@@ -153,9 +154,6 @@ function fmtMonthYear(year: number, month: number) {
 export default function TasksPage() {
   const confirm = useConfirm();
   const { user } = useUser();
-  const [tasks, setTasks] = useState<TaskItem[]>([]);
-  const [grows, setGrows] = useState<GrowResponse[]>([]);
-  const [members, setMembers] = useState<TenantMember[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [filter, setFilter] = useState<string>("pending");
   const [growFilter, setGrowFilter] = useState<string>("");
@@ -169,49 +167,41 @@ export default function TasksPage() {
   const [recurring, setRecurring] = useState("");
   const [assignTo, setAssignTo] = useState("");
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
 
   // Calendar state
   const now = new Date();
   const [calYear, setCalYear] = useState(now.getFullYear());
   const [calMonth, setCalMonth] = useState(now.getMonth());
-  const [calTasks, setCalTasks] = useState<TaskItem[]>([]);
 
-  const refresh = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-    try {
+  const { data: rawData, isLoading: loading, mutate } = useApiSWR(
+    ["tasks", filter, growFilter],
+    async (token) => {
       const filters: Record<string, string> = {};
       if (filter) filters.status = filter;
       if (growFilter) filters.grow_cycle_id = growFilter;
-      const [t, g, m] = await Promise.all([listTasks(token, filters), listGrows(token), listTenantMembers(token).catch(() => [] as TenantMember[])]);
-      setTasks(t);
-      setGrows(g);
-      setMembers(m);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to load tasks");
-    } finally { setLoading(false); }
-  }, [filter, growFilter]);
+      const [t, g, m] = await Promise.all([
+        listTasks(token, filters),
+        listGrows(token),
+        listTenantMembers(token).catch(() => [] as TenantMember[]),
+      ]);
+      return { tasks: t, grows: g, members: m };
+    },
+  );
+  const tasks = rawData?.tasks ?? [];
+  const grows = rawData?.grows ?? [];
+  const members = rawData?.members ?? [];
+  const refresh = async () => { await mutate(); };
 
-  const refreshCalendar = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-    const start = new Date(calYear, calMonth, 1).toISOString();
-    const end = new Date(calYear, calMonth + 1, 0, 23, 59, 59).toISOString();
-    try {
-      setCalTasks(await getCalendarTasks(token, start, end));
-    } catch {
-      toast.error("Failed to load calendar tasks");
-    }
-  }, [calYear, calMonth]);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  useEffect(() => {
-    if (view === "calendar") refreshCalendar();
-  }, [view, refreshCalendar]);
+  const { data: calData, mutate: mutateCalendar } = useApiSWR(
+    view === "calendar" ? ["calendar-tasks", calYear, calMonth] : null,
+    async (token) => {
+      const start = new Date(calYear, calMonth, 1).toISOString();
+      const end = new Date(calYear, calMonth + 1, 0, 23, 59, 59).toISOString();
+      return getCalendarTasks(token, start, end);
+    },
+  );
+  const calTasks = calData ?? [];
+  const refreshCalendar = mutateCalendar;
 
   const handleCreate = async () => {
     const token = getAccessToken();

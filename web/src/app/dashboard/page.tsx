@@ -40,6 +40,7 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sprout, Droplets, Thermometer, Wind, Waves, CheckCircle2, TrendingUp, CalendarIcon, FlaskConical, AlertTriangle, Wrench, Heart } from "lucide-react";
 import { cn, formatCalendarDate } from "@/lib/utils";
+import { useApiSWR } from "@/lib/swr";
 import { PullToRefresh } from "@/components/pull-to-refresh";
 import {
   LineChart,
@@ -135,33 +136,31 @@ export default function DashboardPage() {
   const [bucketLastReading, setBucketLastReading] = useState<Map<string, string>>(new Map());
   const [climateData, setClimateData] = useState<ClimateDataPoint[]>([]);
   const [healthScore, setHealthScore] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
+  const {
+    data: dashboardData,
+    isLoading: loading,
+    mutate,
+  } = useApiSWR(
+    selectedGrow ? ["dashboard", "home", selectedGrow.id, selectedGrow.tent_id] : null,
+    async (token) => {
+      const tentId = selectedGrow!.tent_id;
+      const growId = selectedGrow!.id;
 
-  const refresh = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token || !selectedGrow) { setLoading(false); return; }
-    try {
-      const tentId = selectedGrow.tent_id;
-      const growId = selectedGrow.id;
-
-      const [d, hc, b, tk, tentReadings] = await Promise.all([
+      const [devices, harvestCountdown, buckets, pendingTasks, tentReadings] = await Promise.all([
         listDevices(token).catch(() => [] as DeviceResponse[]),
         getHarvestCountdown(token).catch(() => [] as HarvestCountdownItem[]),
         listBuckets(token, growId).catch(() => [] as BucketResponse[]),
         listTasks(token, { status: "pending", grow_cycle_id: growId }).catch(() => [] as TaskItem[]),
         listTentReadings(token, tentId, 50).catch(() => [] as TentReadingResponse[]),
       ]);
-      setDevices(d);
-      setCountdown(hc.filter((h) => h.grow_id === growId));
-      setBuckets(b);
-      // Only show fresh, actionable tasks (12h TTL — health check regenerates them)
-      const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000);
-      const freshTasks = tk.filter((t) => new Date(t.created_at ?? t.due_date ?? 0) > twelveHoursAgo);
 
+      const countdown = harvestCountdown.filter((h) => h.grow_id === growId);
+
+      const twelveHoursAgo = new Date(Date.now() - 12 * 60 * 60 * 1000);
+      const freshTasks = pendingTasks.filter((t) => new Date(t.created_at ?? t.due_date ?? 0) > twelveHoursAgo);
       const alertTasks = freshTasks.filter((t) => t.category === "alert_response");
       const healthTasks = freshTasks.filter((t) => t.source === "ai" || t.category === "health_response");
 
-      // Priority sort: alerts by severity, health by priority then due date
       const prio = { urgent: 0, high: 1, medium: 2, low: 3 } as const;
       const sortedAlerts = [...alertTasks].sort((a, b) =>
         (prio[a.priority as keyof typeof prio] ?? 3) - (prio[b.priority as keyof typeof prio] ?? 3)
@@ -169,20 +168,15 @@ export default function DashboardPage() {
       const sortedHealth = [...healthTasks].sort((a, b) =>
         (prio[a.priority as keyof typeof prio] ?? 3) - (prio[b.priority as keyof typeof prio] ?? 3)
       );
+      const tasks = [...sortedAlerts, ...sortedHealth].slice(0, 5);
 
-      // Cap at 5 total — focused, not lengthy
-      setTasks([...sortedAlerts, ...sortedHealth].slice(0, 5));
-
-      // Fetch sensor readings per bucket (same as grow detail page) so sparse
-      // metrics like pH and water_level are not lost in a global top-50 slice.
       const perBucketReadings = await Promise.all(
-        b.map((bk) => listSensorReadings(token, bk.id, 30).catch(() => [] as SensorReadingResponse[]))
+        buckets.map((bk) => listSensorReadings(token, bk.id, 30).catch(() => [] as SensorReadingResponse[]))
       );
       const growSensorReadings = perBucketReadings
         .flat()
         .sort((a, bb) => new Date(bb.recorded_at).getTime() - new Date(a.recorded_at).getTime());
 
-      // Build each metric independently so sparse metrics are not dropped
       const phVals = growSensorReadings.map((r) => r.ph).filter((v): v is number => v != null).slice(0, 30).reverse();
       const ecVals = growSensorReadings.map((r) => r.ec).filter((v): v is number => v != null).slice(0, 30).reverse();
       const ppmVals = growSensorReadings.map((r) => r.ppm).filter((v): v is number => v != null).slice(0, 30).reverse();
@@ -195,28 +189,26 @@ export default function DashboardPage() {
       const bucketHumVals = growSensorReadings.map((r) => r.ambient_humidity).filter((v): v is number => v != null).slice(0, 30).reverse();
       const tempVals = tentTempVals.length > 0 ? tentTempVals : bucketTempVals;
       const humVals = tentHumVals.length > 0 ? tentHumVals : bucketHumVals;
-      setSensorTrends({ ph: phVals, ec: ecVals, ppm: ppmVals, water_temp: waterTempVals, water_level: waterLevelVals, orp: orpVals, temp: tempVals, humidity: humVals });
-      // Track when the latest reading was recorded — use the most recent of tent or bucket
+      const sensorTrends = { ph: phVals, ec: ecVals, ppm: ppmVals, water_temp: waterTempVals, water_level: waterLevelVals, orp: orpVals, temp: tempVals, humidity: humVals };
+
       const latestTentReading = tentReadings[0];
       const latestBucketReading = growSensorReadings[0];
       const tentTs = latestTentReading?.recorded_at ?? null;
       const bucketTs = latestBucketReading?.recorded_at ?? null;
+      let lastReadingAt: string | null;
       if (tentTs && bucketTs) {
-        setLastReadingAt(tentTs > bucketTs ? tentTs : bucketTs);
+        lastReadingAt = tentTs > bucketTs ? tentTs : bucketTs;
       } else {
-        setLastReadingAt(tentTs ?? bucketTs ?? null);
+        lastReadingAt = tentTs ?? bucketTs ?? null;
       }
 
-      // Build per-bucket latest reading timestamp map
-      const bucketLatest = new Map<string, string>();
+      const bucketLastReading = new Map<string, string>();
       for (const r of growSensorReadings) {
-        if (!bucketLatest.has(r.bucket_id) || r.recorded_at > bucketLatest.get(r.bucket_id)!) {
-          bucketLatest.set(r.bucket_id, r.recorded_at);
+        if (!bucketLastReading.has(r.bucket_id) || r.recorded_at > bucketLastReading.get(r.bucket_id)!) {
+          bucketLastReading.set(r.bucket_id, r.recorded_at);
         }
       }
-      setBucketLastReading(bucketLatest);
 
-      // Build 24h analytics chart combining tent + sensor data by timestamp
       const timeSlots = new Map<string, ClimateDataPoint>();
       for (const r of tentReadings.slice(0, 30).reverse()) {
         const time = new Date(r.recorded_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -232,26 +224,46 @@ export default function DashboardPage() {
         existing.ph = r.ph ?? existing.ph;
         existing.ppm = r.ppm ?? existing.ppm;
         existing.water_level = r.water_level_pct ?? existing.water_level;
-        // Fallback ambient from bucket if tent not available
         if (!existing.temperature && r.ambient_temp_f) existing.temperature = r.ambient_temp_f;
         if (!existing.humidity && r.ambient_humidity) existing.humidity = r.ambient_humidity;
         timeSlots.set(time, existing);
       }
-      setClimateData(Array.from(timeSlots.values()));
+      const climateData = Array.from(timeSlots.values());
 
-      // Fetch health score
-      try {
-        const hist = await getHealthCheckHistory(token, growId, 1);
-        setHealthScore(hist.items.length > 0 ? hist.items[0].score : null);
-      } catch { setHealthScore(null); }
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedGrow]);
+      const healthScore = await getHealthCheckHistory(token, growId, 1)
+        .then((hist) => (hist.items.length > 0 ? hist.items[0].score : null))
+        .catch(() => null);
+
+      return {
+        devices,
+        countdown,
+        buckets,
+        tasks,
+        sensorTrends,
+        lastReadingAt,
+        bucketLastReading,
+        climateData,
+        healthScore,
+      };
+    },
+  );
+
+  const refresh = useCallback(async () => {
+    await mutate();
+  }, [mutate]);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    if (!dashboardData) return;
+    setDevices(dashboardData.devices);
+    setCountdown(dashboardData.countdown);
+    setBuckets(dashboardData.buckets);
+    setTasks(dashboardData.tasks);
+    setSensorTrends(dashboardData.sensorTrends);
+    setLastReadingAt(dashboardData.lastReadingAt);
+    setBucketLastReading(dashboardData.bucketLastReading);
+    setClimateData(dashboardData.climateData);
+    setHealthScore(dashboardData.healthScore);
+  }, [dashboardData]);
 
   const handleCompleteTask = async (taskId: string) => {
     const token = getAccessToken();

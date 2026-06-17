@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { getAccessToken } from "@/lib/auth";
+import { useApiSWR } from "@/lib/swr";
 import {
   listExpenses,
   createExpense,
@@ -31,11 +32,24 @@ function formatCents(cents: number): string {
 }
 
 export default function CostROIPage() {
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [harvestValues, setHarvestValues] = useState<HarvestValueEntry[]>([]);
-  const [roiComparison, setRoiComparison] = useState<ROISummary[]>([]);
-  const [grows, setGrows] = useState<GrowResponse[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: rawData, isLoading: loading, mutate } = useApiSWR(
+    ["cost-roi"],
+    async (token) => {
+      const [exp, hv, roi, activeGrows, closedGrows] = await Promise.all([
+        listExpenses(token),
+        listHarvestValues(token),
+        compareGrowsROI(token, [], 10),
+        listGrows(token, { status: "active" }),
+        listGrows(token, { status: "completed" }),
+      ]);
+      return { expenses: exp, harvestValues: hv, roiComparison: roi.grows, grows: [...activeGrows, ...closedGrows] };
+    },
+  );
+  const expenses = rawData?.expenses ?? [];
+  const harvestValues = rawData?.harvestValues ?? [];
+  const roiComparison = rawData?.roiComparison ?? [];
+  const grows = rawData?.grows ?? [];
+  const refresh = mutate;
   const [showExpenseForm, setShowExpenseForm] = useState(false);
   const [showHarvestForm, setShowHarvestForm] = useState(false);
 
@@ -51,33 +65,6 @@ export default function CostROIPage() {
   const [hvGrade, setHvGrade] = useState("A");
   const [hvWeight, setHvWeight] = useState("");
   const [hvPrice, setHvPrice] = useState("");
-
-  useEffect(() => {
-    refresh();
-  }, []);
-
-  async function refresh() {
-    const token = getAccessToken();
-    if (!token) return;
-    setLoading(true);
-    try {
-      const [exp, hv, roi, activeGrows, closedGrows] = await Promise.all([
-        listExpenses(token),
-        listHarvestValues(token),
-        compareGrowsROI(token, [], 10),
-        listGrows(token, { status: "active" }),
-        listGrows(token, { status: "completed" }),
-      ]);
-      setExpenses(exp);
-      setHarvestValues(hv);
-      setRoiComparison(roi.grows);
-      setGrows([...activeGrows, ...closedGrows]);
-    } catch {
-      toast.error("Failed to load cost data. Paid plan required.");
-    } finally {
-      setLoading(false);
-    }
-  }
 
   async function handleCreateExpense(e: React.FormEvent) {
     e.preventDefault();

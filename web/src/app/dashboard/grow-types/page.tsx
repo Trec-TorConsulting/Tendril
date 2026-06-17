@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { getAccessToken } from "@/lib/auth";
+import { useApiSWR } from "@/lib/swr";
 import {
   listCustomGrowTypes,
   createCustomGrowType,
@@ -76,9 +77,25 @@ const CATEGORY_VARIANT: Record<string, "default" | "secondary" | "outline" | "de
 
 export default function GrowTypesPage() {
   const confirm = useConfirm();
-  const [customTypes, setCustomTypes] = useState<CustomGrowType[]>([]);
-  const [builtIn, setBuiltIn] = useState<BuiltInType[]>([]);
-  const [reviewQueue, setReviewQueue] = useState<{ id: string; name: string; submitted_by: string; submitted_at: string; status: string }[]>([]);
+  const { data: rawData, isLoading: loading, mutate } = useApiSWR(
+    ["grow-types"],
+    async (token) => {
+      const [builtRes, customRes, queueRes] = await Promise.allSettled([
+        listGrowTypes(token),
+        listCustomGrowTypes(token),
+        listGrowTypeReviewQueue(token),
+      ]);
+      return {
+        builtIn: builtRes.status === "fulfilled" ? builtRes.value : [] as BuiltInType[],
+        customTypes: customRes.status === "fulfilled" ? customRes.value : [] as CustomGrowType[],
+        reviewQueue: queueRes.status === "fulfilled" ? queueRes.value : [] as { id: string; name: string; submitted_by: string; submitted_at: string; status: string }[],
+      };
+    },
+  );
+  const builtIn = rawData?.builtIn ?? [];
+  const customTypes = rawData?.customTypes ?? [];
+  const reviewQueue = rawData?.reviewQueue ?? [];
+  const refresh = mutate;
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedProfile, setExpandedProfile] = useState<Record<string, unknown> | null>(null);
 
@@ -100,35 +117,6 @@ export default function GrowTypesPage() {
   const [aiContext, setAiContext] = useState("");
   const [error, setError] = useState("");
   const [tab, setTab] = useState("built-in");
-  const [loading, setLoading] = useState(true);
-
-  const refresh = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-    try {
-      const built = await listGrowTypes(token);
-      setBuiltIn(built);
-    } catch {
-      toast.error("Failed to load built-in grow types");
-    }
-    try {
-      const custom = await listCustomGrowTypes(token);
-      setCustomTypes(custom);
-    } catch {
-      /* tier restricted */
-    }
-    try {
-      const queue = await listGrowTypeReviewQueue(token);
-      setReviewQueue(queue);
-    } catch {
-      /* not owner or endpoint unavailable */
-      setReviewQueue([]);
-    } finally { setLoading(false); }
-  }, []);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
 
   const handleExpand = async (id: string) => {
     if (expandedId === id) {

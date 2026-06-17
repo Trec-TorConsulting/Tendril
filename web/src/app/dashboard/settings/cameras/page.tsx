@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useState } from "react";
 import { getAccessToken } from "@/lib/auth";
+import { useApiSWR } from "@/lib/swr";
 import {
   listTents,
   listTentCameras,
@@ -51,18 +52,9 @@ const CAMERA_TYPES = [
 ];
 
 export default function CameraManagementPage() {
-  const [tentsWithCameras, setTentsWithCameras] = useState<TentWithCameras[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingCamera, setEditingCamera] = useState<{ tentId: string; camera?: CameraResponse } | null>(null);
-  const [formData, setFormData] = useState<CameraFormData>({ label: "", url: "", camera_type: "http", is_primary: false });
-  const [saving, setSaving] = useState(false);
-
-  const loadData = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-
-    try {
+  const { data: rawData, isLoading: loading, mutate } = useApiSWR(
+    ["cameras-management"],
+    async (token) => {
       const tents = await listTents(token);
       const results: TentWithCameras[] = [];
       for (const tent of tents) {
@@ -73,17 +65,15 @@ export default function CameraManagementPage() {
           results.push({ tent, cameras: [] });
         }
       }
-      setTentsWithCameras(results);
-    } catch {
-      toast.error("Failed to load cameras");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+      return results;
+    },
+  );
+  const tentsWithCameras = rawData ?? [];
+  const loadData = mutate;
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingCamera, setEditingCamera] = useState<{ tentId: string; camera?: CameraResponse } | null>(null);
+  const [formData, setFormData] = useState<CameraFormData>({ label: "", url: "", camera_type: "http", is_primary: false });
+  const [saving, setSaving] = useState(false);
 
   const openAddDialog = (tentId: string) => {
     setEditingCamera({ tentId });

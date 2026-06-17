@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getAccessToken } from "@/lib/auth";
+import { useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { useApiSWR } from "@/lib/swr";
 import { Button } from "@/components/ui/button";
 import { TrendingUp, X } from "lucide-react";
 import Link from "next/link";
@@ -30,27 +30,13 @@ const METRIC_LABELS: Record<string, string> = {
  * Designed to be placed in the dashboard layout for persistent visibility.
  */
 export function UpgradePrompt() {
-  const [alerts, setAlerts] = useState<UsageAlert[]>([]);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    async function checkLimits() {
-      const token = getAccessToken();
-      if (!token) return;
-
-      try {
-        const data = await apiFetch<{ alerts: UsageAlert[] }>("/billing/usage-alerts", { token });
-        setAlerts(data.alerts);
-      } catch {
-        // Silently fail — this is a non-critical UI enhancement
-      }
-    }
-
-    checkLimits();
-    // Re-check every 5 minutes
-    const interval = setInterval(checkLimits, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, []);
+  const { data } = useApiSWR<{ alerts: UsageAlert[] }>(
+    ["billing", "usage-alerts"],
+    (token) => apiFetch("/billing/usage-alerts", { token }),
+    { refreshInterval: 5 * 60 * 1000 },
+  );
+  const alerts = data?.alerts ?? [];
 
   const visibleAlerts = alerts.filter((a) => !dismissed.has(a.metric));
 

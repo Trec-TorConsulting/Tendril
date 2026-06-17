@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { getAccessToken } from "@/lib/auth";
+import { useEffect, useState } from "react";
 import { adminGetStats, adminListTenants, adminListUsers } from "@/lib/api";
+import { useApiSWR } from "@/lib/swr";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -23,28 +23,33 @@ export default function PlatformOverviewPage() {
     Array<{ email: string; display_name: string | null; tenant_name: string; created_at: string }>
   >([]);
   const [error, setError] = useState("");
-
-  const refresh = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-    try {
-      const [s, t, u] = await Promise.all([
-        adminGetStats(token),
-        adminListTenants(token),
-        adminListUsers(token),
-      ]);
-      setStats(s);
-      setRecentTenants(t.slice(0, 5));
-      setRecentUsers(u.slice(0, 10));
-      setError("");
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to load");
-    }
-  }, []);
+  const { data, error: loadError } = useApiSWR(["platform", "overview"], async (token) => {
+    const [s, t, u] = await Promise.all([
+      adminGetStats(token),
+      adminListTenants(token),
+      adminListUsers(token),
+    ]);
+    return {
+      stats: s,
+      recentTenants: t.slice(0, 5),
+      recentUsers: u.slice(0, 10),
+    };
+  });
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    if (data) {
+      setStats(data.stats);
+      setRecentTenants(data.recentTenants);
+      setRecentUsers(data.recentUsers);
+      setError("");
+    }
+  }, [data]);
+
+  useEffect(() => {
+    if (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Failed to load");
+    }
+  }, [loadError]);
 
   if (error) {
     return (

@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
+import { useApiSWR } from "@/lib/swr";
 import {
   listAutomationRules,
   createAutomationRule,
@@ -57,31 +58,22 @@ import {
 
 export default function AutomationPage() {
   const confirm = useConfirm();
-  const [rules, setRules] = useState<AutomationRuleResponse[]>([]);
-  const [alerts, setAlerts] = useState<AlertResponse[]>([]);
   const [showCreate, setShowCreate] = useState(false);
-  const [loading, setLoading] = useState(true);
 
-  const refresh = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-    try {
+  const { data, isLoading: loading, mutate } = useApiSWR(
+    ["automation"],
+    async (token) => {
       const [r, a] = await Promise.all([
         listAutomationRules(token),
         listAlerts(token, 50),
       ]);
-      setRules(r);
-      setAlerts(a);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to load automation data");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      return { rules: r, alerts: a };
+    },
+  );
 
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
+  const rules = data?.rules ?? [];
+  const alerts = data?.alerts ?? [];
+  const refresh = mutate;
 
   const handleToggle = async (rule: AutomationRuleResponse) => {
     const token = getAccessToken();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
@@ -8,6 +8,7 @@ import { z } from "zod";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { getAccessToken } from "@/lib/auth";
+import { useApiSWR } from "@/lib/swr";
 import { useConfirm } from "@/components/confirm-dialog";
 import { formatCalendarDate } from "@/lib/utils";
 import {
@@ -57,9 +58,6 @@ type CreateGrowForm = z.infer<typeof createGrowSchema>;
 export default function GrowsPage() {
   const router = useRouter();
   const confirm = useConfirm();
-  const [grows, setGrows] = useState<GrowResponse[]>([]);
-  const [tents, setTents] = useState<TentResponse[]>([]);
-  const [growTypes, setGrowTypes] = useState<GrowTypeSummary[]>([]);
   const [filter, setFilter] = useState<string>("active");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [error, setError] = useState("");
@@ -69,30 +67,21 @@ export default function GrowsPage() {
     defaultValues: { name: "", tent_id: "", grow_type: "" },
   });
 
-  const [loading, setLoading] = useState(true);
-
-  const refresh = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-    try {
+  const { data: rawData, isLoading: loading, mutate } = useApiSWR(
+    ["grows", filter],
+    async (token) => {
       const [g, t, gt] = await Promise.all([
         listGrows(token, filter !== "all" ? { status: filter } : undefined),
         listTents(token),
         listGrowTypes(token),
       ]);
-      setGrows(g);
-      setTents(t);
-      setGrowTypes(gt);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to load grows");
-    } finally {
-      setLoading(false);
-    }
-  }, [filter]);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
+      return { grows: g, tents: t, growTypes: gt };
+    },
+  );
+  const grows = rawData?.grows ?? [];
+  const tents = rawData?.tents ?? [];
+  const growTypes = rawData?.growTypes ?? [];
+  const refresh = async () => { await mutate(); };
 
   const handleCreate = async (data: CreateGrowForm) => {
     const token = getAccessToken();

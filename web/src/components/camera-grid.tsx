@@ -4,8 +4,9 @@ import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { getAccessToken } from "@/lib/auth";
 import { listTents, listTentCameras, getCameraSnapshot, type TentResponse, type CameraResponse } from "@/lib/api";
+import { useApiSWR } from "@/lib/swr";
+import { getAccessToken } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { RefreshCw, Maximize2, Camera, Loader2 } from "lucide-react";
 
@@ -24,14 +25,13 @@ interface CameraWithSnapshot {
 
 export function CameraGrid({ tentId, hideEmpty }: CameraGridProps) {
   const [cameras, setCameras] = useState<CameraWithSnapshot[]>([]);
-  const [loading, setLoading] = useState(true);
   const [selectedCamera, setSelectedCamera] = useState<CameraWithSnapshot | null>(null);
-
-  const loadCameras = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-
-    try {
+  const {
+    data: cameraData,
+    isLoading: loading,
+  } = useApiSWR<CameraWithSnapshot[]>(
+    ["camera-grid", tentId ?? "all"],
+    async (token) => {
       const tents = tentId
         ? [{ id: tentId, name: "" } as TentResponse]
         : await listTents(token);
@@ -47,15 +47,13 @@ export function CameraGrid({ tentId, hideEmpty }: CameraGridProps) {
           // tent may not have cameras
         }
       }
-      setCameras(allCameras);
-    } finally {
-      setLoading(false);
-    }
-  }, [tentId]);
+      return allCameras;
+    },
+  );
 
   useEffect(() => {
-    loadCameras();
-  }, [loadCameras]);
+    setCameras(cameraData ?? []);
+  }, [cameraData]);
 
   const refreshCamera = useCallback(async (index: number) => {
     const token = getAccessToken();

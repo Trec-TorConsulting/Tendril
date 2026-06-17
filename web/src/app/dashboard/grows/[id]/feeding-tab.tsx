@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { getAccessToken } from "@/lib/auth";
 import {
   getFeedingAdvice,
@@ -61,6 +61,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useApiSWR } from "@/lib/swr";
 
 const STAGES = ["seedling", "vegetative", "flowering", "ripening", "drying", "curing"];
 const STAGE_ORDER: Record<string, number> = Object.fromEntries(STAGES.map((s, i) => [s, i]));
@@ -185,6 +186,9 @@ export function FeedingTab({ growId, growStage, growStartedAt, milestones, setti
   const productIds = (settings?.nutrient_product_ids as string[]) || [];
   const additiveIds = (settings?.additive_ids as string[]) || [];
 
+  // Resolve brand data
+  const brand = useMemo(() => NUTRIENT_BRANDS.find((b) => b.id === brandId) || null, [brandId]);
+
   // Brand dialog state
   const [brandDialog, setBrandDialog] = useState(false);
   const [brandStep, setBrandStep] = useState<1 | 2 | 3>(1);
@@ -199,27 +203,39 @@ export function FeedingTab({ growId, growStage, growStartedAt, milestones, setti
   const [additiveSaving, setAdditiveSaving] = useState(false);
 
   // AI advice
-  const [advice, setAdvice] = useState<FeedingAdviceResponse | null>(null);
-  const [adviceLoading, setAdviceLoading] = useState(false);
-  const [adviceError, setAdviceError] = useState(false);
+  const {
+    data: advice,
+    isLoading: adviceLoading,
+    error: adviceLoadError,
+    mutate: loadAdvice,
+  } = useApiSWR(
+    brand ? ["grow", "feeding", "advice", growId] : null,
+    (token) => getFeedingAdvice(token, growId),
+  );
+  const adviceError = Boolean(adviceLoadError);
 
   // Custom feeding schedules
   const confirm = useConfirm();
-  const [schedules, setSchedules] = useState<{ id: string; name: string; stage: string; nutrients: object[]; target_ppm?: number | null; target_ec?: number | null; notes?: string | null }[]>([]);
+  const {
+    data: rawSchedules,
+    mutate: loadSchedules,
+  } = useApiSWR(["grow", "feeding", "schedules", growId], (token) => listFeedingSchedules(token, growId));
+  const schedules = (rawSchedules ?? []) as { id: string; name: string; stage: string; nutrients: object[]; target_ppm?: number | null; target_ec?: number | null; notes?: string | null }[];
   const [scheduleDialog, setScheduleDialog] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<typeof schedules[0] | null>(null);
   const [scheduleForm, setScheduleForm] = useState({ name: "", stage: "vegetative", target_ppm: "", target_ec: "", notes: "" });
   const [scheduleSaving, setScheduleSaving] = useState(false);
 
   // Dose profiles
-  const [doseProfiles, setDoseProfiles] = useState<DoseProfileResponse[]>([]);
+  const {
+    data: rawDoseProfiles,
+    mutate: loadDoseProfiles,
+  } = useApiSWR(["grow", "feeding", "dose-profiles", growId], (token) => listDoseProfiles(token, growId));
+  const doseProfiles: DoseProfileResponse[] = rawDoseProfiles ?? [];
   const [doseDialog, setDoseDialog] = useState(false);
   const [editingDose, setEditingDose] = useState<DoseProfileResponse | null>(null);
   const [doseForm, setDoseForm] = useState({ name: "", dose_type: "nutrient", dose_ml: "" });
   const [doseSaving, setDoseSaving] = useState(false);
-
-  // Resolve brand data
-  const brand = useMemo(() => NUTRIENT_BRANDS.find((b) => b.id === brandId) || null, [brandId]);
 
   // Filter phases to selected products only
   const phases = useMemo(() => {
@@ -272,43 +288,6 @@ export function FeedingTab({ growId, growStage, growStartedAt, milestones, setti
 
   // Mixing bucket size for batch splitting (gallons)
   const [mixingBucketSize, setMixingBucketSize] = useState<number | null>(null);
-
-  // Load AI advice
-  const loadAdvice = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-    setAdviceLoading(true);
-    setAdviceError(false);
-    try {
-      setAdvice(await getFeedingAdvice(token, growId));
-    } catch {
-      setAdviceError(true);
-    } finally {
-      setAdviceLoading(false);
-    }
-  }, [growId]);
-
-  const loadSchedules = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-    try {
-      setSchedules(await listFeedingSchedules(token, growId));
-    } catch { setSchedules([]); }
-  }, [growId]);
-
-  const loadDoseProfiles = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-    try {
-      setDoseProfiles(await listDoseProfiles(token, growId));
-    } catch { setDoseProfiles([]); }
-  }, [growId]);
-
-  useEffect(() => {
-    if (brand) loadAdvice();
-    loadSchedules();
-    loadDoseProfiles();
-  }, [brand, loadAdvice, loadSchedules, loadDoseProfiles]);
 
   // --- Custom schedule handlers ---
   const openScheduleCreate = () => {
@@ -575,7 +554,7 @@ export function FeedingTab({ growId, growStage, growStartedAt, milestones, setti
             <p className="text-xs font-medium text-muted-foreground">System Total (~{totalGal.toFixed(1)} gal usable)</p>
             <div className="flex items-center gap-1.5">
               <span className="text-[11px] text-muted-foreground whitespace-nowrap">Mix in:</span>
-              <Select value={mixingBucketSize?.toString() || "full"} onValueChange={(v) => setMixingBucketSize(v === "full" ? null : parseFloat(v))}>
+              <Select value={mixingBucketSize?.toString() || "full"} onValueChange={(v) => setMixingBucketSize(!v || v === "full" ? null : parseFloat(v))}>
                 <SelectTrigger className="h-6 w-[7rem] text-xs">
                   <SelectValue />
                 </SelectTrigger>
@@ -623,7 +602,7 @@ export function FeedingTab({ growId, growStage, growStartedAt, milestones, setti
           <p className="text-xs font-medium text-muted-foreground">Per Bucket</p>
           <div className="flex items-center gap-1.5">
             <span className="text-[11px] text-muted-foreground whitespace-nowrap">Mix in:</span>
-            <Select value={mixingBucketSize?.toString() || "full"} onValueChange={(v) => setMixingBucketSize(v === "full" ? null : parseFloat(v))}>
+            <Select value={mixingBucketSize?.toString() || "full"} onValueChange={(v) => setMixingBucketSize(!v || v === "full" ? null : parseFloat(v))}>
               <SelectTrigger className="h-6 w-[7rem] text-xs">
                 <SelectValue />
               </SelectTrigger>
@@ -894,7 +873,7 @@ export function FeedingTab({ growId, growStage, growStartedAt, milestones, setti
             <h3 className="flex items-center gap-2 text-sm font-medium">
               <Sparkles className="size-4 text-primary" /> AI Adjustments
             </h3>
-            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={loadAdvice} disabled={adviceLoading}>
+            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => { void loadAdvice(); }} disabled={adviceLoading}>
               {adviceLoading ? <Loader2 className="mr-1 size-3 animate-spin" /> : <RefreshCw className="mr-1 size-3" />}
               {adviceLoading ? "Analyzing..." : "Refresh"}
             </Button>

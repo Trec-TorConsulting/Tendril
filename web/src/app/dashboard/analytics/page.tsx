@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { getAccessToken } from "@/lib/auth";
 import { formatShortDateTime } from "@/lib/utils";
+import { useApiSWR } from "@/lib/swr";
 import {
   listBuckets,
   listSensorReadings,
@@ -117,6 +117,7 @@ export default function AnalyticsPage() {
   const { grows } = useGrow();
   const { prefs } = usePreferences();
   const [analyticsGrowId, setAnalyticsGrowId] = useState<string>("all");
+  const activeGrow = analyticsGrowId === "all" ? null : grows.find((g) => g.id === analyticsGrowId) ?? null;
   const [buckets, setBuckets] = useState<BucketResponse[]>([]);
   const [selectedBucketId, setSelectedBucketId] = useState<string>("");
   const [sensorData, setSensorData] = useState<SensorReadingResponse[]>([]);
@@ -127,81 +128,63 @@ export default function AnalyticsPage() {
   const [tentAmbient, setTentAmbient] = useState<TentReadingResponse | null>(null);
   const [tentTrends, setTentTrends] = useState<{ timestamps: string[]; temps: (number | null)[]; humidities: (number | null)[] } | null>(null);
   const [heatMapData, setHeatMapData] = useState<{ date: string; count: number }[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [sensorLoading, setSensorLoading] = useState(false);
-
-  const activeGrow = analyticsGrowId === "all" ? null : grows.find((g) => g.id === analyticsGrowId) ?? null;
-
-  // Load leaderboard + yields on mount
-  useEffect(() => {
-    const load = async () => {
-      const token = getAccessToken();
-      if (!token) return;
-      try {
-        const [lb, ylds, tasks, journal] = await Promise.all([
-          getStrainLeaderboard(token).catch(() => [] as LeaderboardEntry[]),
-          listYields(token).catch(() => [] as YieldResponse[]),
-          listTasks(token, {}).catch(() => []),
-          listJournalEntries(token).catch(() => []),
-        ]);
-        setLeaderboard(lb);
-        setAllYields(ylds);
-
-        // Build heat map from tasks + journal entries
-        const activityByDate = new Map<string, number>();
-        for (const t of tasks) {
-          const d = (t.completed_at || t.created_at).slice(0, 10);
-          activityByDate.set(d, (activityByDate.get(d) || 0) + 1);
-        }
-        for (const j of journal) {
-          const d = j.created_at.slice(0, 10);
-          activityByDate.set(d, (activityByDate.get(d) || 0) + 1);
-        }
-        setHeatMapData(Array.from(activityByDate.entries()).map(([date, count]) => ({ date, count })));
-      } finally {
-        setLoading(false);
+  const {
+    data: overviewData,
+    isLoading: loading,
+  } = useApiSWR(
+    ["analytics", "overview"],
+    async (token) => {
+      const [leaderboard, allYields, tasks, journal] = await Promise.all([
+        getStrainLeaderboard(token).catch(() => [] as LeaderboardEntry[]),
+        listYields(token).catch(() => [] as YieldResponse[]),
+        listTasks(token, {}).catch(() => []),
+        listJournalEntries(token).catch(() => []),
+      ]);
+      const activityByDate = new Map<string, number>();
+      for (const t of tasks) {
+        const d = (t.completed_at || t.created_at).slice(0, 10);
+        activityByDate.set(d, (activityByDate.get(d) || 0) + 1);
       }
-    };
-    load();
-  }, []);
-
-  // Load buckets when grow filter changes
-  useEffect(() => {
-    const token = getAccessToken();
-    if (!token) return;
-    (async () => {
-      let bkts: Awaited<ReturnType<typeof listBuckets>>;
-      try {
-        bkts = await listBuckets(token, activeGrow?.id);
-      } catch {
-        setBuckets([]);
-        setSelectedBucketId("");
-        return;
+      for (const j of journal) {
+        const d = j.created_at.slice(0, 10);
+        activityByDate.set(d, (activityByDate.get(d) || 0) + 1);
       }
-      setBuckets(bkts);
+      return {
+        leaderboard,
+        allYields,
+        heatMapData: Array.from(activityByDate.entries()).map(([date, count]) => ({ date, count })),
+      };
+    },
+  );
+  const {
+    data: growContextData,
+  } = useApiSWR(
+    ["analytics", "grow-context", analyticsGrowId, activeGrow?.id ?? "all", activeGrow?.tent_id ?? "none"],
+    async (token) => {
+      const bkts = await listBuckets(token, activeGrow?.id).catch(() => [] as BucketResponse[]);
       const activeBuckets = bkts.filter((b) => b.status === "active");
-      if (activeBuckets.length > 0) {
-        setSelectedBucketId(activeBuckets[0].id);
-      } else if (bkts.length > 0) {
-        setSelectedBucketId(bkts[0].id);
-      } else {
-        setSelectedBucketId("");
-      }
-      // Load tent ambient reading (only when a single grow is selected)
+      const selectedBucketId = activeBuckets.length > 0
+        ? activeBuckets[0].id
+        : bkts.length > 0
+          ? bkts[0].id
+          : "";
+
+      let tentAmbient: TentReadingResponse | null = null;
+      let tentTrends: { timestamps: string[]; temps: (number | null)[]; humidities: (number | null)[] } | null = null;
       if (activeGrow) {
         try {
           const [ambient, trends] = await Promise.all([
             getLatestTentReading(token, activeGrow.tent_id),
             getTentSensorTrends(token, activeGrow.tent_id).catch(() => null),
           ]);
-          setTentAmbient(ambient);
-          setTentTrends(trends);
-        } catch { setTentAmbient(null); setTentTrends(null); }
-      } else {
-        setTentAmbient(null);
-        setTentTrends(null);
+          tentAmbient = ambient;
+          tentTrends = trends;
+        } catch {
+          tentAmbient = null;
+          tentTrends = null;
+        }
       }
-      // Load environment snapshots for all active buckets (bucket-level sensors only)
+
       const snapshotBuckets = activeBuckets.slice(0, 10);
       const snapshotResults = await Promise.all(
         snapshotBuckets.map(async (b) => {
@@ -220,33 +203,58 @@ export default function AnalyticsPage() {
           return null;
         })
       );
-      setEnvSnapshots(snapshotResults.filter((s): s is EnvSnapshot => s !== null));
-    })();
-  }, [analyticsGrowId, activeGrow?.id, activeGrow?.tent_id]);
 
-  // Load sensor data + drift when bucket changes
+      return {
+        buckets: bkts,
+        selectedBucketId,
+        tentAmbient,
+        tentTrends,
+        envSnapshots: snapshotResults.filter((s): s is EnvSnapshot => s !== null),
+      };
+    },
+  );
+  const {
+    data: bucketData,
+    isLoading: sensorLoading,
+  } = useApiSWR(
+    selectedBucketId ? ["analytics", "bucket", selectedBucketId] : null,
+    async (token) => {
+      const [sensorData, driftData] = await Promise.all([
+        listSensorReadings(token, selectedBucketId, 200),
+        getSensorDrift(token, selectedBucketId, 24).catch(() => null),
+      ]);
+      return {
+        sensorData: sensorData.reverse(),
+        driftData: driftData as DriftResponse | null,
+      };
+    },
+  );
+
+  useEffect(() => {
+    if (!overviewData) return;
+    setLeaderboard(overviewData.leaderboard);
+    setAllYields(overviewData.allYields);
+    setHeatMapData(overviewData.heatMapData);
+  }, [overviewData]);
+
+  useEffect(() => {
+    if (!growContextData) return;
+    setBuckets(growContextData.buckets);
+    setSelectedBucketId(growContextData.selectedBucketId);
+    setTentAmbient(growContextData.tentAmbient);
+    setTentTrends(growContextData.tentTrends);
+    setEnvSnapshots(growContextData.envSnapshots);
+  }, [growContextData]);
+
   useEffect(() => {
     if (!selectedBucketId) {
       setSensorData([]);
       setDriftData(null);
       return;
     }
-    const token = getAccessToken();
-    if (!token) return;
-    setSensorLoading(true);
-    (async () => {
-      try {
-        const [readings, drift] = await Promise.all([
-          listSensorReadings(token, selectedBucketId, 200),
-          getSensorDrift(token, selectedBucketId, 24).catch(() => null),
-        ]);
-        setSensorData(readings.reverse()); // oldest first for chart
-        setDriftData(drift as DriftResponse | null);
-      } finally {
-        setSensorLoading(false);
-      }
-    })();
-  }, [selectedBucketId]);
+    setSensorData(bucketData?.sensorData ?? []);
+    setDriftData(bucketData?.driftData ?? null);
+  }, [selectedBucketId, bucketData]);
 
   const activeGrows = grows.filter((g) => g.status === "active").length;
   const completedGrows = grows.filter((g) => g.status === "completed").length;

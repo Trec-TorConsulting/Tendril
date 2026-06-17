@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { getAccessToken } from "@/lib/auth";
+import { useEffect, useMemo, useState } from "react";
 import { searchReferenceStrains, searchNutrients } from "@/lib/api";
+import { useApiSWR } from "@/lib/swr";
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
 
@@ -30,26 +30,27 @@ interface ReferenceStrainSearchProps {
 
 export function ReferenceStrainSearch({ onSelect, placeholder = "Search global strain database...", className }: ReferenceStrainSearchProps) {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<StrainSuggestion[]>([]);
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [open, setOpen] = useState(false);
 
-  const search = useCallback(async (q: string) => {
-    if (q.length < 2) { setResults([]); return; }
-    const token = getAccessToken();
-    if (!token) return;
-    try {
-      const data = await searchReferenceStrains(token, q);
-      setResults(data);
-      setOpen(data.length > 0);
-    } catch {
-      setResults([]);
-    }
-  }, []);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query), 300);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const { data } = useApiSWR<StrainSuggestion[]>(
+    debouncedQuery.length >= 2 ? ["reference-strains", debouncedQuery] : null,
+    (token) => searchReferenceStrains(token, debouncedQuery),
+  );
+  const results = useMemo(() => data ?? [], [data]);
 
   useEffect(() => {
-    const timer = setTimeout(() => search(query), 300);
-    return () => clearTimeout(timer);
-  }, [query, search]);
+    if (debouncedQuery.length < 2) {
+      setOpen(false);
+      return;
+    }
+    setOpen(results.length > 0);
+  }, [debouncedQuery, results.length]);
 
   return (
     <div className={`relative ${className || ""}`}>
@@ -96,26 +97,27 @@ interface NutrientSearchProps {
 
 export function NutrientSearch({ onSelect, placeholder = "Search nutrients by name or brand...", className }: NutrientSearchProps) {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<NutrientSuggestion[]>([]);
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [open, setOpen] = useState(false);
 
-  const search = useCallback(async (q: string) => {
-    if (q.length < 2) { setResults([]); return; }
-    const token = getAccessToken();
-    if (!token) return;
-    try {
-      const data = await searchNutrients(token, q);
-      setResults(data);
-      setOpen(data.length > 0);
-    } catch {
-      setResults([]);
-    }
-  }, []);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query), 300);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const { data } = useApiSWR<NutrientSuggestion[]>(
+    debouncedQuery.length >= 2 ? ["nutrients", "search", debouncedQuery] : null,
+    (token) => searchNutrients(token, debouncedQuery),
+  );
+  const results = useMemo(() => data ?? [], [data]);
 
   useEffect(() => {
-    const timer = setTimeout(() => search(query), 300);
-    return () => clearTimeout(timer);
-  }, [query, search]);
+    if (debouncedQuery.length < 2) {
+      setOpen(false);
+      return;
+    }
+    setOpen(results.length > 0);
+  }, [debouncedQuery, results.length]);
 
   return (
     <div className={`relative ${className || ""}`}>

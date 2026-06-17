@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useGrow } from "@/hooks/use-grow";
 import { getAccessToken } from "@/lib/auth";
 import { listBuckets, quickLogFeeding, type BucketResponse } from "@/lib/api";
+import { useApiSWR } from "@/lib/swr";
 import { cn } from "@/lib/utils";
 import { Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -38,7 +39,6 @@ function saveRecentValues(values: Record<string, string>) {
 export function FeedingLogForm({ onSuccess }: FeedingLogFormProps) {
   const { selectedGrow } = useGrow();
   const { prefs } = usePreferences();
-  const [buckets, setBuckets] = useState<BucketResponse[]>([]);
   const [selectedBucketIds, setSelectedBucketIds] = useState<string[]>([]);
   const [ph, setPh] = useState(() => getRecentValues().ph || "");
   const [ec, setEc] = useState(() => getRecentValues().ec || "");
@@ -46,25 +46,19 @@ export function FeedingLogForm({ onSuccess }: FeedingLogFormProps) {
   const [volume, setVolume] = useState(() => getRecentValues().volume_gal || "");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [loadingBuckets, setLoadingBuckets] = useState(false);
+  const {
+    data: bucketData,
+    isLoading: loadingBuckets,
+  } = useApiSWR<BucketResponse[]>(
+    selectedGrow ? ["quick-log", "feeding", "buckets", selectedGrow.id] : null,
+    (token) => listBuckets(token, selectedGrow!.id),
+  );
+  const buckets = bucketData ?? [];
 
   // Load buckets for active grow
   useEffect(() => {
-    if (!selectedGrow) return;
-    const token = getAccessToken();
-    if (!token) return;
-    let cancelled = false;
-    setLoadingBuckets(true); // eslint-disable-line react-hooks/set-state-in-effect
-    listBuckets(token, selectedGrow.id)
-      .then((b) => {
-        if (cancelled) return;
-        setBuckets(b);
-        // Auto-select all buckets
-        setSelectedBucketIds(b.map((bucket) => bucket.id));
-      })
-      .finally(() => { if (!cancelled) setLoadingBuckets(false); });
-    return () => { cancelled = true; };
-  }, [selectedGrow]);
+    setSelectedBucketIds(buckets.map((bucket) => bucket.id));
+  }, [buckets]);
 
   const toggleBucket = (id: string) => {
     setSelectedBucketIds((prev) =>

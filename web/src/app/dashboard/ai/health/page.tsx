@@ -11,6 +11,7 @@ import {
   type HealthCheckResult,
   type TentResponse,
 } from "@/lib/api";
+import { useApiSWR } from "@/lib/swr";
 import { useGrow } from "@/hooks/use-grow";
 import { HealthCheckForm } from "@/components/health-check-form";
 import { PageHeader } from "@/components/page-header";
@@ -130,36 +131,45 @@ export default function HealthPage() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [autoCheck, setAutoCheck] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { data: healthData } = useApiSWR(
+    selectedGrow ? ["ai-health", selectedGrow.id, selectedGrow.tent_id] : null,
+    async (token) => {
+      const [tentData, historyData] = await Promise.all([
+        getTent(token, selectedGrow!.tent_id),
+        getHealthCheckHistory(token, selectedGrow!.id, 10),
+      ]);
+      const cameras = await listTentCameras(token, selectedGrow!.tent_id).catch(() => []);
+      const cameraAvailable = cameras.length > 0 || !!tentData.camera_url;
+      return {
+        tent: tentData,
+        history: historyData.items,
+        cameraAvailable,
+      };
+    },
+  );
 
-  // Load tent + history when grow changes
+  // Reset local UI state when grow changes
   useEffect(() => {
     setResult(null);
     setHistory([]);
     setTent(null);
     if (!selectedGrow) return;
     setAutoCheck(selectedGrow.auto_health_check);
-    const load = async () => {
-      const token = getAccessToken();
-      if (!token) return;
-      try {
-        const [tentData, historyData] = await Promise.all([
-          getTent(token, selectedGrow.tent_id),
-          getHealthCheckHistory(token, selectedGrow.id, 10),
-        ]);
-        setTent(tentData);
-        setHistory(historyData.items);
-        // Check for cameras (new TentCamera records OR legacy camera_url)
-        const cameras = await listTentCameras(token, selectedGrow.tent_id).catch(() => []);
-        const cameraAvailable = cameras.length > 0 || !!tentData.camera_url;
-        setHasCamera(cameraAvailable);
-        setIncludeCamera(cameraAvailable);
-      } catch {
-        setTent(null);
-        setHistory([]);
-      }
-    };
-    load();
   }, [selectedGrow]);
+
+  useEffect(() => {
+    if (!healthData) {
+      setTent(null);
+      setHistory([]);
+      setHasCamera(false);
+      setIncludeCamera(false);
+      return;
+    }
+    setTent(healthData.tent);
+    setHistory(healthData.history);
+    setHasCamera(healthData.cameraAvailable);
+    setIncludeCamera(healthData.cameraAvailable);
+  }, [healthData]);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

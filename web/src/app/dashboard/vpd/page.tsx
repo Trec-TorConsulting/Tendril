@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Activity, Droplets, Thermometer, Wind } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -21,7 +21,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/page-header";
-import { getAccessToken } from "@/lib/auth";
+import { useApiSWR } from "@/lib/swr";
 import { apiFetch } from "@/lib/api";
 import { useGrow } from "@/hooks/use-grow";
 import {
@@ -50,29 +50,22 @@ interface TrendData {
 
 export default function VpdDashboardPage() {
   const { selectedGrow } = useGrow();
-  const [tents, setTents] = useState<TentOption[]>([]);
   const [selectedTent, setSelectedTent] = useState<string>("");
-  const [trends, setTrends] = useState<TrendData | null>(null);
-  const [loading, setLoading] = useState(true);
   const [leafOffset, setLeafOffset] = useState(2);
   const [stage, setStage] = useState<GrowStage>("vegetative");
 
-  // Load tents
+  const { data: tentsData } = useApiSWR(
+    ["vpd-tents"],
+    (token) => apiFetch<{ items: { id: string; name: string }[] }>("/tents", { token }),
+  );
+  const tents = tentsData?.items ?? [];
+
+  // Set initial selected tent
   useEffect(() => {
-    async function loadTents() {
-      try {
-        const token = getAccessToken() ?? "";
-        const data = await apiFetch<{ items: { id: string; name: string }[] }>("/tents", { token });
-        setTents(data.items || []);
-        if (data.items?.length > 0 && !selectedTent) {
-          setSelectedTent(data.items[0].id);
-        }
-      } catch {
-        toast.error("Failed to load tents");
-      }
+    if (tents.length > 0 && !selectedTent) {
+      setSelectedTent(tents[0].id);
     }
-    loadTents();
-  }, []);
+  }, [tents, selectedTent]);
 
   // Detect stage from current grow
   useEffect(() => {
@@ -90,26 +83,12 @@ export default function VpdDashboardPage() {
     }
   }, [selectedGrow?.stage]);
 
-  // Load trends when tent changes
-  const loadTrends = useCallback(async () => {
-    if (!selectedTent) return;
-    setLoading(true);
-    try {
-      const token = getAccessToken() ?? "";
-      const data = await apiFetch<TrendData>(`/tent-sensors/trends/${selectedTent}?hours=24`, { token });
-      setTrends(data);
-    } catch {
-      toast.error("Failed to load VPD trends");
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedTent]);
-
-  useEffect(() => {
-    loadTrends();
-    const interval = setInterval(loadTrends, 60_000);
-    return () => clearInterval(interval);
-  }, [loadTrends]);
+  // Load trends when tent changes (auto-refresh every 60s)
+  const { data: trends, isLoading: loading } = useApiSWR(
+    selectedTent ? ["vpd-trends", selectedTent] : null,
+    (token) => apiFetch<TrendData>(`/tent-sensors/trends/${selectedTent}?hours=24`, { token }),
+    { refreshInterval: 60_000 },
+  );
 
   // Compute chart data with client-side VPD calculation (with leaf offset)
   const chartData = trends

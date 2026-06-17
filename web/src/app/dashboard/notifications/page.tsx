@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
+import { useApiSWR } from "@/lib/swr";
 import {
   listChannels,
   createChannel,
@@ -72,33 +73,30 @@ const typeIcon: Record<string, React.ReactNode> = {
 
 export default function NotificationsPage() {
   const confirm = useConfirm();
-  const [channels, setChannels] = useState<ChannelResponse[]>([]);
-  const [preferences, setPreferences] = useState<NotificationPreference[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [showPref, setShowPref] = useState(false);
   const [editingPref, setEditingPref] = useState<NotificationPreference | null>(null);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [testing, setTesting] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  const refresh = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-    try {
+  const { data, isLoading: loading, mutate } = useApiSWR(
+    ["notifications"],
+    async (token) => {
       const [ch, prefs] = await Promise.all([
         listChannels(token).catch(() => [] as ChannelResponse[]),
         listNotificationPreferences(token).catch(() => [] as NotificationPreference[]),
       ]);
-      setChannels(ch);
-      setPreferences(prefs);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      return { channels: ch, preferences: prefs };
+    },
+  );
 
+  const channels = data?.channels ?? [];
+  const preferences = data?.preferences ?? [];
+
+  const refresh = mutate;
+
+  // Check push subscription status on mount only
   useEffect(() => {
-    refresh();
-    // Check push subscription status
     if ("serviceWorker" in navigator && "PushManager" in window) {
       navigator.serviceWorker.ready.then((reg) => {
         reg.pushManager.getSubscription().then((sub) => {
@@ -106,7 +104,7 @@ export default function NotificationsPage() {
         });
       });
     }
-  }, [refresh]);
+  }, []);
 
   const handleToggle = async (ch: ChannelResponse) => {
     const token = getAccessToken();

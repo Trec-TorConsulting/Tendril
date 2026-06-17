@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getAccessToken } from "@/lib/auth";
 import { listMyTickets, listKBCategories, type SupportTicket, type KBCategory } from "@/lib/api";
+import { useApiSWR } from "@/lib/swr";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,28 +13,29 @@ import Link from "next/link";
 import { toast } from "sonner";
 
 export default function SupportPage() {
-  const [tickets, setTickets] = useState<SupportTicket[]>([]);
-  const [categories, setCategories] = useState<KBCategory[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [hasShownError, setHasShownError] = useState(false);
+  const { data: rawData, isLoading: loading, error } = useApiSWR(
+    ["support", "home"],
+    async (token) => {
+      const [ticketResult, catResult] = await Promise.all([
+        listMyTickets(token),
+        listKBCategories(),
+      ]);
+      return {
+        tickets: ticketResult.tickets.slice(0, 5),
+        categories: catResult,
+      };
+    },
+  );
+  const tickets: SupportTicket[] = rawData?.tickets ?? [];
+  const categories: KBCategory[] = rawData?.categories ?? [];
 
   useEffect(() => {
-    async function load() {
-      try {
-        const token = getAccessToken();
-        const [ticketResult, catResult] = await Promise.all([
-          token ? listMyTickets(token) : Promise.resolve({ tickets: [], total: 0, page: 1 }),
-          listKBCategories(),
-        ]);
-        setTickets(ticketResult.tickets.slice(0, 5));
-        setCategories(catResult);
-      } catch {
-        toast.error("Failed to load support data");
-      } finally {
-        setLoading(false);
-      }
+    if (error && !hasShownError) {
+      toast.error("Failed to load support data");
+      setHasShownError(true);
     }
-    load();
-  }, []);
+  }, [error, hasShownError]);
 
   const statusColor = (status: string) => {
     switch (status) {

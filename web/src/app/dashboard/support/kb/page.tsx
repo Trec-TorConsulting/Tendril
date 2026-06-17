@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { listKBCategories, listKBArticles, searchKBArticles, type KBCategory, type KBArticle } from "@/lib/api";
+import { useApiSWR } from "@/lib/swr";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,32 +13,31 @@ import { Search } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 
-export default function KnowledgeBasePage() {
+function KnowledgeBasePageContent() {
   const searchParams = useSearchParams();
   const categorySlug = searchParams.get("category");
-  const [categories, setCategories] = useState<KBCategory[]>([]);
-  const [articles, setArticles] = useState<KBArticle[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<KBArticle[] | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [hasShownLoadError, setHasShownLoadError] = useState(false);
+  const { data: rawData, isLoading: loading, error: loadError } = useApiSWR(
+    ["support", "kb", categorySlug || "all"],
+    async () => {
+      const [cats, arts] = await Promise.all([
+        listKBCategories(),
+        listKBArticles({ category_slug: categorySlug || undefined }),
+      ]);
+      return { categories: cats, articles: arts.articles };
+    },
+  );
+  const categories = rawData?.categories ?? [];
+  const articles = rawData?.articles ?? [];
 
   useEffect(() => {
-    async function load() {
-      try {
-        const [cats, arts] = await Promise.all([
-          listKBCategories(),
-          listKBArticles({ category_slug: categorySlug || undefined }),
-        ]);
-        setCategories(cats);
-        setArticles(arts.articles);
-      } catch {
-        toast.error("Failed to load knowledge base");
-      } finally {
-        setLoading(false);
-      }
+    if (loadError && !hasShownLoadError) {
+      toast.error("Failed to load knowledge base");
+      setHasShownLoadError(true);
     }
-    load();
-  }, [categorySlug]);
+  }, [loadError, hasShownLoadError]);
 
   const handleSearch = useCallback(async () => {
     if (searchQuery.length < 2) {
@@ -126,5 +126,21 @@ export default function KnowledgeBasePage() {
         </div>
       </div>
     </>
+  );
+}
+
+export default function KnowledgeBasePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex flex-1 flex-col gap-6 p-4 lg:p-6">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-16 w-full" />
+          ))}
+        </div>
+      }
+    >
+      <KnowledgeBasePageContent />
+    </Suspense>
   );
 }

@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { getAccessToken } from "@/lib/auth";
+import { useApiSWR } from "@/lib/swr";
 import { useConfirm } from "@/components/confirm-dialog";
 import { formatDate } from "@/lib/utils";
 import {
@@ -47,9 +48,17 @@ import { Plus, Trash2, CheckCircle2, Clock, Loader2, Users } from "lucide-react"
 
 export default function TeamPage() {
   const confirm = useConfirm();
-  const [members, setMembers] = useState<TenantMember[]>([]);
-  const [currentUserId, setCurrentUserId] = useState("");
-  const [isOwner, setIsOwner] = useState(false);
+  const { data: rawData, mutate } = useApiSWR(
+    ["team-members"],
+    async (token) => {
+      const [me, m] = await Promise.all([getMe(token), listTenantMembers(token)]);
+      return { currentUserId: me.id, isOwner: me.role === "owner", members: m };
+    },
+  );
+  const members = rawData?.members ?? [];
+  const currentUserId = rawData?.currentUserId ?? "";
+  const isOwner = rawData?.isOwner ?? false;
+  const refresh = mutate;
   const [showAdd, setShowAdd] = useState(false);
   const [newEmail, setNewEmail] = useState("");
   const [newName, setNewName] = useState("");
@@ -58,24 +67,6 @@ export default function TeamPage() {
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-
-  const refresh = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-    try {
-      const [me, m] = await Promise.all([getMe(token), listTenantMembers(token)]);
-      setCurrentUserId(me.id);
-      setIsOwner(me.role === "owner");
-      setMembers(m);
-      setError("");
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to load");
-    }
-  }, []);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();

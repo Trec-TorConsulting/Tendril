@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { getAccessToken } from "@/lib/auth";
 import { useConfirm } from "@/components/confirm-dialog";
 import { fireCannons } from "@/lib/confetti";
@@ -35,6 +35,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Wheat, Plus, Trash2, Pencil, Loader2, Star } from "lucide-react";
+import { useApiSWR } from "@/lib/swr";
 
 interface HarvestTabProps {
   growId: string;
@@ -42,7 +43,21 @@ interface HarvestTabProps {
 }
 
 export function HarvestTab({ growId, buckets }: HarvestTabProps) {
-  const [yields, setYields] = useState<YieldResponse[]>([]);
+  const {
+    data: rawYields,
+    mutate,
+  } = useApiSWR(["grow", "harvest", growId, buckets.map((b) => b.id).join(",")], async (token) => {
+    const allYields: YieldResponse[] = [];
+    await Promise.all(buckets.map(async (b) => {
+      try {
+        const y = await listYields(token, b.id);
+        allYields.push(...y);
+      } catch { /* empty */ }
+    }));
+    allYields.sort((a, b) => new Date(b.harvest_date || "").getTime() - new Date(a.harvest_date || "").getTime());
+    return allYields;
+  });
+  const yields: YieldResponse[] = rawYields ?? [];
   const [dialog, setDialog] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState({
@@ -64,21 +79,7 @@ export function HarvestTab({ growId, buckets }: HarvestTabProps) {
   const bucketLabelMap: Record<string, string> = {};
   buckets.forEach((b) => { bucketLabelMap[b.id] = `#${b.position} ${b.label || "Unnamed"}`; });
 
-  const loadYields = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-    const allYields: YieldResponse[] = [];
-    await Promise.all(buckets.map(async (b) => {
-      try {
-        const y = await listYields(token, b.id);
-        allYields.push(...y);
-      } catch { /* empty */ }
-    }));
-    allYields.sort((a, b) => new Date(b.harvest_date || "").getTime() - new Date(a.harvest_date || "").getTime());
-    setYields(allYields);
-  }, [buckets]);
-
-  useEffect(() => { loadYields(); }, [loadYields]);
+  const loadYields = mutate;
 
   const handleSubmit = async () => {
     const token = getAccessToken();

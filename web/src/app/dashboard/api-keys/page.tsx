@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { getAccessToken } from "@/lib/auth";
+import { useCallback, useState } from "react";
 import { listApiKeys, createApiKey, revokeApiKey } from "@/lib/api";
+import { useApiSWR } from "@/lib/swr";
+import { getAccessToken } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,28 +60,19 @@ interface ApiKeyItem {
 
 export default function ApiKeysPage() {
   const confirm = useConfirm();
-  const [keys, setKeys] = useState<ApiKeyItem[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [newKey, setNewKey] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [scopes, setScopes] = useState("read");
   const [expiresDays, setExpiresDays] = useState("");
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
 
-  const refresh = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-    try {
-      setKeys(await listApiKeys(token));
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to load API keys");
-    } finally { setLoading(false); }
-  }, []);
+  const { data: keys = [], isLoading: loading, mutate } = useApiSWR(
+    ["api-keys"],
+    (token) => listApiKeys(token),
+  );
 
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
+  const refresh = mutate;
 
   const handleCreate = async () => {
     const token = getAccessToken();

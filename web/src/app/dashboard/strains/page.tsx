@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
+import { useApiSWR } from "@/lib/swr";
 import { PageSkeleton } from "@/components/page-skeleton";
 import { useConfirm } from "@/components/confirm-dialog";
 import {
@@ -55,38 +56,33 @@ import { Plus, Trash2, Trophy, Library, MoreHorizontal, BarChart3, Pencil, Flask
 import { toast } from "sonner";
 
 export default function StrainsPage() {
-  const [strains, setStrains] = useState<StrainResponse[]>([]);
-  const [leaderboard, setLeaderboard] = useState<
-    { strain_name: string; harvests: number; avg_dry_weight_g: number | null; avg_quality: number | null }[]
-  >([]);
   const [showCreate, setShowCreate] = useState(false);
   const [editStrain, setEditStrain] = useState<StrainResponse | null>(null);
   const [form, setForm] = useState({ name: "", breeder: "", genetics: "" });
   const [editForm, setEditForm] = useState({ name: "", breeder: "", genetics: "" });
   const [tab, setTab] = useState<"library" | "leaderboard" | "comparison">("library");
   const confirm = useConfirm();
-  const [loading, setLoading] = useState(true);
   const [comparisonStrainId, setComparisonStrainId] = useState("");
-  const [comparison, setComparison] = useState<StrainGrowComparison[]>([]);
   const [feedingStrain, setFeedingStrain] = useState<StrainResponse | null>(null);
   const [feedingSuggestions, setFeedingSuggestions] = useState<FeedingSuggestion[]>([]);
   const [feedingLoading, setFeedingLoading] = useState(false);
 
-  const refresh = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-    try {
-      const [s, lb] = await Promise.all([listStrains(token), getStrainLeaderboard(token)]);
-      setStrains(s);
-      setLeaderboard(lb);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to load strains");
-    } finally { setLoading(false); }
-  }, []);
+  const { data, isLoading: loading, mutate } = useApiSWR(
+    ["strains"],
+    async (token) => {
+      const [s, lb] = await Promise.all([
+        listStrains(token),
+        getStrainLeaderboard(token),
+      ]);
+      return { strains: s, leaderboard: lb };
+    },
+  );
 
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
+  const strains = data?.strains ?? [];
+  const leaderboard = data?.leaderboard ?? [];
+  const [comparison, setComparison] = useState<StrainGrowComparison[]>([]);
+
+  const refresh = mutate;
 
   const handleCreate = async () => {
     const token = getAccessToken();

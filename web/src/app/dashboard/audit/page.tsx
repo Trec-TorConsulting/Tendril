@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useCallback, useEffect, useState } from "react";
-import { getAccessToken } from "@/lib/auth";
+import React, { useState } from "react";
 import { listAuditLogs } from "@/lib/api";
+import { useApiSWR } from "@/lib/swr";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,7 +31,6 @@ import {
 import { cn, formatDateTime } from "@/lib/utils";
 import { ChevronLeft, ChevronRight, Eye, EyeOff } from "lucide-react";
 import { PageSkeleton } from "@/components/page-skeleton";
-import { toast } from "sonner";
 
 interface AuditEntry {
   id: string;
@@ -52,38 +51,25 @@ const ACTION_VARIANT: Record<string, "default" | "secondary" | "destructive" | "
 };
 
 export default function AuditPage() {
-  const [entries, setEntries] = useState<AuditEntry[]>([]);
-  const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [actionFilter, setActionFilter] = useState("");
   const [resourceFilter, setResourceFilter] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  const refresh = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-    try {
-      const data = await listAuditLogs(token, {
+  const { data, isLoading } = useApiSWR(
+    ["audit-logs", page, actionFilter, resourceFilter],
+    (token) =>
+      listAuditLogs(token, {
         page,
         page_size: 50,
         action: actionFilter || undefined,
         resource_type: resourceFilter || undefined,
-      });
-      setEntries(data.items);
-      setTotal(data.total);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to load audit logs");
-    } finally { setLoading(false); }
-  }, [page, actionFilter, resourceFilter]);
+      }),
+  );
 
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
+  const entries = data?.items ?? [];
+  const total = data?.total ?? 0;
   const totalPages = Math.ceil(total / 50);
-
-  if (loading) return <PageSkeleton rows={6} />;
 
   return (
     <>
@@ -130,7 +116,9 @@ export default function AuditPage() {
         </div>
 
         {/* Table */}
-        {entries.length === 0 ? (
+        {isLoading ? (
+          <PageSkeleton rows={6} />
+        ) : entries.length === 0 ? (
           <Card className="flex flex-col items-center justify-center py-16">
             <Eye className="size-12 text-muted-foreground/50" />
             <h3 className="mt-4 text-lg font-semibold">No audit entries found</h3>

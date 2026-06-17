@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { getAccessToken } from "@/lib/auth";
 import {
   listTasks,
@@ -54,6 +54,7 @@ import {
 import Link from "next/link";
 import { toast } from "sonner";
 import { SwipeableCard } from "@/components/swipeable-card";
+import { useApiSWR } from "@/lib/swr";
 
 const PRIORITY_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
   low: "secondary",
@@ -127,8 +128,16 @@ function getRoutineLabel(routine: string | null) {
 }
 
 export function TasksTab({ growId }: { growId: string }) {
-  const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [filter, setFilter] = useState<string>("pending");
+  const {
+    data: rawTasks,
+    mutate,
+  } = useApiSWR(["grow", "tasks", growId, filter || "all"], async (token) => {
+    const filters: Record<string, string> = { grow_cycle_id: growId };
+    if (filter) filters.status = filter;
+    return listTasks(token, filters);
+  });
+  const tasks: TaskItem[] = rawTasks ?? [];
 
   // Create / Edit dialog
   const [taskDialog, setTaskDialog] = useState(false);
@@ -136,17 +145,7 @@ export function TasksTab({ growId }: { growId: string }) {
   const [taskForm, setTaskForm] = useState({ title: "", description: "", priority: "medium", category: "", due_date: "", recurring: "" });
   const [taskSaving, setTaskSaving] = useState(false);
 
-  const refresh = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-    try {
-      const filters: Record<string, string> = { grow_cycle_id: growId };
-      if (filter) filters.status = filter;
-      setTasks(await listTasks(token, filters));
-    } catch { /* empty */ }
-  }, [growId, filter]);
-
-  useEffect(() => { refresh(); }, [refresh]);
+  const refresh = mutate;
 
   const handleComplete = async (id: string) => {
     const token = getAccessToken();

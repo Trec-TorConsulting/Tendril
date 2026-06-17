@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { getAccessToken } from "@/lib/auth";
 import { useConfirm } from "@/components/confirm-dialog";
 import {
@@ -39,6 +39,7 @@ import { usePreferences } from "@/hooks/use-preferences";
 import { formatTemp } from "@/lib/units";
 import { createQuickJournalEntry } from "@/lib/api";
 import { BucketDetailModal } from "./bucket-detail-modal";
+import { useApiSWR } from "@/lib/swr";
 
 interface BucketsTabProps {
   growId: string;
@@ -56,7 +57,8 @@ export function BucketsTab({ growId, growType, buckets, latestReadings, onRefres
   const [addVolume, setAddVolume] = useState("");
   const [addRole, setAddRole] = useState("site");
   const [addDialog, setAddDialog] = useState(false);
-  const [strains, setStrains] = useState<StrainResponse[]>([]);
+  const { data: rawStrains } = useApiSWR(["grow", "strains"], (token) => listStrains(token));
+  const strains: StrainResponse[] = rawStrains ?? [];
 
   const [editDialog, setEditDialog] = useState(false);
   const [editId, setEditId] = useState("");
@@ -70,12 +72,6 @@ export function BucketsTab({ growId, growType, buckets, latestReadings, onRefres
   const [quickActionDialog, setQuickActionDialog] = useState<{ type: "water_change" | "feeding"; bucketId: string; bucketLabel: string } | null>(null);
   const [quickForm, setQuickForm] = useState({ ph: "", ec: "", ppm: "", water_temp_f: "", notes: "" });
   const [quickSaving, setQuickSaving] = useState(false);
-
-  useEffect(() => {
-    const token = getAccessToken();
-    if (!token) return;
-    listStrains(token).then(setStrains).catch(() => {});
-  }, []);
 
   const strainMap = Object.fromEntries(strains.map((s) => [s.id, s]));
 

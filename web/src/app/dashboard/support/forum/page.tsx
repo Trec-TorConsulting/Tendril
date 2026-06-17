@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { listForumCategories, listForumThreads, type ForumCategory, type ForumThread } from "@/lib/api";
+import { useApiSWR } from "@/lib/swr";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,30 +13,29 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
-export default function ForumPage() {
+function ForumPageContent() {
   const searchParams = useSearchParams();
   const categorySlug = searchParams.get("category");
-  const [categories, setCategories] = useState<ForumCategory[]>([]);
-  const [threads, setThreads] = useState<ForumThread[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [hasShownLoadError, setHasShownLoadError] = useState(false);
+  const { data: rawData, isLoading: loading, error } = useApiSWR(
+    ["support", "forum", categorySlug || "all"],
+    async () => {
+      const [cats, threadResult] = await Promise.all([
+        listForumCategories(),
+        listForumThreads({ category_slug: categorySlug || undefined }),
+      ]);
+      return { categories: cats, threads: threadResult.threads };
+    },
+  );
+  const categories: ForumCategory[] = rawData?.categories ?? [];
+  const threads: ForumThread[] = rawData?.threads ?? [];
 
   useEffect(() => {
-    async function load() {
-      try {
-        const [cats, threadResult] = await Promise.all([
-          listForumCategories(),
-          listForumThreads({ category_slug: categorySlug || undefined }),
-        ]);
-        setCategories(cats);
-        setThreads(threadResult.threads);
-      } catch {
-        toast.error("Failed to load forum");
-      } finally {
-        setLoading(false);
-      }
+    if (error && !hasShownLoadError) {
+      toast.error("Failed to load forum");
+      setHasShownLoadError(true);
     }
-    load();
-  }, [categorySlug]);
+  }, [error, hasShownLoadError]);
 
   return (
     <>
@@ -116,5 +116,23 @@ export default function ForumPage() {
         )}
       </div>
     </>
+  );
+}
+
+export default function ForumPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex flex-1 flex-col gap-6 p-4 lg:p-6">
+          <div className="space-y-2">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-16 w-full" />
+            ))}
+          </div>
+        </div>
+      }
+    >
+      <ForumPageContent />
+    </Suspense>
   );
 }
