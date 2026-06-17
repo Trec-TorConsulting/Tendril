@@ -198,6 +198,10 @@ async def seed_grow_type_stages(session: AsyncSession) -> int:
                 ppfd_min, ppfd_max = _extract_env_range(light_ppfd)
 
                 light_hours = env.get("light_hours")
+                if isinstance(light_hours, dict):
+                    # Range form like {"min": 18, "max": 24} — use the upper
+                    # bound (photoperiod max) when present, else the min.
+                    light_hours = light_hours.get("max") or light_hours.get("min")
                 light_hours = None if isinstance(light_hours, str) else (float(light_hours) if light_hours else None)
 
                 # Water temp from reservoir if available

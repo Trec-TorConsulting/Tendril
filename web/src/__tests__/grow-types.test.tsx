@@ -16,6 +16,10 @@ vi.mock("next/link", () => ({
 
 vi.mock("@/lib/auth", () => ({
   getAccessToken: () => "test-token",
+  getRefreshToken: () => "test-refresh",
+  isAuthenticated: () => true,
+  setTokens: vi.fn(),
+  clearTokens: vi.fn(),
 }));
 
 vi.mock("@/components/confirm-dialog", () => ({
@@ -83,6 +87,8 @@ const { mockCustomTypes, mockBuiltIn } = vi.hoisted(() => {
 vi.mock("@/lib/api", () => ({
   listCustomGrowTypes: vi.fn().mockResolvedValue(mockCustomTypes),
   listGrowTypes: vi.fn().mockResolvedValue(mockBuiltIn),
+  getGrowType: vi.fn().mockResolvedValue(null),
+  listGrowTypeReviewQueue: vi.fn().mockResolvedValue([]),
   createCustomGrowType: vi.fn().mockResolvedValue({ ...mockCustomTypes[0], id: "gt2" }),
   deleteCustomGrowType: vi.fn().mockResolvedValue(undefined),
   submitGrowTypeForReview: vi.fn().mockResolvedValue({ status: "submitted" }),

@@ -244,6 +244,57 @@ jobs:
 
           echo "All post-deploy smoke checks passed."
 
+  # ── API & Web Test Jobs ──────────────────────────────────────
+  api-test:
+    name: API Tests
+    runs-on: arc-runner-arm64
+    defaults:
+      run:
+        working-directory: api
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tendril
+          POSTGRES_PASSWORD: tendril
+          POSTGRES_DB: tendril_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+          cache: pip
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - run: pytest --tb=short -q
+        env:
+          DATABASE_URL: postgresql+asyncpg://tendril:tendril@localhost:5432/tendril_test
+          JWT_SECRET: ci-test-secret-not-real
+          INTEGRATION_ENCRYPTION_KEY: m8eWk-kF4nPTdc7Y0wccVuqqEYTUvrAWdVcF5zKBuo0=
+
+  web-test:
+    name: Web Type-Check & Unit Tests
+    runs-on: arc-runner-arm64
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --legacy-peer-deps
+      - run: npm run type-check
+      - run: npm run test:run
+
   # ── Re-enable when going public ──────────────────────────────
   # api-test:
   #   name: API Tests

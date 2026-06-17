@@ -246,7 +246,7 @@ class TestValidateMqttTopic:
     def test_forbidden_plus_alone(self):
         error = validate_mqtt_topic("+")
         assert error is not None
-        assert "at least one specific level" in error
+        assert "too broad" in error
 
     def test_all_wildcards(self):
         error = validate_mqtt_topic("+/+/+")

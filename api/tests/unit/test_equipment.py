@@ -246,8 +246,8 @@ class TestInterlocks:
         result = await validate_interlocks(db_session, equip, "on")
         assert result.allowed is True
 
-    async def test_cooldown_blocks(self, db_session):
-        equip = _make_equipment(cooldown_minutes=10)
+    async def test_cooldown_blocks(self, db_session, db_tenant):
+        equip = _make_equipment(cooldown_minutes=10, tenant_id=db_tenant["tenant"].id)
         db_session.add(equip)
         await db_session.flush()
 
@@ -267,8 +267,8 @@ class TestInterlocks:
         assert result.violation == "cooldown"
         assert result.details["remaining_minutes"] > 0
 
-    async def test_cooldown_expired_allows(self, db_session):
-        equip = _make_equipment(cooldown_minutes=5)
+    async def test_cooldown_expired_allows(self, db_session, db_tenant):
+        equip = _make_equipment(cooldown_minutes=5, tenant_id=db_tenant["tenant"].id)
         db_session.add(equip)
         await db_session.flush()
 
@@ -286,14 +286,15 @@ class TestInterlocks:
         result = await validate_interlocks(db_session, equip, "on")
         assert result.allowed is True
 
-    async def test_conflict_blocks(self, db_session):
+    async def test_conflict_blocks(self, db_session, db_tenant):
+        tid = db_tenant["tenant"].id
         # Create two equipment that conflict with each other
-        equip_a = _make_equipment(name="Heater")
+        equip_a = _make_equipment(name="Heater", tenant_id=tid)
         equip_a.requested_state = {"is_on": True}
         db_session.add(equip_a)
         await db_session.flush()
 
-        equip_b = _make_equipment(name="AC Unit")
+        equip_b = _make_equipment(name="AC Unit", tenant_id=tid)
         equip_b.conflicts_with = [equip_a.id]
         db_session.add(equip_b)
         await db_session.flush()
@@ -303,13 +304,14 @@ class TestInterlocks:
         assert result.violation == "conflict"
         assert any(c["name"] == "Heater" for c in result.details["active_conflicts"])
 
-    async def test_conflict_allows_when_inactive(self, db_session):
-        equip_a = _make_equipment(name="Heater")
+    async def test_conflict_allows_when_inactive(self, db_session, db_tenant):
+        tid = db_tenant["tenant"].id
+        equip_a = _make_equipment(name="Heater", tenant_id=tid)
         equip_a.requested_state = {"is_on": False}
         db_session.add(equip_a)
         await db_session.flush()
 
-        equip_b = _make_equipment(name="AC Unit")
+        equip_b = _make_equipment(name="AC Unit", tenant_id=tid)
         equip_b.conflicts_with = [equip_a.id]
         db_session.add(equip_b)
         await db_session.flush()
@@ -317,8 +319,8 @@ class TestInterlocks:
         result = await validate_interlocks(db_session, equip_b, "on")
         assert result.allowed is True
 
-    async def test_rapid_cycling_blocks(self, db_session):
-        equip = _make_equipment()
+    async def test_rapid_cycling_blocks(self, db_session, db_tenant):
+        equip = _make_equipment(tenant_id=db_tenant["tenant"].id)
         db_session.add(equip)
         await db_session.flush()
 
@@ -339,8 +341,8 @@ class TestInterlocks:
         assert result.allowed is False
         assert result.violation == "rapid_cycling"
 
-    async def test_max_on_violation_detection(self, db_session):
-        equip = _make_equipment(max_on_minutes=30)
+    async def test_max_on_violation_detection(self, db_session, db_tenant):
+        equip = _make_equipment(max_on_minutes=30, tenant_id=db_tenant["tenant"].id)
         equip.requested_state = {"is_on": True}
         db_session.add(equip)
         await db_session.flush()
@@ -360,8 +362,8 @@ class TestInterlocks:
         assert len(violations) == 1
         assert violations[0].id == equip.id
 
-    async def test_max_on_no_violation_when_under_limit(self, db_session):
-        equip = _make_equipment(max_on_minutes=60)
+    async def test_max_on_no_violation_when_under_limit(self, db_session, db_tenant):
+        equip = _make_equipment(max_on_minutes=60, tenant_id=db_tenant["tenant"].id)
         equip.requested_state = {"is_on": True}
         db_session.add(equip)
         await db_session.flush()
@@ -386,11 +388,11 @@ class TestInterlocks:
 class TestEquipmentService:
     """Test the equipment control service."""
 
-    @patch("app.equipment.protocols.dispatch.dispatch_command")
-    async def test_execute_command_success(self, mock_dispatch, db_session):
+    @patch("app.equipment.service.dispatch_command")
+    async def test_execute_command_success(self, mock_dispatch, db_session, db_tenant):
         mock_dispatch.return_value = DispatchResult(success=True, message="OK")
 
-        equip = _make_equipment()
+        equip = _make_equipment(tenant_id=db_tenant["tenant"].id)
         equip.requested_state = {"is_on": False}
         db_session.add(equip)
         await db_session.flush()
@@ -406,11 +408,11 @@ class TestEquipmentService:
         assert equip.requested_state == {"is_on": True}
         mock_dispatch.assert_called_once()
 
-    @patch("app.equipment.protocols.dispatch.dispatch_command")
-    async def test_execute_command_dispatch_failure(self, mock_dispatch, db_session):
+    @patch("app.equipment.service.dispatch_command")
+    async def test_execute_command_dispatch_failure(self, mock_dispatch, db_session, db_tenant):
         mock_dispatch.return_value = DispatchResult(success=False, message="Connection refused")
 
-        equip = _make_equipment()
+        equip = _make_equipment(tenant_id=db_tenant["tenant"].id)
         equip.requested_state = {"is_on": False}
         db_session.add(equip)
         await db_session.flush()
@@ -425,11 +427,11 @@ class TestEquipmentService:
         assert success is False
         assert "Connection refused" in message
 
-    @patch("app.equipment.protocols.dispatch.dispatch_command")
-    async def test_execute_command_logs_state(self, mock_dispatch, db_session):
+    @patch("app.equipment.service.dispatch_command")
+    async def test_execute_command_logs_state(self, mock_dispatch, db_session, db_tenant):
         mock_dispatch.return_value = DispatchResult(success=True, message="OK")
 
-        equip = _make_equipment()
+        equip = _make_equipment(tenant_id=db_tenant["tenant"].id)
         equip.requested_state = {"is_on": False}
         db_session.add(equip)
         await db_session.flush()
@@ -451,8 +453,8 @@ class TestEquipmentService:
         assert logs[0].state_before == {"is_on": False}
         assert logs[0].state_after == {"is_on": True}
 
-    async def test_confirm_state(self, db_session):
-        equip = _make_equipment()
+    async def test_confirm_state(self, db_session, db_tenant):
+        equip = _make_equipment(tenant_id=db_tenant["tenant"].id)
         equip.confirmed_state = {"is_on": False}
         db_session.add(equip)
         await db_session.flush()
@@ -462,11 +464,11 @@ class TestEquipmentService:
         assert equip.confirmed_state == {"is_on": True, "power_w": 120.0}
         assert equip.last_confirmed_at is not None
 
-    @patch("app.equipment.protocols.dispatch.dispatch_command")
-    async def test_force_off(self, mock_dispatch, db_session):
+    @patch("app.equipment.service.dispatch_command")
+    async def test_force_off(self, mock_dispatch, db_session, db_tenant):
         mock_dispatch.return_value = DispatchResult(success=True, message="OFF sent")
 
-        equip = _make_equipment()
+        equip = _make_equipment(tenant_id=db_tenant["tenant"].id)
         equip.requested_state = {"is_on": True}
         db_session.add(equip)
         await db_session.flush()
@@ -558,16 +560,14 @@ class TestProtocolDispatch:
         # 50% of 255 = 127
         mock_publish.assert_called_once_with("home/light/brightness", "127")
 
-    def test_tasmota_missing_topic(self):
-        """Sync wrapper to test missing config."""
-        import asyncio
-
+    async def test_tasmota_missing_topic(self):
+        """Async test for missing required config."""
         from app.equipment.protocols.tasmota import handle_command
 
         equip = _make_equipment(protocol="tasmota_mqtt")
         equip.protocol_config = {}
 
-        result = asyncio.get_event_loop().run_until_complete(handle_command(equip, "on"))
+        result = await handle_command(equip, "on")
         assert result.success is False
         assert "Missing mqtt_topic" in result.message
 
@@ -595,7 +595,7 @@ class TestEquipmentAPI:
                 "max_on_minutes": 720,
                 "cooldown_minutes": 5,
             },
-            headers={"Authorization": f"Bearer {tenant_data['token']}"},
+            headers=tenant_data["headers"],
         )
         assert resp.status_code == 201
         data = resp.json()
@@ -608,7 +608,7 @@ class TestEquipmentAPI:
 
         factory = TenantFactory(db_session)
         tenant_data = await factory.create(plan="pro")
-        headers = {"Authorization": f"Bearer {tenant_data['token']}"}
+        headers = tenant_data["headers"]
 
         # Create two equipment
         await client.post(
@@ -642,7 +642,7 @@ class TestEquipmentAPI:
 
         factory = TenantFactory(db_session)
         tenant_data = await factory.create(plan="pro")
-        headers = {"Authorization": f"Bearer {tenant_data['token']}"}
+        headers = tenant_data["headers"]
 
         resp = await client.post(
             "/v1/equipment/",
@@ -670,7 +670,7 @@ class TestEquipmentAPI:
 
         factory = TenantFactory(db_session)
         tenant_data = await factory.create(plan="pro")
-        headers = {"Authorization": f"Bearer {tenant_data['token']}"}
+        headers = tenant_data["headers"]
 
         resp = await client.post(
             "/v1/equipment/",
@@ -690,7 +690,7 @@ class TestEquipmentAPI:
         resp = await client.get(f"/v1/equipment/{equip_id}", headers=headers)
         assert resp.status_code == 404
 
-    @patch("app.equipment.protocols.dispatch.dispatch_command")
+    @patch("app.equipment.service.dispatch_command")
     async def test_send_command(self, mock_dispatch, client, db_session):
         mock_dispatch.return_value = DispatchResult(success=True, message="Sent")
 
@@ -698,7 +698,7 @@ class TestEquipmentAPI:
 
         factory = TenantFactory(db_session)
         tenant_data = await factory.create(plan="pro")
-        headers = {"Authorization": f"Bearer {tenant_data['token']}"}
+        headers = tenant_data["headers"]
 
         resp = await client.post(
             "/v1/equipment/",
@@ -727,7 +727,7 @@ class TestEquipmentAPI:
 
         factory = TenantFactory(db_session)
         tenant_data = await factory.create(plan="pro")
-        headers = {"Authorization": f"Bearer {tenant_data['token']}"}
+        headers = tenant_data["headers"]
 
         resp = await client.post(
             "/v1/equipment/",
@@ -757,7 +757,7 @@ class TestEquipmentAPI:
 
         factory = TenantFactory(db_session)
         tenant_data = await factory.create(plan="pro")
-        headers = {"Authorization": f"Bearer {tenant_data['token']}"}
+        headers = tenant_data["headers"]
 
         fake_id = str(uuid.uuid4())
         resp = await client.get(f"/v1/equipment/{fake_id}", headers=headers)
@@ -768,7 +768,7 @@ class TestEquipmentAPI:
 
         factory = TenantFactory(db_session)
         tenant_data = await factory.create(plan="pro")
-        headers = {"Authorization": f"Bearer {tenant_data['token']}"}
+        headers = tenant_data["headers"]
 
         resp = await client.get("/v1/equipment/not-a-uuid", headers=headers)
         assert resp.status_code == 400
@@ -798,12 +798,16 @@ def _make_equipment(
     protocol: str = "tasmota_mqtt",
     max_on_minutes: int | None = None,
     cooldown_minutes: int = 0,
+    tenant_id: uuid.UUID | None = None,
 ) -> ControllableEquipment:
-    """Create a test equipment instance (not persisted)."""
-    tenant_id = uuid.uuid4()
+    """Create a test equipment instance (not persisted).
+
+    Pass ``tenant_id`` when the caller will persist this row; the default
+    random UUID is fine for pure-Python tests that never hit the DB.
+    """
     return ControllableEquipment(
         id=uuid.uuid4(),
-        tenant_id=tenant_id,
+        tenant_id=tenant_id or uuid.uuid4(),
         tent_id=None,
         name=name,
         equipment_type="relay",

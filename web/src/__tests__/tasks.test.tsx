@@ -16,6 +16,10 @@ vi.mock("next/link", () => ({
 
 vi.mock("@/lib/auth", () => ({
   getAccessToken: () => "test-token",
+  getRefreshToken: () => "test-refresh",
+  isAuthenticated: () => true,
+  setTokens: vi.fn(),
+  clearTokens: vi.fn(),
 }));
 
 vi.mock("@/components/confirm-dialog", () => ({
@@ -93,10 +97,30 @@ const { mockTasks } = vi.hoisted(() => {
 vi.mock("@/lib/api", () => ({
   listTasks: vi.fn().mockResolvedValue(mockTasks),
   listGrows: vi.fn().mockResolvedValue([]),
+  listTenantMembers: vi.fn().mockResolvedValue([]),
   getCalendarTasks: vi.fn().mockResolvedValue([]),
   createTask: vi.fn().mockResolvedValue({ id: "t3", title: "New", status: "pending" }),
+  updateTask: vi.fn().mockResolvedValue({ ...mockTasks[0] }),
   completeTask: vi.fn().mockResolvedValue({ ...mockTasks[0], status: "completed" }),
   deleteTask: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock("@/hooks/use-user", () => ({
+  useUser: () => ({
+    user: {
+      id: "u1",
+      email: "test@example.com",
+      display_name: "Test User",
+      role: "owner",
+      tenant_id: "t1",
+      is_platform_admin: false,
+      is_support: false,
+      layout_mode: "compact",
+    },
+    loading: false,
+    logout: vi.fn(),
+    refresh: vi.fn(),
+  }),
 }));
 
 vi.mock("@/lib/confetti", () => ({

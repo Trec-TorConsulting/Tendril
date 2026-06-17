@@ -110,11 +110,71 @@ async def _setup_db():
             )
         )
 
+        # The raw-SQL seeders in app.config_management.seed rely on
+        # server-side defaults for created_at/updated_at (production gets
+        # them from Alembic migrations). Base.metadata.create_all uses the
+        # Python-side defaults instead, so add the server defaults here —
+        # conditionally per (table, column) since not every reference
+        # table has both columns.
+        await conn.execute(
+            text(
+                "DO $$ DECLARE r RECORD; BEGIN "
+                "FOR r IN ("
+                "  SELECT table_name, column_name FROM information_schema.columns "
+                "  WHERE table_schema = 'public' "
+                "  AND column_name IN ('created_at', 'updated_at')"
+                ") LOOP "
+                "  EXECUTE 'ALTER TABLE ' || quote_ident(r.table_name) || "
+                "    ' ALTER COLUMN ' || quote_ident(r.column_name) || ' SET DEFAULT now()'; "
+                "END LOOP; END $$;"
+            )
+        )
+
+    # Seed reference data once (grow type profiles, task templates, etc.)
+    # so tests that exercise endpoints depending on it don't fail when the
+    # seed lifespan hook is bypassed. Truncation in ``_clean_tables`` skips
+    # these tables.
+    #
+    # Only the seeders backed by SQLAlchemy models are run here; the rest
+    # (stage_transition_tasks, automation_suppressions, etc.) target tables
+    # that only exist in Alembic migrations and aren't created by
+    # ``Base.metadata.create_all``. They aren't exercised by the test suite.
+    from app.config_management import seed as _seed
+    from app.database import async_session_factory
+
+    async with async_session_factory() as session:
+        await _seed.seed_grow_type_profiles(session)
+        await _seed.seed_grow_type_stages(session)
+        await _seed.seed_grow_type_equipment(session)
+        await _seed.seed_grow_type_troubleshooting(session)
+        await _seed.seed_task_templates(session)
+        await session.commit()
+
     yield engine
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
     await engine.dispose()
+
+
+# Reference / seed tables that should NOT be truncated between tests.
+# They are seeded once in `_setup_db` and shared across every test.
+_REFERENCE_TABLES = {
+    "grow_type_profiles",
+    "grow_type_stages",
+    "grow_type_environment",
+    "grow_type_nutrients",
+    "grow_type_watering",
+    "grow_type_equipment",
+    "grow_type_troubleshooting",
+    "task_templates",
+    "task_template_steps",
+    "automation_suppressions",
+    "companion_plants",
+    "feed_charts",
+    "nutrient_knowledge",
+    "esphome_templates",
+}
 
 
 @pytest_asyncio.fixture
@@ -129,19 +189,22 @@ async def db_session(_setup_db):
 
 @pytest_asyncio.fixture(autouse=True)
 async def _clean_tables(_setup_db):
-    """Truncate all tables after each test for isolation."""
+    """Truncate per-test tables after each test for isolation. Reference
+    (seed) tables are preserved — they're populated once in ``_setup_db``."""
     yield
     from app.database import async_session_factory
 
+    skip_list = ",".join(f"'{name}'" for name in _REFERENCE_TABLES)
     async with async_session_factory() as session:
-        await session.execute(
-            text(
-                "DO $$ DECLARE r RECORD; BEGIN "
-                "FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP "
-                "EXECUTE 'TRUNCATE TABLE ' || quote_ident(r.tablename) || ' CASCADE'; "
-                "END LOOP; END $$;"
-            )
+        # Hardcoded table names from a module-level constant — not user input.
+        truncate_sql = (
+            "DO $$ DECLARE r RECORD; BEGIN "  # noqa: S608
+            "FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public' "
+            f"AND tablename NOT IN ({skip_list})) LOOP "
+            "EXECUTE 'TRUNCATE TABLE ' || quote_ident(r.tablename) || ' CASCADE'; "
+            "END LOOP; END $$;"
         )
+        await session.execute(text(truncate_sql))
         await session.commit()
 
 
@@ -244,3 +307,12 @@ class TenantFactory:
 @pytest_asyncio.fixture
 async def tenant_factory(db_session):
     return TenantFactory(db_session)
+
+
+@pytest_asyncio.fixture
+async def db_tenant(db_session):
+    """Create a real, persisted tenant + owner user. Useful for tests that need
+    to persist tenant-scoped rows (e.g. ControllableEquipment) via the session
+    fixture rather than going through the HTTP client."""
+    factory = TenantFactory(db_session)
+    return await factory.create()
