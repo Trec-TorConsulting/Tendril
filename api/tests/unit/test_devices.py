@@ -335,3 +335,41 @@ class TestMQTTACLWebhook:
             },
         )
         assert res.json()["result"] == "deny"
+
+
+# ---------- Service-layer unit tests ----------
+
+
+class TestDevicesServiceHelpers:
+    """Direct coverage for ``app.devices.service`` pure helpers."""
+
+    def test_generate_device_credentials_format(self):
+        import bcrypt
+
+        from app.devices.service import generate_device_credentials
+
+        creds = generate_device_credentials()
+        # Device id matches the documented "td-<12 hex chars>" shape.
+        assert creds.device_id.startswith("td-")
+        assert len(creds.device_id) == 3 + 12
+        int(creds.device_id[3:], 16)  # all hex
+        # PSK is reasonably high-entropy and the persisted hash verifies it.
+        assert len(creds.psk) >= 32
+        assert bcrypt.checkpw(creds.psk.encode(), creds.psk_hash.encode())
+
+    def test_generate_device_credentials_unique(self):
+        from app.devices.service import generate_device_credentials
+
+        a = generate_device_credentials()
+        b = generate_device_credentials()
+        assert a.device_id != b.device_id
+        assert a.psk != b.psk
+        assert a.psk_hash != b.psk_hash
+
+    def test_device_pairing_error_carries_status(self):
+        from app.devices.service import DevicePairingError
+
+        err = DevicePairingError(409, "Device is already claimed by another tenant")
+        assert err.status_code == 409
+        assert err.detail == "Device is already claimed by another tenant"
+        assert str(err) == "Device is already claimed by another tenant"

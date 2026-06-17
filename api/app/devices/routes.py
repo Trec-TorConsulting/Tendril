@@ -1,14 +1,16 @@
-"""Device registration, pairing, and management API endpoints."""
+"""Device registration, pairing, and management API endpoints.
+
+This module is HTTP-only. All persistence, credential generation, and
+pairing/validation logic live in ``app.devices.service``.
+"""
 
 from __future__ import annotations
 
 import io
-import secrets
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-import bcrypt
 import qrcode
 import qrcode.constants
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -21,6 +23,7 @@ from app.audit import record_audit
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
 from app.billing.tier_gate import require_usage_limit
 from app.database import async_session_factory
+from app.devices import service
 from app.pagination import PaginatedResponse, PaginationParams, paginate
 from app.tenants.models import Device
 
@@ -81,24 +84,8 @@ async def register_device(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Register a new device. Returns the PSK once — it cannot be retrieved again."""
-    device_id = f"td-{secrets.token_hex(6)}"
-    psk = secrets.token_urlsafe(32)
-    psk_hash = bcrypt.hashpw(psk.encode(), bcrypt.gensalt()).decode()
-
-    device = Device(
-        tenant_id=user.tenant_id,
-        device_id=device_id,
-        psk_hash=psk_hash,
-        label=body.label,
-        status="unpaired",
-    )
-    session.add(device)
-    from app.billing.metering import record_usage
-
-    await record_usage(session, user.tenant_id, "devices")
-    await session.commit()
-    await session.refresh(device)
-
+    assert user.tenant_id is not None  # guaranteed by require_role
+    device, psk = await service.register_device(session, tenant_id=user.tenant_id, label=body.label)
     return DeviceRegisterResponse(
         id=device.id,
         device_id=device.device_id,
@@ -115,24 +102,19 @@ async def pair_device(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Pair a device to the current tenant by verifying its PSK."""
-    result = await session.execute(select(Device).where(Device.device_id == body.device_id))
-    device = result.scalar_one_or_none()
-
+    assert user.tenant_id is not None  # guaranteed by require_role
+    try:
+        device = await service.pair_device(
+            session,
+            tenant_id=user.tenant_id,
+            device_id=body.device_id,
+            psk=body.psk,
+            tent_id=body.tent_id,
+        )
+    except service.DevicePairingError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found")
-
-    if device.status == "paired" and device.tenant_id != user.tenant_id:
-        raise HTTPException(status_code=409, detail="Device is already claimed by another tenant")
-
-    if not bcrypt.checkpw(body.psk.encode(), device.psk_hash.encode()):
-        raise HTTPException(status_code=401, detail="Invalid pre-shared key")
-
-    device.status = "paired"
-    device.tenant_id = user.tenant_id
-    if body.tent_id is not None:
-        device.tent_id = body.tent_id
-    await session.commit()
-    await session.refresh(device)
     return device
 
 
@@ -143,11 +125,8 @@ async def list_devices(
     pagination: Annotated[PaginationParams, Depends()],
 ):
     """List all devices for the current tenant (RLS-enforced)."""
-    q = (
-        select(Device)
-        .where(Device.deleted_at.is_(None), Device.tenant_id == user.tenant_id)
-        .order_by(Device.created_at.desc())
-    )
+    assert user.tenant_id is not None
+    q = service.list_devices_query(tenant_id=user.tenant_id)
     items, total = await paginate(session, q, pagination)
     return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
 
@@ -159,8 +138,7 @@ async def get_device(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Get a specific device by device_id."""
-    result = await session.execute(select(Device).where(Device.device_id == device_id))
-    device = result.scalar_one_or_none()
+    device = await service.get_device_by_external_id(session, device_id)
     if device is None or device.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Device not found")
     return device
@@ -174,20 +152,16 @@ async def update_device(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Update device label or tent assignment."""
-    result = await session.execute(select(Device).where(Device.device_id == device_id))
-    device = result.scalar_one_or_none()
+    device = await service.get_device_by_external_id(session, device_id)
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found")
-
-    if body.label is not None:
-        device.label = body.label
-    if body.tent_id is not None:
-        device.tent_id = body.tent_id
-    elif body.unassign_tent:
-        device.tent_id = None
-    await session.commit()
-    await session.refresh(device)
-    return device
+    return await service.update_device(
+        session,
+        device,
+        label=body.label,
+        tent_id=body.tent_id,
+        unassign_tent=body.unassign_tent,
+    )
 
 
 @router.post("/{device_id}/revoke", response_model=DeviceResponse)
@@ -197,14 +171,10 @@ async def revoke_device(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Revoke a device — it will no longer be able to connect via MQTT."""
-    result = await session.execute(select(Device).where(Device.device_id == device_id))
-    device = result.scalar_one_or_none()
+    device = await service.get_device_by_external_id(session, device_id)
     if device is None:
         raise HTTPException(status_code=404, detail="Device not found")
-    device.status = "revoked"
-    await session.commit()
-    await session.refresh(device)
-    return device
+    return await service.revoke_device(session, device)
 
 
 @router.delete("/{device_id}", status_code=204)
@@ -215,13 +185,11 @@ async def delete_device(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Delete a device permanently."""
-    result = await session.execute(select(Device).where(Device.device_id == device_id))
-    device = result.scalar_one_or_none()
+    device = await service.get_device_by_external_id(session, device_id)
     if device is None or device.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Device not found")
     await record_audit(session, user.tenant_id, user.user_id, "delete", "device", device_id, request=request)
-    device.deleted_at = datetime.now(UTC)
-    await session.commit()
+    await service.soft_delete_device(session, device)
 
 
 @router.get("/{device_id}/qr", response_class=StreamingResponse)
