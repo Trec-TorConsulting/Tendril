@@ -35,12 +35,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.support.models import (
+    CannedResponse,
     ForumCategory,
     ForumPost,
     ForumThread,
     ForumThreadStatus,
     KBArticle,
     KBCategory,
+    SupportChannel,
     SupportTicket,
     TicketCategory,
     TicketMessage,
@@ -693,3 +695,340 @@ async def toggle_forum_lock(session: AsyncSession, thread: ForumThread) -> Forum
 async def delete_forum_thread(session: AsyncSession, thread: ForumThread) -> None:
     await session.delete(thread)
     await session.commit()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Admin — ticket management, metrics, canned responses, channels
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+# Statuses that represent an open / actionable ticket. Used by both the
+# "list overdue" filter and the open-tickets KPI in metrics so they stay
+# consistent.
+OPEN_TICKET_STATUSES: tuple[TicketStatus, ...] = (
+    TicketStatus.open,
+    TicketStatus.in_progress,
+    TicketStatus.waiting_on_staff,
+)
+
+
+async def list_admin_tickets_page(
+    session: AsyncSession,
+    *,
+    status: str | None,
+    priority: str | None,
+    assigned_to: UUID | None,
+    category: str | None,
+    overdue: bool | None,
+    page: int,
+    per_page: int,
+    now: datetime | None = None,
+) -> tuple[list[SupportTicket], int]:
+    """Paginated admin ticket listing with the standard filters.
+
+    ``now`` is injectable so callers (and tests) can pin the time used
+    in the ``overdue`` cutoff. Defaults to ``datetime.now(UTC)``.
+    """
+    query = select(SupportTicket)
+    if status:
+        query = query.where(SupportTicket.status == status)
+    if priority:
+        query = query.where(SupportTicket.priority == priority)
+    if assigned_to is not None:
+        query = query.where(SupportTicket.assigned_to_id == assigned_to)
+    if category:
+        query = query.where(SupportTicket.category == category)
+    if overdue:
+        cutoff = now if now is not None else datetime.now(UTC)
+        query = query.where(
+            SupportTicket.due_at < cutoff,
+            SupportTicket.status.in_(OPEN_TICKET_STATUSES),
+        )
+
+    total = (await session.execute(select(func.count()).select_from(query.subquery()))).scalar() or 0
+
+    tickets = (
+        (
+            await session.execute(
+                query.order_by(SupportTicket.updated_at.desc()).offset((page - 1) * per_page).limit(per_page)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return list(tickets), int(total)
+
+
+async def get_admin_ticket(session: AsyncSession, ticket_id: UUID) -> SupportTicket | None:
+    return await session.get(SupportTicket, ticket_id)
+
+
+async def get_admin_ticket_with_messages(session: AsyncSession, ticket_id: UUID) -> SupportTicket | None:
+    """Admin view — includes internal notes (route does not filter)."""
+    return (
+        await session.execute(
+            select(SupportTicket).where(SupportTicket.id == ticket_id).options(selectinload(SupportTicket.messages))
+        )
+    ).scalar_one_or_none()
+
+
+async def update_admin_ticket(
+    session: AsyncSession,
+    ticket: SupportTicket,
+    *,
+    status: str | None = None,
+    priority: str | None = None,
+    assigned_to_id: UUID | None = None,
+    tags: list[str] | None = None,
+) -> SupportTicket:
+    """Apply partial updates with the documented status-side-effects:
+
+    * Setting status → resolved/closed stamps ``resolved_at``.
+    * Setting assignee on an ``open`` ticket transitions to ``in_progress``.
+    """
+    if status:
+        ticket.status = status  # type: ignore[assignment]
+        if status in (TicketStatus.resolved.value, TicketStatus.closed.value):
+            ticket.resolved_at = datetime.now(UTC)
+    if priority:
+        ticket.priority = priority  # type: ignore[assignment]
+    if assigned_to_id is not None:
+        ticket.assigned_to_id = assigned_to_id
+        if ticket.status == TicketStatus.open:
+            ticket.status = TicketStatus.in_progress
+    if tags is not None:
+        ticket.tags = tags
+    await session.commit()
+    return ticket
+
+
+async def add_admin_message(
+    session: AsyncSession,
+    ticket: SupportTicket,
+    *,
+    author_id: UUID,
+    body: str,
+    is_internal: bool,
+    attachments: list[dict] | None,
+) -> TicketMessage:
+    """Add an admin message + apply the documented side effects:
+
+    * Public reply stamps ``first_response_at`` if it wasn't set.
+    * Public reply transitions the ticket to ``waiting_on_user`` (unless
+      already ``resolved``).
+    * Internal notes don't change ticket state.
+    """
+    message = TicketMessage(
+        ticket_id=ticket.id,
+        author_id=author_id,
+        body=body,
+        is_internal=is_internal,
+        attachments=attachments or [],
+    )
+    session.add(message)
+
+    if not is_internal:
+        if ticket.first_response_at is None:
+            ticket.first_response_at = datetime.now(UTC)
+        if ticket.status != TicketStatus.resolved:
+            ticket.status = TicketStatus.waiting_on_user
+
+    await session.commit()
+    await session.refresh(message)
+    return message
+
+
+async def bulk_update_tickets(
+    session: AsyncSession,
+    *,
+    ticket_ids: list[UUID],
+    action: str,
+    value: str | None,
+) -> int:
+    """Apply ``action`` to all listed tickets and return the count updated.
+
+    Supported actions: ``close``, ``assign`` (value=user UUID),
+    ``change_priority`` (value=priority), ``change_status`` (value=status).
+    Unknown actions are no-ops (matching previous behaviour).
+    """
+    tickets = (await session.execute(select(SupportTicket).where(SupportTicket.id.in_(ticket_ids)))).scalars().all()
+
+    count = 0
+    for ticket in tickets:
+        if action == "close":
+            ticket.status = TicketStatus.closed
+            ticket.resolved_at = datetime.now(UTC)
+        elif action == "assign" and value:
+            ticket.assigned_to_id = UUID(value)
+        elif action == "change_priority" and value:
+            ticket.priority = value  # type: ignore[assignment]
+        elif action == "change_status" and value:
+            ticket.status = value  # type: ignore[assignment]
+        count += 1
+
+    await session.commit()
+    return count
+
+
+# ─── Metrics ─────────────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True, slots=True)
+class TicketMetrics:
+    """Aggregated KPI snapshot for the admin metrics endpoint."""
+
+    total_tickets: int
+    open_tickets: int
+    overdue_tickets: int
+    avg_first_response_hours: float | None
+    avg_resolution_hours: float | None
+    avg_satisfaction: float | None
+    tickets_by_status: dict[str, int]
+    tickets_by_priority: dict[str, int]
+
+
+async def compute_ticket_metrics(session: AsyncSession, *, now: datetime | None = None) -> TicketMetrics:
+    """Compute the support KPI snapshot in one place.
+
+    ``now`` is injectable for testing.
+    """
+    cutoff = now if now is not None else datetime.now(UTC)
+
+    total = (await session.execute(select(func.count(SupportTicket.id)))).scalar() or 0
+
+    open_count = (
+        await session.execute(
+            select(func.count(SupportTicket.id)).where(SupportTicket.status.in_(OPEN_TICKET_STATUSES))
+        )
+    ).scalar() or 0
+
+    overdue_count = (
+        await session.execute(
+            select(func.count(SupportTicket.id)).where(
+                SupportTicket.due_at < cutoff,
+                SupportTicket.status.in_(OPEN_TICKET_STATUSES),
+            )
+        )
+    ).scalar() or 0
+
+    avg_sat = (
+        await session.execute(
+            select(func.avg(SupportTicket.satisfaction_rating)).where(SupportTicket.satisfaction_rating.isnot(None))
+        )
+    ).scalar()
+
+    status_counts = (
+        await session.execute(select(SupportTicket.status, func.count(SupportTicket.id)).group_by(SupportTicket.status))
+    ).all()
+
+    priority_counts = (
+        await session.execute(
+            select(SupportTicket.priority, func.count(SupportTicket.id)).group_by(SupportTicket.priority)
+        )
+    ).all()
+
+    avg_first_response = (
+        await session.execute(
+            select(
+                func.avg(
+                    func.extract(
+                        "epoch",
+                        SupportTicket.first_response_at - SupportTicket.created_at,
+                    )
+                    / 3600
+                )
+            ).where(SupportTicket.first_response_at.isnot(None))
+        )
+    ).scalar()
+
+    avg_resolution = (
+        await session.execute(
+            select(
+                func.avg(
+                    func.extract(
+                        "epoch",
+                        SupportTicket.resolved_at - SupportTicket.created_at,
+                    )
+                    / 3600
+                )
+            ).where(SupportTicket.resolved_at.isnot(None))
+        )
+    ).scalar()
+
+    return TicketMetrics(
+        total_tickets=int(total),
+        open_tickets=int(open_count),
+        overdue_tickets=int(overdue_count),
+        avg_first_response_hours=(round(float(avg_first_response), 1) if avg_first_response else None),
+        avg_resolution_hours=(round(float(avg_resolution), 1) if avg_resolution else None),
+        avg_satisfaction=float(avg_sat) if avg_sat else None,
+        tickets_by_status={row[0]: row[1] for row in status_counts},
+        tickets_by_priority={row[0]: row[1] for row in priority_counts},
+    )
+
+
+# ─── Canned responses ────────────────────────────────────────────────────────
+
+
+async def list_canned_responses(session: AsyncSession) -> list[CannedResponse]:
+    return list((await session.execute(select(CannedResponse))).scalars().all())
+
+
+async def create_canned_response(
+    session: AsyncSession,
+    *,
+    author_id: UUID,
+    title: str,
+    body: str,
+    category: str | None,
+    shortcut: str | None,
+) -> CannedResponse:
+    cr = CannedResponse(
+        title=title,
+        body=body,
+        category=category,
+        shortcut=shortcut,
+        created_by_id=author_id,
+    )
+    session.add(cr)
+    await session.commit()
+    await session.refresh(cr)
+    return cr
+
+
+async def get_canned_response(session: AsyncSession, response_id: UUID) -> CannedResponse | None:
+    return await session.get(CannedResponse, response_id)
+
+
+async def delete_canned_response(session: AsyncSession, cr: CannedResponse) -> None:
+    await session.delete(cr)
+    await session.commit()
+
+
+# ─── Channels ────────────────────────────────────────────────────────────────
+
+
+async def list_support_channels(session: AsyncSession) -> list[SupportChannel]:
+    return list((await session.execute(select(SupportChannel))).scalars().all())
+
+
+async def get_support_channel(session: AsyncSession, channel_id: UUID) -> SupportChannel | None:
+    return await session.get(SupportChannel, channel_id)
+
+
+async def update_support_channel(
+    session: AsyncSession,
+    channel: SupportChannel,
+    *,
+    is_enabled: bool | None = None,
+    min_plan: str | None = None,
+    config_json: dict | None = None,
+) -> SupportChannel:
+    if is_enabled is not None:
+        channel.is_enabled = is_enabled
+    if min_plan is not None:
+        channel.min_plan = min_plan
+    if config_json is not None:
+        channel.config_json = config_json
+    await session.commit()
+    return channel
