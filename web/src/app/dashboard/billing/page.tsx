@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getAccessToken } from "@/lib/auth";
+import { useState } from "react";
 import { getBillingStatus, createCheckout, createPortalSession, getPublicPlans, type BillingStatus, type PublicBillingPlan } from "@/lib/api";
+import { useApiSWR } from "@/lib/swr";
+import { getAccessToken } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -76,36 +77,24 @@ function planFeatures(plan: PublicBillingPlan): string[] {
 }
 
 export default function BillingPage() {
-  const [status, setStatus] = useState<BillingStatus | null>(null);
-  const [plans, setPlans] = useState<PublicBillingPlan[]>([]);
-  const [loading, setLoading] = useState(true);
   const [annualBilling, setAnnualBilling] = useState(false);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        const [publicPlans, billingStatus] = await Promise.all([
-          getPublicPlans(),
-          (async () => {
-            const token = getAccessToken();
-            if (!token) return null;
-            return getBillingStatus(token);
-          })(),
-        ]);
-        if (!cancelled) {
-          setPlans(publicPlans.sort((a, b) => a.sort_order - b.sort_order));
-          setStatus(billingStatus);
-        }
-      } catch (e) {
-        if (!cancelled) toast.error(e instanceof Error ? e.message : "Failed to load billing");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    load();
-    return () => { cancelled = true; };
-  }, []);
+  const { data, isLoading: loading } = useApiSWR(
+    ["billing"],
+    async (token) => {
+      const [publicPlans, billingStatus] = await Promise.all([
+        getPublicPlans(),
+        getBillingStatus(token),
+      ]);
+      return {
+        plans: publicPlans.sort((a, b) => a.sort_order - b.sort_order),
+        status: billingStatus,
+      };
+    },
+  );
+
+  const plans = data?.plans ?? [];
+  const status = data?.status ?? null;
 
   const handleUpgrade = async (plan: string) => {
     const token = getAccessToken();

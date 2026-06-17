@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
+import { useApiSWR } from "@/lib/swr";
 import {
   listSchedules,
   createSchedule,
@@ -69,32 +70,25 @@ const typeIcon: Record<string, React.ReactNode> = {
 
 export default function SchedulesPage() {
   const confirm = useConfirm();
-  const [schedules, setSchedules] = useState<ScheduleResponse[]>([]);
-  const [tents, setTents] = useState<TentOption[]>([]);
   const [showCreate, setShowCreate] = useState(false);
-  const [loading, setLoading] = useState(true);
 
-  const refresh = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-    try {
+  const { data, isLoading: loading, mutate } = useApiSWR(
+    ['schedules'],
+    async (token) => {
       const [s, t] = await Promise.all([
         listSchedules(token),
         listTents(token),
       ]);
-      setSchedules(s);
-      setTents(t.map((t: { id: string; name: string }) => ({ id: t.id, name: t.name })));
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to load schedules");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      return {
+        schedules: s,
+        tents: t.map((t: { id: string; name: string }) => ({ id: t.id, name: t.name })),
+      };
+    },
+  );
 
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
+  const schedules = data?.schedules ?? [];
+  const tents = data?.tents ?? [];
+  const refresh = mutate;
   const handleToggle = async (sched: ScheduleResponse) => {
     const token = getAccessToken();
     if (!token) return;
