@@ -54,7 +54,7 @@ async def list_invoices(
         try:
             import stripe
 
-            stripe.api_key = adapter.config.get("secret_key", adapter._api_key)
+            stripe.api_key = adapter.config.get("secret_key", getattr(adapter, "_api_key", ""))
 
             invoices = stripe.Invoice.list(
                 customer=account.stripe_customer_id,
@@ -63,13 +63,13 @@ async def list_invoices(
 
             return [
                 Invoice(
-                    id=inv.id,
+                    id=inv.id or "",
                     date=_format_timestamp(inv.created),
                     amount=_format_amount(inv.amount_paid, inv.currency),
                     status=inv.status or "unknown",
                     pdf_url=inv.invoice_pdf,
                     hosted_url=inv.hosted_invoice_url,
-                    description=inv.description or f"Invoice {inv.number or inv.id[:8]}",
+                    description=inv.description or f"Invoice {inv.number or (inv.id or "")[:8]}",
                 )
                 for inv in invoices.data
                 if inv.amount_paid > 0  # Skip $0 invoices

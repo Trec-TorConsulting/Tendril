@@ -281,7 +281,7 @@ async def list_lines(
     q = select(NutrientLine).options(selectinload(NutrientLine.brand))
 
     if grow_type:
-        q = q.where(NutrientLine.grow_type_slugs.any(grow_type))
+        q = q.where(NutrientLine.grow_type_slugs.any(grow_type))  # type: ignore[arg-type]
     if line_type:
         q = q.where(NutrientLine.line_type == line_type)
     if brand_slug:
@@ -362,7 +362,7 @@ async def list_additives(
     """List standalone additives, optionally filtered by grow type."""
     q = select(NutrientAdditive).options(selectinload(NutrientAdditive.brand))
     if grow_type:
-        q = q.where(NutrientAdditive.grow_type_slugs.any(grow_type))
+        q = q.where(NutrientAdditive.grow_type_slugs.any(grow_type))  # type: ignore[arg-type]
     if category:
         q = q.where(NutrientAdditive.category == category)
     q = q.order_by(NutrientAdditive.name)
@@ -435,11 +435,11 @@ async def list_recipes(
     """List organic recipes, optionally filtered by grow type and category."""
     q = select(OrganicRecipe)
     if grow_type:
-        q = q.where(OrganicRecipe.grow_type_slugs.any(grow_type))
+        q = q.where(OrganicRecipe.grow_type_slugs.any(grow_type))  # type: ignore[arg-type]
     if category:
         q = q.where(OrganicRecipe.category == category)
     if stage:
-        q = q.where(OrganicRecipe.best_for_stages.any(stage))
+        q = q.where(OrganicRecipe.best_for_stages.any(stage))  # type: ignore[arg-type]
     q = q.order_by(OrganicRecipe.name)
     result = await session.execute(q)
     return result.scalars().all()

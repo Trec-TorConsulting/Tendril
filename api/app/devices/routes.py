@@ -207,8 +207,9 @@ async def get_device_qr(
 
     async with async_session_factory() as session:
         from app.database import set_rls_tenant
+        from uuid import UUID as _UUID
 
-        await set_rls_tenant(session, tenant_id)
+        await set_rls_tenant(session, _UUID(tenant_id))
         result = await session.execute(select(Device).where(Device.device_id == device_id))
         device = result.scalar_one_or_none()
     if device is None:

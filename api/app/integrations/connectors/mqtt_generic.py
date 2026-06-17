@@ -145,7 +145,7 @@ class MqttGenericConnector(BaseConnector):
                 if not tent_id or not tenant_id:
                     continue
 
-                row = TentSensorReading(
+                row = TentSensorReading(  # type: ignore[assignment]
                     tenant_id=tenant_id,
                     tent_id=tent_id,
                     device_id=f"mqtt:{external_id}",

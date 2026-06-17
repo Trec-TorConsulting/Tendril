@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
+
 from typing import Annotated
 from uuid import UUID
 
@@ -258,7 +260,7 @@ async def require_support_or_admin(
 
 async def get_tenant_session(
     user: Annotated[CurrentUser, Depends(get_current_user)],
-) -> AsyncSession:
+) -> AsyncGenerator[AsyncSession, None]:
     """Dependency: returns a DB session with RLS tenant context set."""
     if not user.tenant_id:
         raise HTTPException(

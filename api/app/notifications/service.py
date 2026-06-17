@@ -172,7 +172,7 @@ async def _send_sms(config: dict, severity: str, subject: str, body: str) -> Non
         resp = await client.post(
             url,
             data={"To": phone, "From": twilio_from, "Body": f"[{severity.upper()}] {subject}: {body[:140]}"},
-            auth=(twilio_sid, twilio_token),
+            auth=(twilio_sid or "", twilio_token or ""),
         )
         resp.raise_for_status()
 

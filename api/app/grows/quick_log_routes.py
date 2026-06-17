@@ -398,31 +398,31 @@ async def quick_log_batch(
                 succeeded += 1
 
             elif action.type == "reading":
-                req = ManualReadingRequest(**action.data, recorded_at=action.client_timestamp)
-                tent = await session.get(Tent, req.tent_id)
+                reading_req = ManualReadingRequest(**action.data, recorded_at=action.client_timestamp)
+                tent = await session.get(Tent, reading_req.tent_id)
                 if not tent or tent.tenant_id != user.tenant_id:
                     errors.append(f"Action {i}: tent not found")
                     continue
                 session.add(
                     TentSensorReading(
                         tenant_id=user.tenant_id,
-                        tent_id=req.tent_id,
+                        tent_id=reading_req.tent_id,
                         device_id=None,
-                        ambient_temp_f=req.temp_f,
-                        ambient_humidity=req.humidity,
-                        vpd=req.vpd,
+                        ambient_temp_f=reading_req.temp_f,
+                        ambient_humidity=reading_req.humidity,
+                        vpd=reading_req.vpd,
                         recorded_at=action.client_timestamp,
                     )
                 )
                 succeeded += 1
 
             elif action.type == "note":
-                req = QuickNoteRequest(**action.data, recorded_at=action.client_timestamp)
-                bucket_id = req.bucket_id
-                if not bucket_id and req.grow_cycle_id:
+                note_req = QuickNoteRequest(**action.data, recorded_at=action.client_timestamp)
+                bucket_id = note_req.bucket_id
+                if not bucket_id and note_req.grow_cycle_id:
                     result = await session.execute(
                         select(Bucket)
-                        .where(Bucket.grow_cycle_id == req.grow_cycle_id, Bucket.status == "active")
+                        .where(Bucket.grow_cycle_id == note_req.grow_cycle_id, Bucket.status == "active")
                         .limit(1)
                     )
                     b = result.scalar_one_or_none()
@@ -430,33 +430,33 @@ async def quick_log_batch(
                 if not bucket_id:
                     errors.append(f"Action {i}: no bucket resolved")
                     continue
-                event_type = req.tags[0] if req.tags else "note"
+                event_type = note_req.tags[0] if note_req.tags else "note"
                 session.add(
                     JournalEntry(
                         tenant_id=user.tenant_id,
                         bucket_id=bucket_id,
                         event_type=event_type,
-                        content=req.content,
-                        payload={"tags": req.tags, "source": "quick_log"},
+                        content=note_req.content,
+                        payload={"tags": note_req.tags, "source": "quick_log"},
                         created_at=action.client_timestamp,
                     )
                 )
                 succeeded += 1
 
             elif action.type == "water_change":
-                req = WaterChangeRequest(**action.data, recorded_at=action.client_timestamp)
+                wc_req = WaterChangeRequest(**action.data, recorded_at=action.client_timestamp)
                 result = await session.execute(
                     select(Bucket).where(
-                        Bucket.id.in_(req.bucket_ids),
+                        Bucket.id.in_(wc_req.bucket_ids),
                         Bucket.tenant_id == user.tenant_id,
                     )
                 )
                 buckets = result.scalars().all()
-                if len(buckets) != len(req.bucket_ids):
+                if len(buckets) != len(wc_req.bucket_ids):
                     errors.append(f"Action {i}: bucket not found")
                     continue
-                _ec = req.ec
-                _ppm = req.ppm
+                _ec = wc_req.ec
+                _ppm = wc_req.ppm
                 if _ec is not None and _ppm is None:
                     _ppm = round(_ec * 500.0, 1)
                 elif _ppm is not None and _ec is None:
@@ -465,10 +465,10 @@ async def quick_log_batch(
                     reading = BucketSensorReading(
                         tenant_id=user.tenant_id,
                         bucket_id=bucket.id,
-                        ph=req.ph,
+                        ph=wc_req.ph,
                         ec=_ec,
                         ppm=_ppm,
-                        water_temp_f=req.water_temp_f,
+                        water_temp_f=wc_req.water_temp_f,
                         recorded_at=action.client_timestamp,
                     )
                     session.add(reading)
@@ -478,13 +478,13 @@ async def quick_log_batch(
                             tenant_id=user.tenant_id,
                             bucket_id=bucket.id,
                             event_type="water_change",
-                            content=req.notes,
+                            content=wc_req.notes,
                             payload={
-                                "ph": req.ph,
-                                "ec": req.ec,
-                                "ppm": req.ppm,
-                                "water_temp_f": req.water_temp_f,
-                                "volume_gal": req.volume_gal,
+                                "ph": wc_req.ph,
+                                "ec": wc_req.ec,
+                                "ppm": wc_req.ppm,
+                                "water_temp_f": wc_req.water_temp_f,
+                                "volume_gal": wc_req.volume_gal,
                                 "source": "quick_log",
                             },
                             created_at=action.client_timestamp,

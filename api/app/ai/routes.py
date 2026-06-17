@@ -7,7 +7,7 @@ import base64
 import json
 import logging
 from datetime import UTC
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
@@ -102,7 +102,7 @@ async def websocket_chat(ws: WebSocket):
     else:
         logger.info("Chat: no grow_id provided, using generic context")
 
-    messages = [{"role": "system", "content": system_context}]
+    messages: list[dict[str, Any]] = [{"role": "system", "content": system_context}]
     await ws.send_json({"type": "ready", "message": "Connected to Tendril AI"})
 
     # Conversation persistence: create or load conversation
@@ -173,17 +173,17 @@ async def websocket_chat(ws: WebSocket):
             if grow_uuid:
                 for _round in range(MAX_TOOL_ROUNDS):
                     try:
-                        result = await chat_with_tools(messages, CHAT_TOOLS)
+                        tool_result = await chat_with_tools(messages, CHAT_TOOLS)
                     except Exception:
                         logger.exception("Ollama tool call failed")
                         break
 
-                    tool_calls = result.get("tool_calls")
+                    tool_calls = tool_result.get("tool_calls")
                     if not tool_calls:
                         break
 
                     # Model wants to call tools
-                    messages.append(result["message"])
+                    messages.append(tool_result["message"])
 
                     for tc in tool_calls:
                         fn = tc.get("function", {})
@@ -195,7 +195,7 @@ async def websocket_chat(ws: WebSocket):
 
                             async with async_session_factory() as tool_session:
                                 await set_rls_tenant(tool_session, tenant_id)
-                                tool_result = await execute_tool(
+                                tool_result = await execute_tool(  # type: ignore[assignment]
                                     fn_name,
                                     fn_args,
                                     session=tool_session,
@@ -204,7 +204,7 @@ async def websocket_chat(ws: WebSocket):
                                 )
                         except Exception as e:
                             logger.exception("Tool execution error")
-                            tool_result = f"Error: {e}"
+                            tool_result = {"error": f"Error: {e}"}  # type: ignore[assignment]
 
                         messages.append({"role": "tool", "content": tool_result})
                         await ws.send_json(
@@ -635,7 +635,7 @@ async def get_insight(
     if not grow:
         raise HTTPException(status_code=404, detail="Grow not found")
 
-    data = {
+    data: dict[str, Any] = {
         "grow_type": grow.grow_type,
         "stage": grow.stage,
         "status": grow.status,
@@ -914,9 +914,9 @@ async def diagnose_plant_photo(
 
         grow = await session.get(GrowCycle, UUID(body.grow_id))
         if grow:
-            from app.ai.context import get_grow_type_profile
+            from app.ai.context import get_grow_type_profile_from_db as _get_profile
 
-            profile = get_grow_type_profile(grow.grow_type)
+            profile = await _get_profile(grow.grow_type, session)
             type_name = profile["name"] if profile else grow.grow_type
             common = ", ".join(profile["common_problems"]) if profile else ""
             grow_context = (

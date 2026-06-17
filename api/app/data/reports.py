@@ -76,7 +76,7 @@ async def generate_grow_report_pdf(session: AsyncSession, grow_id: UUID) -> byte
         (
             await session.execute(
                 select(JournalEntry)
-                .where(JournalEntry.grow_cycle_id == grow_id)
+                .where(JournalEntry.grow_cycle_id == grow_id)  # type: ignore[attr-defined]
                 .order_by(desc(JournalEntry.created_at))
                 .limit(50)
             )

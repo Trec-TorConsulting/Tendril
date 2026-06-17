@@ -194,8 +194,9 @@ async def camera_snapshot(
 
     async with async_session_factory() as session:
         from app.database import set_rls_tenant
+        from uuid import UUID as _UUID
 
-        await set_rls_tenant(session, tenant_id)
+        await set_rls_tenant(session, _UUID(tenant_id))
         tent = await session.get(Tent, tent_id)
         if tent is None:
             raise HTTPException(status_code=404, detail="Tent not found")

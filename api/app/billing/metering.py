@@ -30,14 +30,16 @@ def _current_period_end() -> date:
 
 async def record_usage(
     session: AsyncSession,
-    tenant_id: UUID,
+    tenant_id: UUID | None,
     metric: str,
     increment: int = 1,
-) -> BillingUsageRecord:
+) -> BillingUsageRecord | None:
     """Increment usage counter for a metric in the current period.
 
     Creates the record if it doesn't exist for this period.
     """
+    if tenant_id is None:
+        return None
     period_start = _current_period_start()
     period_end = _current_period_end()
 
@@ -68,9 +70,11 @@ async def record_usage(
 
 async def get_usage_summary(
     session: AsyncSession,
-    tenant_id: UUID,
+    tenant_id: UUID | None,
 ) -> dict[str, int]:
     """Get all usage metrics for the current billing period."""
+    if tenant_id is None:
+        return {}
     period_start = _current_period_start()
 
     records = (

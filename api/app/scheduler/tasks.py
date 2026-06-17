@@ -180,9 +180,9 @@ class TaskRunner:
                                 if isinstance(i, str):
                                     issues.append(i)
                                 else:
-                                    desc = i.get("description") or i.get("message") or i.get("issue") or str(i)
+                                    description = i.get("description") or i.get("message") or i.get("issue") or str(i)
                                     cat = i.get("category")
-                                    issues.append(f"[{cat}] {desc}" if cat else desc)
+                                    issues.append(f"[{cat}] {description}" if cat else description)
                             actions = [
                                 a
                                 if isinstance(a, str)
@@ -287,6 +287,7 @@ class TaskRunner:
 
                 for tent in tents:
                     try:
+                        assert tent.latitude is not None and tent.longitude is not None
                         data = await fetch_weather(tent.latitude, tent.longitude)
                         current = data["current"]
                         reading = WeatherReading(
@@ -351,11 +352,11 @@ class TaskRunner:
                         continue
 
                     for rule in WEATHER_RULES:
-                        value = getattr(w, rule["sensor"], None)
+                        value = getattr(w, str(rule["sensor"]), None)
                         if value is None:
                             continue
-                        op_fn = OPERATORS.get(rule["condition"])
-                        if op_fn and op_fn(value, rule["threshold"]):
+                        op_fn = OPERATORS.get(str(rule["condition"]))
+                        if op_fn and op_fn(value, float(rule["threshold"])):  # type: ignore[arg-type]
                             # Check if alert already fired recently (1h cooldown)
                             from datetime import datetime
 
@@ -399,9 +400,9 @@ class TaskRunner:
                                     tenant_id=tent.tenant_id,
                                     grow_cycle_id=active_grow.id if active_grow else None,
                                     tent_id=tent.id,
-                                    severity=rule["severity"],
+                                    severity=str(rule["severity"]),
                                     alert_type=f"weather_{rule['type']}",
-                                    message=rule["message"],
+                                    message=str(rule["message"]),
                                     sensor_value=value,
                                 )
                             except Exception:
@@ -413,9 +414,9 @@ class TaskRunner:
                             await dispatch_alert(
                                 session,
                                 tent.tenant_id,
-                                rule["severity"],
+                                str(rule["severity"]),
                                 f"Weather Alert: {rule['type']}",
-                                rule["message"],
+                                str(rule["message"]),
                             )
 
                 await session.commit()
@@ -648,7 +649,7 @@ class TaskRunner:
                     # Check if enough time has elapsed since last sync
                     if cfg.last_synced_at:
                         elapsed = (now - cfg.last_synced_at).total_seconds()
-                        if elapsed < cfg.poll_interval_s:
+                        if cfg.poll_interval_s is not None and elapsed < cfg.poll_interval_s:
                             continue
 
                     connector_cls = get_connector_class(cfg.type)

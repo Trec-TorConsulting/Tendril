@@ -43,7 +43,7 @@ class BillingStatusResponse(BaseModel):
 # ---------- Helpers ----------
 
 
-async def _get_account_for_tenant(session: AsyncSession, tenant_id: UUID) -> Account | None:
+async def _get_account_for_tenant(session: AsyncSession, tenant_id: UUID | None) -> Account | None:
     """Get the Account that owns the given tenant."""
     tenant = await session.get(Tenant, tenant_id)
     if not tenant or not tenant.account_id:
@@ -135,7 +135,7 @@ async def create_checkout(
     # Get or create customer on the provider
     if not account.stripe_customer_id:
         customer_result = await adapter.create_customer(
-            email=user.email or "",
+            email=getattr(user, "email", "") or "",
             metadata={"account_id": str(account.id), "tenant_id": str(tenant.id)},
         )
         account.stripe_customer_id = customer_result.external_id

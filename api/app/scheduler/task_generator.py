@@ -8,6 +8,7 @@ disclosure (brief/detail descriptions).
 from __future__ import annotations
 
 import logging
+from typing import Any
 from dataclasses import dataclass
 from datetime import UTC, datetime, time, timedelta
 from uuid import UUID
@@ -1477,7 +1478,7 @@ async def _should_skip_watering(session: AsyncSession, tent_id: UUID | None, due
 
     # Check forecast for the due date
     due_day = due_date.date() if hasattr(due_date, "date") else due_date
-    forecast = reading.forecast if isinstance(reading.forecast, list) else []
+    forecast: list[Any] = reading.forecast if isinstance(reading.forecast, list) else []
     for day_forecast in forecast:
         forecast_date = day_forecast.get("date")
         if forecast_date and forecast_date == due_day.isoformat():
@@ -1527,7 +1528,7 @@ async def _build_flush_fill_description(
         if feed.target_ec:
             lines.append(f"Target EC: {feed.target_ec:.2f}")
 
-        nutrients = feed.nutrients if isinstance(feed.nutrients, list) else []
+        nutrients: list[Any] = feed.nutrients if isinstance(feed.nutrients, list) else []
         for n in nutrients:
             name = n.get("name", "Unknown")
             ml_per_gal = n.get("ml_per_gallon", 0)
@@ -1839,7 +1840,7 @@ async def expire_health_tasks(session: AsyncSession, grow_id: UUID) -> int:
         )
         .values(status="cancelled")
     )
-    cancelled = result.rowcount  # type: ignore[assignment]
+    cancelled = result.rowcount  # type: ignore[attr-defined]
     if cancelled:
         logger.info("Cancelled %d stale health tasks for grow %s", cancelled, grow_id)
     return cancelled
@@ -2064,7 +2065,7 @@ async def create_stage_transition_tasks(
 
 async def create_journal_followup_tasks(
     session: AsyncSession,
-    tenant_id: UUID,
+    tenant_id: UUID | None,
     grow_cycle_id: UUID | None,
     bucket_id: UUID,
     event_type: str,
@@ -2072,6 +2073,8 @@ async def create_journal_followup_tasks(
     payload: dict | None = None,
 ) -> int:
     """Create follow-up tasks after journal events."""
+    if tenant_id is None:
+        return 0
     owner_id = await _get_tenant_owner(session, tenant_id)
     if not owner_id:
         return 0

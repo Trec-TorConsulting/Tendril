@@ -7,7 +7,7 @@ import logging
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import false, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger("tendril.ai.reports")
@@ -44,7 +44,7 @@ async def generate_grow_report(session: AsyncSession, grow_cycle_id: UUID) -> by
         (
             await session.execute(
                 select(JournalEntry)
-                .where(JournalEntry.bucket_id.in_([b.id for b in buckets]) if buckets else False)
+                .where(JournalEntry.bucket_id.in_([b.id for b in buckets]) if buckets else false())
                 .order_by(JournalEntry.created_at)
             )
         )
@@ -58,7 +58,7 @@ async def generate_grow_report(session: AsyncSession, grow_cycle_id: UUID) -> by
         (
             await session.execute(
                 select(BucketPhoto)
-                .where(BucketPhoto.bucket_id.in_([b.id for b in buckets]) if buckets else False)
+                .where(BucketPhoto.bucket_id.in_([b.id for b in buckets]) if buckets else false())
                 .order_by(BucketPhoto.created_at)
             )
         )
@@ -69,7 +69,7 @@ async def generate_grow_report(session: AsyncSession, grow_cycle_id: UUID) -> by
     )
 
     yields = (
-        (await session.execute(select(Yield).where(Yield.bucket_id.in_([b.id for b in buckets]) if buckets else False)))
+            (await session.execute(select(Yield).where(Yield.bucket_id.in_([b.id for b in buckets]) if buckets else false())))
         .scalars()
         .all()
         if buckets

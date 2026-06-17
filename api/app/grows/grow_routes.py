@@ -244,12 +244,12 @@ async def archive_grow(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Archive a grow cycle — snapshot bucket data into metadata and mark completed."""
-    grow = await session.execute(
+    grow_result = await session.execute(
         select(GrowCycle)
         .options(selectinload(GrowCycle.buckets))
         .where(GrowCycle.id == grow_id, GrowCycle.tenant_id == user.tenant_id)
     )
-    grow = grow.scalar_one_or_none()
+    grow = grow_result.scalar_one_or_none()
     if grow is None:
         raise HTTPException(status_code=404, detail="Grow cycle not found")
     if grow.status in ("completed", "archived"):

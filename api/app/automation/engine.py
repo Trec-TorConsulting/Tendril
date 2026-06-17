@@ -595,7 +595,7 @@ async def escalate_unacknowledged_alerts(session: AsyncSession) -> int:
     escalated_count = 0
 
     for current_severity, rule in ESCALATION_RULES.items():
-        cutoff = now - timedelta(hours=rule["after_hours"])
+        cutoff = now - timedelta(hours=float(rule["after_hours"]))  # type: ignore[arg-type]
         stale_alerts = (
             (
                 await session.execute(
@@ -612,7 +612,7 @@ async def escalate_unacknowledged_alerts(session: AsyncSession) -> int:
 
         for alert in stale_alerts:
             # Don't escalate if already superseded by a higher-severity alert of same type
-            alert.severity = rule["escalate_to"]
+            alert.severity = str(rule["escalate_to"])
             alert.message = f"[ESCALATED] {alert.message}"
             escalated_count += 1
 

@@ -41,7 +41,7 @@ async def enforce_retention(session: AsyncSession) -> dict[str, int]:
     for name, (model, ts_col, days) in table_map.items():
         cutoff = now - timedelta(days=days)
         result = await session.execute(delete(model).where(ts_col < cutoff))
-        deleted[name] = result.rowcount
+        deleted[name] = result.rowcount  # type: ignore[attr-defined]
 
     await session.commit()
     return deleted
@@ -279,7 +279,7 @@ async def export_tasks_csv(session: AsyncSession, grow_cycle_id: UUID) -> str:
                 t.title,
                 t.status,
                 t.priority,
-                t.due_at.isoformat() if t.due_at else "",
+                t.due_date.isoformat() if t.due_date else "",
                 t.completed_at.isoformat() if t.completed_at else "",
                 getattr(t, "category", ""),
                 t.created_at.isoformat() if t.created_at else "",
@@ -297,7 +297,7 @@ async def export_journal_csv(session: AsyncSession, grow_cycle_id: UUID) -> str:
         (
             await session.execute(
                 select(JournalEntry)
-                .where(JournalEntry.grow_cycle_id == grow_cycle_id)
+                .where(JournalEntry.grow_cycle_id == grow_cycle_id)  # type: ignore[attr-defined]
                 .order_by(desc(JournalEntry.created_at))
             )
         )

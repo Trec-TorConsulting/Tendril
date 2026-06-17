@@ -32,11 +32,13 @@ from app.tenants.models import Tenant
 async def create_rule(
     session: AsyncSession,
     *,
-    tenant_id: UUID,
+    tenant_id: UUID | None,
     grow_cycle_id: UUID | None,
     data: dict,
 ) -> AutomationRule:
     """Persist a new automation rule and record metered usage."""
+    if tenant_id is None:
+        raise ValueError("tenant_id required")
     # Local import keeps the billing module out of automation's import cycle.
     from app.billing.metering import record_usage
 
@@ -54,7 +56,7 @@ async def create_rule(
 
 def list_rules_query(
     *,
-    tenant_id: UUID,
+    tenant_id: UUID | None,
     grow_cycle_id: UUID | None = None,
 ) -> Select:
     """Build the query for listing rules; route layer paginates it."""
@@ -228,10 +230,12 @@ async def acknowledge_alert(session: AsyncSession, alert: AlertHistory) -> None:
 async def create_schedule(
     session: AsyncSession,
     *,
-    tenant_id: UUID,
+    tenant_id: UUID | None,
     tent_id: UUID,
     data: dict,
 ) -> EnvironmentSchedule:
+    if tenant_id is None:
+        raise ValueError("tenant_id required")
     schedule = EnvironmentSchedule(
         tenant_id=tenant_id,
         tent_id=tent_id,

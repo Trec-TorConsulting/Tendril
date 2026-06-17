@@ -39,7 +39,7 @@ def _build_contents(
 ) -> tuple[list[dict], dict]:
     """Convert chat messages to Gemini API format with optional images."""
     system_instruction = {"parts": [{"text": system_prompt}]}
-    contents = []
+    contents: list[dict] = []
     for msg in messages:
         role = "user" if msg["role"] == "user" else "model"
         parts = [{"text": msg["content"]}]
