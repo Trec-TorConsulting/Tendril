@@ -427,3 +427,147 @@ async def get_treatment(session: AsyncSession, treatment_id: str):
     from app.grows.models import PlantHealthTreatment
 
     return await session.get(PlantHealthTreatment, treatment_id)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Health-check helpers (shared with the main ai/routes.py module)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def normalize_health_issue(issue) -> str:  # type: ignore[no-untyped-def]
+    """Coerce an LLM-produced health issue (dict or str) into a display string.
+
+    Matches the previous private ``_normalize_issue`` in ``ai/routes.py``
+    byte-for-byte:
+
+    * Strings pass through unchanged.
+    * Dicts: try ``description``, then ``message``, then ``issue``. If a
+      category is present, prefix with ``[category]``.
+    * Anything else is rendered via ``str()`` as a last resort.
+    """
+    if isinstance(issue, str):
+        return issue
+    if isinstance(issue, dict):
+        desc = issue.get("description") or issue.get("message") or issue.get("issue")
+        if desc:
+            cat = issue.get("category")
+            return f"[{cat}] {desc}" if cat else str(desc)
+    return str(issue)
+
+
+def normalize_health_action(action) -> str:  # type: ignore[no-untyped-def]
+    """Coerce an LLM-produced action (dict or str) into a display string.
+
+    Strings pass through unchanged. For dicts, prefer ``action`` then
+    ``message`` then ``description``; fall back to ``str()``.
+    """
+    if isinstance(action, str):
+        return action
+    if isinstance(action, dict):
+        value = action.get("action") or action.get("message") or action.get("description")
+        if value:
+            return str(value)
+    return str(action)
+
+
+def normalize_health_history_issue(issue) -> str:  # type: ignore[no-untyped-def]
+    """The history-listing endpoint uses a slightly narrower coercion than
+    :func:`normalize_health_issue` — it does NOT add the ``[category]``
+    prefix because the history rows render in a denser UI. Keep the two
+    helpers separate so a future change to one doesn't silently shift the
+    other.
+    """
+    if isinstance(issue, str):
+        return issue
+    if isinstance(issue, dict):
+        return str(issue.get("message", issue.get("issue", str(issue))))
+    return str(issue)
+
+
+def normalize_health_history_action(action) -> str:  # type: ignore[no-untyped-def]
+    """Action-side counterpart to :func:`normalize_health_history_issue`."""
+    if isinstance(action, str):
+        return action
+    if isinstance(action, dict):
+        return str(action.get("message", action.get("action", str(action))))
+    return str(action)
+
+
+def parse_health_check_json(raw: str) -> tuple[int | None, list, list]:
+    """Parse an LLM health-check response into ``(score, issues, actions)``.
+
+    Reuses :func:`_strip_markdown_fence` to handle the LLM's occasional
+    fenced output. On JSON parse failure returns ``(None, [], [])`` —
+    the route layer logs the failure and writes a HealthEval row with
+    no parsed structure (matching previous behaviour).
+    """
+    import json as _json
+
+    try:
+        cleaned = _strip_markdown_fence(raw)
+        parsed = _json.loads(cleaned)
+    except _json.JSONDecodeError:
+        return (None, [], [])
+
+    score = parsed.get("score")
+    raw_issues = parsed.get("issues", [])
+    raw_actions = parsed.get("actions", [])
+    issues = [normalize_health_issue(i) for i in raw_issues]
+    actions = [normalize_health_action(a) for a in raw_actions]
+    return (score, issues, actions)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Health-check queries
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+# Hard cap on the history-list endpoint — prevents callers from asking
+# for arbitrary page sizes that could starve the loop. Kept here so the
+# route doesn't carry the magic number.
+HEALTH_HISTORY_MAX_LIMIT: int = 50
+
+
+def list_health_evals_query(*, grow_id: UUID, limit: int):
+    """Build the listing query for health evaluations of ``grow_id``,
+    most-recent first, capped at :data:`HEALTH_HISTORY_MAX_LIMIT`.
+    """
+    from sqlalchemy import select as _select
+
+    from app.grows.models import HealthEval
+
+    return (
+        _select(HealthEval)
+        .where(HealthEval.grow_cycle_id == grow_id)
+        .order_by(desc(HealthEval.created_at))
+        .limit(min(limit, HEALTH_HISTORY_MAX_LIMIT))
+    )
+
+
+async def get_health_eval(session: AsyncSession, eval_id: UUID):
+    """Fetch a health evaluation by id. Route adds the tenant check."""
+    from app.grows.models import HealthEval
+
+    return await session.get(HealthEval, eval_id)
+
+
+def build_photo_url_base() -> str:
+    """Build the absolute base URL prefix used to construct photo URLs.
+
+    Centralised so the host-resolution rule (``api.<domain>`` in prod,
+    ``localhost:8000`` in dev) doesn't drift between the health-check
+    response and the history-listing response.
+    """
+    from app.config import get_settings as _get_settings
+
+    s = _get_settings()
+    return f"https://api.{s.domain}/v1" if s.domain else "http://localhost:8000/v1"
+
+
+def photo_url_for_key(storage_key: str | None) -> str | None:
+    """Build the absolute photo URL for ``storage_key``, or ``None`` if
+    the eval has no photo. Uses :func:`build_photo_url_base`.
+    """
+    if not storage_key:
+        return None
+    return f"{build_photo_url_base()}/photos/grow/key/{storage_key}"

@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai import service
 from app.ai.context import (
     build_chat_context,
     build_coach_tip_prompt,
@@ -380,40 +381,10 @@ async def run_health_check(
             logger.exception("Gemini health check also failed")
             raise HTTPException(status_code=503, detail="AI service unavailable") from None
 
-    # Parse JSON response
-    score = None
-    issues: list[str] = []
-    actions: list[str] = []
-    try:
-        cleaned = raw.strip()
-        if cleaned.startswith("```"):
-            cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
-        if cleaned.endswith("```"):
-            cleaned = cleaned[:-3]
-        cleaned = cleaned.strip()
-        parsed = json.loads(cleaned)
-        score = parsed.get("score")
-        raw_issues = parsed.get("issues", [])
-        raw_actions = parsed.get("actions", [])
-
-        # Normalize: AI may return list[dict] or list[str]
-        def _normalize_issue(i):
-            if isinstance(i, str):
-                return i
-            desc = i.get("description") or i.get("message") or i.get("issue")
-            if desc:
-                cat = i.get("category")
-                return f"[{cat}] {desc}" if cat else desc
-            return str(i)
-
-        def _normalize_action(a):
-            if isinstance(a, str):
-                return a
-            return a.get("action") or a.get("message") or a.get("description") or str(a)
-
-        issues = [_normalize_issue(i) for i in raw_issues]
-        actions = [_normalize_action(a) for a in raw_actions]
-    except json.JSONDecodeError:
+    # Parse JSON response — service helper handles markdown-fence stripping,
+    # JSON-decode failures, and the issue/action normalization in one place.
+    score, issues, actions = service.parse_health_check_json(raw)
+    if score is None and not issues and not actions and raw.strip():
         logger.warning("Gemini returned non-JSON: %s", raw[:200])
 
     # Store the eval
@@ -513,13 +484,7 @@ async def run_health_check(
     await session.commit()
 
     # Build photo URL if photo was saved
-    photo_url: str | None = None
-    if photo_key:
-        from app.config import get_settings as _get_settings
-
-        s = _get_settings()
-        base = f"https://api.{s.domain}/v1" if s.domain else "http://localhost:8000/v1"
-        photo_url = f"{base}/photos/grow/key/{photo_key}"
+    photo_url = service.photo_url_for_key(photo_key)
 
     return HealthCheckResponse(
         id=str(health_eval.id),
@@ -541,45 +506,18 @@ async def get_health_check_history(
     limit: int = 10,
 ):
     """Get health check history for a grow cycle."""
-    from app.grows.models import HealthEval
-
-    evals = (
-        (
-            await session.execute(
-                select(HealthEval)
-                .where(HealthEval.grow_cycle_id == UUID(grow_id))
-                .order_by(desc(HealthEval.created_at))
-                .limit(min(limit, 50))
-            )
-        )
-        .scalars()
-        .all()
-    )
-
-    from app.config import get_settings as _get_settings
-
-    s = _get_settings()
-    base = f"https://api.{s.domain}/v1" if s.domain else "http://localhost:8000/v1"
-
-    def _photo_url(e: HealthEval) -> str | None:
-        if not e.photo_storage_key:
-            return None
-        return f"{base}/photos/grow/key/{e.photo_storage_key}"
+    evals = (await session.execute(service.list_health_evals_query(grow_id=UUID(grow_id), limit=limit))).scalars().all()
 
     return HealthCheckHistoryResponse(
         items=[
             HealthCheckResponse(
                 id=str(e.id),
                 score=e.score,
-                issues=[
-                    i if isinstance(i, str) else i.get("message", i.get("issue", str(i))) for i in (e.issues or [])
-                ],
-                actions=[
-                    a if isinstance(a, str) else a.get("message", a.get("action", str(a))) for a in (e.actions or [])
-                ],
+                issues=[service.normalize_health_history_issue(i) for i in (e.issues or [])],
+                actions=[service.normalize_health_history_action(a) for a in (e.actions or [])],
                 raw_analysis=e.raw_analysis,
                 source=e.source,
-                photo_url=_photo_url(e),
+                photo_url=service.photo_url_for_key(e.photo_storage_key),
                 created_at=e.created_at.isoformat(),
             )
             for e in evals
@@ -594,9 +532,7 @@ async def delete_health_eval(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Delete a health evaluation by ID."""
-    from app.grows.models import HealthEval
-
-    eval_obj = await session.get(HealthEval, UUID(eval_id))
+    eval_obj = await service.get_health_eval(session, UUID(eval_id))
     if eval_obj is None:
         raise HTTPException(status_code=404, detail="Health evaluation not found")
     if eval_obj.tenant_id != user.tenant_id:
