@@ -91,7 +91,7 @@ export function HeatMapCalendar({ data, className }: HeatMapCalendarProps) {
             ))}
           </div>
           {/* Grid */}
-          <TooltipProvider delayDuration={100}>
+          <TooltipProvider delay={100}>
             <div className="flex gap-[2px]">
               {weeks.map((week, wi) => (
                 <div key={wi} className="flex flex-col gap-[2px]">
@@ -100,7 +100,7 @@ export function HeatMapCalendar({ data, className }: HeatMapCalendarProps) {
                     const isToday = dateStr === today.toISOString().slice(0, 10);
                     return (
                       <Tooltip key={di}>
-                        <TooltipTrigger asChild>
+                        <TooltipTrigger>
                           <div
                             className={cn(
                               "h-[12px] w-[12px] rounded-[2px] transition-colors",

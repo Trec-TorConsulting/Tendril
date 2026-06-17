@@ -9,7 +9,7 @@ interface SensorGaugeProps {
   unit: string;
   min: number;
   max: number;
-  zones: { start: number; end: number; color: string }[];
+  zones: readonly { start: number; end: number; color: string }[];
   className?: string;
 }
 

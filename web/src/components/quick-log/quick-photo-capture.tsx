@@ -32,6 +32,9 @@ export function QuickPhotoCapture({ onSuccess }: QuickPhotoCaptureProps) {
     (token) => listBuckets(token, selectedGrow!.id),
   );
   const buckets = bucketData ?? [];
+  const handleBucketChange = (value: string | null) => {
+    setSelectedBucket(value ?? "");
+  };
 
   useEffect(() => {
     if (selectedBucket && !buckets.some((b) => b.id === selectedBucket)) {
@@ -139,7 +142,7 @@ export function QuickPhotoCapture({ onSuccess }: QuickPhotoCaptureProps) {
       {buckets.length > 0 && (
         <div className="space-y-1.5">
           <Label className="text-xs">Tag to bucket (optional)</Label>
-          <Select value={selectedBucket} onValueChange={setSelectedBucket}>
+          <Select value={selectedBucket} onValueChange={handleBucketChange}>
             <SelectTrigger>
               <SelectValue placeholder="All / No specific bucket" />
             </SelectTrigger>
@@ -147,7 +150,7 @@ export function QuickPhotoCapture({ onSuccess }: QuickPhotoCaptureProps) {
               <SelectItem value="">None</SelectItem>
               {buckets.map((b) => (
                 <SelectItem key={b.id} value={b.id}>
-                  {b.name}
+                  {b.label || b.strain_name || `Bucket ${b.position}`}
                 </SelectItem>
               ))}
             </SelectContent>

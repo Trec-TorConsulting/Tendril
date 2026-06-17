@@ -243,7 +243,7 @@ export default function CameraManagementPage() {
             </div>
             <div className="space-y-1.5">
               <Label>Camera Type</Label>
-              <Select value={formData.camera_type} onValueChange={(v) => setFormData((f) => ({ ...f, camera_type: v }))}>
+              <Select value={formData.camera_type} onValueChange={(v) => setFormData((f) => ({ ...f, camera_type: v ?? "http" }))}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
