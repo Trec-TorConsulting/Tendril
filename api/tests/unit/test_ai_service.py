@@ -11,11 +11,17 @@ from app.ai.service import (
     DEFAULT_DIAGNOSIS_OVERALL_SCORE,
     DEFAULT_DIAGNOSIS_OVERALL_SEVERITY,
     DIAGNOSIS_SYSTEM_PROMPT,
+    HEALTH_HISTORY_MAX_LIMIT,
     MAX_DIAGNOSE_IMAGE_BYTES,
     DiagnoseImageError,
     build_diagnosis_prompt,
     decode_diagnose_image,
+    normalize_health_action,
+    normalize_health_history_action,
+    normalize_health_history_issue,
+    normalize_health_issue,
     parse_diagnosis_response,
+    parse_health_check_json,
     parse_optional_uuid,
 )
 
@@ -170,3 +176,108 @@ class TestParseDiagnosisResponse:
         long_raw = "x" * 1000
         parsed = parse_diagnosis_response(long_raw)
         assert len(parsed.summary) == 500
+
+
+# ---------- Health-check service helpers ----------
+
+
+class TestNormalizeHealthIssue:
+    def test_string_passes_through(self):
+        assert normalize_health_issue("Leaves yellowing") == "Leaves yellowing"
+
+    def test_dict_description(self):
+        assert normalize_health_issue({"description": "Nitrogen def"}) == "Nitrogen def"
+
+    def test_dict_message_fallback(self):
+        assert normalize_health_issue({"message": "Low EC"}) == "Low EC"
+
+    def test_dict_issue_fallback(self):
+        assert normalize_health_issue({"issue": "Light burn"}) == "Light burn"
+
+    def test_dict_with_category_prefix(self):
+        out = normalize_health_issue({"description": "Yellowing", "category": "Nutrient"})
+        assert out == "[Nutrient] Yellowing"
+
+    def test_dict_no_recognized_keys_str_fallback(self):
+        out = normalize_health_issue({"random": "x"})
+        # str(dict) — preserves the previous fallback behaviour
+        assert "random" in out
+
+    def test_non_string_non_dict_str_fallback(self):
+        assert normalize_health_issue(42) == "42"
+
+
+class TestNormalizeHealthAction:
+    def test_string_passes_through(self):
+        assert normalize_health_action("Water tomorrow") == "Water tomorrow"
+
+    def test_dict_action_key(self):
+        assert normalize_health_action({"action": "Flush"}) == "Flush"
+
+    def test_dict_message_fallback(self):
+        assert normalize_health_action({"message": "Check pH"}) == "Check pH"
+
+    def test_dict_description_fallback(self):
+        assert normalize_health_action({"description": "Top up"}) == "Top up"
+
+    def test_dict_no_keys_str_fallback(self):
+        out = normalize_health_action({"random": "x"})
+        assert "random" in out
+
+
+class TestNormalizeHealthHistoryHelpers:
+    """History-listing variants do NOT add the [category] prefix —
+    pin that difference."""
+
+    def test_issue_no_category_prefix(self):
+        out = normalize_health_history_issue({"message": "Yellowing", "category": "Nutrient"})
+        # Category is silently ignored — different from normalize_health_issue
+        assert "[" not in out
+        assert out == "Yellowing"
+
+    def test_issue_uses_message_or_issue(self):
+        assert normalize_health_history_issue({"issue": "Light burn"}) == "Light burn"
+
+    def test_action_uses_message_or_action(self):
+        assert normalize_health_history_action({"action": "Flush"}) == "Flush"
+        assert normalize_health_history_action({"message": "Check pH"}) == "Check pH"
+
+
+class TestParseHealthCheckJson:
+    def test_valid_json(self):
+        raw = (
+            '{"score": 85, '
+            '"issues": [{"description": "Yellow tips", "category": "Nutrient"}], '
+            '"actions": [{"action": "Flush"}]}'
+        )
+        score, issues, actions = parse_health_check_json(raw)
+        assert score == 85
+        assert issues == ["[Nutrient] Yellow tips"]
+        assert actions == ["Flush"]
+
+    def test_strips_fence(self):
+        raw = '```json\n{"score": 90, "issues": [], "actions": []}\n```'
+        score, issues, actions = parse_health_check_json(raw)
+        assert score == 90
+        assert issues == []
+        assert actions == []
+
+    def test_invalid_json_returns_empty(self):
+        score, issues, actions = parse_health_check_json("not json")
+        assert score is None
+        assert issues == []
+        assert actions == []
+
+    def test_string_lists_pass_through(self):
+        raw = '{"score": 70, "issues": ["Low water"], "actions": ["Top up tomorrow"]}'
+        score, issues, actions = parse_health_check_json(raw)
+        assert score == 70
+        assert issues == ["Low water"]
+        assert actions == ["Top up tomorrow"]
+
+
+class TestHealthHistoryMaxLimit:
+    def test_cap_is_50(self):
+        # The history endpoint silently caps the caller's `limit` here —
+        # if this changes, the API contract changes too.
+        assert HEALTH_HISTORY_MAX_LIMIT == 50
