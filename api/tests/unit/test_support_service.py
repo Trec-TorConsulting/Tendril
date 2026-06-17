@@ -6,12 +6,13 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.support.models import TicketCategory, TicketPriority, TicketStatus
+from app.support.models import ForumThreadStatus, TicketCategory, TicketPriority, TicketStatus
 from app.support.service import (
     SLA_HOURS,
     coerce_category,
     coerce_priority,
     compute_sla_due,
+    is_forum_thread_locked,
     is_ticket_closed,
     slugify,
 )
@@ -120,3 +121,23 @@ class TestSlugify:
         # ``[^\w\s-]`` keeps word chars (alphanumeric + underscore); the next
         # rule collapses them. So "v2_release" becomes "v2-release".
         assert slugify("v2_release") == "v2-release"
+
+
+# ---------- Forum service helpers ----------
+
+
+class _FakeThread:
+    def __init__(self, status):
+        self.status = status
+
+
+class TestIsForumThreadLocked:
+    def test_locked_is_locked(self):
+        assert is_forum_thread_locked(_FakeThread(ForumThreadStatus.locked)) is True
+
+    @pytest.mark.parametrize(
+        "status",
+        [ForumThreadStatus.open, ForumThreadStatus.solved, ForumThreadStatus.pinned],
+    )
+    def test_other_statuses_not_locked(self, status):
+        assert is_forum_thread_locked(_FakeThread(status)) is False

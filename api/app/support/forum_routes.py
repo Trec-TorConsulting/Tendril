@@ -1,21 +1,23 @@
-"""Community Forum — threads, posts, voting, moderation."""
+"""Community Forum — threads, posts, voting, moderation.
+
+This module is HTTP-only. All persistence, view-count bookkeeping,
+solution marking, and pin/lock toggles live in
+``app.support.service``.
+"""
 
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.auth.middleware import CurrentUser, get_current_user, require_role
 from app.database import async_session_factory
-from app.support.models import ForumCategory, ForumPost, ForumThread, ForumThreadStatus
+from app.support import service
 
 router = APIRouter()
 logger = logging.getLogger("tendril.support.forum")
@@ -47,8 +49,7 @@ async def list_forum_categories(
     session: Annotated[AsyncSession, Depends(_get_db)],
 ) -> list[dict]:
     """List forum categories with counts."""
-    categories = (await session.execute(select(ForumCategory).order_by(ForumCategory.sort_order))).scalars().all()
-
+    categories = await service.list_forum_categories(session)
     return [
         {
             "id": str(c.id),
@@ -70,31 +71,10 @@ async def list_threads(
     page: int = 1,
     per_page: int = 20,
 ) -> dict:
-    """List forum threads, optionally filtered by category."""
-    query = select(ForumThread)
-
-    if category_slug:
-        cat = (
-            await session.execute(select(ForumCategory).where(ForumCategory.slug == category_slug))
-        ).scalar_one_or_none()
-        if cat:
-            query = query.where(ForumThread.category_id == cat.id)
-
-    total = (await session.execute(select(func.count()).select_from(query.subquery()))).scalar() or 0
-
-    # Pinned first, then by last activity
-    threads = (
-        (
-            await session.execute(
-                query.order_by(ForumThread.is_pinned.desc(), ForumThread.last_activity_at.desc())
-                .offset((page - 1) * per_page)
-                .limit(per_page)
-            )
-        )
-        .scalars()
-        .all()
+    """List forum threads, optionally filtered by category. Pinned first."""
+    threads, total = await service.list_forum_threads_page(
+        session, category_slug=category_slug, page=page, per_page=per_page
     )
-
     return {
         "threads": [
             {
@@ -124,18 +104,10 @@ async def get_thread(
     session: Annotated[AsyncSession, Depends(_get_db)],
 ) -> dict:
     """Get a thread with all its posts."""
-    thread = (
-        await session.execute(
-            select(ForumThread).where(ForumThread.id == thread_id).options(selectinload(ForumThread.posts))
-        )
-    ).scalar_one_or_none()
-
-    if not thread:
+    thread = await service.get_forum_thread_with_posts(session, thread_id)
+    if thread is None:
         raise HTTPException(status_code=404, detail="Thread not found")
-
-    # Increment view count
-    thread.view_count += 1
-    await session.commit()
+    await service.increment_forum_thread_views(session, thread)
 
     return {
         "id": str(thread.id),
@@ -170,24 +142,17 @@ async def create_thread(
     session: Annotated[AsyncSession, Depends(_get_db)],
 ) -> dict:
     """Create a new forum thread."""
-    # Verify category exists
-    category = await session.get(ForumCategory, body.category_id)
-    if not category:
+    category = await service.get_forum_category(session, body.category_id)
+    if category is None:
         raise HTTPException(status_code=404, detail="Category not found")
 
-    thread = ForumThread(
-        category_id=body.category_id,
+    thread = await service.create_forum_thread(
+        session,
+        category=category,
         author_id=user.user_id,
         title=body.title,
         body=body.body,
     )
-    session.add(thread)
-
-    # Update category counts
-    category.thread_count += 1
-
-    await session.commit()
-    await session.refresh(thread)
     return {"id": str(thread.id), "title": thread.title}
 
 
@@ -199,30 +164,13 @@ async def create_post(
     session: Annotated[AsyncSession, Depends(_get_db)],
 ) -> dict:
     """Reply to a forum thread."""
-    thread = await session.get(ForumThread, thread_id)
-    if not thread:
+    thread = await service.get_forum_thread(session, thread_id)
+    if thread is None:
         raise HTTPException(status_code=404, detail="Thread not found")
-
-    if thread.status == ForumThreadStatus.locked:
+    if service.is_forum_thread_locked(thread):
         raise HTTPException(status_code=403, detail="Thread is locked")
 
-    post = ForumPost(
-        thread_id=thread.id,
-        author_id=user.user_id,
-        body=body.body,
-    )
-    session.add(post)
-
-    thread.reply_count += 1
-    thread.last_activity_at = datetime.now(UTC)
-
-    # Update category post count
-    category = await session.get(ForumCategory, thread.category_id)
-    if category:
-        category.post_count += 1
-
-    await session.commit()
-    await session.refresh(post)
+    post = await service.create_forum_post(session, thread, author_id=user.user_id, body=body.body)
     return {"id": str(post.id)}
 
 
@@ -233,11 +181,10 @@ async def upvote_thread(
     session: Annotated[AsyncSession, Depends(_get_db)],
 ):
     """Upvote a thread."""
-    thread = await session.get(ForumThread, thread_id)
-    if not thread:
+    thread = await service.get_forum_thread(session, thread_id)
+    if thread is None:
         raise HTTPException(status_code=404, detail="Thread not found")
-    thread.upvotes += 1
-    await session.commit()
+    await service.upvote_forum_thread(session, thread)
     return {"upvotes": thread.upvotes}
 
 
@@ -248,11 +195,10 @@ async def upvote_post(
     session: Annotated[AsyncSession, Depends(_get_db)],
 ):
     """Upvote a post."""
-    post = await session.get(ForumPost, post_id)
-    if not post:
+    post = await service.get_forum_post(session, post_id)
+    if post is None:
         raise HTTPException(status_code=404, detail="Post not found")
-    post.upvotes += 1
-    await session.commit()
+    await service.upvote_forum_post(session, post)
     return {"upvotes": post.upvotes}
 
 
@@ -266,25 +212,15 @@ async def mark_solution(
     session: Annotated[AsyncSession, Depends(_get_db)],
 ):
     """Mark a post as the solution for a thread."""
-    thread = await session.get(ForumThread, thread_id)
-    if not thread:
+    thread = await service.get_forum_thread(session, thread_id)
+    if thread is None:
         raise HTTPException(status_code=404, detail="Thread not found")
 
-    post = await session.get(ForumPost, post_id)
-    if not post or post.thread_id != thread_id:
+    post = await service.get_forum_post(session, post_id)
+    if post is None or post.thread_id != thread_id:
         raise HTTPException(status_code=404, detail="Post not found in thread")
 
-    # Unmark previous solution
-    if thread.solution_post_id:
-        old_post = await session.get(ForumPost, thread.solution_post_id)
-        if old_post:
-            old_post.is_solution = False
-
-    thread.solution_post_id = post_id
-    thread.status = ForumThreadStatus.solved
-    post.is_solution = True
-
-    await session.commit()
+    await service.mark_forum_solution(session, thread, post)
     return {"status": "solution_marked"}
 
 
@@ -294,11 +230,10 @@ async def toggle_pin(
     session: Annotated[AsyncSession, Depends(_get_db)],
 ):
     """Toggle pin status on a thread."""
-    thread = await session.get(ForumThread, thread_id)
-    if not thread:
+    thread = await service.get_forum_thread(session, thread_id)
+    if thread is None:
         raise HTTPException(status_code=404, detail="Thread not found")
-    thread.is_pinned = not thread.is_pinned
-    await session.commit()
+    await service.toggle_forum_pin(session, thread)
     return {"is_pinned": thread.is_pinned}
 
 
@@ -308,16 +243,10 @@ async def toggle_lock(
     session: Annotated[AsyncSession, Depends(_get_db)],
 ):
     """Toggle lock status on a thread."""
-    thread = await session.get(ForumThread, thread_id)
-    if not thread:
+    thread = await service.get_forum_thread(session, thread_id)
+    if thread is None:
         raise HTTPException(status_code=404, detail="Thread not found")
-
-    if thread.status == ForumThreadStatus.locked:
-        thread.status = ForumThreadStatus.open
-    else:
-        thread.status = ForumThreadStatus.locked
-
-    await session.commit()
+    await service.toggle_forum_lock(session, thread)
     return {"status": thread.status}
 
 
@@ -327,8 +256,7 @@ async def delete_thread(
     session: Annotated[AsyncSession, Depends(_get_db)],
 ):
     """Delete a thread and all its posts (admin only)."""
-    thread = await session.get(ForumThread, thread_id)
-    if not thread:
+    thread = await service.get_forum_thread(session, thread_id)
+    if thread is None:
         raise HTTPException(status_code=404, detail="Thread not found")
-    await session.delete(thread)
-    await session.commit()
+    await service.delete_forum_thread(session, thread)

@@ -35,6 +35,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.support.models import (
+    ForumCategory,
+    ForumPost,
+    ForumThread,
+    ForumThreadStatus,
     KBArticle,
     KBCategory,
     SupportTicket,
@@ -504,4 +508,188 @@ async def update_kb_article(
 
 async def delete_kb_article(session: AsyncSession, article: KBArticle) -> None:
     await session.delete(article)
+    await session.commit()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Forum — categories, threads, posts, moderation
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+async def list_forum_categories(session: AsyncSession) -> list[ForumCategory]:
+    """All forum categories ordered by ``sort_order``."""
+    return list((await session.execute(select(ForumCategory).order_by(ForumCategory.sort_order))).scalars().all())
+
+
+async def get_forum_category(session: AsyncSession, category_id: UUID) -> ForumCategory | None:
+    return await session.get(ForumCategory, category_id)
+
+
+async def get_forum_category_by_slug(session: AsyncSession, slug: str) -> ForumCategory | None:
+    return (await session.execute(select(ForumCategory).where(ForumCategory.slug == slug))).scalar_one_or_none()
+
+
+async def list_forum_threads_page(
+    session: AsyncSession,
+    *,
+    category_slug: str | None,
+    page: int,
+    per_page: int,
+) -> tuple[list[ForumThread], int]:
+    """Paginated thread listing, optionally filtered by category. Pinned first."""
+    query = select(ForumThread)
+    if category_slug:
+        cat = await get_forum_category_by_slug(session, category_slug)
+        if cat is not None:
+            query = query.where(ForumThread.category_id == cat.id)
+
+    total = (await session.execute(select(func.count()).select_from(query.subquery()))).scalar() or 0
+
+    threads = (
+        (
+            await session.execute(
+                query.order_by(
+                    ForumThread.is_pinned.desc(),
+                    ForumThread.last_activity_at.desc(),
+                )
+                .offset((page - 1) * per_page)
+                .limit(per_page)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return list(threads), int(total)
+
+
+async def get_forum_thread_with_posts(session: AsyncSession, thread_id: UUID) -> ForumThread | None:
+    """Fetch a thread with its ``posts`` eagerly loaded."""
+    return (
+        await session.execute(
+            select(ForumThread).where(ForumThread.id == thread_id).options(selectinload(ForumThread.posts))
+        )
+    ).scalar_one_or_none()
+
+
+async def get_forum_thread(session: AsyncSession, thread_id: UUID) -> ForumThread | None:
+    return await session.get(ForumThread, thread_id)
+
+
+async def get_forum_post(session: AsyncSession, post_id: UUID) -> ForumPost | None:
+    return await session.get(ForumPost, post_id)
+
+
+async def increment_forum_thread_views(session: AsyncSession, thread: ForumThread) -> ForumThread:
+    thread.view_count += 1
+    await session.commit()
+    return thread
+
+
+async def create_forum_thread(
+    session: AsyncSession,
+    *,
+    category: ForumCategory,
+    author_id: UUID,
+    title: str,
+    body: str,
+) -> ForumThread:
+    """Create a thread and bump the category's thread count."""
+    thread = ForumThread(
+        category_id=category.id,
+        author_id=author_id,
+        title=title,
+        body=body,
+    )
+    session.add(thread)
+    category.thread_count += 1
+    await session.commit()
+    await session.refresh(thread)
+    return thread
+
+
+def is_forum_thread_locked(thread: ForumThread) -> bool:
+    """True when the thread is locked; route maps to 403."""
+    return thread.status == ForumThreadStatus.locked
+
+
+async def create_forum_post(
+    session: AsyncSession,
+    thread: ForumThread,
+    *,
+    author_id: UUID,
+    body: str,
+) -> ForumPost:
+    """Create a reply, bump thread reply count + last activity, bump category post count."""
+    post = ForumPost(
+        thread_id=thread.id,
+        author_id=author_id,
+        body=body,
+    )
+    session.add(post)
+
+    thread.reply_count += 1
+    thread.last_activity_at = datetime.now(UTC)
+
+    category = await session.get(ForumCategory, thread.category_id)
+    if category is not None:
+        category.post_count += 1
+
+    await session.commit()
+    await session.refresh(post)
+    return post
+
+
+async def upvote_forum_thread(session: AsyncSession, thread: ForumThread) -> ForumThread:
+    thread.upvotes += 1
+    await session.commit()
+    return thread
+
+
+async def upvote_forum_post(session: AsyncSession, post: ForumPost) -> ForumPost:
+    post.upvotes += 1
+    await session.commit()
+    return post
+
+
+async def mark_forum_solution(
+    session: AsyncSession,
+    thread: ForumThread,
+    post: ForumPost,
+) -> ForumThread:
+    """Mark ``post`` as the solution for ``thread``.
+
+    Caller must verify that ``post.thread_id == thread.id`` (route does this
+    so it can return a precise 404 on mismatch).
+    """
+    if thread.solution_post_id is not None:
+        old_post = await session.get(ForumPost, thread.solution_post_id)
+        if old_post is not None:
+            old_post.is_solution = False
+
+    thread.solution_post_id = post.id
+    thread.status = ForumThreadStatus.solved
+    post.is_solution = True
+
+    await session.commit()
+    return thread
+
+
+async def toggle_forum_pin(session: AsyncSession, thread: ForumThread) -> ForumThread:
+    thread.is_pinned = not thread.is_pinned
+    await session.commit()
+    return thread
+
+
+async def toggle_forum_lock(session: AsyncSession, thread: ForumThread) -> ForumThread:
+    """Flip between ``open`` and ``locked``."""
+    if thread.status == ForumThreadStatus.locked:
+        thread.status = ForumThreadStatus.open
+    else:
+        thread.status = ForumThreadStatus.locked
+    await session.commit()
+    return thread
+
+
+async def delete_forum_thread(session: AsyncSession, thread: ForumThread) -> None:
+    await session.delete(thread)
     await session.commit()

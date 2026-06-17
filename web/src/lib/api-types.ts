@@ -5018,7 +5018,7 @@ export interface paths {
         };
         /**
          * List Threads
-         * @description List forum threads, optionally filtered by category.
+         * @description List forum threads, optionally filtered by category. Pinned first.
          */
         get: operations["list_threads_v1_support_forum_threads_get"];
         put?: never;
