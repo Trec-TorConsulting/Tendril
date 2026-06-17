@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useConfirm } from "@/components/confirm-dialog";
@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { PageHeader } from "@/components/page-header";
 import { getAccessToken } from "@/lib/auth";
+import { useApiSWR } from "@/lib/swr";
 import {
   listDevices,
   registerDevice,
@@ -74,34 +75,24 @@ type ModalState =
 
 export default function DevicesPage() {
   const confirm = useConfirm();
-  const [devices, setDevices] = useState<DeviceResponse[]>([]);
-  const [tents, setTents] = useState<TentResponse[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [modal, setModal] = useState<ModalState>({ type: "none" });
-  const [registerLabel, setRegisterLabel] = useState("");
-  const [renameLabel, setRenameLabel] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-
-  const token = getAccessToken() ?? "";
-
-  const refresh = useCallback(async () => {
-    try {
+  const { data: rawData, isLoading: loading, mutate } = useApiSWR(
+    ["devices-tents"],
+    async (token) => {
       const [devData, tentData] = await Promise.all([
         listDevices(token),
         listTents(token),
       ]);
-      setDevices(devData);
-      setTents(tentData);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to load devices");
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
+      return { devices: devData, tents: tentData };
+    },
+  );
+  const devices = rawData?.devices ?? [];
+  const tents = rawData?.tents ?? [];
+  const refresh = mutate;
+  const token = getAccessToken() ?? "";
+  const [modal, setModal] = useState<ModalState>({ type: "none" });
+  const [registerLabel, setRegisterLabel] = useState("");
+  const [renameLabel, setRenameLabel] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault();

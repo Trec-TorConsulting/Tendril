@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
+import { useApiSWR } from "@/lib/swr";
 import { getMe, getMyTenant, updateProfile, listGrows } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
@@ -135,39 +136,30 @@ function PrefToggle({
 /* ═══════════════════════ MAIN PAGE ═══════════════════════ */
 
 export default function SettingsPage() {
-  const [user, setUser] = useState<{
-    id: string;
-    email: string;
-    display_name: string | null;
-    role: string;
-    tenant_id: string;
-    is_platform_admin: boolean;
-    is_support: boolean;
-  } | null>(null);
-  const [tenant, setTenant] = useState<{ name: string; plan: string } | null>(null);
+  const { data: rawProfile, mutate: refreshProfile } = useApiSWR(
+    ["settings-profile"],
+    async (token) => {
+      const [u, t] = await Promise.all([getMe(token), getMyTenant(token)]);
+      return { user: u, tenant: t };
+    },
+  );
+  const user = rawProfile?.user ?? null;
+  const tenant = rawProfile?.tenant ?? null;
   const [editing, setEditing] = useState(false);
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState({ type: "", text: "" });
 
-  const refresh = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-    try {
-      const [u, t] = await Promise.all([getMe(token), getMyTenant(token)]);
-      setUser(u);
-      setTenant(t);
-      setDisplayName(u.display_name || "");
-      setEmail(u.email);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to load profile");
-    }
-  }, []);
-
+  // Sync form values when profile loads or refreshes
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    if (rawProfile?.user) {
+      setDisplayName(rawProfile.user.display_name || "");
+      setEmail(rawProfile.user.email);
+    }
+  }, [rawProfile]);
+
+  const refresh = refreshProfile;
 
   const handleSave = async () => {
     const token = getAccessToken();
@@ -617,21 +609,14 @@ function TimezoneSelector({
 
 function DashboardPreferences() {
   const { prefs, update, loading } = usePreferences();
-  const [grows, setGrows] = useState<{ id: string; name: string }[]>([]);
   const [busy, setBusy] = useState(false);
-  const [loadingGrows, setLoadingGrows] = useState(true);
 
-  useEffect(() => {
-    const token = getAccessToken();
-    if (!token) { setLoadingGrows(false); return; }
-    listGrows(token)
-      .then((data) => {
-        const list = Array.isArray(data) ? data : (data as { items?: { id: string; name: string }[] })?.items ?? [];
-        setGrows(list.map((g: { id: string; name: string }) => ({ id: g.id, name: g.name })));
-      })
-      .catch(() => toast.error("Failed to load grows"))
-      .finally(() => setLoadingGrows(false));
-  }, []);
+  const { data: growsData, isLoading: loadingGrows } = useApiSWR(
+    ["dashboard-grows"],
+    (token) => listGrows(token),
+  );
+  const grows = (Array.isArray(growsData) ? growsData : (growsData as { items?: { id: string; name: string }[] } | undefined)?.items ?? [])
+    .map((g: { id: string; name: string }) => ({ id: g.id, name: g.name }));
 
   const save = async (patch: Record<string, unknown>) => {
     setBusy(true);

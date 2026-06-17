@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { getAccessToken } from "@/lib/auth";
+import { useApiSWR } from "@/lib/swr";
 import { formatDateTime } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
 import { PageSkeleton } from "@/components/page-skeleton";
@@ -155,10 +156,21 @@ function ConfigFields({ type, config, onChange }: { type: string; config: Record
 }
 
 export default function IntegrationsPage() {
-  const [integrations, setIntegrations] = useState<IntegrationResponse[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [tents, setTents] = useState<TentResponse[]>([]);
-  const [buckets, setBuckets] = useState<BucketResponse[]>([]);
+  const { data: rawData, isLoading: loading, mutate } = useApiSWR(
+    ["integrations"],
+    async (token) => {
+      const [ints, t, b] = await Promise.all([
+        listIntegrations(token),
+        listTents(token).catch(() => [] as TentResponse[]),
+        listBuckets(token).catch(() => [] as BucketResponse[]),
+      ]);
+      return { integrations: ints, tents: t, buckets: b };
+    },
+  );
+  const integrations = rawData?.integrations ?? [];
+  const tents = rawData?.tents ?? [];
+  const buckets = rawData?.buckets ?? [];
+  const refresh = mutate;
   const [showCreate, setShowCreate] = useState(false);
   const [editIntegration, setEditIntegration] = useState<IntegrationResponse | null>(null);
   const [selectedIntegration, setSelectedIntegration] = useState<IntegrationResponse | null>(null);
@@ -170,27 +182,6 @@ export default function IntegrationsPage() {
   const [showDeviceMapCreate, setShowDeviceMapCreate] = useState(false);
   const [editDeviceMap, setEditDeviceMap] = useState<DeviceMapResponse | null>(null);
   const confirm = useConfirm();
-
-  const refresh = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-    try {
-      const [ints, t, b] = await Promise.all([
-        listIntegrations(token),
-        listTents(token).catch(() => [] as TentResponse[]),
-        listBuckets(token).catch(() => [] as BucketResponse[]),
-      ]);
-      setIntegrations(ints);
-      setTents(t);
-      setBuckets(b);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to load integrations");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { refresh(); }, [refresh]);
 
   const loadDetail = async (integration: IntegrationResponse) => {
     const token = getAccessToken();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { Power, PowerOff, Plus, Settings2, Trash2, Wifi, WifiOff, Zap } from "lucide-react";
 import { toast } from "sonner";
 
@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useConfirm } from "@/components/confirm-dialog";
 import { PageHeader } from "@/components/page-header";
 import { getAccessToken } from "@/lib/auth";
+import { useApiSWR } from "@/lib/swr";
 import {
   createEquipment,
   deleteEquipment,
@@ -47,27 +48,15 @@ type ModalState =
   | { type: "edit"; equipment: EquipmentResponse };
 
 export default function EquipmentPage() {
-  const [equipment, setEquipment] = useState<EquipmentResponse[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: rawData, isLoading: loading, mutate } = useApiSWR(
+    ["equipment"],
+    (token) => listEquipment(token),
+  );
+  const equipment = rawData?.items ?? [];
+  const load = mutate;
   const [modal, setModal] = useState<ModalState>({ type: "none" });
   const [submitting, setSubmitting] = useState(false);
   const confirm = useConfirm();
-
-  const load = useCallback(async () => {
-    try {
-      const token = getAccessToken() ?? "";
-      const res = await listEquipment(token);
-      setEquipment(res.items);
-    } catch {
-      toast.error("Failed to load equipment");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   const handleToggle = async (equip: EquipmentResponse) => {
     const isOn = equip.requested_state?.is_on;

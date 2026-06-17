@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { getAccessToken } from "@/lib/auth";
+import { useApiSWR } from "@/lib/swr";
 import {
   listInvoices,
   cancelSubscription,
@@ -22,9 +23,19 @@ import { FileText, Download, AlertTriangle, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 export default function AccountPage() {
-  const [invoices, setInvoices] = useState<InvoiceEntry[]>([]);
-  const [deletionStatus, setDeletionStatus] = useState<DeletionStatus | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { data: rawData, isLoading: loading, mutate } = useApiSWR(
+    ["account-info"],
+    async (token) => {
+      const [inv, del] = await Promise.all([
+        listInvoices(token, 12),
+        getAccountDeletionStatus(token),
+      ]);
+      return { invoices: inv, deletionStatus: del };
+    },
+  );
+  const invoices = rawData?.invoices ?? [];
+  const deletionStatus = rawData?.deletionStatus ?? null;
+  const refresh = mutate;
 
   // Cancellation flow state
   const [showCancelFlow, setShowCancelFlow] = useState(false);
@@ -35,28 +46,6 @@ export default function AccountPage() {
   // Deletion flow state
   const [showDeleteFlow, setShowDeleteFlow] = useState(false);
   const [deleteEmail, setDeleteEmail] = useState("");
-
-  useEffect(() => {
-    refresh();
-  }, []);
-
-  async function refresh() {
-    const token = getAccessToken();
-    if (!token) return;
-    setLoading(true);
-    try {
-      const [inv, del] = await Promise.all([
-        listInvoices(token, 12),
-        getAccountDeletionStatus(token),
-      ]);
-      setInvoices(inv);
-      setDeletionStatus(del);
-    } catch {
-      // Non-critical
-    } finally {
-      setLoading(false);
-    }
-  }
 
   async function handleCancel(confirmed: boolean) {
     const token = getAccessToken();

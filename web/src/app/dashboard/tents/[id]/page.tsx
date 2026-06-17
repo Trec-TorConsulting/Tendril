@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { getAccessToken } from "@/lib/auth";
+import { useApiSWR } from "@/lib/swr";
 import { getTent, updateTent, deleteTent, listGrows, listSchedules, listDevices, listTentReadings, deleteTentReading, getTentSensorTrends, listTentCameras, createTentCamera, updateTentCamera, deleteTentCamera, type TentResponse, type GrowResponse, type ScheduleResponse, type DeviceResponse, type TentReadingResponse, type CameraResponse, type EquipmentItem } from "@/lib/api";
 import { useConfirm } from "@/components/confirm-dialog";
 import { CameraGrid } from "@/components/camera-grid";
@@ -98,14 +99,37 @@ const scheduleTypeIcon: Record<string, React.ReactNode> = {
 export default function TentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const [tent, setTent] = useState<TentResponse | null>(null);
-  const [grows, setGrows] = useState<GrowResponse[]>([]);
-  const [schedules, setSchedules] = useState<ScheduleResponse[]>([]);
-  const [devices, setDevices] = useState<DeviceResponse[]>([]);
-  const [tentReadings, setTentReadings] = useState<TentReadingResponse[]>([]);
-  const [tentTrends, setTentTrends] = useState<{ timestamps: string[]; temps: (number | null)[]; humidities: (number | null)[] } | null>(null);
-  const [cameras, setCameras] = useState<CameraResponse[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: rawData, isLoading: loading, mutate } = useApiSWR(
+    ["tent-detail", id],
+    async (token) => {
+      const [t, g, s, d, readings, trends, cams] = await Promise.all([
+        getTent(token, id),
+        listGrows(token, { tent_id: id }).catch(() => [] as GrowResponse[]),
+        listSchedules(token, id).catch(() => [] as ScheduleResponse[]),
+        listDevices(token).catch(() => [] as DeviceResponse[]),
+        listTentReadings(token, id, 50).catch(() => [] as TentReadingResponse[]),
+        getTentSensorTrends(token, id).catch(() => null),
+        listTentCameras(token, id).catch(() => [] as CameraResponse[]),
+      ]);
+      return {
+        tent: t,
+        grows: g,
+        schedules: s,
+        devices: d.filter((dev) => dev.tent_id === id),
+        tentReadings: readings,
+        tentTrends: trends,
+        cameras: cams,
+      };
+    },
+  );
+  const tent = rawData?.tent ?? null;
+  const grows = rawData?.grows ?? [];
+  const schedules = rawData?.schedules ?? [];
+  const devices = rawData?.devices ?? [];
+  const tentReadings = rawData?.tentReadings ?? [];
+  const tentTrends = rawData?.tentTrends ?? null;
+  const cameras = rawData?.cameras ?? [];
+  const refresh = mutate;
   const confirm = useConfirm();
 
   // Edit sheet state
@@ -124,37 +148,6 @@ export default function TentDetailPage() {
   const [editError, setEditError] = useState("");
   const [geoLoading, setGeoLoading] = useState(false);
   const [zipLoading, setZipLoading] = useState(false);
-
-  const refresh = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-    try {
-      const [t, g, s, d, readings, trends, cams] = await Promise.all([
-        getTent(token, id),
-        listGrows(token, { tent_id: id }).catch(() => [] as GrowResponse[]),
-        listSchedules(token, id).catch(() => [] as ScheduleResponse[]),
-        listDevices(token).catch(() => [] as DeviceResponse[]),
-        listTentReadings(token, id, 50).catch(() => [] as TentReadingResponse[]),
-        getTentSensorTrends(token, id).catch(() => null),
-        listTentCameras(token, id).catch(() => [] as CameraResponse[]),
-      ]);
-      setTent(t);
-      setGrows(g);
-      setSchedules(s);
-      setDevices(d.filter((dev) => dev.tent_id === id));
-      setTentReadings(readings);
-      setTentTrends(trends);
-      setCameras(cams);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to load grow space");
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
 
   const openEdit = () => {
     if (!tent) return;

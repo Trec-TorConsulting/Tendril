@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { getAccessToken } from "@/lib/auth";
+import { useApiSWR } from "@/lib/swr";
 import { listTents, createTent, updateTent, deleteTent, listTentCameras, createTentCamera, updateTentCamera, deleteTentCamera } from "@/lib/api";
 import type { TentResponse, EquipmentItem, CameraResponse } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
@@ -107,7 +108,12 @@ function equipmentLabel(type: string) {
 export default function TentsPage() {
   const router = useRouter();
   const confirm = useConfirm();
-  const [tents, setTents] = useState<TentResponse[]>([]);
+  const { data: rawTents, isLoading: pageLoading, mutate } = useApiSWR(
+    ["tents"],
+    (token) => listTents(token),
+  );
+  const tents = rawTents ?? [];
+  const refresh = mutate;
   const [modal, setModal] = useState<ModalState>({ type: "closed" });
   const [name, setName] = useState("");
   const [envType, setEnvType] = useState("indoor");
@@ -116,7 +122,6 @@ export default function TentsPage() {
   const [longitude, setLongitude] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [pageLoading, setPageLoading] = useState(true);
   const [geoLoading, setGeoLoading] = useState(false);
   const [zipCode, setZipCode] = useState("");
   const [zipLoading, setZipLoading] = useState(false);
@@ -124,22 +129,6 @@ export default function TentsPage() {
   const [existingCameraIds, setExistingCameraIds] = useState<string[]>([]);
   const [equipment, setEquipment] = useState<EquipmentItem[]>([]);
   const [notes, setNotes] = useState("");
-
-  const refresh = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-    try {
-      setTents(await listTents(token));
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to load tents");
-    } finally {
-      setPageLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
 
   function openCreate() {
     setName("");
