@@ -1,4 +1,9 @@
-"""Reference data API — strain autocomplete + nutrient barcode lookup."""
+"""Reference data API — strain autocomplete + nutrient lookup + feed charts +
+ESPHome templates + nutrient knowledge base.
+
+This module is HTTP-only. All persistence, YAML rendering, and filtering
+live in ``app.reference.service``.
+"""
 
 from __future__ import annotations
 
@@ -7,11 +12,10 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select
 
 from app.auth.middleware import CurrentUser, get_current_user
 from app.database import async_session_factory
-from app.grows.models import NutrientProduct, ReferenceStrain
+from app.reference import service
 
 router = APIRouter()
 
@@ -39,6 +43,9 @@ class NutrientProductResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ─── Strains ──────────────────────────────────────────────────────────────────
+
+
 @router.get("/strains", response_model=list[ReferenceStrainResponse])
 async def search_reference_strains(
     user: Annotated[CurrentUser, Depends(get_current_user)],
@@ -47,13 +54,7 @@ async def search_reference_strains(
 ):
     """Autocomplete strain names from the reference database."""
     async with async_session_factory() as session:
-        result = await session.execute(
-            select(ReferenceStrain)
-            .where(ReferenceStrain.name.ilike(f"%{q}%"))
-            .order_by(ReferenceStrain.name)
-            .limit(limit)
-        )
-        return result.scalars().all()
+        return await service.search_reference_strains(session, query=q, limit=limit)
 
 
 @router.get("/strains/{strain_id}", response_model=ReferenceStrainResponse)
@@ -63,10 +64,13 @@ async def get_reference_strain(
 ):
     """Get a reference strain from the global database by ID."""
     async with async_session_factory() as session:
-        strain = await session.get(ReferenceStrain, strain_id)
+        strain = await service.get_reference_strain(session, strain_id)
         if strain is None:
             raise HTTPException(status_code=404, detail="Reference strain not found")
         return strain
+
+
+# ─── Nutrients ────────────────────────────────────────────────────────────────
 
 
 @router.get("/nutrients/barcode/{barcode}", response_model=NutrientProductResponse)
@@ -76,8 +80,7 @@ async def lookup_nutrient_barcode(
 ):
     """Look up a nutrient product by barcode."""
     async with async_session_factory() as session:
-        result = await session.execute(select(NutrientProduct).where(NutrientProduct.barcode == barcode))
-        product = result.scalar_one_or_none()
+        product = await service.get_nutrient_product_by_barcode(session, barcode)
         if product is None:
             raise HTTPException(status_code=404, detail="Product not found for barcode")
         return product
@@ -91,16 +94,10 @@ async def search_nutrients(
 ):
     """Search nutrient products by name or brand."""
     async with async_session_factory() as session:
-        result = await session.execute(
-            select(NutrientProduct)
-            .where(NutrientProduct.name.ilike(f"%{q}%") | NutrientProduct.brand.ilike(f"%{q}%"))
-            .order_by(NutrientProduct.name)
-            .limit(limit)
-        )
-        return result.scalars().all()
+        return await service.search_nutrient_products(session, query=q, limit=limit)
 
 
-# ─── Feed Charts (DB-backed reference data) ───────────────────────────────────
+# ─── Feed Charts ──────────────────────────────────────────────────────────────
 
 
 @router.get("/feed-charts")
@@ -110,30 +107,21 @@ async def list_feed_charts(
     medium: str | None = None,
 ):
     """List nutrient brand feed charts. Optionally filter by brand or medium."""
-    from app.reference.models import FeedChart
-
     async with async_session_factory() as session:
-        query = select(FeedChart)
-        if brand:
-            query = query.where(FeedChart.brand.ilike(brand))
-        result = await session.execute(query)
-        charts = result.scalars().all()
+        charts = await service.list_feed_charts(session, brand=brand)
 
-    out = []
-    for c in charts:
-        if medium and medium.lower() not in (c.medium or []):
-            continue
-        out.append(
-            {
-                "brand": c.brand,
-                "line": c.line,
-                "medium": c.medium,
-                "products": c.products,
-                "schedule": c.schedule,
-                "notes": c.notes,
-            }
-        )
-    return out
+    filtered = service.filter_feed_charts_by_medium(charts, medium)
+    return [
+        {
+            "brand": c.brand,
+            "line": c.line,
+            "medium": c.medium,
+            "products": c.products,
+            "schedule": c.schedule,
+            "notes": c.notes,
+        }
+        for c in filtered
+    ]
 
 
 @router.get("/feed-charts/brands")
@@ -141,16 +129,11 @@ async def list_feed_chart_brands(
     user: Annotated[CurrentUser, Depends(get_current_user)],
 ):
     """List available nutrient brand names."""
-    from sqlalchemy import distinct
-
-    from app.reference.models import FeedChart
-
     async with async_session_factory() as session:
-        result = await session.execute(select(distinct(FeedChart.brand)).order_by(FeedChart.brand))
-        return [row[0] for row in result.all()]
+        return await service.list_feed_chart_brands(session)
 
 
-# ─── ESPHome Templates (DB-backed) ─────────────────────────────────────────────
+# ─── ESPHome Templates ────────────────────────────────────────────────────────
 
 
 @router.get("/esphome/templates")
@@ -158,11 +141,8 @@ async def list_esphome_templates(
     user: Annotated[CurrentUser, Depends(get_current_user)],
 ):
     """List available ESPHome sensor config templates."""
-    from app.reference.models import ESPHomeTemplate
-
     async with async_session_factory() as session:
-        result = await session.execute(select(ESPHomeTemplate))
-        templates = result.scalars().all()
+        templates = await service.list_esphome_templates(session)
     return [
         {
             "id": t.template_id,
@@ -190,49 +170,21 @@ async def generate_esphome_config(
     user: Annotated[CurrentUser, Depends(get_current_user)],
 ):
     """Generate an ESPHome YAML configuration from a template."""
-    from app.reference.models import ESPHomeTemplate
-
     async with async_session_factory() as session:
-        result = await session.execute(select(ESPHomeTemplate).where(ESPHomeTemplate.template_id == body.template_id))
-        tmpl = result.scalar_one_or_none()
+        tmpl = await service.get_esphome_template_by_template_id(session, body.template_id)
 
     if tmpl is None:
         raise HTTPException(status_code=400, detail=f"Unknown template: {body.template_id}")
 
-    device_slug = body.device_name.lower().replace(" ", "-").replace("_", "-")
-
-    yaml_output = f"""# ESPHome config generated by Tendril
-# Template: {tmpl.name}
-# Sensors: {", ".join(tmpl.sensors)}
-
-esphome:
-  name: {device_slug}
-  friendly_name: "{body.device_name}"
-
-esp32:
-  board: {tmpl.board}
-
-wifi:
-  ssid: "{body.wifi_ssid}"
-  password: "{body.wifi_password}"
-  ap:
-    ssid: "{body.device_name} Fallback"
-    password: "tendril-setup"
-
-mqtt:
-  broker: "{body.mqtt_host}"
-  username: "{body.mqtt_user}"
-  password: "{body.mqtt_password}"
-  topic_prefix: "tendril/{device_slug}"
-  discovery: false
-
-logger:
-  level: INFO
-
-ota:
-  platform: esphome
-{tmpl.yaml_body}"""
-
+    yaml_output = service.render_esphome_yaml(
+        tmpl,
+        device_name=body.device_name,
+        mqtt_host=body.mqtt_host,
+        mqtt_user=body.mqtt_user,
+        mqtt_password=body.mqtt_password,
+        wifi_ssid=body.wifi_ssid,
+        wifi_password=body.wifi_password,
+    )
     return {"yaml": yaml_output, "template_id": body.template_id}
 
 
@@ -247,15 +199,13 @@ async def sync_strains(
     if not getattr(user, "is_admin", False):
         raise HTTPException(status_code=403, detail="Admin access required")
 
-    from app.reference.strain_sync import sync_seed_strains
-
     async with async_session_factory() as session:
-        added = await sync_seed_strains(session)
+        added = await service.sync_seed_reference_strains(session)
 
     return {"added": added, "status": "ok"}
 
 
-# ─── Nutrient Knowledge Base (DB-backed) ──────────────────────────────────────
+# ─── Nutrient Knowledge Base ──────────────────────────────────────────────────
 
 
 @router.get("/knowledge")
@@ -263,15 +213,8 @@ async def get_nutrient_knowledge(
     user: Annotated[CurrentUser, Depends(get_current_user)],
 ):
     """Get the complete nutrient knowledge base (DIY recipes, emergency subs, pH guides, methodology)."""
-    from app.reference.models import NutrientKnowledge
-
     async with async_session_factory() as session:
-        result = await session.execute(select(NutrientKnowledge))
-        entries = result.scalars().all()
-
-    grouped: dict[str, list] = {}
-    for e in entries:
-        grouped.setdefault(e.category, []).append(e.data)
+        grouped = await service.get_nutrient_knowledge_grouped(session)
     return {
         "diy_recipes": grouped.get("diy_recipe", []),
         "emergency_substitutions": grouped.get("emergency_substitution", []),
@@ -287,18 +230,8 @@ async def get_diy_recipes(
     difficulty: str | None = None,
 ):
     """Get DIY/homemade nutrient recipes. Optionally filter by category or difficulty."""
-    from app.reference.models import NutrientKnowledge
-
     async with async_session_factory() as session:
-        result = await session.execute(select(NutrientKnowledge).where(NutrientKnowledge.category == "diy_recipe"))
-        entries = result.scalars().all()
-
-    recipes = [e.data for e in entries]
-    if category:
-        recipes = [r for r in recipes if r.get("category") == category]
-    if difficulty:
-        recipes = [r for r in recipes if r.get("difficulty") == difficulty]
-    return recipes
+        return await service.list_diy_recipes(session, category=category, difficulty=difficulty)
 
 
 @router.get("/knowledge/emergency")
@@ -307,18 +240,8 @@ async def get_emergency_substitutions(
     deficiency: str | None = None,
 ):
     """Get emergency nutrient substitution guides. Optionally filter by deficiency type."""
-    from app.reference.models import NutrientKnowledge
-
     async with async_session_factory() as session:
-        result = await session.execute(
-            select(NutrientKnowledge).where(NutrientKnowledge.category == "emergency_substitution")
-        )
-        entries = result.scalars().all()
-
-    subs = [e.data for e in entries]
-    if deficiency:
-        subs = [s for s in subs if deficiency.lower() in s.get("id", "")]
-    return subs
+        return await service.list_emergency_substitutions(session, deficiency=deficiency)
 
 
 @router.get("/knowledge/ph-alternatives")
@@ -327,16 +250,8 @@ async def get_ph_alternatives(
     direction: str | None = None,
 ):
     """Get pH management alternatives (household/DIY). Optionally filter by direction (up/down)."""
-    from app.reference.models import NutrientKnowledge
-
     async with async_session_factory() as session:
-        result = await session.execute(select(NutrientKnowledge).where(NutrientKnowledge.category == "ph_alternative"))
-        entries = result.scalars().all()
-
-    alts = [e.data for e in entries]
-    if direction:
-        alts = [a for a in alts if a.get("direction") == direction.lower()]
-    return alts
+        return await service.list_ph_alternatives(session, direction=direction)
 
 
 @router.get("/knowledge/methodology")
@@ -345,15 +260,5 @@ async def get_methodology_guides(
     approach: str | None = None,
 ):
     """Get growing methodology guides (sterile, organic, hybrid, water quality)."""
-    from app.reference.models import NutrientKnowledge
-
     async with async_session_factory() as session:
-        result = await session.execute(
-            select(NutrientKnowledge).where(NutrientKnowledge.category == "methodology_guide")
-        )
-        entries = result.scalars().all()
-
-    guides = [e.data for e in entries]
-    if approach:
-        guides = [g for g in guides if g.get("approach") == approach.lower()]
-    return guides
+        return await service.list_methodology_guides(session, approach=approach)
