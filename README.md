@@ -112,7 +112,24 @@ tendril/
 └── openspec/               # Specs and change proposals
 ```
 
-## Getting Started
+## Quick Start
+
+**Get running in 5 minutes:**
+
+```bash
+git clone https://github.com/Trec-TorConsulting/Tendril.git
+cd Tendril
+cp .env.example .env
+docker compose up -d
+```
+
+Open http://localhost:3000 and register your account.
+
+→ **[Full Quick Start Guide](docs/quick-start.md)**
+
+## Local Development
+
+To contribute or develop locally, follow the steps below.
 
 ### Prerequisites
 
@@ -168,9 +185,20 @@ pio device monitor # View serial output
 
 The firmware reads from a BME680 (temperature, humidity, gas resistance) and a capacitive soil moisture sensor, publishing data over MQTT every 30 seconds.
 
-## Deployment
+## Deployment & Self-Hosting
 
-### Docker
+### Docker Compose (Recommended)
+
+For self-hosting or production deployment, see the **[Self-Hosting Guide](docs/self-hosting.md)**.
+
+It covers:
+- Docker Compose setup on any server
+- PostgreSQL, MQTT, MinIO configuration
+- Reverse proxy (nginx) setup
+- Backups and upgrades
+- Optional integrations (Ollama, Gemini, etc.)
+
+### Docker Images
 
 Build images for API and web:
 
@@ -312,8 +340,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, coding guidelines
 
 | Guide | Description |
 |-------|-------------|
+| [Quick Start](docs/quick-start.md) | Get running in 5 minutes with Docker Compose |
+| [Self-Hosting Guide](docs/self-hosting.md) | Deploy on your own server or production infrastructure |
 | [Architecture Overview](docs/architecture.md) | System design, services, data flow |
-| [Self-Hosting Guide](docs/self-hosting.md) | Deploy with Docker Compose or Kubernetes |
 | [Configuration Reference](docs/configuration.md) | All environment variables and config options |
 | [ESP32 Hardware Guide](docs/esp32-hardware.md) | BOM, wiring, calibration, flashing |
 | [API Reference](docs/api-reference.md) | Auth flows, endpoints, WebSocket chat |
