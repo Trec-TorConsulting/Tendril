@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getAccessToken, clearTokens } from "@/lib/auth";
 import { getMe, logout as apiLogout } from "@/lib/api";
+import { useApiSWR } from "@/lib/swr";
 
 export interface UserPreferences {
   temp_unit?: "fahrenheit" | "celsius";
@@ -35,36 +36,29 @@ export interface UserData {
 
 export function useUser() {
   const router = useRouter();
-  const [user, setUser] = useState<UserData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const {
+    data,
+    error,
+    isLoading,
+    mutate,
+  } = useApiSWR<UserData>(getAccessToken() ? ["user", "me"] : null, (token) => getMe(token));
 
   const refresh = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) {
-      setLoading(false);
-      return;
-    }
-    try {
-      const me = await getMe(token);
-      setUser(me);
-    } catch {
-      clearTokens();
-      router.push("/login");
-    } finally {
-      setLoading(false);
-    }
-  }, [router]);
+    await mutate();
+  }, [mutate]);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    if (!error) return;
+    clearTokens();
+    router.push("/login");
+  }, [error, router]);
 
   const logout = useCallback(async () => {
     try { await apiLogout(); } catch { /* ignore */ }
     clearTokens();
-    setUser(null);
+    mutate(undefined, { revalidate: false });
     router.push("/login");
-  }, [router]);
+  }, [mutate, router]);
 
-  return { user, loading, logout, refresh };
+  return { user: data ?? null, loading: isLoading, logout, refresh };
 }

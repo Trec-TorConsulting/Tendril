@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { getAccessToken } from "@/lib/auth";
+import { useMemo } from "react";
 import {
   listSensorReadings,
   listJournalEntries,
@@ -15,6 +14,7 @@ import {
   type DoseProfileResponse,
   type PhotoResponse,
 } from "@/lib/api";
+import { useApiSWR } from "@/lib/swr";
 import {
   Dialog,
   DialogContent,
@@ -48,47 +48,47 @@ interface BucketDetailModalProps {
 
 export function BucketDetailModal({ bucket, growId, open, onClose }: BucketDetailModalProps) {
   const { prefs } = usePreferences();
-  const [readings, setReadings] = useState<SensorReadingResponse[]>([]);
-  const [journal, setJournal] = useState<JournalEntryResponse[]>([]);
-  const [doses, setDoses] = useState<DoseProfileResponse[]>([]);
-  const [photos, setPhotos] = useState<PhotoResponse[]>([]);
-  const [drift, setDrift] = useState<{
-    ph: { min: number; max: number; first: number; last: number; delta: number; count: number } | null;
-    ec: { min: number; max: number; first: number; last: number; delta: number; count: number } | null;
-  } | null>(null);
-  const [milestones, setMilestones] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(false);
-
-  const loadData = useCallback(async () => {
-    if (!bucket) return;
-    const token = getAccessToken();
-    if (!token) return;
-    setLoading(true);
-    try {
-      const [readingsData, journalData, dosesData, photosData, driftData, growData] = await Promise.all([
-        listSensorReadings(token, bucket.id, 200),
-        listJournalEntries(token, bucket.id),
+  const {
+    data,
+    isLoading: loading,
+  } = useApiSWR<{
+    readings: SensorReadingResponse[];
+    journal: JournalEntryResponse[];
+    doses: DoseProfileResponse[];
+    photos: PhotoResponse[];
+    drift: {
+      ph: { min: number; max: number; first: number; last: number; delta: number; count: number } | null;
+      ec: { min: number; max: number; first: number; last: number; delta: number; count: number } | null;
+    } | null;
+    milestones: Record<string, string>;
+  }>(
+    open && bucket ? ["bucket-detail", growId, bucket.id] : null,
+    async (token) => {
+      const [readings, journal, doses, photos, driftData, growData] = await Promise.all([
+        listSensorReadings(token, bucket!.id, 200),
+        listJournalEntries(token, bucket!.id),
         listDoseProfiles(token, growId),
-        listPhotos(token, bucket.id),
-        getSensorDrift(token, bucket.id, 168).catch(() => null),
+        listPhotos(token, bucket!.id),
+        getSensorDrift(token, bucket!.id, 168).catch(() => null),
         getGrow(token, growId).catch(() => null),
       ]);
-      setReadings(readingsData);
-      setJournal(journalData);
-      setDoses(dosesData);
-      setPhotos(photosData);
-      setDrift(driftData ? { ph: driftData.ph, ec: driftData.ec } : null);
-      setMilestones(growData?.milestones || {});
-    } catch {
-      // silent
-    } finally {
-      setLoading(false);
-    }
-  }, [bucket, growId]);
+      return {
+        readings,
+        journal,
+        doses,
+        photos,
+        drift: driftData ? { ph: driftData.ph, ec: driftData.ec } : null,
+        milestones: growData?.milestones || {},
+      };
+    },
+  );
 
-  useEffect(() => {
-    if (open && bucket) loadData();
-  }, [open, bucket, loadData]);
+  const readings = useMemo(() => data?.readings ?? [], [data]);
+  const journal = useMemo(() => data?.journal ?? [], [data]);
+  const doses = useMemo(() => data?.doses ?? [], [data]);
+  const photos = useMemo(() => data?.photos ?? [], [data]);
+  const drift = useMemo(() => data?.drift ?? null, [data]);
+  const milestones = useMemo(() => data?.milestones ?? {}, [data]);
 
   if (!bucket) return null;
 

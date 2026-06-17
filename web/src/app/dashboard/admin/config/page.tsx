@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
+import { useApiSWR } from "@/lib/swr";
 import {
   adminListGrowTypeProfiles,
   adminGetGrowTypeProfile,
@@ -43,49 +44,42 @@ type Tab = "grow-types" | "task-templates";
 
 export default function AdminConfigPage() {
   const [tab, setTab] = useState<Tab>("grow-types");
-  const [profiles, setProfiles] = useState<GrowTypeProfileSummary[]>([]);
-  const [templates, setTemplates] = useState<TaskTemplateSummary[]>([]);
   const [selectedProfile, setSelectedProfile] = useState<GrowTypeProfileFull | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
   const [showCreateForm, setShowCreateForm] = useState(false);
+  const {
+    data,
+    error: loadError,
+    isLoading: loading,
+    mutate,
+  } = useApiSWR<{
+    profiles: GrowTypeProfileSummary[];
+    templates: TaskTemplateSummary[];
+  }>(["admin", "config", tab], async (token) => {
+    if (tab === "grow-types") {
+      return {
+        profiles: await adminListGrowTypeProfiles(token),
+        templates: [],
+      };
+    }
+    return {
+      profiles: [],
+      templates: await adminListTaskTemplates(token),
+    };
+  });
+  const profiles = data?.profiles ?? [];
+  const templates = data?.templates ?? [];
+  const error = useMemo(
+    () => (loadError ? (loadError instanceof Error ? loadError.message : "Access denied — admin required") : ""),
+    [loadError],
+  );
 
   // Create form state
   const [newName, setNewName] = useState("");
   const [newSlug, setNewSlug] = useState("");
 
-  const loadProfiles = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-    try {
-      const data = await adminListGrowTypeProfiles(token);
-      setProfiles(data);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Access denied — admin required");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const loadTemplates = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-    try {
-      const data = await adminListTaskTemplates(token);
-      setTemplates(data);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Failed to load templates");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    setLoading(true);
-    setError("");
-    if (tab === "grow-types") loadProfiles();
-    else loadTemplates();
-  }, [tab, loadProfiles, loadTemplates]);
+  const refresh = useCallback(async () => {
+    await mutate();
+  }, [mutate]);
 
   const handleViewProfile = async (slug: string) => {
     const token = getAccessToken();
@@ -108,7 +102,7 @@ export default function AdminConfigPage() {
       setShowCreateForm(false);
       setNewName("");
       setNewSlug("");
-      loadProfiles();
+      refresh();
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Failed to create profile");
     }
@@ -120,7 +114,7 @@ export default function AdminConfigPage() {
     try {
       await adminDeleteGrowTypeProfile(token, slug);
       toast.success("Profile deleted");
-      loadProfiles();
+      refresh();
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Failed to delete");
     }
@@ -132,7 +126,7 @@ export default function AdminConfigPage() {
     try {
       await adminDeleteTaskTemplate(token, id);
       toast.success("Template deleted");
-      loadTemplates();
+      refresh();
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Failed to delete");
     }

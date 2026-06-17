@@ -1,13 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { getAccessToken } from "@/lib/auth";
+import { useEffect, useMemo, useState } from "react";
 import {
   listTreatments,
   getTreatmentDetail,
   type TreatmentSummary,
   type TreatmentDetail,
 } from "@/lib/api";
+import { useApiSWR } from "@/lib/swr";
+import { getAccessToken } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,34 +55,30 @@ interface TreatmentDatabaseProps {
 }
 
 export function TreatmentDatabase({ growType }: TreatmentDatabaseProps) {
-  const [treatments, setTreatments] = useState<TreatmentSummary[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<string>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<TreatmentDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
-  const loadTreatments = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-    setLoading(true);
-    try {
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(searchQuery.trim()), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const {
+    data,
+    isLoading: loading,
+  } = useApiSWR<{ items: TreatmentSummary[] }>(
+    ["treatments", activeCategory, debouncedQuery],
+    (token) => {
       const params: { category?: string; query?: string } = {};
       if (activeCategory !== "all") params.category = activeCategory;
-      if (searchQuery.trim()) params.query = searchQuery.trim();
-      const res = await listTreatments(token, params);
-      setTreatments(res.items);
-    } catch {
-      // ignore
-    }
-    setLoading(false);
-  }, [activeCategory, searchQuery]);
-
-  useEffect(() => {
-    const timer = setTimeout(loadTreatments, 300);
-    return () => clearTimeout(timer);
-  }, [loadTreatments]);
+      if (debouncedQuery) params.query = debouncedQuery;
+      return listTreatments(token, params);
+    },
+  );
 
   const openDetail = async (id: string) => {
     setSelectedId(id);
@@ -97,7 +94,7 @@ export function TreatmentDatabase({ growType }: TreatmentDatabaseProps) {
     setDetailLoading(false);
   };
 
-  const filteredTreatments = treatments;
+  const filteredTreatments = useMemo(() => data?.items ?? [], [data]);
 
   return (
     <div className="space-y-4">

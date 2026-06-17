@@ -88,6 +88,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { useApiSWR } from "@/lib/swr";
 import { Progress } from "@/components/ui/progress";
 import { SensorSparkline } from "@/components/sparkline";
 import { CameraGrid } from "@/components/camera-grid";
@@ -188,104 +189,132 @@ export default function GrowDetailPage() {
   const [sensorTrends, setSensorTrends] = useState<{ ph: number[]; ec: number[]; ppm: number[]; temp: number[]; humidity: number[]; water_temp: number[]; water_level: number[]; orp: number[] }>({ ph: [], ec: [], ppm: [], temp: [], humidity: [], water_temp: [], water_level: [], orp: [] });
 
   const [loadError, setLoadError] = useState<string | null>(null);
+  const {
+    data: growData,
+    error: growLoadError,
+    mutate,
+  } = useApiSWR(
+    id ? ["grow-detail", id] : null,
+    async (token) => {
+      let g: GrowResponse;
+      let bkts: BucketResponse[];
+      try {
+        [g, bkts] = await Promise.all([
+          getGrow(token, id),
+          listBuckets(token, id),
+        ]);
+      } catch (e) {
+        throw new Error(e instanceof Error ? e.message : "Failed to load grow");
+      }
+
+      const tent = await getTent(token, g.tent_id).catch(() => null as TentResponse | null);
+      const tentAmbient = await getLatestTentReading(token, g.tent_id).catch(() => null as TentReadingResponse | null);
+      const devices = isOutdoor(g.grow_type)
+        ? await listDevices(token).catch(() => [] as DeviceResponse[])
+        : [];
+
+      const latestReadings: Record<string, SensorReadingResponse | null> = {};
+      await Promise.all(
+        bkts.map(async (b) => {
+          try { latestReadings[b.id] = await getLatestReading(token, b.id); } catch { latestReadings[b.id] = null; }
+        }),
+      );
+
+      const healthScore = await getHealthCheckHistory(token, id, 1)
+        .then((hist) => (hist.items.length > 0 ? hist.items[0].score : null))
+        .catch(() => null);
+
+      const openTaskCount = await listTasks(token, { grow_cycle_id: id, status: "pending" })
+        .then((tasks) => tasks.length)
+        .catch(() => 0);
+
+      let sensorTrendsData: { ph: number[]; ec: number[]; ppm: number[]; temp: number[]; humidity: number[]; water_temp: number[]; water_level: number[]; orp: number[] } = {
+        ph: [], ec: [], ppm: [], temp: [], humidity: [], water_temp: [], water_level: [], orp: [],
+      };
+      try {
+        const [perBucketReadings, tentReadings2] = await Promise.all([
+          Promise.all(bkts.map((b) => listSensorReadings(token, b.id, 30).catch(() => []))),
+          listTentReadings(token, g.tent_id, 30).catch(() => []),
+        ]);
+        const headerBkt = g.grow_type === "rdwc" ? bkts.find((b) => b.role === "header") : null;
+        const headerIdx = headerBkt ? bkts.indexOf(headerBkt) : -1;
+        const waterReadings = headerIdx >= 0
+          ? [...perBucketReadings[headerIdx]].sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime())
+          : perBucketReadings.flat().sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime());
+        const allGrowSensor = perBucketReadings
+          .flat()
+          .sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime());
+        sensorTrendsData = {
+          ph: waterReadings.map((r: { ph: number | null }) => r.ph).filter((v: number | null): v is number => v != null).slice(0, 30).reverse(),
+          ec: waterReadings.map((r: { ec: number | null }) => r.ec).filter((v: number | null): v is number => v != null).slice(0, 30).reverse(),
+          ppm: waterReadings.map((r: { ppm: number | null }) => r.ppm).filter((v: number | null): v is number => v != null).slice(0, 30).reverse(),
+          water_temp: waterReadings.map((r: { water_temp_f: number | null }) => r.water_temp_f).filter((v: number | null): v is number => v != null).slice(0, 30).reverse(),
+          water_level: waterReadings.map((r: { water_level_pct: number | null }) => r.water_level_pct).filter((v: number | null): v is number => v != null).slice(0, 30).reverse(),
+          orp: waterReadings.map((r: { orp: number | null }) => r.orp).filter((v: number | null): v is number => v != null).slice(0, 30).reverse(),
+          temp: (() => {
+            const tentTemps = tentReadings2.map((r: { ambient_temp_f: number | null }) => r.ambient_temp_f).filter((v: number | null): v is number => v != null).reverse();
+            if (tentTemps.length > 0) return tentTemps;
+            return allGrowSensor.map((r: { ambient_temp_f: number | null }) => r.ambient_temp_f).filter((v: number | null): v is number => v != null).slice(0, 30).reverse();
+          })(),
+          humidity: (() => {
+            const tentHumidity = tentReadings2.map((r: { ambient_humidity: number | null }) => r.ambient_humidity).filter((v: number | null): v is number => v != null).reverse();
+            if (tentHumidity.length > 0) return tentHumidity;
+            return allGrowSensor.map((r: { ambient_humidity: number | null }) => r.ambient_humidity).filter((v: number | null): v is number => v != null).slice(0, 30).reverse();
+          })(),
+        };
+      } catch { /* empty */ }
+
+      let journalEntries: JournalEntryResponse[] = [];
+      try {
+        const allEntries: JournalEntryResponse[] = [];
+        await Promise.all(bkts.map(async (b) => {
+          try {
+            const entries = await listJournalEntries(token, b.id);
+            allEntries.push(...entries);
+          } catch { /* empty */ }
+        }));
+        allEntries.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        journalEntries = allEntries;
+      } catch { /* empty */ }
+
+      return {
+        grow: g,
+        buckets: bkts,
+        tent,
+        tentAmbient,
+        devices,
+        latestReadings,
+        healthScore,
+        openTaskCount,
+        sensorTrends: sensorTrendsData,
+        journalEntries,
+      };
+    },
+  );
 
   const refresh = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-    let g: GrowResponse;
-    let bkts: BucketResponse[];
-    try {
-      [g, bkts] = await Promise.all([
-        getGrow(token, id),
-        listBuckets(token, id),
-      ]);
-    } catch (e) {
-      setLoadError(e instanceof Error ? e.message : "Failed to load grow");
-      return;
-    }
+    await mutate();
+  }, [mutate]);
+
+  useEffect(() => {
+    if (!growData) return;
     setLoadError(null);
-    setGrow(g);
-    setBuckets(bkts);
+    setGrow(growData.grow);
+    setBuckets(growData.buckets);
+    setTent(growData.tent);
+    setTentAmbient(growData.tentAmbient);
+    setDevices(growData.devices);
+    setLatestReadings(growData.latestReadings);
+    setHealthScore(growData.healthScore);
+    setOpenTaskCount(growData.openTaskCount);
+    setSensorTrends(growData.sensorTrends);
+    setJournalEntries(growData.journalEntries);
+  }, [growData]);
 
-    try { setTent(await getTent(token, g.tent_id)); } catch { setTent(null); }
-
-    try { setTentAmbient(await getLatestTentReading(token, g.tent_id)); } catch { setTentAmbient(null); }
-
-    if (isOutdoor(g.grow_type)) {
-      try { setDevices(await listDevices(token)); } catch { setDevices([]); }
-    }
-
-    const readings: Record<string, SensorReadingResponse | null> = {};
-    await Promise.all(
-      bkts.map(async (b) => {
-        try { readings[b.id] = await getLatestReading(token, b.id); } catch { readings[b.id] = null; }
-      }),
-    );
-    setLatestReadings(readings);
-
-
-    try {
-      const hist = await getHealthCheckHistory(token, id, 1);
-      setHealthScore(hist.items.length > 0 ? hist.items[0].score : null);
-    } catch { setHealthScore(null); }
-
-    try {
-      const tasks = await listTasks(token, { grow_cycle_id: id, status: "pending" });
-      setOpenTaskCount(tasks.length);
-    } catch { setOpenTaskCount(0); }
-
-    // Fetch sensor trends for overview sparklines
-    try {
-      const [perBucketReadings, tentReadings2] = await Promise.all([
-        Promise.all(bkts.map((b) => listSensorReadings(token, b.id, 30).catch(() => []))),
-        listTentReadings(token, g.tent_id, 30).catch(() => []),
-      ]);
-      // For RDWC grows, use only the header bucket's readings for shared water
-      // metrics to avoid double-counting propagated duplicates.
-      const headerBkt = g.grow_type === "rdwc" ? bkts.find((b) => b.role === "header") : null;
-      const headerIdx = headerBkt ? bkts.indexOf(headerBkt) : -1;
-      const waterReadings = headerIdx >= 0
-        ? [...perBucketReadings[headerIdx]].sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime())
-        : perBucketReadings.flat().sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime());
-      const allGrowSensor = perBucketReadings
-        .flat()
-        .sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime());
-      // Build each metric independently so sparse metrics (like pH/water level)
-      // are not dropped by a global mixed-metric slice.
-      setSensorTrends({
-        ph: waterReadings.map((r: { ph: number | null }) => r.ph).filter((v: number | null): v is number => v != null).slice(0, 30).reverse(),
-        ec: waterReadings.map((r: { ec: number | null }) => r.ec).filter((v: number | null): v is number => v != null).slice(0, 30).reverse(),
-        ppm: waterReadings.map((r: { ppm: number | null }) => r.ppm).filter((v: number | null): v is number => v != null).slice(0, 30).reverse(),
-        water_temp: waterReadings.map((r: { water_temp_f: number | null }) => r.water_temp_f).filter((v: number | null): v is number => v != null).slice(0, 30).reverse(),
-        water_level: waterReadings.map((r: { water_level_pct: number | null }) => r.water_level_pct).filter((v: number | null): v is number => v != null).slice(0, 30).reverse(),
-        orp: waterReadings.map((r: { orp: number | null }) => r.orp).filter((v: number | null): v is number => v != null).slice(0, 30).reverse(),
-        temp: (() => {
-          const tentTemps = tentReadings2.map((r: { ambient_temp_f: number | null }) => r.ambient_temp_f).filter((v: number | null): v is number => v != null).reverse();
-          if (tentTemps.length > 0) return tentTemps;
-          return allGrowSensor.map((r: { ambient_temp_f: number | null }) => r.ambient_temp_f).filter((v: number | null): v is number => v != null).slice(0, 30).reverse();
-        })(),
-        humidity: (() => {
-          const tentHumidity = tentReadings2.map((r: { ambient_humidity: number | null }) => r.ambient_humidity).filter((v: number | null): v is number => v != null).reverse();
-          if (tentHumidity.length > 0) return tentHumidity;
-          return allGrowSensor.map((r: { ambient_humidity: number | null }) => r.ambient_humidity).filter((v: number | null): v is number => v != null).slice(0, 30).reverse();
-        })(),
-      });
-    } catch { /* empty */ }
-
-    try {
-      const allEntries: JournalEntryResponse[] = [];
-      await Promise.all(bkts.map(async (b) => {
-        try {
-          const entries = await listJournalEntries(token, b.id);
-          allEntries.push(...entries);
-        } catch { /* empty */ }
-      }));
-      allEntries.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-      setJournalEntries(allEntries);
-    } catch { /* empty */ }
-  }, [id]);
-
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => {
+    if (!growLoadError) return;
+    setLoadError(growLoadError instanceof Error ? growLoadError.message : "Failed to load grow");
+  }, [growLoadError]);
 
   // Compute last water change date per bucket from journal entries.
   // For RDWC grows, a water change on the header applies to all site buckets

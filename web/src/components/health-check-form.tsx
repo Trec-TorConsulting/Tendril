@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getAccessToken } from "@/lib/auth";
 import { getGrowType } from "@/lib/api";
+import { useApiSWR } from "@/lib/swr";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -46,38 +46,35 @@ export function HealthCheckForm({ growType, onSubmit }: HealthCheckFormProps) {
   const [questions, setQuestions] = useState<HealthQuestion[]>([]);
   const [answers, setAnswers] = useState<Record<string, string>>({});
 
+  const { data: profile } = useApiSWR(
+    growType ? ["grow-type", "health-check", growType] : null,
+    (token) => getGrowType(token, growType),
+  );
+
   useEffect(() => {
-    const load = async () => {
-      const token = getAccessToken();
-      if (!token) return;
-      try {
-        const profile = await getGrowType(token, growType);
-        const qs = profile.health_check_questions;
-        if (Array.isArray(qs)) {
-          setQuestions(
-            qs.map((q: unknown, i: number) => {
-              if (typeof q === "string") {
-                const classified = classifyQuestion(q);
-                return { id: `q${i}`, question: q, type: classified.type, options: classified.options };
-              }
-              const item = q as Record<string, unknown>;
-              const text = (item.question as string) || "";
-              const classified = classifyQuestion(text);
-              return {
-                id: (item.id as string) || `q${i}`,
-                question: text,
-                type: Array.isArray(item.options) ? "select" as const : classified.type,
-                options: Array.isArray(item.options) ? (item.options as string[]) : classified.options,
-              };
-            }),
-          );
+    const qs = profile?.health_check_questions;
+    if (!Array.isArray(qs)) {
+      setQuestions([]);
+      return;
+    }
+    setQuestions(
+      qs.map((q: unknown, i: number) => {
+        if (typeof q === "string") {
+          const classified = classifyQuestion(q);
+          return { id: `q${i}`, question: q, type: classified.type, options: classified.options };
         }
-      } catch {
-        // No health check questions available
-      }
-    };
-    load();
-  }, [growType]);
+        const item = q as Record<string, unknown>;
+        const text = (item.question as string) || "";
+        const classified = classifyQuestion(text);
+        return {
+          id: (item.id as string) || `q${i}`,
+          question: text,
+          type: Array.isArray(item.options) ? "select" as const : classified.type,
+          options: Array.isArray(item.options) ? (item.options as string[]) : classified.options,
+        };
+      }),
+    );
+  }, [profile]);
 
   if (questions.length === 0) {
     return <p className="text-sm text-muted-foreground">No health check available for this grow type.</p>;

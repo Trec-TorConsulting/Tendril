@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useChat } from "@/components/chat-provider";
-import { getAccessToken } from "@/lib/auth";
+import { useApiSWR } from "@/lib/swr";
 import {
   listGrows,
   listTents,
@@ -95,13 +95,27 @@ export function CommandPalette() {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
   const [recent, setRecent] = useState<{ href: string; label: string }[]>([]);
-
-  // Dynamic data (loaded on open)
-  const [grows, setGrows] = useState<GrowResponse[]>([]);
-  const [tents, setTents] = useState<TentResponse[]>([]);
-  const [strains, setStrains] = useState<StrainResponse[]>([]);
-  const [devices, setDevices] = useState<DeviceResponse[]>([]);
-  const loaded = useRef(false);
+  const { data: dynamicData } = useApiSWR<{
+    grows: GrowResponse[];
+    tents: TentResponse[];
+    strains: StrainResponse[];
+    devices: DeviceResponse[];
+  }>(
+    open ? ["command-palette", "resources"] : null,
+    async (token) => {
+      const [grows, tents, strains, devices] = await Promise.all([
+        listGrows(token).catch(() => [] as GrowResponse[]),
+        listTents(token).catch(() => [] as TentResponse[]),
+        listStrains(token).catch(() => [] as StrainResponse[]),
+        listDevices(token).catch(() => [] as DeviceResponse[]),
+      ]);
+      return { grows, tents, strains, devices };
+    },
+  );
+  const grows = dynamicData?.grows ?? [];
+  const tents = dynamicData?.tents ?? [];
+  const strains = dynamicData?.strains ?? [];
+  const devices = dynamicData?.devices ?? [];
 
   // Keyboard shortcut
   useEffect(() => {
@@ -115,25 +129,9 @@ export function CommandPalette() {
     return () => document.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // Load data on open
+  // Load recents on open
   useEffect(() => {
-    if (!open) return;
-    setRecent(getRecent());
-    if (loaded.current) return;
-    const token = getAccessToken();
-    if (!token) return;
-    Promise.all([
-      listGrows(token).catch(() => []),
-      listTents(token).catch(() => []),
-      listStrains(token).catch(() => []),
-      listDevices(token).catch(() => []),
-    ]).then(([g, t, s, d]) => {
-      setGrows(g);
-      setTents(t);
-      setStrains(s);
-      setDevices(d);
-      loaded.current = true;
-    });
+    if (open) setRecent(getRecent());
   }, [open]);
 
   const { openChat } = useChat();

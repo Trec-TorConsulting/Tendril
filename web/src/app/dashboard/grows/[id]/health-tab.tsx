@@ -15,6 +15,7 @@ import {
   type GrowResponse,
   type TentResponse,
 } from "@/lib/api";
+import { useApiSWR } from "@/lib/swr";
 import { HealthCheckForm } from "@/components/health-check-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -137,6 +138,22 @@ export function HealthTab({ grow, onRefresh }: HealthTabProps) {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [autoCheck, setAutoCheck] = useState(grow.auto_health_check);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { data: healthData } = useApiSWR(
+    ["grow", "health-tab", grow.id, grow.tent_id],
+    async (token) => {
+      const [tentData, historyData] = await Promise.all([
+        getTent(token, grow.tent_id),
+        getHealthCheckHistory(token, grow.id, 10),
+      ]);
+      const cameras = await listTentCameras(token, grow.tent_id).catch(() => []);
+      const cameraAvailable = cameras.length > 0 || !!tentData.camera_url;
+      return {
+        tent: tentData,
+        history: historyData.items,
+        cameraAvailable,
+      };
+    },
+  );
 
   // AI Coach
   const [coachTip, setCoachTip] = useState<string | null>(null);
@@ -184,31 +201,22 @@ export function HealthTab({ grow, onRefresh }: HealthTabProps) {
 
   useEffect(() => {
     setResult(null);
-    setHistory([]);
-    setTent(null);
     setAutoCheck(grow.auto_health_check);
-    const load = async () => {
-      const token = getAccessToken();
-      if (!token) return;
-      try {
-        const [tentData, historyData] = await Promise.all([
-          getTent(token, grow.tent_id),
-          getHealthCheckHistory(token, grow.id, 10),
-        ]);
-        setTent(tentData);
-        setHistory(historyData.items);
-        // Check for cameras (new TentCamera records OR legacy camera_url)
-        const cameras = await listTentCameras(token, grow.tent_id).catch(() => []);
-        const cameraAvailable = cameras.length > 0 || !!tentData.camera_url;
-        setHasCamera(cameraAvailable);
-        setIncludeCamera(cameraAvailable);
-      } catch {
-        setTent(null);
-        setHistory([]);
-      }
-    };
-    load();
-  }, [grow.id, grow.tent_id, grow.auto_health_check]);
+  }, [grow.id, grow.auto_health_check]);
+
+  useEffect(() => {
+    if (!healthData) {
+      setTent(null);
+      setHistory([]);
+      setHasCamera(false);
+      setIncludeCamera(false);
+      return;
+    }
+    setTent(healthData.tent);
+    setHistory(healthData.history);
+    setHasCamera(healthData.cameraAvailable);
+    setIncludeCamera(healthData.cameraAvailable);
+  }, [healthData]);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -341,7 +349,7 @@ export function HealthTab({ grow, onRefresh }: HealthTabProps) {
                   <div>
                     <Label className="text-sm">Include Camera Snapshot</Label>
                     <p className="text-xs text-muted-foreground">
-                      Live image from {tent.name} camera
+                      Live image from {tent?.name || "tent"} camera
                     </p>
                   </div>
                 </div>

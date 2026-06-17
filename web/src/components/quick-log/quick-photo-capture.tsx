@@ -6,8 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useGrow } from "@/hooks/use-grow";
-import { getAccessToken } from "@/lib/auth";
 import { uploadGrowPhoto, listBuckets, type BucketResponse } from "@/lib/api";
+import { getAccessToken } from "@/lib/auth";
+import { useApiSWR } from "@/lib/swr";
 import { Camera, Upload, Loader2, Check, ImagePlus } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -18,29 +19,25 @@ interface QuickPhotoCaptureProps {
 }
 
 export function QuickPhotoCapture({ onSuccess }: QuickPhotoCaptureProps) {
-  const { activeGrow } = useGrow();
+  const { selectedGrow } = useGrow();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [buckets, setBuckets] = useState<BucketResponse[]>([]);
   const [selectedBucket, setSelectedBucket] = useState<string>("");
   const [caption, setCaption] = useState("");
   const [preview, setPreview] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const { data: bucketData } = useApiSWR<BucketResponse[]>(
+    selectedGrow ? ["quick-log", "photo", "buckets", selectedGrow.id] : null,
+    (token) => listBuckets(token, selectedGrow!.id),
+  );
+  const buckets = bucketData ?? [];
 
   useEffect(() => {
-    async function loadBuckets() {
-      const token = getAccessToken();
-      if (!token || !activeGrow) return;
-      try {
-        const b = await listBuckets(token, activeGrow.id);
-        setBuckets(b);
-      } catch {
-        // non-critical
-      }
+    if (selectedBucket && !buckets.some((b) => b.id === selectedBucket)) {
+      setSelectedBucket("");
     }
-    loadBuckets();
-  }, [activeGrow]);
+  }, [buckets, selectedBucket]);
 
   const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
@@ -56,7 +53,7 @@ export function QuickPhotoCapture({ onSuccess }: QuickPhotoCaptureProps) {
   }, []);
 
   const handleSubmit = useCallback(async () => {
-    if (!file || !activeGrow) return;
+    if (!file || !selectedGrow) return;
     const token = getAccessToken();
     if (!token) return;
 
@@ -65,7 +62,7 @@ export function QuickPhotoCapture({ onSuccess }: QuickPhotoCaptureProps) {
       await uploadGrowPhoto(
         token,
         file,
-        activeGrow.id,
+        selectedGrow.id,
         selectedBucket || undefined,
         caption || undefined,
       );
@@ -77,7 +74,7 @@ export function QuickPhotoCapture({ onSuccess }: QuickPhotoCaptureProps) {
     } finally {
       setSubmitting(false);
     }
-  }, [file, activeGrow, selectedBucket, caption, onSuccess]);
+  }, [file, selectedGrow, selectedBucket, caption, onSuccess]);
 
   if (submitted) {
     return (
@@ -171,7 +168,7 @@ export function QuickPhotoCapture({ onSuccess }: QuickPhotoCaptureProps) {
       {/* Submit */}
       <Button
         onClick={handleSubmit}
-        disabled={!file || !activeGrow || submitting}
+        disabled={!file || !selectedGrow || submitting}
         className="w-full gap-2"
       >
         {submitting ? (
@@ -182,7 +179,7 @@ export function QuickPhotoCapture({ onSuccess }: QuickPhotoCaptureProps) {
         Upload Photo
       </Button>
 
-      {!activeGrow && (
+      {!selectedGrow && (
         <p className="text-xs text-center text-destructive">
           Select a grow first to upload photos
         </p>

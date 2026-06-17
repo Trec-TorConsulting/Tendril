@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getAccessToken } from "@/lib/auth";
+import { useMemo } from "react";
 import { getCurrentWeather } from "@/lib/api";
 import { usePreferences } from "@/hooks/use-preferences";
 import { formatTemp, formatWind } from "@/lib/units";
+import { useApiSWR } from "@/lib/swr";
 
 interface WeatherWidgetProps {
   tentId: string;
@@ -26,29 +26,17 @@ interface WeatherAlert {
 
 export function WeatherWidget({ tentId }: WeatherWidgetProps) {
   const { prefs } = usePreferences();
-  const [weather, setWeather] = useState<WeatherData | null>(null);
-  const [alerts, setAlerts] = useState<WeatherAlert[]>([]);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    const load = async () => {
-      const token = getAccessToken();
-      if (!token) return;
-      try {
-        const data = await getCurrentWeather(token, tentId);
-        setWeather(data.current as unknown as WeatherData);
-        setAlerts(data.alerts as unknown as WeatherAlert[]);
-      } catch {
-        setError("Weather unavailable");
-      }
-    };
-    load();
-  }, [tentId]);
+  const { data, error } = useApiSWR(
+    ["weather-widget", tentId],
+    (token) => getCurrentWeather(token, tentId),
+  );
+  const weather = useMemo(() => (data?.current as unknown as WeatherData) ?? null, [data]);
+  const alerts = useMemo(() => (data?.alerts as unknown as WeatherAlert[]) ?? [], [data]);
 
   if (error) {
     return (
       <div className="rounded-lg border border-neutral-800 bg-neutral-900 p-4">
-        <p className="text-sm text-neutral-500">{error}</p>
+        <p className="text-sm text-neutral-500">Weather unavailable</p>
       </div>
     );
   }

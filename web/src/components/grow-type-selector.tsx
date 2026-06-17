@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getAccessToken } from "@/lib/auth";
+import { useMemo } from "react";
 import { listGrowTypes, type GrowTypeSummary } from "@/lib/api";
+import { useApiSWR } from "@/lib/swr";
 
 interface GrowTypeSelectorProps {
   value: string;
@@ -10,18 +10,10 @@ interface GrowTypeSelectorProps {
 }
 
 export function GrowTypeSelector({ value, onChange }: GrowTypeSelectorProps) {
-  const [types, setTypes] = useState<GrowTypeSummary[]>([]);
+  const { data } = useApiSWR<GrowTypeSummary[]>(["grow-types", "selector"], (token) => listGrowTypes(token));
+  const types = data ?? [];
 
-  useEffect(() => {
-    const load = async () => {
-      const token = getAccessToken();
-      if (!token) return;
-      setTypes(await listGrowTypes(token));
-    };
-    load();
-  }, []);
-
-  const categories = [...new Set(types.map((t) => t.category))];
+  const categories = useMemo(() => [...new Set(types.map((t) => t.category))], [types]);
 
   return (
     <div className="space-y-3">

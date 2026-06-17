@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
 import { formatDate } from "@/lib/utils";
+import { useApiSWR } from "@/lib/swr";
 import {
   adminGetStats,
   adminListTenants,
@@ -34,15 +35,30 @@ const PLANS = ["free", "hobby", "pro", "commercial", "enterprise", "dedicated"] 
 
 export default function AdminPage() {
   const [tab, setTab] = useState<Tab>("overview");
-  const [stats, setStats] = useState<{
-    total_tenants: number;
-    total_users: number;
-    plans: Record<string, number>;
-  } | null>(null);
-  const [tenants, setTenants] = useState<AdminTenantSummary[]>([]);
-  const [users, setUsers] = useState<AdminUserSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const {
+    data,
+    error: loadError,
+    isLoading: loading,
+    mutate,
+  } = useApiSWR<{
+    stats: { total_tenants: number; total_users: number; plans: Record<string, number> };
+    tenants: AdminTenantSummary[];
+    users: AdminUserSummary[];
+  }>(["admin", "dashboard"], async (token) => {
+    const [stats, tenants, users] = await Promise.all([
+      adminGetStats(token),
+      adminListTenants(token),
+      adminListUsers(token),
+    ]);
+    return { stats, tenants, users };
+  });
+  const stats = data?.stats ?? null;
+  const tenants = data?.tenants ?? [];
+  const users = data?.users ?? [];
+  const error = useMemo(
+    () => (loadError ? (loadError instanceof Error ? loadError.message : "Access denied") : ""),
+    [loadError],
+  );
 
   // Search / filter
   const [tenantSearch, setTenantSearch] = useState("");
@@ -58,29 +74,8 @@ export default function AdminPage() {
   const [editingPlan, setEditingPlan] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const token = getAccessToken();
-    if (!token) return;
-    setLoading(true);
-    try {
-      const [s, t, u] = await Promise.all([
-        adminGetStats(token),
-        adminListTenants(token),
-        adminListUsers(token),
-      ]);
-      setStats(s);
-      setTenants(t);
-      setUsers(u);
-      setError("");
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Access denied");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
+    await mutate();
+  }, [mutate]);
 
   // ── Tenant Actions ──
 
