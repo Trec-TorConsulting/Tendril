@@ -69,8 +69,16 @@ async def _readyz(request: web.Request) -> web.Response:
         {
             "status": "ready",
             "is_leader": True,
-            "last_task_run": _state["last_task_run"].isoformat() if isinstance(_state["last_task_run"], datetime) else None,
-            "started_at": _state["started_at"].isoformat() if isinstance(_state["started_at"], datetime) else None,
+            "last_task_run": (
+                _state["last_task_run"].isoformat()
+                if isinstance(_state["last_task_run"], datetime)
+                else None
+            ),
+            "started_at": (
+                _state["started_at"].isoformat()
+                if isinstance(_state["started_at"], datetime)
+                else None
+            ),
         }
     )
 

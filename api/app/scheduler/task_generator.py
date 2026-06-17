@@ -8,9 +8,9 @@ disclosure (brief/detail descriptions).
 from __future__ import annotations
 
 import logging
-from typing import Any
 from dataclasses import dataclass
 from datetime import UTC, datetime, time, timedelta
+from typing import Any
 from uuid import UUID
 from zoneinfo import ZoneInfo
 

@@ -74,7 +74,9 @@ async def compute_recommendation(
 
     # Selected recipes
     if profile.selected_recipes:
-        recipe_result = await session.execute(select(OrganicRecipe).where(OrganicRecipe.slug.in_(profile.selected_recipes)))
+        recipe_result = await session.execute(
+            select(OrganicRecipe).where(OrganicRecipe.slug.in_(profile.selected_recipes))
+        )
         for recipe in recipe_result.scalars().all():
             # Only include if recipe is appropriate for current stage
             if recipe.best_for_stages and stage not in recipe.best_for_stages:
@@ -91,7 +93,9 @@ async def compute_recommendation(
 
     # Custom nutrients
     if profile.custom_nutrient_ids:
-        custom_result = await session.execute(select(CustomNutrient).where(CustomNutrient.id.in_(profile.custom_nutrient_ids)))
+        custom_result = await session.execute(
+            select(CustomNutrient).where(CustomNutrient.id.in_(profile.custom_nutrient_ids))
+        )
         for custom in custom_result.scalars().all():
             custom_info.append(
                 {

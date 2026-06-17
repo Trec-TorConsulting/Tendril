@@ -187,7 +187,9 @@ async def _sync_recipes(session: AsyncSession) -> None:
     """Upsert organic recipes by slug."""
     for recipe_data in ORGANIC_RECIPES:
         recipe_payload = cast(dict[str, Any], recipe_data)
-        result = await session.execute(select(OrganicRecipe).where(OrganicRecipe.slug == cast(str, recipe_payload["slug"])))
+        result = await session.execute(
+            select(OrganicRecipe).where(OrganicRecipe.slug == cast(str, recipe_payload["slug"]))
+        )
         existing = result.scalar_one_or_none()
         if existing:
             for key, value in recipe_payload.items():
