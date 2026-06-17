@@ -1,4 +1,8 @@
-"""Conversation CRUD routes — persistent AI chat history."""
+"""Conversation CRUD routes — persistent AI chat history.
+
+This module is HTTP-only. All persistence and UUID coercion live in
+``app.ai.service``.
+"""
 
 from __future__ import annotations
 
@@ -7,10 +11,9 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
+from app.ai import service
 from app.ai.models import Conversation, ConversationMessage
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session
 from app.pagination import PaginatedResponse, PaginationParams, paginate
@@ -80,15 +83,18 @@ async def create_conversation(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Create a new AI conversation."""
-    conv = Conversation(
+    assert user.tenant_id is not None  # guaranteed by get_tenant_session
+    try:
+        grow_cycle_id = service.parse_optional_uuid(body.grow_cycle_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Invalid grow_cycle_id") from exc
+    conv = await service.create_conversation(
+        session,
         tenant_id=user.tenant_id,
         user_id=user.user_id,
-        grow_cycle_id=UUID(body.grow_cycle_id) if body.grow_cycle_id else None,
+        grow_cycle_id=grow_cycle_id,
         title=body.title,
     )
-    session.add(conv)
-    await session.commit()
-    await session.refresh(conv)
     return ConversationResponse.from_orm_obj(conv)
 
 
@@ -100,13 +106,16 @@ async def list_conversations(
     grow_cycle_id: str | None = None,
 ):
     """List conversations for the current user."""
-    q = (
-        select(Conversation)
-        .where(Conversation.tenant_id == user.tenant_id, Conversation.user_id == user.user_id)
-        .order_by(desc(Conversation.updated_at))
+    assert user.tenant_id is not None
+    try:
+        gc_id = service.parse_optional_uuid(grow_cycle_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Invalid grow_cycle_id") from exc
+    q = service.list_user_conversations_query(
+        tenant_id=user.tenant_id,
+        user_id=user.user_id,
+        grow_cycle_id=gc_id,
     )
-    if grow_cycle_id:
-        q = q.where(Conversation.grow_cycle_id == UUID(grow_cycle_id))
     items, total = await paginate(session, q, pagination)
     return PaginatedResponse(
         items=[ConversationResponse.from_orm_obj(c) for c in items],
@@ -123,12 +132,10 @@ async def get_conversation(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Get a conversation with all messages."""
-    result = await session.execute(
-        select(Conversation)
-        .options(selectinload(Conversation.messages))
-        .where(Conversation.id == conversation_id, Conversation.tenant_id == user.tenant_id)
+    assert user.tenant_id is not None
+    conv = await service.get_conversation_with_messages(
+        session, tenant_id=user.tenant_id, conversation_id=conversation_id
     )
-    conv = result.scalar_one_or_none()
     if conv is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
     return ConversationDetailResponse(
@@ -150,13 +157,12 @@ async def update_conversation(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Update conversation title."""
-    conv = await session.get(Conversation, conversation_id)
-    if conv is None or conv.tenant_id != user.tenant_id:
+    assert user.tenant_id is not None
+    conv = await service.get_conversation(session, tenant_id=user.tenant_id, conversation_id=conversation_id)
+    if conv is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
     if body.title is not None:
-        conv.title = body.title
-    await session.commit()
-    await session.refresh(conv)
+        await service.update_conversation_title(session, conv, title=body.title)
     return ConversationResponse.from_orm_obj(conv)
 
 
@@ -167,8 +173,8 @@ async def delete_conversation(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Delete a conversation and all its messages."""
-    conv = await session.get(Conversation, conversation_id)
-    if conv is None or conv.tenant_id != user.tenant_id:
+    assert user.tenant_id is not None
+    conv = await service.get_conversation(session, tenant_id=user.tenant_id, conversation_id=conversation_id)
+    if conv is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    await session.delete(conv)
-    await session.commit()
+    await service.delete_conversation(session, conv)
