@@ -1,29 +1,25 @@
-"""Integration CRUD, webhook receiver, and manual sync routes."""
+"""Integration CRUD, webhook receiver, and manual sync routes.
+
+This module is HTTP-only. All persistence, encryption, connector
+dispatch, webhook authentication, and sync bookkeeping live in
+``app.integrations.service``.
+"""
 
 from __future__ import annotations
 
-import hmac
 import logging
-import secrets
-from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.auth.middleware import CurrentUser, get_tenant_session, require_role
 from app.billing.tier_gate import require_usage_limit
 from app.database import get_db
-from app.integrations.connectors.base import get_connector_class
-from app.integrations.crypto import decrypt_config, encrypt_config, redact_config
-from app.integrations.models import (
-    IntegrationConfig,
-    IntegrationDeviceMap,
-    IntegrationSyncLog,
-)
+from app.integrations import service
+from app.integrations.crypto import decrypt_config, redact_config
+from app.integrations.models import IntegrationConfig
 from app.integrations.schemas import (
     DeviceMapCreate,
     DeviceMapResponse,
@@ -42,7 +38,7 @@ router = APIRouter()
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Response helpers
 # ---------------------------------------------------------------------------
 
 
@@ -69,8 +65,8 @@ async def _get_config_or_404(
     session: AsyncSession,
     tenant_id: UUID | None = None,
 ) -> IntegrationConfig:
-    cfg = await session.get(IntegrationConfig, integration_id)
-    if cfg is None or (tenant_id and cfg.tenant_id != tenant_id):
+    cfg = await service.get_integration(session, integration_id, tenant_id=tenant_id)
+    if cfg is None:
         raise HTTPException(status_code=404, detail="Integration not found")
     return cfg
 
@@ -92,21 +88,16 @@ async def create_integration(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Create a new third-party integration (Home Assistant, MQTT, etc.)."""
-    cfg = IntegrationConfig(
+    assert user.tenant_id is not None  # guaranteed by require_role
+    cfg = await service.create_integration(
+        session,
         tenant_id=user.tenant_id,
-        type=body.type,
+        integration_type=body.type,
         name=body.name,
-        config=encrypt_config(body.config),
-        webhook_secret=secrets.token_urlsafe(32),
+        config=body.config,
         enabled=body.enabled,
         poll_interval_s=body.poll_interval_s,
     )
-    session.add(cfg)
-    from app.billing.metering import record_usage
-
-    await record_usage(session, user.tenant_id, "integrations")
-    await session.commit()
-    await session.refresh(cfg)
     logger.info("Integration created: %s (%s) for tenant %s", cfg.id, cfg.type, user.tenant_id)
     return _config_to_response(cfg)
 
@@ -119,13 +110,8 @@ async def list_integrations(
     integration_type: str | None = Query(None, alias="type"),
 ):
     """List all integrations for the current tenant."""
-    q = (
-        select(IntegrationConfig)
-        .where(IntegrationConfig.tenant_id == user.tenant_id)
-        .order_by(IntegrationConfig.created_at.desc())
-    )
-    if integration_type:
-        q = q.where(IntegrationConfig.type == integration_type)
+    assert user.tenant_id is not None
+    q = service.list_integrations_query(tenant_id=user.tenant_id, integration_type=integration_type)
     items, total = await paginate(session, q, pagination)
     return PaginatedResponse(
         items=[_config_to_response(c) for c in items],
@@ -155,14 +141,7 @@ async def update_integration(
 ):
     """Update an integration's configuration."""
     cfg = await _get_config_or_404(integration_id, session)
-    updates = body.model_dump(exclude_unset=True)
-    if "config" in updates and updates["config"] is not None:
-        updates["config"] = encrypt_config(updates["config"])
-    for field, value in updates.items():
-        setattr(cfg, field, value)
-    cfg.updated_at = datetime.now(UTC)
-    await session.commit()
-    await session.refresh(cfg)
+    await service.update_integration(session, cfg, body.model_dump(exclude_unset=True))
     return _config_to_response(cfg)
 
 
@@ -174,8 +153,7 @@ async def delete_integration(
 ):
     """Delete an integration by ID."""
     cfg = await _get_config_or_404(integration_id, session)
-    await session.delete(cfg)
-    await session.commit()
+    await service.delete_integration(session, cfg)
     logger.info("Integration deleted: %s for tenant %s", integration_id, user.tenant_id)
 
 
@@ -198,7 +176,8 @@ async def create_device_map(
     """Create a device mapping between an integration and a local device."""
     config = await _get_config_or_404(integration_id, session)
 
-    # Validate MQTT topic for generic MQTT integrations
+    # MQTT topic validation is connector-specific and lives there; the
+    # route's role is only to surface the 400 detail.
     if config.type == "mqtt_generic" and body.external_id:
         from app.integrations.connectors.mqtt_generic import validate_mqtt_topic
 
@@ -206,15 +185,13 @@ async def create_device_map(
         if topic_error:
             raise HTTPException(status_code=400, detail=f"Invalid MQTT topic: {topic_error}")
 
-    dm = IntegrationDeviceMap(
+    assert user.tenant_id is not None
+    return await service.create_device_map(
+        session,
         tenant_id=user.tenant_id,
         integration_id=integration_id,
-        **body.model_dump(),
+        data=body.model_dump(),
     )
-    session.add(dm)
-    await session.commit()
-    await session.refresh(dm)
-    return dm
 
 
 @router.get(
@@ -229,7 +206,7 @@ async def list_device_maps(
 ):
     """List device mappings for an integration."""
     await _get_config_or_404(integration_id, session)
-    q = select(IntegrationDeviceMap).where(IntegrationDeviceMap.integration_id == integration_id)
+    q = service.list_device_maps_query(integration_id=integration_id)
     items, total = await paginate(session, q, pagination)
     return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
 
@@ -247,13 +224,10 @@ async def update_device_map(
 ):
     """Update a device mapping."""
     await _get_config_or_404(integration_id, session)
-    dm = await session.get(IntegrationDeviceMap, device_id)
-    if dm is None or dm.integration_id != integration_id:
+    dm = await service.get_device_map(session, integration_id=integration_id, device_map_id=device_id)
+    if dm is None:
         raise HTTPException(status_code=404, detail="Device mapping not found")
-    for field, value in body.model_dump(exclude_unset=True).items():
-        setattr(dm, field, value)
-    await session.commit()
-    await session.refresh(dm)
+    await service.update_device_map(session, dm, body.model_dump(exclude_unset=True))
     return dm
 
 
@@ -266,11 +240,10 @@ async def delete_device_map(
 ):
     """Delete a device mapping by ID."""
     await _get_config_or_404(integration_id, session)
-    dm = await session.get(IntegrationDeviceMap, device_id)
-    if dm is None or dm.integration_id != integration_id:
+    dm = await service.get_device_map(session, integration_id=integration_id, device_map_id=device_id)
+    if dm is None:
         raise HTTPException(status_code=404, detail="Device mapping not found")
-    await session.delete(dm)
-    await session.commit()
+    await service.delete_device_map(session, dm)
 
 
 # ---------------------------------------------------------------------------
@@ -290,11 +263,7 @@ async def list_sync_logs(
 ):
     """List synchronization logs for an integration."""
     await _get_config_or_404(integration_id, session)
-    q = (
-        select(IntegrationSyncLog)
-        .where(IntegrationSyncLog.integration_id == integration_id)
-        .order_by(IntegrationSyncLog.synced_at.desc())
-    )
+    q = service.list_sync_logs_query(integration_id=integration_id)
     items, total = await paginate(session, q, pagination)
     return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
 
@@ -315,53 +284,25 @@ async def receive_webhook(
     The webhook_secret must be provided as a ``secret`` query param or in the
     JSON body under the ``webhook_secret`` key.
     """
-    cfg = await session.get(IntegrationConfig, integration_id)
+    cfg = await service.get_integration(session, integration_id)
     if cfg is None:
         raise HTTPException(status_code=404, detail="Integration not found")
-    if not cfg.enabled:
-        raise HTTPException(status_code=409, detail="Integration is disabled")
 
-    # Authenticate via query param or body field
     payload = await request.json()
     provided_secret = request.query_params.get("secret") or payload.pop("webhook_secret", "")
-    if not hmac.compare_digest(str(provided_secret), cfg.webhook_secret):
-        raise HTTPException(status_code=401, detail="Invalid webhook secret")
 
-    connector_cls = get_connector_class(cfg.type)
-    if connector_cls is None:
-        logger.warning("No connector registered for type %s", cfg.type)
-        raise HTTPException(status_code=501, detail=f"Connector '{cfg.type}' not implemented")
-
-    device_maps_result = await session.execute(
-        select(IntegrationDeviceMap).where(
-            IntegrationDeviceMap.integration_id == integration_id,
-            IntegrationDeviceMap.enabled.is_(True),
-        )
-    )
-    device_maps = device_maps_result.scalars().all()
-
-    connector = connector_cls(
-        config=cfg,
-        decrypted_config=decrypt_config(cfg.config),
-        device_maps=list(device_maps),
-    )
-    result = await connector.handle_webhook(payload)
-
-    # Persist readings to sensor tables
-    if result.readings:
-        try:
-            await connector.persist_readings(session, result)
-        except Exception:
-            logger.exception("Webhook persist failed for %s (%s)", cfg.id, cfg.type)
-            result.errors.append("Reading persistence failed")
-
-    await connector.write_sync_log(session, result)
-    cfg.last_synced_at = datetime.now(UTC)
-    if result.status == "error":
-        cfg.error_count += 1
-    else:
-        cfg.error_count = 0
-    await session.commit()
+    try:
+        result = await service.process_webhook(session, cfg=cfg, provided_secret=provided_secret, payload=payload)
+    except service.IntegrationDisabledError as exc:
+        raise HTTPException(status_code=409, detail="Integration is disabled") from exc
+    except service.WebhookAuthError as exc:
+        raise HTTPException(status_code=401, detail="Invalid webhook secret") from exc
+    except service.UnsupportedConnectorError as exc:
+        logger.warning("No connector registered for type %s", exc.integration_type)
+        raise HTTPException(
+            status_code=501,
+            detail=f"Connector '{exc.integration_type}' not implemented",
+        ) from exc
 
     return {
         "status": result.status,
@@ -383,46 +324,15 @@ async def trigger_sync(
 ):
     """Trigger an immediate poll for a polling-based integration."""
     cfg = await _get_config_or_404(integration_id, session)
-    if not cfg.enabled:
-        raise HTTPException(status_code=409, detail="Integration is disabled")
-
-    connector_cls = get_connector_class(cfg.type)
-    if connector_cls is None:
-        raise HTTPException(status_code=501, detail=f"Connector '{cfg.type}' not implemented")
-
-    device_maps_result = await session.execute(
-        select(IntegrationDeviceMap)
-        .where(
-            IntegrationDeviceMap.integration_id == integration_id,
-            IntegrationDeviceMap.enabled.is_(True),
-        )
-        .options(selectinload(IntegrationDeviceMap.integration))
-    )
-    device_maps = device_maps_result.scalars().all()
-
-    connector = connector_cls(
-        config=cfg,
-        decrypted_config=decrypt_config(cfg.config),
-        device_maps=list(device_maps),
-    )
-    result = await connector.poll()
-
-    # Persist readings to sensor tables
-    if result.readings:
-        try:
-            written = await connector.persist_readings(session, result)
-            logger.info("Manual sync persisted %d readings for %s (%s)", written, cfg.id, cfg.type)
-        except Exception:
-            logger.exception("Manual sync persist failed for %s (%s)", cfg.id, cfg.type)
-            result.errors.append("Reading persistence failed")
-
-    await connector.write_sync_log(session, result)
-    cfg.last_synced_at = datetime.now(UTC)
-    if result.status == "error":
-        cfg.error_count += 1
-    else:
-        cfg.error_count = 0
-    await session.commit()
+    try:
+        result = await service.trigger_sync(session, cfg=cfg)
+    except service.IntegrationDisabledError as exc:
+        raise HTTPException(status_code=409, detail="Integration is disabled") from exc
+    except service.UnsupportedConnectorError as exc:
+        raise HTTPException(
+            status_code=501,
+            detail=f"Connector '{exc.integration_type}' not implemented",
+        ) from exc
 
     return {
         "status": result.status,
@@ -451,32 +361,20 @@ async def discover_devices(
     devices/sensors that can be mapped to tents or buckets.
     """
     cfg = await _get_config_or_404(integration_id, session)
-    if not cfg.enabled:
-        raise HTTPException(status_code=409, detail="Integration is disabled")
-
-    connector_cls = get_connector_class(cfg.type)
-    if connector_cls is None:
-        raise HTTPException(status_code=501, detail=f"Connector '{cfg.type}' not implemented")
-
-    device_maps_result = await session.execute(
-        select(IntegrationDeviceMap).where(
-            IntegrationDeviceMap.integration_id == integration_id,
-            IntegrationDeviceMap.enabled.is_(True),
-        )
-    )
-    device_maps = device_maps_result.scalars().all()
-
-    connector = connector_cls(
-        config=cfg,
-        decrypted_config=decrypt_config(cfg.config),
-        device_maps=list(device_maps),
-    )
-
-    if not hasattr(connector, "discover_devices"):
-        raise HTTPException(status_code=501, detail="This connector does not support device discovery")
-
     try:
-        devices = await connector.discover_devices()
+        devices = await service.discover_devices(session, cfg=cfg)
+    except service.IntegrationDisabledError as exc:
+        raise HTTPException(status_code=409, detail="Integration is disabled") from exc
+    except service.UnsupportedConnectorError as exc:
+        raise HTTPException(
+            status_code=501,
+            detail=f"Connector '{exc.integration_type}' not implemented",
+        ) from exc
+    except service.DiscoveryNotSupportedError as exc:
+        raise HTTPException(
+            status_code=501,
+            detail="This connector does not support device discovery",
+        ) from exc
     except Exception as exc:
         logger.exception("Discovery failed for integration %s", integration_id)
         raise HTTPException(status_code=502, detail=f"Discovery failed: {exc}") from exc
