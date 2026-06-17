@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { listKBCategories, listKBArticles, searchKBArticles, type KBCategory, type KBArticle } from "@/lib/api";
 import { useApiSWR } from "@/lib/swr";
@@ -13,7 +13,7 @@ import { Search } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 
-export default function KnowledgeBasePage() {
+function KnowledgeBasePageContent() {
   const searchParams = useSearchParams();
   const categorySlug = searchParams.get("category");
   const [searchQuery, setSearchQuery] = useState("");
@@ -126,5 +126,21 @@ export default function KnowledgeBasePage() {
         </div>
       </div>
     </>
+  );
+}
+
+export default function KnowledgeBasePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex flex-1 flex-col gap-6 p-4 lg:p-6">
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-16 w-full" />
+          ))}
+        </div>
+      }
+    >
+      <KnowledgeBasePageContent />
+    </Suspense>
   );
 }

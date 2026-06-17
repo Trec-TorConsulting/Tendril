@@ -117,6 +117,7 @@ export default function AnalyticsPage() {
   const { grows } = useGrow();
   const { prefs } = usePreferences();
   const [analyticsGrowId, setAnalyticsGrowId] = useState<string>("all");
+  const activeGrow = analyticsGrowId === "all" ? null : grows.find((g) => g.id === analyticsGrowId) ?? null;
   const [buckets, setBuckets] = useState<BucketResponse[]>([]);
   const [selectedBucketId, setSelectedBucketId] = useState<string>("");
   const [sensorData, setSensorData] = useState<SensorReadingResponse[]>([]);
@@ -228,8 +229,6 @@ export default function AnalyticsPage() {
       };
     },
   );
-
-  const activeGrow = analyticsGrowId === "all" ? null : grows.find((g) => g.id === analyticsGrowId) ?? null;
 
   useEffect(() => {
     if (!overviewData) return;

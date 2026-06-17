@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { listForumCategories, listForumThreads, type ForumCategory, type ForumThread } from "@/lib/api";
 import { useApiSWR } from "@/lib/swr";
 import { PageHeader } from "@/components/page-header";
@@ -13,7 +13,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
-export default function ForumPage() {
+function ForumPageContent() {
   const searchParams = useSearchParams();
   const categorySlug = searchParams.get("category");
   const [hasShownLoadError, setHasShownLoadError] = useState(false);
@@ -116,5 +116,23 @@ export default function ForumPage() {
         )}
       </div>
     </>
+  );
+}
+
+export default function ForumPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex flex-1 flex-col gap-6 p-4 lg:p-6">
+          <div className="space-y-2">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-16 w-full" />
+            ))}
+          </div>
+        </div>
+      }
+    >
+      <ForumPageContent />
+    </Suspense>
   );
 }
