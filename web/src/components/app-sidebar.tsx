@@ -127,7 +127,8 @@ export function AppSidebar({ user, onLogout }: AppSidebarProps) {
   const router = useRouter();
   const { grows, selectedGrow, setSelectedGrowId } = useGrow();
 
-  const handleGrowChange = (growId: string) => {
+  const handleGrowChange = (growId: string | null) => {
+    if (!growId) return;
     setSelectedGrowId(growId);
     if (pathname.startsWith("/dashboard/grows/")) {
       router.push(`/dashboard/grows/${growId}`);

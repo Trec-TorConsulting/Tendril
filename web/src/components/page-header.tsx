@@ -34,7 +34,8 @@ export function PageHeader({ title, description, breadcrumbs, actions }: PageHea
   const { grows, selectedGrow, setSelectedGrowId } = useGrow();
   const pathname = usePathname();
   const router = useRouter();
-  const handleMobileGrowChange = (growId: string) => {
+  const handleMobileGrowChange = (growId: string | null) => {
+    if (!growId) return;
     setSelectedGrowId(growId);
     if (pathname.startsWith("/dashboard/grows/")) {
       router.push(`/dashboard/grows/${growId}`);
