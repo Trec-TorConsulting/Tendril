@@ -1,38 +1,26 @@
-"""User-facing support ticket endpoints."""
+"""User-facing support ticket endpoints.
+
+This module is HTTP-only. All persistence, SLA computation, status
+transitions, and rating-window validation live in
+``app.support.service``.
+"""
 
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session
-from app.support.models import (
-    SupportTicket,
-    TicketCategory,
-    TicketMessage,
-    TicketPriority,
-    TicketStatus,
-)
+from app.support import service
 
 router = APIRouter()
 logger = logging.getLogger("tendril.support.tickets")
-
-
-# SLA defaults (hours to first response by priority)
-SLA_HOURS = {
-    TicketPriority.urgent: 1,
-    TicketPriority.high: 4,
-    TicketPriority.medium: 24,
-    TicketPriority.low: 72,
-}
 
 
 # ─── Schemas ──────────────────────────────────────────────────────────────────
@@ -69,6 +57,17 @@ class TicketSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class MessageResponse(BaseModel):
+    id: UUID
+    author_id: UUID
+    body: str
+    is_internal: bool
+    attachments: list | None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class TicketDetail(BaseModel):
     id: UUID
     subject: str
@@ -87,17 +86,6 @@ class TicketDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class MessageResponse(BaseModel):
-    id: UUID
-    author_id: UUID
-    body: str
-    is_internal: bool
-    attachments: list | None
-    created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 # ─── Routes ───────────────────────────────────────────────────────────────────
 
 
@@ -108,44 +96,16 @@ async def create_ticket(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ) -> TicketSummary:
     """Create a new support ticket."""
-    # Validate enums
-    try:
-        cat = TicketCategory(body.category)
-    except ValueError:
-        cat = TicketCategory.general
-
-    try:
-        pri = TicketPriority(body.priority)
-    except ValueError:
-        pri = TicketPriority.medium
-
-    # Calculate SLA due time
-    sla_hours = SLA_HOURS.get(pri, 24)
-    due_at = datetime.now(UTC) + timedelta(hours=sla_hours)
-
-    ticket = SupportTicket(
+    ticket = await service.create_ticket(
+        session,
         tenant_id=user.tenant_id,
-        created_by_id=user.user_id,
-        subject=body.subject,
-        status=TicketStatus.open,
-        priority=pri,
-        category=cat,
-        due_at=due_at,
-    )
-    session.add(ticket)
-    await session.flush()
-
-    # Add initial message
-    message = TicketMessage(
-        ticket_id=ticket.id,
         author_id=user.user_id,
+        subject=body.subject,
         body=body.body,
-        attachments=body.attachments or [],
+        category=service.coerce_category(body.category),
+        priority=service.coerce_priority(body.priority),
+        attachments=body.attachments,
     )
-    session.add(message)
-    await session.commit()
-    await session.refresh(ticket)
-
     return TicketSummary(
         id=ticket.id,
         subject=ticket.subject,
@@ -167,26 +127,13 @@ async def list_my_tickets(
     per_page: int = 20,
 ) -> dict:
     """List the current user's support tickets."""
-    query = select(SupportTicket).where(SupportTicket.created_by_id == user.user_id)
-
-    if status:
-        query = query.where(SupportTicket.status == status)
-
-    # Count
-    count_q = select(func.count()).select_from(query.subquery())
-    total = (await session.execute(count_q)).scalar() or 0
-
-    # Paginate
-    tickets = (
-        (
-            await session.execute(
-                query.order_by(SupportTicket.updated_at.desc()).offset((page - 1) * per_page).limit(per_page)
-            )
-        )
-        .scalars()
-        .all()
+    tickets, total = await service.list_my_tickets_page(
+        session,
+        author_id=user.user_id,
+        status=status,
+        page=page,
+        per_page=per_page,
     )
-
     return {
         "tickets": [
             TicketSummary(
@@ -213,18 +160,11 @@ async def get_ticket(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ) -> TicketDetail:
     """Get a specific ticket with all messages."""
-    ticket = (
-        await session.execute(
-            select(SupportTicket)
-            .where(SupportTicket.id == ticket_id, SupportTicket.created_by_id == user.user_id)
-            .options(selectinload(SupportTicket.messages))
-        )
-    ).scalar_one_or_none()
-
-    if not ticket:
+    ticket = await service.get_user_ticket_with_messages(session, ticket_id=ticket_id, author_id=user.user_id)
+    if ticket is None:
         raise HTTPException(status_code=404, detail="Ticket not found")
 
-    # Filter out internal notes for regular users
+    # Filter out internal notes for regular users (response shaping)
     messages = [
         MessageResponse(
             id=m.id,
@@ -263,33 +203,19 @@ async def add_message(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ) -> MessageResponse:
     """Add a message to an existing ticket."""
-    ticket = (
-        await session.execute(
-            select(SupportTicket).where(SupportTicket.id == ticket_id, SupportTicket.created_by_id == user.user_id)
-        )
-    ).scalar_one_or_none()
-
-    if not ticket:
+    ticket = await service.get_user_ticket(session, ticket_id=ticket_id, author_id=user.user_id)
+    if ticket is None:
         raise HTTPException(status_code=404, detail="Ticket not found")
-
-    if ticket.status in (TicketStatus.closed, TicketStatus.resolved):
+    if service.is_ticket_closed(ticket):
         raise HTTPException(status_code=400, detail="Ticket is closed")
 
-    message = TicketMessage(
-        ticket_id=ticket.id,
+    message = await service.add_user_message(
+        session,
+        ticket,
         author_id=user.user_id,
         body=body.body,
-        attachments=body.attachments or [],
+        attachments=body.attachments,
     )
-    session.add(message)
-
-    # Update ticket status if it was waiting on user
-    if ticket.status == TicketStatus.waiting_on_user:
-        ticket.status = TicketStatus.waiting_on_staff
-
-    await session.commit()
-    await session.refresh(message)
-
     return MessageResponse(
         id=message.id,
         author_id=message.author_id,
@@ -307,18 +233,10 @@ async def close_ticket(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Close a ticket (user action)."""
-    ticket = (
-        await session.execute(
-            select(SupportTicket).where(SupportTicket.id == ticket_id, SupportTicket.created_by_id == user.user_id)
-        )
-    ).scalar_one_or_none()
-
-    if not ticket:
+    ticket = await service.get_user_ticket(session, ticket_id=ticket_id, author_id=user.user_id)
+    if ticket is None:
         raise HTTPException(status_code=404, detail="Ticket not found")
-
-    ticket.status = TicketStatus.closed
-    ticket.resolved_at = datetime.now(UTC)
-    await session.commit()
+    await service.close_ticket(session, ticket)
     return {"status": "closed"}
 
 
@@ -330,20 +248,8 @@ async def rate_ticket(
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
     """Rate a resolved/closed ticket."""
-    ticket = (
-        await session.execute(
-            select(SupportTicket).where(
-                SupportTicket.id == ticket_id,
-                SupportTicket.created_by_id == user.user_id,
-                SupportTicket.status.in_([TicketStatus.resolved, TicketStatus.closed]),
-            )
-        )
-    ).scalar_one_or_none()
-
-    if not ticket:
+    ticket = await service.get_rateable_ticket(session, ticket_id=ticket_id, author_id=user.user_id)
+    if ticket is None:
         raise HTTPException(status_code=404, detail="Ticket not found or not resolved")
-
-    ticket.satisfaction_rating = body.rating
-    ticket.satisfaction_comment = body.comment
-    await session.commit()
+    await service.rate_ticket(session, ticket, rating=body.rating, comment=body.comment)
     return {"rating": body.rating}
