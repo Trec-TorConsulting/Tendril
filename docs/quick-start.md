@@ -89,7 +89,7 @@ No sensors? Log readings and observations manually via the **Grow Journal** and 
 
 - **Self-hosting on your server?** → [Self-Hosting Guide](self-hosting.md)
 - **Deploying to production?** → [Architecture Overview](architecture.md)
-- **Integrating third-party devices?** → [Integrations](../README.md#implemented-connectors)
+- **Integrating third-party devices?** → See the [README](https://github.com/Trec-TorConsulting/Tendril) for device integrations (Pulse, OpenWeather, Ecowitt)
 
 ## Troubleshooting
 
