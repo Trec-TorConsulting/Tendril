@@ -153,3 +153,54 @@ class TestTenantMembers:
             headers=viewer_tenant["viewer_headers"],
         )
         assert resp.status_code == 403
+
+
+# ---------- Service-layer unit tests ----------
+
+
+class TestTenantsServiceHelpers:
+    """Direct coverage for ``app.tenants.service`` pure helpers."""
+
+    def test_tenant_role_to_legacy_admin_becomes_owner(self):
+        from app.tenants.models import TenantRole
+        from app.tenants.service import tenant_role_to_legacy
+
+        assert tenant_role_to_legacy(TenantRole.admin) == "owner"
+
+    def test_tenant_role_to_legacy_passes_through_member_and_viewer(self):
+        from app.tenants.models import TenantRole
+        from app.tenants.service import tenant_role_to_legacy
+
+        assert tenant_role_to_legacy(TenantRole.member) == "member"
+        assert tenant_role_to_legacy(TenantRole.viewer) == "viewer"
+
+    def test_legacy_to_tenant_role_owner_becomes_admin(self):
+        from app.tenants.models import TenantRole
+        from app.tenants.service import legacy_to_tenant_role
+
+        assert legacy_to_tenant_role("owner") == TenantRole.admin
+
+    def test_legacy_to_tenant_role_member_and_viewer_pass_through(self):
+        from app.tenants.models import TenantRole
+        from app.tenants.service import legacy_to_tenant_role
+
+        assert legacy_to_tenant_role("member") == TenantRole.member
+        assert legacy_to_tenant_role("viewer") == TenantRole.viewer
+
+    def test_legacy_to_tenant_role_rejects_unknown_role(self):
+        import pytest
+
+        from app.tenants.service import legacy_to_tenant_role
+
+        with pytest.raises(ValueError, match="Invalid role"):
+            legacy_to_tenant_role("god-mode")
+
+    def test_hash_password_produces_bcrypt_compatible_hash(self):
+        import bcrypt
+
+        from app.tenants.service import hash_password
+
+        h = hash_password("CorrectHorseBattery9!")
+        # bcrypt-validated round-trip
+        assert bcrypt.checkpw(b"CorrectHorseBattery9!", h.encode())
+        assert not bcrypt.checkpw(b"wrong", h.encode())

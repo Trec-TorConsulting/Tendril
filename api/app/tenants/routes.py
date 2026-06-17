@@ -1,12 +1,16 @@
+"""Tenants API — tenant lookup/update + tenant-membership CRUD.
+
+This module is HTTP-only. All persistence and role mapping live in
+``app.tenants.service``.
+"""
+
 from __future__ import annotations
 
 from typing import Annotated
 from uuid import UUID
 
-import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import record_audit
@@ -14,7 +18,7 @@ from app.auth.middleware import CurrentUser, get_current_user, require_role
 from app.auth.password import validate_password_strength
 from app.database import get_db
 from app.pagination import PaginatedResponse, PaginationParams
-from app.tenants.models import PlatformRole, Tenant, TenantMembership, TenantRole, User
+from app.tenants import service
 
 router = APIRouter()
 
@@ -56,9 +60,9 @@ async def get_my_tenant(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Get the current user's tenant details."""
-    result = await db.execute(select(Tenant).where(Tenant.id == user.tenant_id))
-    tenant = result.scalar_one_or_none()
-    if not tenant:
+    assert user.tenant_id is not None  # guaranteed by get_current_user issuing a tenant ctx
+    tenant = await service.get_tenant(db, user.tenant_id)
+    if tenant is None:
         raise HTTPException(status_code=404, detail="Tenant not found")
     return TenantResponse(id=tenant.id, name=tenant.name, slug=tenant.slug, plan=tenant.plan)
 
@@ -70,14 +74,11 @@ async def update_my_tenant(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Update tenant name. Owner only."""
-    result = await db.execute(select(Tenant).where(Tenant.id == user.tenant_id))
-    tenant = result.scalar_one_or_none()
-    if not tenant:
+    assert user.tenant_id is not None  # guaranteed by require_role
+    tenant = await service.get_tenant(db, user.tenant_id)
+    if tenant is None:
         raise HTTPException(status_code=404, detail="Tenant not found")
-    if body.name is not None:
-        tenant.name = body.name
-    await db.commit()
-    await db.refresh(tenant)
+    tenant = await service.update_tenant(db, tenant, name=body.name)
     return TenantResponse(id=tenant.id, name=tenant.name, slug=tenant.slug, plan=tenant.plan)
 
 
@@ -88,53 +89,29 @@ async def list_members(
     pagination: Annotated[PaginationParams, Depends()],
 ):
     """List all members of the current tenant."""
-    q = (
-        select(User, TenantMembership.role)
-        .join(TenantMembership, TenantMembership.user_id == User.id)
-        .where(TenantMembership.tenant_id == user.tenant_id)
-        .order_by(User.created_at)
+    assert user.tenant_id is not None
+    rows, total = await service.list_members_page(
+        db,
+        tenant_id=user.tenant_id,
+        offset=pagination.offset,
+        limit=pagination.page_size,
     )
-    # Manual pagination (can't use paginate helper directly with joined query)
-    from sqlalchemy import func
-
-    count_stmt = select(func.count(TenantMembership.id)).where(TenantMembership.tenant_id == user.tenant_id)
-    total = (await db.execute(count_stmt)).scalar() or 0
-    stmt = q.offset(pagination.offset).limit(pagination.page_size)
-    rows = (await db.execute(stmt)).all()
     return PaginatedResponse(
         items=[
             TenantMemberResponse(
-                id=u.id,
-                email=u.email,
-                display_name=u.display_name,
-                role=_tenant_role_to_legacy(tr),
-                email_verified=u.email_verified,
-                created_at=u.created_at.isoformat(),
+                id=row.user.id,
+                email=row.user.email,
+                display_name=row.user.display_name,
+                role=service.tenant_role_to_legacy(row.role),
+                email_verified=row.user.email_verified,
+                created_at=row.user.created_at.isoformat(),
             )
-            for u, tr in rows
+            for row in rows
         ],
         total=total,
         page=pagination.page,
         page_size=pagination.page_size,
     )
-
-
-def _tenant_role_to_legacy(tr: TenantRole) -> str:
-    """Convert TenantRole enum to legacy role string for API compat."""
-    if tr == TenantRole.admin:
-        return "owner"
-    return tr.value
-
-
-def _legacy_to_tenant_role(role: str) -> TenantRole:
-    """Convert legacy role string to TenantRole enum."""
-    if role == "owner":
-        return TenantRole.admin
-    if role == "member":
-        return TenantRole.member
-    if role == "viewer":
-        return TenantRole.viewer
-    raise ValueError(f"Invalid role: {role}")
 
 
 @router.post("/members", response_model=TenantMemberResponse, status_code=status.HTTP_201_CREATED)
@@ -150,31 +127,18 @@ async def add_member(
 
     validate_password_strength(body.password)
 
-    # Check email isn't already in use
-    existing = await db.execute(select(User).where(User.email == body.email))
-    if existing.scalar_one_or_none():
+    if await service.get_user_by_email(db, body.email) is not None:
         raise HTTPException(status_code=409, detail="Email already registered")
 
-    # Create user record
-    new_user = User(
-        email=body.email,
-        password_hash=bcrypt.hashpw(body.password.encode(), bcrypt.gensalt()).decode(),
-        display_name=body.display_name,
-        platform_role=PlatformRole.user,
-        auth_provider="local",
-    )
-    db.add(new_user)
-    await db.flush()
-
-    # Create tenant membership
-    membership = TenantMembership(
+    assert user.tenant_id is not None
+    new_user = await service.create_member(
+        db,
         tenant_id=user.tenant_id,
-        user_id=new_user.id,
-        role=_legacy_to_tenant_role(body.role),
+        email=body.email,
+        password=body.password,
+        display_name=body.display_name,
+        role=service.legacy_to_tenant_role(body.role),
     )
-    db.add(membership)
-    await db.commit()
-    await db.refresh(new_user)
     await record_audit(db, user.tenant_id, user.user_id, "create", "member", str(new_user.id), request=request)
     await db.commit()
     return TenantMemberResponse(
@@ -198,25 +162,17 @@ async def update_member_role(
     if body.role not in ("owner", "member", "viewer"):
         raise HTTPException(status_code=400, detail="Invalid role")
 
-    # Find the membership
-    result = await db.execute(
-        select(TenantMembership).where(
-            TenantMembership.user_id == member_id, TenantMembership.tenant_id == user.tenant_id
-        )
-    )
-    membership = result.scalar_one_or_none()
-    if not membership:
+    assert user.tenant_id is not None
+    membership = await service.get_membership(db, tenant_id=user.tenant_id, user_id=member_id)
+    if membership is None:
         raise HTTPException(status_code=404, detail="Member not found")
-
     if membership.user_id == user.user_id:
         raise HTTPException(status_code=400, detail="Cannot change your own role")
 
-    membership.role = _legacy_to_tenant_role(body.role)
-    await db.commit()
+    await service.update_membership_role(db, membership, service.legacy_to_tenant_role(body.role))
 
-    # Get user for response
-    user_result = await db.execute(select(User).where(User.id == member_id))
-    member = user_result.scalar_one()
+    member = await service.get_user(db, member_id)
+    assert member is not None  # membership exists ⇒ user exists
     return TenantMemberResponse(
         id=member.id,
         email=member.email,
@@ -235,18 +191,12 @@ async def remove_member(
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
     """Remove a member from the tenant. Owner only. Cannot remove yourself."""
-    result = await db.execute(
-        select(TenantMembership).where(
-            TenantMembership.user_id == member_id, TenantMembership.tenant_id == user.tenant_id
-        )
-    )
-    membership = result.scalar_one_or_none()
-    if not membership:
+    assert user.tenant_id is not None
+    membership = await service.get_membership(db, tenant_id=user.tenant_id, user_id=member_id)
+    if membership is None:
         raise HTTPException(status_code=404, detail="Member not found")
-
     if membership.user_id == user.user_id:
         raise HTTPException(status_code=400, detail="Cannot remove yourself")
 
     await record_audit(db, user.tenant_id, user.user_id, "delete", "member", str(member_id), request=request)
-    await db.delete(membership)
-    await db.commit()
+    await service.delete_membership(db, membership)
