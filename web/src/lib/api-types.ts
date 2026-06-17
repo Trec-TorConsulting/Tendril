@@ -964,7 +964,7 @@ export interface paths {
         head?: never;
         /**
          * Update Profile
-         * @description Update current user's profile (display name, email, layout mode).
+         * @description Update current user's profile (display name, email, layout mode, preferences).
          */
         patch: operations["update_profile_v1_auth_profile_patch"];
         trace?: never;
