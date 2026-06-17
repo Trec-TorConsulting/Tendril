@@ -8,6 +8,7 @@ import pytest
 
 from app.support.models import ForumThreadStatus, TicketCategory, TicketPriority, TicketStatus
 from app.support.service import (
+    OPEN_TICKET_STATUSES,
     SLA_HOURS,
     coerce_category,
     coerce_priority,
@@ -141,3 +142,29 @@ class TestIsForumThreadLocked:
     )
     def test_other_statuses_not_locked(self, status):
         assert is_forum_thread_locked(_FakeThread(status)) is False
+
+
+# ---------- Admin service helpers ----------
+
+
+class TestOpenTicketStatuses:
+    """The OPEN_TICKET_STATUSES tuple is the single source of truth shared
+    by the overdue-filter and the open-tickets KPI; pin the membership."""
+
+    def test_contains_open(self):
+        assert TicketStatus.open in OPEN_TICKET_STATUSES
+
+    def test_contains_in_progress(self):
+        assert TicketStatus.in_progress in OPEN_TICKET_STATUSES
+
+    def test_contains_waiting_on_staff(self):
+        assert TicketStatus.waiting_on_staff in OPEN_TICKET_STATUSES
+
+    @pytest.mark.parametrize(
+        "status",
+        [TicketStatus.waiting_on_user, TicketStatus.resolved, TicketStatus.closed],
+    )
+    def test_excludes_closed_and_waiting_on_user(self, status):
+        # waiting_on_user is awaiting customer response — not an active staff
+        # workload — so it must not count toward open/overdue KPIs.
+        assert status not in OPEN_TICKET_STATUSES
