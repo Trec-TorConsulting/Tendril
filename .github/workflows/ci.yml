@@ -262,9 +262,6 @@ jobs:
           POSTGRES_USER: tendril
           POSTGRES_PASSWORD: tendril
           POSTGRES_DB: tendril_test
-          # The DB is ephemeral per CI run, so skip initdb's slow integrity
-          # measures. Saves ~5-10s on container start.
-          POSTGRES_INITDB_ARGS: "--data-checksums=false"
         ports:
           - 5432:5432
         # --tmpfs mounts the data directory on RAM — eliminates the disk
