@@ -167,17 +167,17 @@ class TestDiagnosisPrompt:
     """Verify the diagnosis prompt builder works correctly."""
 
     def test_basic_prompt(self):
-        from app.ai.diagnose_routes import _build_diagnosis_prompt
+        from app.ai.service import build_diagnosis_prompt
 
-        prompt = _build_diagnosis_prompt()
+        prompt = build_diagnosis_prompt()
         assert "Tendril" in prompt
         assert "treatment_id" in prompt
         assert "nitrogen_deficiency" in prompt
 
     def test_prompt_with_context(self):
-        from app.ai.diagnose_routes import _build_diagnosis_prompt
+        from app.ai.service import build_diagnosis_prompt
 
-        prompt = _build_diagnosis_prompt(
+        prompt = build_diagnosis_prompt(
             grow_type="dwc",
             current_stage="flowering",
             observations="Lower leaves turning yellow",
@@ -188,7 +188,7 @@ class TestDiagnosisPrompt:
 
     def test_prompt_valid_treatment_ids_listed(self):
         """Prompt should list all valid treatment IDs."""
-        from app.ai.diagnose_routes import DIAGNOSIS_SYSTEM_PROMPT
+        from app.ai.service import DIAGNOSIS_SYSTEM_PROMPT
         from app.ai.treatment_db import TREATMENT_DATABASE
 
         for entry in TREATMENT_DATABASE:

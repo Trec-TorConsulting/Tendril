@@ -16,6 +16,10 @@ vi.mock("next/link", () => ({
 
 vi.mock("@/lib/auth", () => ({
   getAccessToken: () => "test-token",
+  getRefreshToken: () => "test-refresh",
+  isAuthenticated: () => true,
+  setTokens: vi.fn(),
+  clearTokens: vi.fn(),
 }));
 
 vi.mock("@/components/confirm-dialog", () => ({

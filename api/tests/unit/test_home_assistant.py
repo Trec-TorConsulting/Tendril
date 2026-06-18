@@ -205,6 +205,7 @@ class TestHomeAssistantCallService:
     @patch("httpx.AsyncClient.post")
     async def test_call_service_success(self, mock_post):
         mock_resp = MagicMock()
+        mock_resp.status_code = 200
         mock_resp.json.return_value = [{"entity_id": "switch.fan", "state": "on"}]
         mock_resp.raise_for_status = MagicMock()
         mock_post.return_value = mock_resp
@@ -222,6 +223,7 @@ class TestHomeAssistantDiscovery:
     @patch("httpx.AsyncClient.get")
     async def test_discover_filters_relevant_domains(self, mock_get):
         mock_resp = MagicMock()
+        mock_resp.status_code = 200
         mock_resp.json.return_value = [
             {
                 "entity_id": "sensor.temp",
@@ -252,6 +254,7 @@ class TestHomeAssistantTestConnection:
     @patch("httpx.AsyncClient.get")
     async def test_connection_success(self, mock_get):
         mock_resp = MagicMock()
+        mock_resp.status_code = 200
         mock_resp.json.return_value = {"message": "API running."}
         mock_resp.raise_for_status = MagicMock()
         mock_get.return_value = mock_resp

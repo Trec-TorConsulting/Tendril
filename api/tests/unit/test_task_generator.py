@@ -111,47 +111,47 @@ class TestAutomationSuppression:
 
     def test_auto_ph_dosing_suppresses_ph_check(self):
         """When auto_ph_dosing is active, ph_check tasks are suppressed."""
-        assert _is_suppressed("ph_check", {"auto_ph_dosing"})
+        assert _is_suppressed("ph_check", {"auto_ph_dosing"}, AUTOMATION_SUPPRESSIONS)
 
     def test_auto_ec_dosing_suppresses_ec_check(self):
         """When auto_ec_dosing is active, ec_check tasks are suppressed."""
-        assert _is_suppressed("ec_check", {"auto_ec_dosing"})
+        assert _is_suppressed("ec_check", {"auto_ec_dosing"}, AUTOMATION_SUPPRESSIONS)
 
     def test_auto_irrigation_suppresses_watering(self):
         """When auto_irrigation is active, watering tasks are suppressed."""
-        assert _is_suppressed("watering", {"auto_irrigation"})
+        assert _is_suppressed("watering", {"auto_irrigation"}, AUTOMATION_SUPPRESSIONS)
 
     def test_chiller_heater_suppresses_water_temp(self):
         """When chiller_heater is active, water_temp tasks are suppressed."""
-        assert _is_suppressed("water_temp", {"chiller_heater"})
+        assert _is_suppressed("water_temp", {"chiller_heater"}, AUTOMATION_SUPPRESSIONS)
 
     def test_inline_monitor_suppresses_ph_and_ec(self):
         """Inline monitor suppresses both ph_check and ec_check."""
-        assert _is_suppressed("ph_check", {"inline_monitor"})
-        assert _is_suppressed("ec_check", {"inline_monitor"})
+        assert _is_suppressed("ph_check", {"inline_monitor"}, AUTOMATION_SUPPRESSIONS)
+        assert _is_suppressed("ec_check", {"inline_monitor"}, AUTOMATION_SUPPRESSIONS)
 
     def test_unrelated_automation_does_not_suppress(self):
         """Auto pH dosing should NOT suppress EC tasks."""
-        assert not _is_suppressed("ec_check", {"auto_ph_dosing"})
-        assert not _is_suppressed("watering", {"auto_ph_dosing"})
+        assert not _is_suppressed("ec_check", {"auto_ph_dosing"}, AUTOMATION_SUPPRESSIONS)
+        assert not _is_suppressed("watering", {"auto_ph_dosing"}, AUTOMATION_SUPPRESSIONS)
 
     def test_no_automations_suppresses_nothing(self):
         """With no automations active, nothing is suppressed."""
-        assert not _is_suppressed("ph_check", set())
-        assert not _is_suppressed("ec_check", set())
-        assert not _is_suppressed("watering", set())
+        assert not _is_suppressed("ph_check", set(), AUTOMATION_SUPPRESSIONS)
+        assert not _is_suppressed("ec_check", set(), AUTOMATION_SUPPRESSIONS)
+        assert not _is_suppressed("watering", set(), AUTOMATION_SUPPRESSIONS)
 
     def test_unknown_category_never_suppressed(self):
         """An unknown category should never be suppressed."""
         all_automations = set(AUTOMATION_SUPPRESSIONS.keys())
-        assert not _is_suppressed("nonexistent_category", all_automations)
+        assert not _is_suppressed("nonexistent_category", all_automations, AUTOMATION_SUPPRESSIONS)
 
     def test_multiple_automations_combined(self):
         """Multiple active automations stack their suppressions."""
         automations = {"auto_ph_dosing", "auto_ec_dosing", "auto_irrigation"}
-        assert _is_suppressed("ph_check", automations)
-        assert _is_suppressed("ec_check", automations)
-        assert _is_suppressed("watering", automations)
+        assert _is_suppressed("ph_check", automations, AUTOMATION_SUPPRESSIONS)
+        assert _is_suppressed("ec_check", automations, AUTOMATION_SUPPRESSIONS)
+        assert _is_suppressed("watering", automations, AUTOMATION_SUPPRESSIONS)
 
     def test_get_grow_automations_from_settings(self):
         """_get_grow_automations extracts automation list from grow settings."""

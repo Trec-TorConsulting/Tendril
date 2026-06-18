@@ -251,7 +251,9 @@ class TestGrowTypes:
         resp = await client.get("/v1/grow-types/dwc", headers=tenant["headers"])
         assert resp.status_code == 200
         data = resp.json()
-        assert data["id"] == "dwc"
+        # The DB model uses UUID for `id`; `slug` is the stable string handle
+        # used in URLs and as the foreign key in tenant-scoped settings.
+        assert data["slug"] == "dwc"
         assert "sensor_kit" in data
         assert "health_check_questions" in data
 
