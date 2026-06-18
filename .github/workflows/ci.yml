@@ -247,7 +247,11 @@ jobs:
   # ── API & Web Test Jobs ──────────────────────────────────────
   api-test:
     name: API Tests
-    runs-on: arc-runner-arm64
+    # Run on x86 ARC runners (12-core Ubuntu w/ NVMe) instead of the Pi 5
+    # ARM runners. pytest is I/O-bound on Postgres TRUNCATE round-trips, and
+    # the ARM runners' storage (USB/SD) becomes the bottleneck — measured
+    # 62 min on arm64 vs an expected ~15-25 min on x86.
+    runs-on: arc-runner-x86
     defaults:
       run:
         working-directory: api
@@ -260,11 +264,18 @@ jobs:
           POSTGRES_DB: tendril_test
         ports:
           - 5432:5432
+        # --tmpfs mounts the data directory on RAM — eliminates the disk
+        # I/O bottleneck that dominates the test runtime. The DB is
+        # discarded at job end anyway; durability is irrelevant.
+        # --shm-size bumps shared memory so Postgres can use larger buffers
+        # without falling back to disk for hash joins.
         options: >-
+          --tmpfs /var/lib/postgresql/data:rw,size=2g
+          --shm-size=512m
           --health-cmd pg_isready
-          --health-interval 10s
+          --health-interval 5s
           --health-timeout 5s
-          --health-retries 5
+          --health-retries 10
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -272,7 +283,7 @@ jobs:
           python-version: "3.14"
           cache: pip
       - run: pip install -r requirements.txt -r requirements-dev.txt
-      - run: pytest --tb=short -q
+      - run: pytest --tb=short -q --durations=20
         env:
           DATABASE_URL: postgresql+asyncpg://tendril:tendril@localhost:5432/tendril_test
           JWT_SECRET: ci-test-secret-not-real
