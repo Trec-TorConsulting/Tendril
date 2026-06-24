@@ -6,6 +6,7 @@ in-memory token buckets for local development.
 
 from __future__ import annotations
 
+import logging
 import time
 from collections import defaultdict
 from collections.abc import Callable
@@ -15,6 +16,8 @@ import jwt as pyjwt
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
+
+logger = logging.getLogger("tendril.middleware.ratelimit")
 
 # Common bot/scanner paths — reject immediately without consuming rate limit
 _BOT_PATH_PREFIXES = (
@@ -141,6 +144,8 @@ class RateLimiter(BaseHTTPMiddleware):
             )
             return payload.get("tid")
         except Exception:
+            # Malformed/expired/invalid token — fall back to per-IP limiting.
+            logger.debug("rate-limit: could not derive tenant from token", exc_info=True)
             return None
 
     # ── Dispatch ───────────────────────────────────────────────
