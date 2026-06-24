@@ -254,6 +254,7 @@ def create_app() -> FastAPI:
                 await session.execute(text("SELECT 1"))
             return {"status": "ok", "db": "connected"}
         except Exception:
+            logger.exception("Readiness DB check failed")
             return JSONResponse(
                 status_code=503,
                 content={"status": "degraded", "db": "unreachable"},
@@ -275,6 +276,7 @@ def create_app() -> FastAPI:
                 await session.execute(text("SELECT 1"))
             results["database"] = "connected"
         except Exception:
+            logger.exception("System status DB probe failed")
             results["database"] = "unreachable"
 
         # Ollama
@@ -286,8 +288,10 @@ def create_app() -> FastAPI:
                     results["ollama"] = "connected"
                     results["ollama_models"] = models
                 else:
+                    logger.warning("System status Ollama probe returned status %s", resp.status_code)
                     results["ollama"] = "error"
         except Exception:
+            logger.exception("System status Ollama probe failed")
             results["ollama"] = "unreachable"
 
         # Gemini
@@ -299,8 +303,13 @@ def create_app() -> FastAPI:
                 resp = await client.get(
                     f"http://{settings.mqtt_broker_host}:18083/api/v5/status",
                 )
-                results["mqtt"] = "connected" if resp.status_code == 200 else "error"
+                if resp.status_code == 200:
+                    results["mqtt"] = "connected"
+                else:
+                    logger.warning("System status MQTT probe returned status %s", resp.status_code)
+                    results["mqtt"] = "error"
         except Exception:
+            logger.exception("System status MQTT probe failed")
             results["mqtt"] = "unreachable"
 
         overall = "ok" if results["database"] == "connected" else "degraded"

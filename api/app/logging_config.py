@@ -40,7 +40,21 @@ class JSONFormatter(logging.Formatter):
             }
 
         # Extra fields added via logger.info("msg", extra={"key": "val"})
-        for key in ("method", "path", "status_code", "duration_ms", "ip", "action"):
+        for key in (
+            "method",
+            "path",
+            "status_code",
+            "duration_ms",
+            "ip",
+            "client_ip",
+            "action",
+            "event",
+            "event_type",
+            "outcome",
+            "provider_type",
+            "error_code",
+            "email",
+        ):
             val = getattr(record, key, None)
             if val is not None:
                 log_entry[key] = val
