@@ -48,6 +48,37 @@ interface ChatMessage {
   tool?: string;
 }
 
+interface ActionPolicyPayload {
+  integration_type?: string;
+  operation?: string;
+  supported?: boolean;
+  allowed?: boolean;
+  risk_level?: string;
+  requires_approval?: boolean;
+  requires_simulation?: boolean;
+  reason?: string | null;
+}
+
+function parseActionPolicyPayload(value: unknown): ActionPolicyPayload | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  return {
+    integration_type: typeof record.integration_type === "string" ? record.integration_type : undefined,
+    operation: typeof record.operation === "string" ? record.operation : undefined,
+    supported: typeof record.supported === "boolean" ? record.supported : undefined,
+    allowed: typeof record.allowed === "boolean" ? record.allowed : undefined,
+    risk_level: typeof record.risk_level === "string" ? record.risk_level : undefined,
+    requires_approval:
+      typeof record.requires_approval === "boolean" ? record.requires_approval : undefined,
+    requires_simulation:
+      typeof record.requires_simulation === "boolean" ? record.requires_simulation : undefined,
+    reason: typeof record.reason === "string" ? record.reason : null,
+  };
+}
+
 function formatActionLifecycleMessage(data: Record<string, unknown>) {
   const message = typeof data.message === "string" ? data.message : null;
   if (message) {
@@ -56,6 +87,10 @@ function formatActionLifecycleMessage(data: Record<string, unknown>) {
 
   const phase = typeof data.phase === "string" ? data.phase : "updated";
   const tool = typeof data.tool === "string" ? data.tool.replace(/_/g, " ") : "tool";
+  const error = typeof data.error === "string" ? data.error.trim() : "";
+  if (phase === "blocked" && error) {
+    return `${tool}: blocked (${error})`;
+  }
   return `${tool}: ${phase}`;
 }
 
@@ -73,6 +108,7 @@ function buildActionLifecycleEvent(data: Record<string, unknown>): ActionLifecyc
   const tool = typeof data.tool === "string" ? data.tool : undefined;
   const message = formatActionLifecycleMessage(data);
   const ts = toIsoTimestamp(data.ts);
+  const policy = parseActionPolicyPayload(data.policy);
 
   return {
     id: [actionId ?? correlationId ?? tool ?? "tool", phase, ts, message].join("|"),
@@ -83,6 +119,7 @@ function buildActionLifecycleEvent(data: Record<string, unknown>): ActionLifecyc
     message,
     ts,
     isError: typeof data.error === "string" && data.error.trim().length > 0,
+    policy,
   };
 }
 

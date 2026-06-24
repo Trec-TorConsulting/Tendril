@@ -349,4 +349,50 @@ describe("ChatProvider conversation resume", () => {
     expect(screen.getByText("Execution completed (action-77)")).toBeInTheDocument();
     expect(screen.queryByText("Execution started ({event:tool-call-3})")).not.toBeInTheDocument();
   });
+
+  it("renders blocked integration lifecycle events with policy reason details", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ChatProvider>
+        <ChatHarness />
+      </ChatProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open chat" }));
+
+    await waitFor(() => {
+      expect(MockWebSocket.instances).toHaveLength(1);
+    });
+
+    await act(async () => {
+      MockWebSocket.instances[0].onopen?.(new Event("open"));
+      MockWebSocket.instances[0].onmessage?.(
+        {
+          data: JSON.stringify({
+            type: "action_event",
+            phase: "blocked",
+            tool: "integration_trigger_sync",
+            error: "Unsupported integration connector: tuya",
+            action_id: "tool-call-9",
+            policy: {
+              integration_type: "tuya",
+              operation: "trigger_sync",
+              supported: false,
+              allowed: false,
+              risk_level: "high",
+              requires_approval: true,
+              requires_simulation: true,
+              reason: "Unsupported integration connector: tuya",
+            },
+          }),
+        } as MessageEvent,
+      );
+    });
+
+    expect(screen.getByText("Live event count: 1")).toBeInTheDocument();
+    expect(
+      screen.getByText("integration trigger sync: blocked (Unsupported integration connector: tuya) (tool-call-9)"),
+    ).toBeInTheDocument();
+  });
 });
