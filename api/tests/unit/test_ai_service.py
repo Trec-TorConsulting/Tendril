@@ -10,15 +10,32 @@ from uuid import UUID, uuid4
 import pytest
 
 from app.ai.service import (
+    AGENT_ACTION_STATUS_APPROVED,
+    AGENT_ACTION_STATUS_COMPLETED,
+    AGENT_ACTION_STATUS_EXECUTING,
+    AGENT_ACTION_STATUS_PENDING_APPROVAL,
+    AGENT_ACTION_STATUS_PROPOSED,
+    AGENT_ACTION_STATUS_VERIFIED,
+    AGENT_APPROVAL_STATUS_APPROVED,
+    AGENT_APPROVAL_STATUS_PENDING,
+    AGENT_APPROVAL_STATUS_REJECTED,
     DEFAULT_DIAGNOSIS_OVERALL_SCORE,
     DEFAULT_DIAGNOSIS_OVERALL_SEVERITY,
     DIAGNOSIS_SYSTEM_PROMPT,
     HEALTH_HISTORY_MAX_LIMIT,
     MAX_DIAGNOSE_IMAGE_BYTES,
+    AgentAction,
+    AgentActionApproval,
     Conversation,
     DiagnoseImageError,
+    InvalidAgentActionTransitionError,
+    InvalidAgentApprovalTransitionError,
+    build_agent_action_idempotency_key,
     build_diagnosis_prompt,
     build_photo_url_base,
+    can_transition_agent_action,
+    create_agent_action,
+    create_agent_action_approval,
     create_conversation,
     decode_diagnose_image,
     delete_conversation,
@@ -37,7 +54,9 @@ from app.ai.service import (
     parse_health_check_json,
     parse_optional_uuid,
     photo_url_for_key,
+    record_agent_action_approval_decision,
     search_treatments_query,
+    transition_agent_action,
     update_conversation_title,
 )
 
@@ -403,7 +422,197 @@ class TestConversationServiceMethods:
         session.get.assert_awaited_once_with(PlantHealthTreatment, "nitrogen_deficiency")
 
 
+@pytest.mark.asyncio(loop_scope="session")
+class TestAgentActionServiceMethods:
+    async def test_create_agent_action_persists_and_returns_model(self):
+        session = AsyncMock()
+        session.add = Mock()
+        tenant_id = uuid4()
+        conversation_id = uuid4()
+        grow_cycle_id = uuid4()
+        user_id = uuid4()
+        key = build_agent_action_idempotency_key(
+            tenant_id=tenant_id,
+            source="health_check",
+            action_type="create_task",
+            grow_cycle_id=grow_cycle_id,
+            conversation_id=conversation_id,
+        )
+
+        action = await create_agent_action(
+            session,
+            tenant_id=tenant_id,
+            source="health_check",
+            action_type="create_task",
+            title="Create a flush task",
+            idempotency_key=key,
+            conversation_id=conversation_id,
+            grow_cycle_id=grow_cycle_id,
+            created_by_user_id=user_id,
+            requires_approval=True,
+        )
+
+        assert isinstance(action, AgentAction)
+        assert action.tenant_id == tenant_id
+        assert action.status == AGENT_ACTION_STATUS_PROPOSED
+        assert action.idempotency_key == key
+        session.add.assert_called_once_with(action)
+        session.commit.assert_awaited_once()
+        session.refresh.assert_awaited_once_with(action)
+
+    async def test_create_agent_action_approval_persists_pending_record(self):
+        session = AsyncMock()
+        session.add = Mock()
+        tenant_id = uuid4()
+        action_id = uuid4()
+        requester = uuid4()
+
+        approval = await create_agent_action_approval(
+            session,
+            tenant_id=tenant_id,
+            action_id=action_id,
+            requested_by_user_id=requester,
+        )
+
+        assert isinstance(approval, AgentActionApproval)
+        assert approval.status == AGENT_APPROVAL_STATUS_PENDING
+        assert approval.action_id == action_id
+        session.add.assert_called_once_with(approval)
+        session.commit.assert_awaited_once()
+        session.refresh.assert_awaited_once_with(approval)
+
+    async def test_transition_agent_action_updates_status_and_timestamps(self):
+        session = AsyncMock()
+        action = AgentAction(
+            tenant_id=uuid4(),
+            source="health_check",
+            action_type="create_task",
+            title="Task",
+            status=AGENT_ACTION_STATUS_PENDING_APPROVAL,
+            risk_level="low",
+            idempotency_key="k" * 64,
+        )
+
+        approved = await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_APPROVED)
+        assert approved.status == AGENT_ACTION_STATUS_APPROVED
+        assert approved.approved_at is not None
+
+        executing = await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_EXECUTING)
+        assert executing.status == AGENT_ACTION_STATUS_EXECUTING
+        assert executing.executed_at is not None
+
+        completed = await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_COMPLETED)
+        assert completed.status == AGENT_ACTION_STATUS_COMPLETED
+
+        verified = await transition_agent_action(
+            session,
+            action,
+            next_status=AGENT_ACTION_STATUS_VERIFIED,
+            verification_json={"result": "ok"},
+        )
+        assert verified.status == AGENT_ACTION_STATUS_VERIFIED
+        assert verified.verified_at is not None
+        assert verified.verification_json == {"result": "ok"}
+        assert session.commit.await_count == 4
+        assert session.refresh.await_count == 4
+
+    async def test_transition_agent_action_rejects_invalid_transition(self):
+        session = AsyncMock()
+        action = AgentAction(
+            tenant_id=uuid4(),
+            source="health_check",
+            action_type="create_task",
+            title="Task",
+            status=AGENT_ACTION_STATUS_PROPOSED,
+            risk_level="low",
+            idempotency_key="k" * 64,
+        )
+
+        with pytest.raises(InvalidAgentActionTransitionError, match="proposed -> verified"):
+            await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_VERIFIED)
+
+    async def test_record_agent_action_approval_decision_updates_review_fields(self):
+        session = AsyncMock()
+        reviewer = uuid4()
+        approval = AgentActionApproval(
+            tenant_id=uuid4(),
+            action_id=uuid4(),
+            status=AGENT_APPROVAL_STATUS_PENDING,
+        )
+
+        updated = await record_agent_action_approval_decision(
+            session,
+            approval,
+            decision_status=AGENT_APPROVAL_STATUS_APPROVED,
+            reviewed_by_user_id=reviewer,
+            reason="Safe action",
+        )
+
+        assert updated.status == AGENT_APPROVAL_STATUS_APPROVED
+        assert updated.reviewed_by_user_id == reviewer
+        assert updated.reviewed_at is not None
+        assert updated.reason == "Safe action"
+        session.commit.assert_awaited_once()
+        session.refresh.assert_awaited_once_with(approval)
+
+    async def test_record_agent_action_approval_decision_rejects_non_pending(self):
+        session = AsyncMock()
+        approval = AgentActionApproval(
+            tenant_id=uuid4(),
+            action_id=uuid4(),
+            status=AGENT_APPROVAL_STATUS_REJECTED,
+        )
+
+        with pytest.raises(InvalidAgentApprovalTransitionError, match="rejected -> approved"):
+            await record_agent_action_approval_decision(
+                session,
+                approval,
+                decision_status=AGENT_APPROVAL_STATUS_APPROVED,
+                reviewed_by_user_id=uuid4(),
+            )
+
+
 class TestAiServiceQueries:
+    def test_build_agent_action_idempotency_key_is_deterministic(self):
+        tenant_id = uuid4()
+        grow_id = uuid4()
+        conversation_id = uuid4()
+
+        a = build_agent_action_idempotency_key(
+            tenant_id=tenant_id,
+            source="health_check",
+            action_type="create_task",
+            grow_cycle_id=grow_id,
+            conversation_id=conversation_id,
+            dedupe_token="flush",
+        )
+        b = build_agent_action_idempotency_key(
+            tenant_id=tenant_id,
+            source="health_check",
+            action_type="create_task",
+            grow_cycle_id=grow_id,
+            conversation_id=conversation_id,
+            dedupe_token="flush",
+        )
+        c = build_agent_action_idempotency_key(
+            tenant_id=tenant_id,
+            source="health_check",
+            action_type="create_task",
+            grow_cycle_id=grow_id,
+            conversation_id=conversation_id,
+            dedupe_token="different",
+        )
+
+        assert a == b
+        assert a != c
+        assert len(a) == 64
+
+    def test_can_transition_agent_action_allows_and_blocks_expected_paths(self):
+        assert can_transition_agent_action(AGENT_ACTION_STATUS_PROPOSED, AGENT_ACTION_STATUS_PENDING_APPROVAL)
+        assert can_transition_agent_action(AGENT_ACTION_STATUS_PENDING_APPROVAL, AGENT_ACTION_STATUS_APPROVED)
+        assert can_transition_agent_action(AGENT_ACTION_STATUS_COMPLETED, AGENT_ACTION_STATUS_VERIFIED)
+        assert not can_transition_agent_action(AGENT_ACTION_STATUS_PROPOSED, AGENT_ACTION_STATUS_VERIFIED)
+
     def test_list_user_conversations_query_filters_by_tenant_user_and_optional_grow(self):
         tenant_id = uuid4()
         user_id = uuid4()

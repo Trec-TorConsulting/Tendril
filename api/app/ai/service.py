@@ -19,17 +19,255 @@ Conventions match the project standard (PR #192 / #208-#220):
 
 from __future__ import annotations
 
+import hashlib
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import Select, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.ai.models import Conversation, ConversationMessage
+from app.ai.models import AgentAction, AgentActionApproval, Conversation, ConversationMessage
+
+AGENT_ACTION_STATUS_PROPOSED = "proposed"
+AGENT_ACTION_STATUS_PENDING_APPROVAL = "pending_approval"
+AGENT_ACTION_STATUS_APPROVED = "approved"
+AGENT_ACTION_STATUS_EXECUTING = "executing"
+AGENT_ACTION_STATUS_COMPLETED = "completed"
+AGENT_ACTION_STATUS_VERIFIED = "verified"
+AGENT_ACTION_STATUS_BLOCKED = "blocked"
+AGENT_ACTION_STATUS_REJECTED = "rejected"
+AGENT_ACTION_STATUS_EXPIRED = "expired"
+AGENT_ACTION_STATUS_FAILED = "failed"
+AGENT_ACTION_STATUS_CANCELLED = "cancelled"
+
+AGENT_APPROVAL_STATUS_PENDING = "pending"
+AGENT_APPROVAL_STATUS_APPROVED = "approved"
+AGENT_APPROVAL_STATUS_REJECTED = "rejected"
+AGENT_APPROVAL_STATUS_EXPIRED = "expired"
+
+TERMINAL_AGENT_ACTION_STATUSES = frozenset(
+    {
+        AGENT_ACTION_STATUS_VERIFIED,
+        AGENT_ACTION_STATUS_BLOCKED,
+        AGENT_ACTION_STATUS_REJECTED,
+        AGENT_ACTION_STATUS_EXPIRED,
+        AGENT_ACTION_STATUS_FAILED,
+        AGENT_ACTION_STATUS_CANCELLED,
+    }
+)
+
+ALLOWED_AGENT_ACTION_TRANSITIONS: dict[str, frozenset[str]] = {
+    AGENT_ACTION_STATUS_PROPOSED: frozenset(
+        {
+            AGENT_ACTION_STATUS_PENDING_APPROVAL,
+            AGENT_ACTION_STATUS_APPROVED,
+            AGENT_ACTION_STATUS_BLOCKED,
+            AGENT_ACTION_STATUS_CANCELLED,
+        }
+    ),
+    AGENT_ACTION_STATUS_PENDING_APPROVAL: frozenset(
+        {
+            AGENT_ACTION_STATUS_APPROVED,
+            AGENT_ACTION_STATUS_REJECTED,
+            AGENT_ACTION_STATUS_EXPIRED,
+            AGENT_ACTION_STATUS_CANCELLED,
+        }
+    ),
+    AGENT_ACTION_STATUS_APPROVED: frozenset(
+        {
+            AGENT_ACTION_STATUS_EXECUTING,
+            AGENT_ACTION_STATUS_CANCELLED,
+        }
+    ),
+    AGENT_ACTION_STATUS_EXECUTING: frozenset(
+        {
+            AGENT_ACTION_STATUS_COMPLETED,
+            AGENT_ACTION_STATUS_FAILED,
+            AGENT_ACTION_STATUS_BLOCKED,
+        }
+    ),
+    AGENT_ACTION_STATUS_COMPLETED: frozenset(
+        {
+            AGENT_ACTION_STATUS_VERIFIED,
+            AGENT_ACTION_STATUS_FAILED,
+        }
+    ),
+}
+
+
+class InvalidAgentActionTransitionError(Exception):
+    """Raised when an agent action attempts an invalid lifecycle transition."""
+
+
+class InvalidAgentApprovalTransitionError(Exception):
+    """Raised when an approval record attempts an invalid lifecycle transition."""
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Conversations
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+def build_agent_action_idempotency_key(
+    *,
+    tenant_id: UUID,
+    source: str,
+    action_type: str,
+    grow_cycle_id: UUID | None,
+    conversation_id: UUID | None,
+    dedupe_token: str | None = None,
+) -> str:
+    """Build a deterministic idempotency key for one logical action."""
+    raw = "|".join(
+        [
+            str(tenant_id),
+            source,
+            action_type,
+            str(grow_cycle_id or ""),
+            str(conversation_id or ""),
+            dedupe_token or "",
+        ]
+    )
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+async def create_agent_action(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    source: str,
+    action_type: str,
+    title: str,
+    idempotency_key: str,
+    conversation_id: UUID | None = None,
+    grow_cycle_id: UUID | None = None,
+    created_by_user_id: UUID | None = None,
+    risk_level: str = "low",
+    requires_approval: bool = False,
+    auto_approved: bool = False,
+    summary: str | None = None,
+    metadata_json: dict | None = None,
+    evidence_json: dict | None = None,
+) -> AgentAction:
+    """Create and persist an agent action lifecycle record."""
+    action = AgentAction(
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        grow_cycle_id=grow_cycle_id,
+        created_by_user_id=created_by_user_id,
+        source=source,
+        action_type=action_type,
+        title=title,
+        status=AGENT_ACTION_STATUS_PROPOSED,
+        idempotency_key=idempotency_key,
+        risk_level=risk_level,
+        requires_approval=requires_approval,
+        auto_approved=auto_approved,
+        summary=summary,
+        metadata_json=metadata_json or {},
+        evidence_json=evidence_json or {},
+    )
+    session.add(action)
+    await session.commit()
+    await session.refresh(action)
+    return action
+
+
+async def create_agent_action_approval(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    action_id: UUID,
+    requested_by_user_id: UUID | None,
+    expires_at: datetime | None = None,
+    reason: str | None = None,
+) -> AgentActionApproval:
+    """Create a pending approval record for an agent action."""
+    approval = AgentActionApproval(
+        tenant_id=tenant_id,
+        action_id=action_id,
+        requested_by_user_id=requested_by_user_id,
+        status=AGENT_APPROVAL_STATUS_PENDING,
+        expires_at=expires_at,
+        reason=reason,
+    )
+    session.add(approval)
+    await session.commit()
+    await session.refresh(approval)
+    return approval
+
+
+def can_transition_agent_action(current_status: str, next_status: str) -> bool:
+    """Return whether an action status change is valid."""
+    if current_status == next_status:
+        return True
+    return next_status in ALLOWED_AGENT_ACTION_TRANSITIONS.get(current_status, frozenset())
+
+
+async def transition_agent_action(
+    session: AsyncSession,
+    action: AgentAction,
+    *,
+    next_status: str,
+    execution_json: dict | None = None,
+    verification_json: dict | None = None,
+    metadata_json: dict | None = None,
+) -> AgentAction:
+    """Persist one valid action lifecycle transition."""
+    if not can_transition_agent_action(action.status, next_status):
+        raise InvalidAgentActionTransitionError(f"Invalid action transition: {action.status} -> {next_status}")
+
+    now = datetime.now(UTC)
+    action.status = next_status
+    if metadata_json is not None:
+        action.metadata_json = metadata_json
+    if execution_json is not None:
+        action.execution_json = execution_json
+    if verification_json is not None:
+        action.verification_json = verification_json
+
+    if next_status == AGENT_ACTION_STATUS_APPROVED:
+        action.approved_at = now
+    elif next_status == AGENT_ACTION_STATUS_EXECUTING:
+        action.executed_at = now
+    elif next_status == AGENT_ACTION_STATUS_VERIFIED:
+        action.verified_at = now
+
+    await session.commit()
+    await session.refresh(action)
+    return action
+
+
+async def record_agent_action_approval_decision(
+    session: AsyncSession,
+    approval: AgentActionApproval,
+    *,
+    decision_status: str,
+    reviewed_by_user_id: UUID | None,
+    reason: str | None = None,
+) -> AgentActionApproval:
+    """Persist an approval decision from pending to a terminal state."""
+    if approval.status != AGENT_APPROVAL_STATUS_PENDING:
+        raise InvalidAgentApprovalTransitionError(
+            f"Invalid approval transition: {approval.status} -> {decision_status}"
+        )
+    if decision_status not in {
+        AGENT_APPROVAL_STATUS_APPROVED,
+        AGENT_APPROVAL_STATUS_REJECTED,
+        AGENT_APPROVAL_STATUS_EXPIRED,
+    }:
+        raise InvalidAgentApprovalTransitionError(
+            f"Invalid approval transition: {approval.status} -> {decision_status}"
+        )
+
+    approval.status = decision_status
+    approval.reviewed_by_user_id = reviewed_by_user_id
+    approval.reviewed_at = datetime.now(UTC)
+    if reason is not None:
+        approval.reason = reason
+    await session.commit()
+    await session.refresh(approval)
+    return approval
 
 
 async def create_conversation(
@@ -141,14 +379,39 @@ def parse_optional_uuid(value: str | None) -> UUID | None:
 # ``service.Conversation`` available to callers that want a single
 # import surface for the AI domain.
 __all__ = [
+    "AGENT_ACTION_STATUS_APPROVED",
+    "AGENT_ACTION_STATUS_BLOCKED",
+    "AGENT_ACTION_STATUS_CANCELLED",
+    "AGENT_ACTION_STATUS_COMPLETED",
+    "AGENT_ACTION_STATUS_EXECUTING",
+    "AGENT_ACTION_STATUS_EXPIRED",
+    "AGENT_ACTION_STATUS_FAILED",
+    "AGENT_ACTION_STATUS_PENDING_APPROVAL",
+    "AGENT_ACTION_STATUS_PROPOSED",
+    "AGENT_ACTION_STATUS_REJECTED",
+    "AGENT_ACTION_STATUS_VERIFIED",
+    "AGENT_APPROVAL_STATUS_APPROVED",
+    "AGENT_APPROVAL_STATUS_EXPIRED",
+    "AGENT_APPROVAL_STATUS_PENDING",
+    "AGENT_APPROVAL_STATUS_REJECTED",
+    "AgentAction",
+    "AgentActionApproval",
     "Conversation",
     "ConversationMessage",
+    "InvalidAgentActionTransitionError",
+    "InvalidAgentApprovalTransitionError",
+    "build_agent_action_idempotency_key",
+    "can_transition_agent_action",
+    "create_agent_action",
+    "create_agent_action_approval",
     "create_conversation",
     "delete_conversation",
     "get_conversation",
     "get_conversation_with_messages",
     "list_user_conversations_query",
     "parse_optional_uuid",
+    "record_agent_action_approval_decision",
+    "transition_agent_action",
     "update_conversation_title",
 ]
 
