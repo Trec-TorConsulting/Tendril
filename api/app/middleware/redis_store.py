@@ -31,8 +31,8 @@ async def _get_redis():
             from app.config import get_settings
 
             redis_url = get_settings().redis_url
-        except Exception:  # noqa: S110
-            pass
+        except Exception:
+            logger.debug("Could not read REDIS_URL from settings; falling back to env", exc_info=True)
     if not redis_url:
         logger.info("REDIS_URL not set — middleware will use in-memory state")
         _fallback = True
