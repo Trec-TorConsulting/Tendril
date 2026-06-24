@@ -10,7 +10,10 @@ from app.ai.routes import (
     _extract_action_id_from_tool_arguments,
     _extract_action_id_from_tool_result,
     _extract_integration_type_from_tool_arguments,
+    _extract_policy_payload_from_tool_result,
+    _extract_tool_result_error,
     _resolve_action_event_ids,
+    _resolve_action_event_phase,
     _resolve_integration_policy_for_tool_call,
 )
 
@@ -76,6 +79,25 @@ class TestAiWebsocketEventHelpers:
 
     def test_extract_action_id_from_tool_result_ignores_non_dict(self):
         assert _extract_action_id_from_tool_result("ok") is None
+
+    def test_extract_policy_payload_from_tool_result_returns_policy_dict(self):
+        payload = _extract_policy_payload_from_tool_result({"policy": {"allowed": False, "reason": "Denied"}})
+        assert payload == {"allowed": False, "reason": "Denied"}
+
+    def test_extract_policy_payload_from_tool_result_ignores_non_dict(self):
+        assert _extract_policy_payload_from_tool_result("ok") is None
+
+    def test_resolve_action_event_phase_reads_blocked_from_tool_result(self):
+        assert _resolve_action_event_phase({"phase": "blocked"}) == "blocked"
+
+    def test_resolve_action_event_phase_defaults_to_completed(self):
+        assert _resolve_action_event_phase({"status": "ok"}) == "completed"
+
+    def test_extract_tool_result_error_reads_error_string(self):
+        assert _extract_tool_result_error({"error": "Policy denied"}) == "Policy denied"
+
+    def test_extract_tool_result_error_returns_none_without_error(self):
+        assert _extract_tool_result_error({"status": "ok"}) is None
 
     def test_extract_action_id_from_tool_arguments_prefers_action_id(self):
         assert _extract_action_id_from_tool_arguments({"action_id": "action-456", "agent_action_id": "legacy-1"}) == "action-456"

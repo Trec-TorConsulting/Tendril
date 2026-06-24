@@ -139,6 +139,35 @@ def _extract_action_id_from_tool_result(tool_result: Any) -> str | None:
     return None
 
 
+def _extract_policy_payload_from_tool_result(tool_result: Any) -> dict[str, Any] | None:
+    """Extract a policy payload from tool output when available."""
+    if not isinstance(tool_result, dict):
+        return None
+    policy = tool_result.get("policy")
+    if isinstance(policy, dict):
+        return policy
+    return None
+
+
+def _resolve_action_event_phase(tool_result: Any) -> str:
+    """Resolve websocket lifecycle phase from tool output for additive protocol upgrades."""
+    if isinstance(tool_result, dict):
+        phase = tool_result.get("phase")
+        if phase in {"blocked", "failed", "completed"}:
+            return str(phase)
+    return "completed"
+
+
+def _extract_tool_result_error(tool_result: Any) -> str | None:
+    """Extract error text from tool output when available."""
+    if not isinstance(tool_result, dict):
+        return None
+    error = tool_result.get("error")
+    if isinstance(error, str) and error.strip():
+        return error.strip()
+    return None
+
+
 def _extract_action_id_from_tool_arguments(tool_arguments: Any) -> str | None:
     """Extract a persisted agent action ID from tool arguments when available."""
     if not isinstance(tool_arguments, dict):
@@ -429,15 +458,25 @@ async def websocket_chat(ws: WebSocket):
                                 tool_arguments=fn_args,
                                 tool_result=tool_result,
                             )
+                            result_policy = _extract_policy_payload_from_tool_result(tool_result)
+                            event_policy = result_policy if result_policy is not None else policy_payload
+                            event_phase = _resolve_action_event_phase(tool_result)
+                            event_error = _extract_tool_result_error(tool_result)
+                            event_message = (
+                                f"Tool blocked by policy: {fn_name.replace('_', ' ')}"
+                                if event_phase == "blocked"
+                                else f"Tool completed: {fn_name.replace('_', ' ')}"
+                            )
                             await ws.send_json(
                                 _build_chat_action_event(
-                                    phase="completed",
+                                    phase=event_phase,
                                     tool=fn_name,
-                                    message=f"Tool completed: {fn_name.replace('_', ' ')}",
+                                    message=event_message,
                                     action_id=completed_action_id,
                                     correlation_id=completed_correlation_id,
                                     result=tool_result,
-                                    policy=policy_payload,
+                                    error=event_error,
+                                    policy=event_policy,
                                 )
                             )
 
