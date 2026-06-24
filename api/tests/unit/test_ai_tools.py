@@ -120,4 +120,44 @@ class TestExecuteToolIntegrationSync:
             )
 
         mock_trigger_sync.assert_awaited_once()
-        assert out == "Integration sync completed: status=success, readings=3"
+        assert isinstance(out, dict)
+        assert out["status"] == "completed"
+        assert out["phase"] == "completed"
+        assert out["result"]["sync_status"] == "success"
+        assert out["result"]["readings_count"] == 3
+
+        action = await db_session.get(AgentAction, UUID(out["action_id"]))
+        assert action is not None
+        assert action.status == "verified"
+        assert action.execution_json["sync_status"] == "success"
+        assert action.verification_json["result"] == "integration_sync_completed"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_integration_trigger_sync_records_failed_lifecycle_when_sync_errors(self, db_session, db_tenant):
+        grow = await _create_grow(db_session, tenant_id=db_tenant["tenant"].id)
+        cfg = await _create_integration(db_session, tenant_id=db_tenant["tenant"].id, integration_type="pulse")
+
+        with patch("app.integrations.service.trigger_sync", new_callable=AsyncMock) as mock_trigger_sync:
+            mock_trigger_sync.return_value = WebhookSyncResult(
+                status="error",
+                readings_count=0,
+                error_message="Connector unavailable",
+            )
+
+            out = await execute_tool(
+                "integration_trigger_sync",
+                {"integration_id": str(cfg.id)},
+                session=db_session,
+                tenant_id=db_tenant["tenant"].id,
+                grow_id=grow.id,
+            )
+
+        assert isinstance(out, dict)
+        assert out["status"] == "failed"
+        assert out["phase"] == "failed"
+        assert out["error"] == "Connector unavailable"
+
+        action = await db_session.get(AgentAction, UUID(out["action_id"]))
+        assert action is not None
+        assert action.status == "failed"
+        assert action.execution_json["error"] == "Connector unavailable"
