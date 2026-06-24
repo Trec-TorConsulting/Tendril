@@ -216,6 +216,28 @@ async def payment_webhook(
     sig_header = signature_map.get(provider_type, "")
     signature = headers.get(sig_header, "")
 
+    logger.info(
+        "Webhook received",
+        extra={
+            "action": "billing_webhook",
+            "event": "received",
+            "provider_type": provider_type,
+            "outcome": "accepted",
+        },
+    )
+
+    if sig_header and not signature:
+        logger.warning(
+            "Webhook missing signature header",
+            extra={
+                "action": "billing_webhook",
+                "event": "verify",
+                "provider_type": provider_type,
+                "outcome": "denied",
+                "error_code": "missing_signature",
+            },
+        )
+
     async with async_session_factory() as session:
         # Find the provider by type
         provider_row = (
@@ -228,11 +250,31 @@ async def payment_webhook(
         ).scalar_one_or_none()
 
         if not provider_row:
+            logger.warning(
+                "Webhook provider not found",
+                extra={
+                    "action": "billing_webhook",
+                    "event": "lookup_provider",
+                    "provider_type": provider_type,
+                    "outcome": "denied",
+                    "error_code": "provider_not_found",
+                },
+            )
             raise HTTPException(status_code=404, detail="Provider not found")
 
         config = decrypt_provider_config(provider_row.config_encrypted)
         provider_cls = get_provider_class(provider_type)
         if not provider_cls:
+            logger.error(
+                "Webhook adapter not configured",
+                extra={
+                    "action": "billing_webhook",
+                    "event": "adapter_resolve",
+                    "provider_type": provider_type,
+                    "outcome": "error",
+                    "error_code": "adapter_missing",
+                },
+            )
             raise HTTPException(status_code=500, detail="No adapter for provider")
 
         adapter = provider_cls(config)
@@ -244,12 +286,46 @@ async def payment_webhook(
             webhook_secret = ws_data.get("secret")
 
         # Verify and parse webhook
-        event = await adapter.verify_webhook(body, signature, webhook_secret or "")
+        try:
+            event = await adapter.verify_webhook(body, signature, webhook_secret or "")
+        except Exception:
+            logger.exception(
+                "Webhook verification raised",
+                extra={
+                    "action": "billing_webhook",
+                    "event": "verify",
+                    "provider_type": provider_type,
+                    "outcome": "error",
+                },
+            )
+            raise
+
         if not event:
+            logger.warning(
+                "Webhook rejected: invalid signature",
+                extra={
+                    "action": "billing_webhook",
+                    "event": "verify",
+                    "provider_type": provider_type,
+                    "outcome": "denied",
+                    "error_code": "invalid_signature",
+                },
+            )
             raise HTTPException(status_code=400, detail="Invalid webhook signature")
 
         # Dispatch event
         await _dispatch_webhook_event(session, event)
+
+        logger.info(
+            "Webhook dispatched",
+            extra={
+                "action": "billing_webhook",
+                "event": "dispatch",
+                "provider_type": provider_type,
+                "event_type": event.event_type,
+                "outcome": "success",
+            },
+        )
 
     return {"status": "ok"}
 
@@ -328,6 +404,7 @@ async def _handle_checkout_completed(session: AsyncSession, data: dict) -> None:
 
     tenant = await session.get(Tenant, UUID(tenant_id))
     if not tenant:
+        logger.warning("Checkout completed for unknown tenant %s", tenant_id)
         return
 
     tenant.plan = plan or tenant.plan
@@ -345,12 +422,14 @@ async def _handle_checkout_completed(session: AsyncSession, data: dict) -> None:
 async def _handle_subscription_updated(session: AsyncSession, data: dict) -> None:
     customer_id = data.get("customer")
     if not customer_id:
+        logger.warning("Subscription update missing customer id")
         return
 
     account = (
         await session.execute(select(Account).where(Account.stripe_customer_id == customer_id))
     ).scalar_one_or_none()
     if not account:
+        logger.warning("Subscription update for unknown customer %s", customer_id)
         return
 
     tenant = (
@@ -382,12 +461,14 @@ async def _handle_subscription_updated(session: AsyncSession, data: dict) -> Non
 async def _handle_subscription_deleted(session: AsyncSession, data: dict) -> None:
     customer_id = data.get("customer")
     if not customer_id:
+        logger.warning("Subscription cancellation missing customer id")
         return
 
     account = (
         await session.execute(select(Account).where(Account.stripe_customer_id == customer_id))
     ).scalar_one_or_none()
     if not account:
+        logger.warning("Subscription cancellation for unknown customer %s", customer_id)
         return
 
     # Revert all tenants in this account to free

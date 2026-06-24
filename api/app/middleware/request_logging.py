@@ -23,7 +23,31 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         request_id_var.set(rid)
 
         start = time.perf_counter()
-        response = await call_next(request)
+        ip = request.headers.get("x-forwarded-for", "").split(",")[0].strip() or (
+            request.client.host if request.client else "-"
+        )
+        try:
+            response = await call_next(request)
+        except Exception:
+            duration_ms = round((time.perf_counter() - start) * 1000, 1)
+            if request.url.path != "/health":
+                logger.exception(
+                    "%s %s failed %.1fms",
+                    request.method,
+                    request.url.path,
+                    duration_ms,
+                    extra={
+                        "method": request.method,
+                        "path": request.url.path,
+                        "status_code": 500,
+                        "duration_ms": duration_ms,
+                        "ip": ip,
+                        "action": "http_request",
+                        "outcome": "error",
+                    },
+                )
+            raise
+
         duration_ms = round((time.perf_counter() - start) * 1000, 1)
 
         # Inject correlation header into response
@@ -44,7 +68,9 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 "path": request.url.path,
                 "status_code": response.status_code,
                 "duration_ms": duration_ms,
-                "ip": request.client.host if request.client else "-",
+                "ip": ip,
+                "action": "http_request",
+                "outcome": "success" if response.status_code < 500 else "error",
             },
         )
 
