@@ -89,6 +89,18 @@ def _extract_action_id_from_tool_result(tool_result: Any) -> str | None:
     return None
 
 
+def _extract_action_id_from_tool_arguments(tool_arguments: Any) -> str | None:
+    """Extract a persisted agent action ID from tool arguments when available."""
+    if not isinstance(tool_arguments, dict):
+        return None
+
+    for key in ("action_id", "agent_action_id"):
+        value = tool_arguments.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
 async def _send_keepalive_pings(ws: WebSocket, stop_event: asyncio.Event) -> None:
     """Send periodic keepalive pings while the websocket is open."""
     while not stop_event.is_set():
@@ -261,13 +273,15 @@ async def websocket_chat(ws: WebSocket):
                         fn_name = fn.get("name", "")
                         fn_args = fn.get("arguments", {})
                         tool_call_id = tc.get("id") if isinstance(tc.get("id"), str) else None
+                        action_id_from_args = _extract_action_id_from_tool_arguments(fn_args)
+                        event_action_id = action_id_from_args or tool_call_id
 
                         await ws.send_json(
                             _build_chat_action_event(
                                 phase="proposed",
                                 tool=fn_name,
                                 message=f"Planned tool call: {fn_name.replace('_', ' ')}",
-                                action_id=tool_call_id,
+                                action_id=event_action_id,
                                 correlation_id=tool_call_id,
                             )
                         )
@@ -276,7 +290,7 @@ async def websocket_chat(ws: WebSocket):
                                 phase="executing",
                                 tool=fn_name,
                                 message=f"Running tool: {fn_name.replace('_', ' ')}",
-                                action_id=tool_call_id,
+                                action_id=event_action_id,
                                 correlation_id=tool_call_id,
                             )
                         )
@@ -301,7 +315,7 @@ async def websocket_chat(ws: WebSocket):
                                     phase="failed",
                                     tool=fn_name,
                                     message=f"Tool failed: {fn_name.replace('_', ' ')}",
-                                    action_id=tool_call_id,
+                                    action_id=event_action_id,
                                     correlation_id=tool_call_id,
                                     error=str(e),
                                 )
@@ -313,7 +327,7 @@ async def websocket_chat(ws: WebSocket):
                                     phase="completed",
                                     tool=fn_name,
                                     message=f"Tool completed: {fn_name.replace('_', ' ')}",
-                                    action_id=persisted_action_id or tool_call_id,
+                                    action_id=persisted_action_id or event_action_id,
                                     correlation_id=tool_call_id,
                                     result=tool_result,
                                 )
