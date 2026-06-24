@@ -135,6 +135,37 @@ def build_agent_action_idempotency_key(
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
+def classify_health_check_action(action_text: str) -> tuple[str, bool, bool, str]:
+    """Classify a health-check recommendation into a lifecycle action policy.
+
+    Returns `(action_type, requires_approval, auto_approved, risk_level)`.
+    Phase 1 treats direct equipment/control-style commands as approval-gated.
+    """
+    normalized = action_text.strip().lower()
+    control_markers = (
+        "turn on",
+        "turn off",
+        "set ",
+        "increase fan",
+        "decrease fan",
+        "raise fan",
+        "lower fan",
+        "start pump",
+        "stop pump",
+        "toggle",
+        "enable",
+        "disable",
+        "dim light",
+        "raise light",
+        "lower light",
+        "increase light",
+        "decrease light",
+    )
+    if any(marker in normalized for marker in control_markers):
+        return ("control_equipment", True, False, "high")
+    return ("create_task", False, True, "low")
+
+
 async def create_agent_action(
     session: AsyncSession,
     *,
@@ -296,37 +327,51 @@ async def record_health_check_task_actions(
     tasks_created_remaining = created_task_count
 
     for index, action_text in enumerate(actions):
+        action_type, requires_approval, auto_approved, risk_level = classify_health_check_action(action_text)
         action = await create_agent_action(
             session,
             tenant_id=tenant_id,
             source="health_check",
-            action_type="create_task",
+            action_type=action_type,
             title=action_text[:255],
             idempotency_key=build_agent_action_idempotency_key(
                 tenant_id=tenant_id,
                 source="health_check",
-                action_type="create_task",
+                action_type=action_type,
                 grow_cycle_id=grow_cycle_id,
                 conversation_id=None,
                 dedupe_token=f"{health_eval_id}:{index}:{action_text}",
             ),
             grow_cycle_id=grow_cycle_id,
             created_by_user_id=requested_by_user_id,
-            requires_approval=False,
-            auto_approved=True,
+            risk_level=risk_level,
+            requires_approval=requires_approval,
+            auto_approved=auto_approved,
             summary=action_text,
             metadata_json={
                 "health_eval_id": str(health_eval_id),
                 "health_score": score,
                 "issues": issues,
                 "phase": "health_check",
-                "safe_action": True,
+                "safe_action": auto_approved,
             },
             evidence_json={
                 "recommended_action": action_text,
                 "issue_count": len(issues),
             },
         )
+
+        if requires_approval:
+            await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_PENDING_APPROVAL)
+            await create_agent_action_approval(
+                session,
+                tenant_id=tenant_id,
+                action_id=action.id,
+                requested_by_user_id=requested_by_user_id,
+                reason="Health-check action requires approval before execution",
+            )
+            recorded.append(action)
+            continue
 
         await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_APPROVED)
         await transition_agent_action(
@@ -372,6 +417,19 @@ async def record_health_check_task_actions(
         recorded.append(action)
 
     return recorded
+
+
+def split_health_check_actions_by_safety(actions: list[str]) -> tuple[list[str], list[str]]:
+    """Split health-check actions into safe-task and approval-required groups."""
+    safe_actions: list[str] = []
+    approval_actions: list[str] = []
+    for action_text in actions:
+        action_type, requires_approval, _auto_approved, _risk_level = classify_health_check_action(action_text)
+        if action_type == "create_task" and not requires_approval:
+            safe_actions.append(action_text)
+        else:
+            approval_actions.append(action_text)
+    return safe_actions, approval_actions
 
 
 def list_agent_actions_query(
@@ -603,6 +661,7 @@ __all__ = [
     "approve_agent_action",
     "build_agent_action_idempotency_key",
     "can_transition_agent_action",
+    "classify_health_check_action",
     "create_agent_action",
     "create_agent_action_approval",
     "create_conversation",
@@ -618,6 +677,7 @@ __all__ = [
     "record_agent_action_approval_decision",
     "record_health_check_task_actions",
     "reject_agent_action",
+    "split_health_check_actions_by_safety",
     "transition_agent_action",
     "update_conversation_title",
 ]

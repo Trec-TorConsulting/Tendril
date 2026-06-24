@@ -34,6 +34,7 @@ from app.ai.service import (
     build_diagnosis_prompt,
     build_photo_url_base,
     can_transition_agent_action,
+    classify_health_check_action,
     create_agent_action,
     create_agent_action_approval,
     create_conversation,
@@ -56,6 +57,7 @@ from app.ai.service import (
     photo_url_for_key,
     record_agent_action_approval_decision,
     search_treatments_query,
+    split_health_check_actions_by_safety,
     transition_agent_action,
     update_conversation_title,
 )
@@ -258,6 +260,32 @@ class TestNormalizeHealthAction:
     def test_dict_no_keys_str_fallback(self):
         out = normalize_health_action({"random": "x"})
         assert "random" in out
+
+
+class TestHealthCheckActionClassification:
+    def test_classify_safe_health_check_action(self):
+        action_type, requires_approval, auto_approved, risk_level = classify_health_check_action("Adjust pH down")
+        assert action_type == "create_task"
+        assert requires_approval is False
+        assert auto_approved is True
+        assert risk_level == "low"
+
+    def test_classify_control_action_requires_approval(self):
+        action_type, requires_approval, auto_approved, risk_level = classify_health_check_action(
+            "Turn on exhaust fan now"
+        )
+        assert action_type == "control_equipment"
+        assert requires_approval is True
+        assert auto_approved is False
+        assert risk_level == "high"
+
+    def test_split_health_check_actions_by_safety(self):
+        safe, approval = split_health_check_actions_by_safety([
+            "Adjust pH down",
+            "Turn on exhaust fan now",
+        ])
+        assert safe == ["Adjust pH down"]
+        assert approval == ["Turn on exhaust fan now"]
 
 
 class TestNormalizeHealthHistoryHelpers:
