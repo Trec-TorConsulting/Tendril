@@ -19,6 +19,7 @@ class TestAiWebsocketEventHelpers:
             phase="completed",
             tool="update_grow_stage",
             message="Tool completed: update grow stage",
+            action_id="tool-call-1",
             result={"status": "ok"},
         )
 
@@ -27,6 +28,7 @@ class TestAiWebsocketEventHelpers:
             "phase": "completed",
             "tool": "update_grow_stage",
             "message": "Tool completed: update grow stage",
+            "action_id": "tool-call-1",
             "refresh_actions": True,
             "result": {"status": "ok"},
             "ts": event["ts"],
@@ -40,5 +42,6 @@ class TestAiWebsocketEventHelpers:
             message="Running tool",
         )
 
+        assert "action_id" not in event
         assert "result" not in event
         assert "error" not in event
