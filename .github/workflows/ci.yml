@@ -168,6 +168,13 @@ jobs:
     runs-on: arc-runner-arm64
     needs: [lint, lint-web, verify-api-types, manifest]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    # Gated on the "production" GitHub Environment. Add required reviewers
+    # under Settings → Environments → production so this job pauses for
+    # manual approval before any rollout. Until those protection rules are
+    # configured this is a no-op and deploys proceed as before.
+    environment:
+      name: production
+      url: https://tendrilgrow.com
     steps:
       - uses: actions/checkout@v6
       - run: |
