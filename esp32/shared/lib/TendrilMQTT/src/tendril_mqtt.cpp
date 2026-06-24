@@ -13,9 +13,9 @@ namespace tendril {
 
 Mqtt::Mqtt(const char* host, uint16_t port,
            const char* device_id, const char* psk, const char* tenant_id,
-           bool use_tls)
+           bool use_tls, const char* ca_cert)
     : _host(host), _port(port), _deviceId(device_id),
-      _psk(psk), _tenantId(tenant_id), _useTls(use_tls)
+      _psk(psk), _tenantId(tenant_id), _useTls(use_tls), _caCert(ca_cert)
 {}
 
 void Mqtt::_buildTopics() {
@@ -28,7 +28,18 @@ void Mqtt::begin() {
     _buildTopics();
 
     if (_useTls) {
-        tlsClient.setInsecure();  // TODO: pin CA cert for production
+        if (_caCert && _caCert[0] != '\0') {
+            // Verify the broker against the pinned CA certificate.
+            tlsClient.setCACert(_caCert);
+            Serial.println("[mqtt] TLS: broker certificate verification ENABLED");
+        } else {
+            // No CA configured: the link is encrypted but the broker identity is
+            // NOT verified, leaving it open to man-in-the-middle attacks. Provide
+            // MQTT_CA_CERT in config.h to enable verification for production.
+            tlsClient.setInsecure();
+            Serial.println("[mqtt] WARNING: TLS certificate verification DISABLED "
+                           "(no CA cert) -- set MQTT_CA_CERT for production");
+        }
         mqttClient.setClient(tlsClient);
     } else {
         mqttClient.setClient(plainClient);

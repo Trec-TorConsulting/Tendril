@@ -21,9 +21,13 @@ public:
     /// @param psk        Pre-shared key for authentication
     /// @param tenant_id  Tenant UUID
     /// @param use_tls    Enable TLS-PSK transport (default true for production)
+    /// @param ca_cert    PEM-encoded CA certificate used to verify the broker.
+    ///                   When null or empty the TLS handshake falls back to
+    ///                   INSECURE mode (encrypted but unauthenticated, MITM-able)
+    ///                   and a warning is logged. Set this for production.
     Mqtt(const char* host, uint16_t port,
          const char* device_id, const char* psk, const char* tenant_id,
-         bool use_tls = true);
+         bool use_tls = true, const char* ca_cert = nullptr);
 
     /// Initialise the MQTT client.  Call once in setup().
     void begin();
@@ -54,6 +58,7 @@ private:
     const char* _psk;
     const char* _tenantId;
     bool        _useTls;
+    const char* _caCert;
 
     MqttState   _state = MqttState::DISCONNECTED;
     uint32_t    _lastPublishMs = 0;

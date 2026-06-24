@@ -9,7 +9,10 @@
 #include "tendril_power.h"
 
 static tendril::Power power(BATTERY_ADC_PIN, BATTERY_R1, BATTERY_R2);
-static tendril::Mqtt  mqtt(MQTT_HOST, MQTT_PORT, MQTT_DEVICE_ID, MQTT_PSK, TENANT_ID, MQTT_USE_TLS);
+#ifndef MQTT_CA_CERT
+#define MQTT_CA_CERT ""   // PEM CA cert to verify the broker; "" = insecure TLS (dev only)
+#endif
+static tendril::Mqtt  mqtt(MQTT_HOST, MQTT_PORT, MQTT_DEVICE_ID, MQTT_PSK, TENANT_ID, MQTT_USE_TLS, MQTT_CA_CERT);
 
 static bool wifiConnect() {
     WiFi.mode(WIFI_STA); WiFi.begin(WIFI_SSID, WIFI_PASS);
