@@ -16,7 +16,7 @@ manifests/
   web-deployment.yaml / web-service.yaml / hpa-web.yaml / pdb-web.yaml
   mqtt-worker-deployment.yaml / mqtt-worker-service.yaml / hpa-mqtt-worker.yaml / pdb-mqtt-worker.yaml
   scheduler-deployment.yaml / scheduler-service.yaml / pdb-scheduler.yaml
-  redis-deployment.yaml / redis-service.yaml / redis-statefulset.yaml
+  redis-statefulset.yaml / redis-service.yaml
   db-migration-job.yaml                # alembic upgrade head — applied before rollouts
   ingress.yaml                         # main host
   www-redirect-ingress.yaml / www-redirect-middleware.yaml
