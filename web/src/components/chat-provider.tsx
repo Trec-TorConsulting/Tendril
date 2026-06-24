@@ -20,7 +20,7 @@ import {
   rejectAiAction,
   type ConversationMessageResponse,
 } from "@/lib/api";
-import { AiActionQueue } from "@/components/ai-action-queue";
+import { AiActionQueue, type ActionLifecycleEvent } from "@/components/ai-action-queue";
 import { useGrow } from "@/hooks/use-grow";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,6 +57,29 @@ function formatActionLifecycleMessage(data: Record<string, unknown>) {
   const phase = typeof data.phase === "string" ? data.phase : "updated";
   const tool = typeof data.tool === "string" ? data.tool.replace(/_/g, " ") : "tool";
   return `${tool}: ${phase}`;
+}
+
+function toIsoTimestamp(value: unknown) {
+  if (typeof value === "string" && !Number.isNaN(Date.parse(value))) {
+    return value;
+  }
+  return new Date().toISOString();
+}
+
+function buildActionLifecycleEvent(data: Record<string, unknown>): ActionLifecycleEvent {
+  const phase = typeof data.phase === "string" ? data.phase : "updated";
+  const tool = typeof data.tool === "string" ? data.tool : undefined;
+  const message = formatActionLifecycleMessage(data);
+  const ts = toIsoTimestamp(data.ts);
+
+  return {
+    id: [tool ?? "tool", phase, ts, message].join("|"),
+    phase,
+    tool,
+    message,
+    ts,
+    isError: typeof data.error === "string" && data.error.trim().length > 0,
+  };
 }
 
 const CONVERSATION_SCOPE_GLOBAL = "global";
@@ -152,6 +175,7 @@ function ChatDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [input, setInput] = useState("");
   const [connected, setConnected] = useState(false);
   const [streaming, setStreaming] = useState(false);
+  const [liveActionEvents, setLiveActionEvents] = useState<ActionLifecycleEvent[]>([]);
   const [decisionActionId, setDecisionActionId] = useState<string | null>(null);
   const [conversationMap, setConversationMap] = useState<Record<string, string>>(() => readConversationMap());
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
@@ -404,6 +428,7 @@ function ChatDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
         }
 
         if (data.type === "action_event") {
+          setLiveActionEvents((current) => [buildActionLifecycleEvent(data), ...current].slice(0, 8));
           void mutateActions();
           setMessages((prev) => [
             ...prev,
@@ -477,6 +502,7 @@ function ChatDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
     activeConversationIdRef.current = null;
     setActiveConversationId(null);
     setMessages([]);
+    setLiveActionEvents([]);
     if (wsRef.current) {
       intentionalClose.current = true;
       wsRef.current.close();
@@ -576,6 +602,7 @@ function ChatDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
         {selectedGrow ? (
           <AiActionQueue
             actions={actions}
+            liveEvents={liveActionEvents}
             growName={selectedGrow.name}
             isLoading={actionLoading}
             isRefreshing={actionRefreshing}
