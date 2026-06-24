@@ -91,11 +91,20 @@ function mergeLifecycleEvent(
   incoming: ActionLifecycleEvent,
   maxEvents = 8,
 ): ActionLifecycleEvent[] {
-  const dedupeKey = incoming.actionId || incoming.correlationId;
-  if (dedupeKey) {
-    const withoutSameAction = current.filter(
-      (event) => (event.actionId || event.correlationId) !== dedupeKey,
-    );
+  const dedupeKeys = new Set<string>();
+  if (incoming.actionId) {
+    dedupeKeys.add(incoming.actionId);
+  }
+  if (incoming.correlationId) {
+    dedupeKeys.add(incoming.correlationId);
+  }
+
+  if (dedupeKeys.size > 0) {
+    const withoutSameAction = current.filter((event) => {
+      const eventActionId = event.actionId;
+      const eventCorrelationId = event.correlationId;
+      return !dedupeKeys.has(eventActionId ?? "") && !dedupeKeys.has(eventCorrelationId ?? "");
+    });
     return [incoming, ...withoutSameAction].slice(0, maxEvents);
   }
   return [incoming, ...current].slice(0, maxEvents);

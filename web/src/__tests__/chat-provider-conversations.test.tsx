@@ -302,4 +302,51 @@ describe("ChatProvider conversation resume", () => {
     expect(screen.getByText("Execution completed ({event:tool-call-2})")).toBeInTheDocument();
     expect(screen.queryByText("Execution started ({event:tool-call-2})")).not.toBeInTheDocument();
   });
+
+  it("canonicalizes to action id when completion includes action and correlation ids", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ChatProvider>
+        <ChatHarness />
+      </ChatProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open chat" }));
+
+    await waitFor(() => {
+      expect(MockWebSocket.instances).toHaveLength(1);
+    });
+
+    await act(async () => {
+      MockWebSocket.instances[0].onopen?.(new Event("open"));
+      MockWebSocket.instances[0].onmessage?.(
+        {
+          data: JSON.stringify({
+            type: "action_event",
+            phase: "executing",
+            tool: "update_grow_stage",
+            message: "Execution started",
+            correlation_id: "tool-call-3",
+          }),
+        } as MessageEvent,
+      );
+      MockWebSocket.instances[0].onmessage?.(
+        {
+          data: JSON.stringify({
+            type: "action_event",
+            phase: "completed",
+            tool: "update_grow_stage",
+            message: "Execution completed",
+            action_id: "action-77",
+            correlation_id: "tool-call-3",
+          }),
+        } as MessageEvent,
+      );
+    });
+
+    expect(screen.getByText("Live event count: 1")).toBeInTheDocument();
+    expect(screen.getByText("Execution completed (action-77)")).toBeInTheDocument();
+    expect(screen.queryByText("Execution started ({event:tool-call-3})")).not.toBeInTheDocument();
+  });
 });
