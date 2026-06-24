@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.admin.routes import router as admin_router
+from app.ai.action_routes import router as ai_action_router
 from app.ai.conversation_routes import router as conversation_router
 from app.ai.diagnose_routes import router as diagnose_router
 from app.ai.routes import router as ai_router
@@ -196,6 +197,7 @@ def create_app() -> FastAPI:
     app.include_router(weather_router, prefix=f"{settings.api_prefix}/weather", tags=["weather"])
     app.include_router(reference_router, prefix=f"{settings.api_prefix}/reference", tags=["reference"])
     app.include_router(ai_router, prefix=f"{settings.api_prefix}/ai", tags=["ai"])
+    app.include_router(ai_action_router, prefix=f"{settings.api_prefix}/ai", tags=["ai-actions"])
     app.include_router(diagnose_router, prefix=f"{settings.api_prefix}/ai", tags=["ai-diagnosis"])
     app.include_router(conversation_router, prefix=f"{settings.api_prefix}/conversations", tags=["conversations"])
     app.include_router(automation_router, prefix=f"{settings.api_prefix}/automation", tags=["automation"])

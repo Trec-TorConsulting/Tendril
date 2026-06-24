@@ -103,6 +103,10 @@ class InvalidAgentActionTransitionError(Exception):
 class InvalidAgentApprovalTransitionError(Exception):
     """Raised when an approval record attempts an invalid lifecycle transition."""
 
+
+class AgentActionApprovalMissingError(Exception):
+    """Raised when an action approval decision is requested without a pending approval."""
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Conversations
 # ─────────────────────────────────────────────────────────────────────────────
@@ -370,6 +374,101 @@ async def record_health_check_task_actions(
     return recorded
 
 
+def list_agent_actions_query(
+    *,
+    tenant_id: UUID,
+    grow_cycle_id: UUID | None = None,
+    status: str | None = None,
+) -> Select:
+    """Build the listing query for tenant-scoped AI agent actions."""
+    query = select(AgentAction).where(AgentAction.tenant_id == tenant_id).order_by(desc(AgentAction.created_at))
+    if grow_cycle_id is not None:
+        query = query.where(AgentAction.grow_cycle_id == grow_cycle_id)
+    if status is not None:
+        query = query.where(AgentAction.status == status)
+    return query
+
+
+async def get_agent_action(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    action_id: UUID,
+) -> AgentAction | None:
+    """Fetch one tenant-scoped AI agent action."""
+    action = await session.get(AgentAction, action_id)
+    if action is None or action.tenant_id != tenant_id:
+        return None
+    return action
+
+
+async def get_agent_action_with_approvals(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    action_id: UUID,
+) -> AgentAction | None:
+    """Fetch one tenant-scoped AI agent action with approvals eager-loaded."""
+    result = await session.execute(
+        select(AgentAction)
+        .options(selectinload(AgentAction.approvals))
+        .where(AgentAction.id == action_id, AgentAction.tenant_id == tenant_id)
+    )
+    return result.scalar_one_or_none()
+
+
+def get_pending_approval(action: AgentAction) -> AgentActionApproval | None:
+    """Return the pending approval row for an action, if present."""
+    for approval in action.approvals:
+        if approval.status == AGENT_APPROVAL_STATUS_PENDING:
+            return approval
+    return None
+
+
+async def approve_agent_action(
+    session: AsyncSession,
+    action: AgentAction,
+    *,
+    reviewed_by_user_id: UUID,
+    reason: str | None = None,
+) -> AgentAction:
+    """Approve an action currently waiting on approval."""
+    approval = get_pending_approval(action)
+    if approval is None:
+        raise AgentActionApprovalMissingError("Action has no pending approval")
+
+    await record_agent_action_approval_decision(
+        session,
+        approval,
+        decision_status=AGENT_APPROVAL_STATUS_APPROVED,
+        reviewed_by_user_id=reviewed_by_user_id,
+        reason=reason,
+    )
+    return await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_APPROVED)
+
+
+async def reject_agent_action(
+    session: AsyncSession,
+    action: AgentAction,
+    *,
+    reviewed_by_user_id: UUID,
+    reason: str | None = None,
+) -> AgentAction:
+    """Reject an action currently waiting on approval."""
+    approval = get_pending_approval(action)
+    if approval is None:
+        raise AgentActionApprovalMissingError("Action has no pending approval")
+
+    await record_agent_action_approval_decision(
+        session,
+        approval,
+        decision_status=AGENT_APPROVAL_STATUS_REJECTED,
+        reviewed_by_user_id=reviewed_by_user_id,
+        reason=reason,
+    )
+    return await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_REJECTED)
+
+
 async def create_conversation(
     session: AsyncSession,
     *,
@@ -496,22 +595,29 @@ __all__ = [
     "AGENT_APPROVAL_STATUS_REJECTED",
     "AgentAction",
     "AgentActionApproval",
+    "AgentActionApprovalMissingError",
     "Conversation",
     "ConversationMessage",
     "InvalidAgentActionTransitionError",
     "InvalidAgentApprovalTransitionError",
+    "approve_agent_action",
     "build_agent_action_idempotency_key",
     "can_transition_agent_action",
     "create_agent_action",
     "create_agent_action_approval",
     "create_conversation",
     "delete_conversation",
+    "get_agent_action",
+    "get_agent_action_with_approvals",
     "get_conversation",
     "get_conversation_with_messages",
+    "get_pending_approval",
+    "list_agent_actions_query",
     "list_user_conversations_query",
     "parse_optional_uuid",
     "record_agent_action_approval_decision",
     "record_health_check_task_actions",
+    "reject_agent_action",
     "transition_agent_action",
     "update_conversation_title",
 ]
