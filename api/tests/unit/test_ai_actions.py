@@ -89,6 +89,11 @@ class TestAiActionRoutes:
         assert data["total"] == 1
         assert data["items"][0]["id"] == str(pending_action["action"].id)
         assert data["items"][0]["status"] == service.AGENT_ACTION_STATUS_PENDING_APPROVAL
+        assert data["items"][0]["pending_approval"]["id"] == str(pending_action["approval"].id)
+        assert data["items"][0]["proposal"]["headline"] == "Add a follow-up journal note"
+        assert data["items"][0]["proposal"]["approval"]["status"] == service.AGENT_APPROVAL_STATUS_PENDING
+        assert data["items"][0]["proposal"]["surface"] == "ai_side_panel"
+        assert data["items"][0]["proposal"]["steps"][2]["status"] == "current"
 
     async def test_get_action_returns_approvals(self, client, tenant, pending_action):
         resp = await client.get(f"/v1/ai/actions/{pending_action['action'].id}", headers=tenant["headers"])
@@ -97,6 +102,9 @@ class TestAiActionRoutes:
         assert data["id"] == str(pending_action["action"].id)
         assert len(data["approvals"]) == 1
         assert data["approvals"][0]["status"] == service.AGENT_APPROVAL_STATUS_PENDING
+        assert data["pending_approval"]["reason"] is None
+        assert data["proposal"]["approval"]["required"] is True
+        assert data["proposal"]["steps"][3]["status"] == "pending"
 
     async def test_approve_action_updates_action_and_approval(self, client, tenant, pending_action, db_session):
         resp = await client.post(
@@ -109,6 +117,9 @@ class TestAiActionRoutes:
         assert data["status"] == service.AGENT_ACTION_STATUS_APPROVED
         assert data["approvals"][0]["status"] == service.AGENT_APPROVAL_STATUS_APPROVED
         assert data["approvals"][0]["reason"] == "Looks safe"
+        assert data["pending_approval"] is None
+        assert data["proposal"]["approval"]["status"] == service.AGENT_APPROVAL_STATUS_APPROVED
+        assert data["proposal"]["steps"][2]["status"] == "completed"
 
         await db_session.refresh(pending_action["approval"])
         refreshed = (

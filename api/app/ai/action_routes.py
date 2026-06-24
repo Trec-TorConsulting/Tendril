@@ -42,6 +42,51 @@ class ApprovalResponse(BaseModel):
         )
 
 
+class PendingApprovalResponse(BaseModel):
+    id: str
+    requested_by_user_id: str | None
+    reason: str | None
+    expires_at: str | None
+    created_at: str
+
+    @classmethod
+    def from_orm_obj(cls, approval: AgentActionApproval) -> PendingApprovalResponse:
+        return cls(
+            id=str(approval.id),
+            requested_by_user_id=str(approval.requested_by_user_id) if approval.requested_by_user_id else None,
+            reason=approval.reason,
+            expires_at=approval.expires_at.isoformat() if approval.expires_at else None,
+            created_at=approval.created_at.isoformat(),
+        )
+
+
+class AgentActionProposalApprovalResponse(BaseModel):
+    required: bool
+    status: str
+    reason: str | None
+    expires_at: str | None
+
+
+class AgentActionProposalStepResponse(BaseModel):
+    key: str
+    label: str
+    status: str
+    description: str
+    required: bool | None = None
+
+
+class AgentActionProposalResponse(BaseModel):
+    headline: str
+    summary: str | None
+    confidence: float | None
+    phase: str | None
+    surface: str
+    steps: list[AgentActionProposalStepResponse]
+    evidence: dict | None
+    context: dict | None
+    approval: AgentActionProposalApprovalResponse
+
+
 class AgentActionResponse(BaseModel):
     id: str
     conversation_id: str | None
@@ -54,6 +99,8 @@ class AgentActionResponse(BaseModel):
     requires_approval: bool
     auto_approved: bool
     summary: str | None
+    proposal: AgentActionProposalResponse
+    pending_approval: PendingApprovalResponse | None
     metadata_json: dict | None
     evidence_json: dict | None
     execution_json: dict | None
@@ -63,6 +110,7 @@ class AgentActionResponse(BaseModel):
 
     @classmethod
     def from_orm_obj(cls, action: AgentAction) -> AgentActionResponse:
+        pending_approval = service.get_pending_approval(action)
         return cls(
             id=str(action.id),
             conversation_id=str(action.conversation_id) if action.conversation_id else None,
@@ -75,6 +123,10 @@ class AgentActionResponse(BaseModel):
             requires_approval=action.requires_approval,
             auto_approved=action.auto_approved,
             summary=action.summary,
+            proposal=AgentActionProposalResponse.model_validate(service.build_agent_action_proposal(action)),
+            pending_approval=(
+                PendingApprovalResponse.from_orm_obj(pending_approval) if pending_approval is not None else None
+            ),
             metadata_json=action.metadata_json,
             evidence_json=action.evidence_json,
             execution_json=action.execution_json,
