@@ -1,0 +1,227 @@
+"use client";
+
+import { AlertTriangle, CheckCircle2, Clock3, Loader2, RefreshCw, ShieldAlert, ShieldCheck } from "lucide-react";
+
+import type { AgentActionResponse } from "@/lib/api";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
+
+interface AiActionQueueProps {
+  actions: AgentActionResponse[];
+  growName?: string;
+  isLoading: boolean;
+  isRefreshing: boolean;
+  decisionActionId: string | null;
+  onApprove: (actionId: string) => void;
+  onReject: (actionId: string) => void;
+  onRefresh: () => void;
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  pending_approval: "Pending approval",
+  approved: "Approved",
+  executing: "Executing",
+  completed: "Completed",
+  verified: "Verified",
+  rejected: "Rejected",
+  failed: "Failed",
+  blocked: "Blocked",
+  proposed: "Proposed",
+};
+
+const STEP_STATUS_STYLES: Record<string, string> = {
+  completed: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  current: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  pending: "border-border bg-background text-muted-foreground",
+  skipped: "border-border bg-muted/40 text-muted-foreground",
+  blocked: "border-destructive/30 bg-destructive/10 text-destructive",
+  failed: "border-destructive/30 bg-destructive/10 text-destructive",
+};
+
+function statusVariant(status: string): "default" | "secondary" | "destructive" | "outline" {
+  if (status === "verified") return "default";
+  if (status === "pending_approval" || status === "executing" || status === "approved") return "secondary";
+  if (status === "rejected" || status === "failed" || status === "blocked") return "destructive";
+  return "outline";
+}
+
+function statusLabel(status: string) {
+  return STATUS_LABELS[status] ?? status.replace(/_/g, " ");
+}
+
+function formatContextIssues(action: AgentActionResponse) {
+  const issues = action.proposal.context?.issues;
+  if (!Array.isArray(issues)) {
+    return [];
+  }
+  return issues.filter((value): value is string => typeof value === "string");
+}
+
+function formatEvidence(action: AgentActionResponse) {
+  const recommended = action.proposal.evidence?.recommended_action;
+  return typeof recommended === "string" && recommended.trim() ? recommended : action.title;
+}
+
+export function AiActionQueue({
+  actions,
+  growName,
+  isLoading,
+  isRefreshing,
+  decisionActionId,
+  onApprove,
+  onReject,
+  onRefresh,
+}: AiActionQueueProps) {
+  const pendingActions = actions.filter((action) => action.status === "pending_approval");
+  const recentActions = actions.slice(0, 6);
+
+  return (
+    <div className="border-b bg-linear-to-b from-primary/5 via-background to-background px-4 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="size-4 text-primary" />
+            <p className="text-sm font-semibold">Action queue</p>
+            <Badge variant={pendingActions.length > 0 ? "secondary" : "outline"}>
+              {pendingActions.length} awaiting review
+            </Badge>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {growName ? `Approvals and lifecycle history for ${growName}.` : "Approvals and lifecycle history."}
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          onClick={onRefresh}
+          disabled={isRefreshing}
+        >
+          <RefreshCw className={cn("size-3.5", isRefreshing && "animate-spin")} />
+          Refresh
+        </Button>
+      </div>
+
+      <ScrollArea className="mt-3 max-h-72">
+        <div className="space-y-3 pr-3">
+          {isLoading ? (
+            <Card size="sm" className="border border-dashed border-border/80 bg-background/70">
+              <CardContent className="flex items-center gap-2 py-4 text-xs text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" />
+                Loading action proposals...
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {!isLoading && pendingActions.length === 0 ? (
+            <Card size="sm" className="border border-dashed border-border/80 bg-background/70">
+              <CardContent className="flex items-start gap-2 py-4 text-xs text-muted-foreground">
+                <CheckCircle2 className="mt-0.5 size-4 text-emerald-600 dark:text-emerald-400" />
+                <div>
+                  <p className="font-medium text-foreground">No approvals waiting right now</p>
+                  <p className="mt-1">Safe actions will auto-verify here, and higher-risk proposals will appear when review is needed.</p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {pendingActions.length > 0 ? (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                <ShieldAlert className="size-3.5" />
+                Needs approval
+              </div>
+              {pendingActions.map((action) => {
+                const issues = formatContextIssues(action);
+                const isBusy = decisionActionId === action.id;
+
+                return (
+                  <Card key={action.id} size="sm" className="border border-amber-500/20 bg-amber-500/5">
+                    <CardHeader className="pb-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-1">
+                          <CardTitle className="text-sm">{action.proposal.headline}</CardTitle>
+                          <p className="text-xs text-muted-foreground">{action.proposal.summary || formatEvidence(action)}</p>
+                        </div>
+                        <Badge variant="secondary">{statusLabel(action.status)}</Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-3 pt-0">
+                      <div className="flex flex-wrap gap-1.5 text-[11px]">
+                        <Badge variant="outline">{action.action_type.replace(/_/g, " ")}</Badge>
+                        <Badge variant={action.risk_level === "high" ? "destructive" : "outline"}>{action.risk_level} risk</Badge>
+                        {action.proposal.phase ? <Badge variant="outline">{action.proposal.phase}</Badge> : null}
+                      </div>
+
+                      {issues.length > 0 ? (
+                        <div className="rounded-lg bg-background/80 px-3 py-2 text-xs text-muted-foreground">
+                          <p className="font-medium text-foreground">Observed issues</p>
+                          <p className="mt-1">{issues.join(" • ")}</p>
+                        </div>
+                      ) : null}
+
+                      <div className="flex flex-wrap gap-1.5">
+                        {action.proposal.steps.map((step) => (
+                          <span
+                            key={`${action.id}-${step.key}`}
+                            className={cn(
+                              "rounded-full border px-2 py-1 text-[10px] font-medium",
+                              STEP_STATUS_STYLES[step.status] ?? STEP_STATUS_STYLES.pending,
+                            )}
+                          >
+                            {step.label}
+                          </span>
+                        ))}
+                      </div>
+
+                      <div className="flex gap-2">
+                        <Button size="sm" className="flex-1" disabled={isBusy} onClick={() => onApprove(action.id)}>
+                          {isBusy ? <Loader2 className="size-3.5 animate-spin" /> : <ShieldCheck className="size-3.5" />}
+                          Approve
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          className="flex-1"
+                          disabled={isBusy}
+                          onClick={() => onReject(action.id)}
+                        >
+                          {isBusy ? <Loader2 className="size-3.5 animate-spin" /> : <AlertTriangle className="size-3.5" />}
+                          Reject
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          ) : null}
+
+          {recentActions.length > 0 ? (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                <Clock3 className="size-3.5" />
+                Recent activity
+              </div>
+              {recentActions.map((action) => (
+                <div
+                  key={`recent-${action.id}`}
+                  className="rounded-xl border border-border/70 bg-background/80 px-3 py-2"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs font-medium text-foreground">{action.proposal.headline}</p>
+                    <Badge variant={statusVariant(action.status)}>{statusLabel(action.status)}</Badge>
+                  </div>
+                  <p className="mt-1 text-[11px] text-muted-foreground">{action.proposal.summary || formatEvidence(action)}</p>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </ScrollArea>
+    </div>
+  );
+}
