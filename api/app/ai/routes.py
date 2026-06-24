@@ -471,14 +471,34 @@ async def run_health_check(
     await session.commit()
     await session.refresh(health_eval)
 
+    created_task_count = 0
+    task_error: str | None = None
+
     # Generate fresh tasks from health check actions (cancels old ones first)
     if actions:
         from app.scheduler.task_generator import create_tasks_from_health_eval
 
         try:
-            await create_tasks_from_health_eval(session, grow, score, issues, actions)
-        except Exception:
+            created_task_count = await create_tasks_from_health_eval(session, grow, score, issues, actions)
+        except Exception as exc:
+            task_error = str(exc)
             logger.exception("Failed to create tasks from manual health check for grow %s", grow.id)
+
+        try:
+            await service.record_health_check_task_actions(
+                session,
+                tenant_id=grow.tenant_id,
+                grow_cycle_id=grow.id,
+                requested_by_user_id=user.user_id,
+                health_eval_id=health_eval.id,
+                score=score,
+                issues=issues,
+                actions=actions,
+                created_task_count=created_task_count,
+                task_error=task_error,
+            )
+        except Exception:
+            logger.exception("Failed to record agent action lifecycle for manual health check %s", health_eval.id)
 
     await record_usage(session, user.tenant_id, "ai_analyses")
     await session.commit()
