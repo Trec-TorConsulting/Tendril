@@ -43,7 +43,14 @@ manifests/
 ### Secrets
 - `manifests/secrets.yaml` is the **live** Secret and is gitignored.
 - `secrets.yaml.example` is the canonical list of required keys — keep in sync when you add a config key in [`api/app/config.py`](../api/app/config.py).
-- Production should migrate to SealedSecrets (controller manifest already present). For ad-hoc dev, plain `kubectl apply -f secrets.yaml` is fine.
+- Production should use **SealedSecrets** (controller manifest already present).
+  Seal the live secret into an encrypted, committable form with
+  [`scripts/seal-secrets.sh`](../scripts/seal-secrets.sh):
+  ```bash
+  ./scripts/seal-secrets.sh                       # secrets.yaml -> sealed-secrets.yaml
+  kubectl apply -f manifests/sealed-secrets.yaml  # controller decrypts in-cluster
+  ```
+  The generated `manifests/sealed-secrets.yaml` is encrypted to the cluster key, so unlike `secrets.yaml` it is safe to commit. For ad-hoc dev, plain `kubectl apply -f secrets.yaml` is fine.
 
 ### Workload hardening (apply to every new Deployment)
 ```yaml
