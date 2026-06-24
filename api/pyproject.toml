@@ -112,6 +112,12 @@ module = [
     "app.analytics.service",
     "app.admin.service",
     "app.devices.service",
+    "app.support.service",
+    "app.reference.service",
+    "app.weather.service",
+    "app.tenants.service",
+    "app.notifications.service",
+    "app.sensors.service",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true

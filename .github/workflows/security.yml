@@ -23,14 +23,17 @@ jobs:
         with:
           python-version: "3.14"
       - run: pip install bandit[sarif]
+      # Blocking gate. Bandit currently reports 0 medium/high issues, so any
+      # NEW medium-or-higher finding fails the build. The SARIF upload below
+      # still runs (if: always()) so results land in the Security tab either
+      # way. Low-severity findings remain below the threshold and don't block.
       - run: |
           bandit -r api/app/ \
             -f sarif \
             -o bandit-results.sarif \
             --severity-level medium \
             --confidence-level medium \
-            -x api/app/migrations \
-            || true
+            -x api/app/migrations
       - uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
