@@ -787,11 +787,11 @@ async def update_admin_ticket(
     * Setting assignee on an ``open`` ticket transitions to ``in_progress``.
     """
     if status:
-        ticket.status = status  # type: ignore[assignment]
+        ticket.status = status
         if status in (TicketStatus.resolved.value, TicketStatus.closed.value):
             ticket.resolved_at = datetime.now(UTC)
     if priority:
-        ticket.priority = priority  # type: ignore[assignment]
+        ticket.priority = priority
     if assigned_to_id is not None:
         ticket.assigned_to_id = assigned_to_id
         if ticket.status == TicketStatus.open:
@@ -861,9 +861,9 @@ async def bulk_update_tickets(
         elif action == "assign" and value:
             ticket.assigned_to_id = UUID(value)
         elif action == "change_priority" and value:
-            ticket.priority = value  # type: ignore[assignment]
+            ticket.priority = value
         elif action == "change_status" and value:
-            ticket.status = value  # type: ignore[assignment]
+            ticket.status = value
         count += 1
 
     await session.commit()

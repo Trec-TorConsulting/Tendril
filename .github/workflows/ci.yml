@@ -66,7 +66,13 @@ jobs:
             api/app/integrations/connectors/retry.py \
             api/app/analytics/service.py \
             api/app/admin/service.py \
-            api/app/devices/service.py
+            api/app/devices/service.py \
+            api/app/support/service.py \
+            api/app/reference/service.py \
+            api/app/weather/service.py \
+            api/app/tenants/service.py \
+            api/app/notifications/service.py \
+            api/app/sensors/service.py
 
   lint-web:
     name: Lint (web)
