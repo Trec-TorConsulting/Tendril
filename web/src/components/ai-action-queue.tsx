@@ -342,7 +342,11 @@ export function AiActionQueue({
                   >
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-xs font-medium text-foreground">{event.message}</p>
-                      <Badge variant={event.isError ? "destructive" : "outline"}>{statusLabel(event.phase)}</Badge>
+                      <div className="flex items-center gap-1.5">
+                        {event.actionId ? <Badge variant="secondary">Action linked</Badge> : null}
+                        {!event.actionId && event.correlationId ? <Badge variant="outline">Correlation only</Badge> : null}
+                        <Badge variant={event.isError ? "destructive" : "outline"}>{statusLabel(event.phase)}</Badge>
+                      </div>
                     </div>
                     <p className="mt-1 text-[11px] text-muted-foreground">
                       {event.tool ? `${event.tool.replace(/_/g, " ")} • ` : ""}
@@ -350,6 +354,9 @@ export function AiActionQueue({
                     </p>
                     {event.actionId ? (
                       <p className="mt-1 text-[11px] text-muted-foreground">Action {event.actionId}</p>
+                    ) : null}
+                    {!event.actionId && event.correlationId ? (
+                      <p className="mt-1 text-[11px] text-muted-foreground">Correlation {event.correlationId}</p>
                     ) : null}
                   </div>
                 ))}
