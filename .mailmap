@@ -1,0 +1,7 @@
+# Map mis-configured git identities to their canonical author so that
+# `git shortlog`, `git log`, and GitHub contributor stats coalesce them.
+# Format: Canonical Name <canonical@email> Commit Name <commit@email>
+#
+# 45 commits were authored as the placeholder "Your Name" with a personal
+# gmail address before git user.name/email were configured correctly.
+Tobey Rector <tobey@trector.com> Your Name <tobeyr@gmail.com>
