@@ -9,6 +9,7 @@ from app.ai.routes import (
     _build_keepalive_event,
     _extract_action_id_from_tool_arguments,
     _extract_action_id_from_tool_result,
+    _resolve_action_event_ids,
 )
 
 
@@ -71,3 +72,32 @@ class TestAiWebsocketEventHelpers:
 
     def test_extract_action_id_from_tool_arguments_ignores_non_dict(self):
         assert _extract_action_id_from_tool_arguments("ok") is None
+
+    def test_resolve_action_event_ids_prefers_result_then_args_then_correlation(self):
+        action_id, correlation_id = _resolve_action_event_ids(
+            tool_call_id="tool-call-3",
+            tool_arguments={"action_id": "action-from-args"},
+            tool_result={"action_id": "action-from-result"},
+        )
+
+        assert action_id == "action-from-result"
+        assert correlation_id == "tool-call-3"
+
+    def test_resolve_action_event_ids_uses_args_when_result_missing(self):
+        action_id, correlation_id = _resolve_action_event_ids(
+            tool_call_id="tool-call-4",
+            tool_arguments={"agent_action_id": "action-from-args"},
+        )
+
+        assert action_id == "action-from-args"
+        assert correlation_id == "tool-call-4"
+
+    def test_resolve_action_event_ids_falls_back_to_correlation(self):
+        action_id, correlation_id = _resolve_action_event_ids(
+            tool_call_id="tool-call-5",
+            tool_arguments={},
+            tool_result={},
+        )
+
+        assert action_id == "tool-call-5"
+        assert correlation_id == "tool-call-5"

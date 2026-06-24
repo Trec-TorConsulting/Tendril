@@ -101,6 +101,20 @@ def _extract_action_id_from_tool_arguments(tool_arguments: Any) -> str | None:
     return None
 
 
+def _resolve_action_event_ids(
+    *,
+    tool_call_id: str | None,
+    tool_arguments: Any,
+    tool_result: Any | None = None,
+) -> tuple[str | None, str | None]:
+    """Resolve normalized action_id and correlation_id for websocket lifecycle events."""
+    correlation_id = tool_call_id.strip() if isinstance(tool_call_id, str) and tool_call_id.strip() else None
+    action_from_args = _extract_action_id_from_tool_arguments(tool_arguments)
+    action_from_result = _extract_action_id_from_tool_result(tool_result) if tool_result is not None else None
+    action_id = action_from_result or action_from_args or correlation_id
+    return action_id, correlation_id
+
+
 async def _send_keepalive_pings(ws: WebSocket, stop_event: asyncio.Event) -> None:
     """Send periodic keepalive pings while the websocket is open."""
     while not stop_event.is_set():
@@ -273,8 +287,10 @@ async def websocket_chat(ws: WebSocket):
                         fn_name = fn.get("name", "")
                         fn_args = fn.get("arguments", {})
                         tool_call_id = tc.get("id") if isinstance(tc.get("id"), str) else None
-                        action_id_from_args = _extract_action_id_from_tool_arguments(fn_args)
-                        event_action_id = action_id_from_args or tool_call_id
+                        event_action_id, event_correlation_id = _resolve_action_event_ids(
+                            tool_call_id=tool_call_id,
+                            tool_arguments=fn_args,
+                        )
 
                         await ws.send_json(
                             _build_chat_action_event(
@@ -282,7 +298,7 @@ async def websocket_chat(ws: WebSocket):
                                 tool=fn_name,
                                 message=f"Planned tool call: {fn_name.replace('_', ' ')}",
                                 action_id=event_action_id,
-                                correlation_id=tool_call_id,
+                                correlation_id=event_correlation_id,
                             )
                         )
                         await ws.send_json(
@@ -291,7 +307,7 @@ async def websocket_chat(ws: WebSocket):
                                 tool=fn_name,
                                 message=f"Running tool: {fn_name.replace('_', ' ')}",
                                 action_id=event_action_id,
-                                correlation_id=tool_call_id,
+                                correlation_id=event_correlation_id,
                             )
                         )
 
@@ -316,19 +332,23 @@ async def websocket_chat(ws: WebSocket):
                                     tool=fn_name,
                                     message=f"Tool failed: {fn_name.replace('_', ' ')}",
                                     action_id=event_action_id,
-                                    correlation_id=tool_call_id,
+                                    correlation_id=event_correlation_id,
                                     error=str(e),
                                 )
                             )
                         else:
-                            persisted_action_id = _extract_action_id_from_tool_result(tool_result)
+                            completed_action_id, completed_correlation_id = _resolve_action_event_ids(
+                                tool_call_id=tool_call_id,
+                                tool_arguments=fn_args,
+                                tool_result=tool_result,
+                            )
                             await ws.send_json(
                                 _build_chat_action_event(
                                     phase="completed",
                                     tool=fn_name,
                                     message=f"Tool completed: {fn_name.replace('_', ' ')}",
-                                    action_id=persisted_action_id or event_action_id,
-                                    correlation_id=tool_call_id,
+                                    action_id=completed_action_id,
+                                    correlation_id=completed_correlation_id,
                                     result=tool_result,
                                 )
                             )
