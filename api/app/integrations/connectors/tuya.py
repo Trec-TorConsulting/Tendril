@@ -22,6 +22,7 @@ import hmac
 import logging
 import time
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -285,7 +286,12 @@ class TuyaConnector(BaseConnector):
                 code = prop.get("code")
                 value = prop.get("value")
                 if code and value is not None:
-                    statuses.append({"code": code, "value": value})
+                    status_item = {"code": code, "value": value}
+                    # Preserve DP scale metadata when present. Some Tuya devices
+                    # report pH/EC as scaled integers (e.g. 53 with scale=1 => 5.3).
+                    if prop.get("scale") is not None:
+                        status_item["scale"] = prop.get("scale")
+                    statuses.append(status_item)
             return statuses
         except Exception as e:
             logger.debug("Shadow API fetch failed for %s: %s", device_id, e)
@@ -319,6 +325,7 @@ class TuyaConnector(BaseConnector):
         for status in statuses:
             code = status.get("code", "").lower()
             value = status.get("value")
+            scale = status.get("scale")
 
             logger.info(
                 "Tuya DP [%s] code=%s value=%r type=%s",
@@ -363,17 +370,33 @@ class TuyaConnector(BaseConnector):
                     numeric = float(value)
                 except (ValueError, TypeError):
                     continue
+                # Prefer explicit Tuya DP scale when provided by shadow API.
+                scaled_numeric: float | None = None
+                try:
+                    if isinstance(scale, int) and scale >= 0 and float(numeric).is_integer():
+                        scaled_numeric = numeric / (10**scale)
+                except (TypeError, ValueError):
+                    scaled_numeric = None
                 # Tuya water temp: /status sends deg C x10 (e.g. 196=19.6);
                 # logs API may send actual value (e.g. 19.6)
                 if tendril_key == "water_temp_c":
-                    reading[tendril_key] = numeric / 10 if numeric > 60 else numeric
+                    if scaled_numeric is not None:
+                        reading[tendril_key] = scaled_numeric
+                    else:
+                        reading[tendril_key] = numeric / 10 if numeric > 60 else numeric
                 # EC: /status sends μS/cm (e.g. 610); logs sends mS/cm (e.g. 0.61)
                 # If value > 20, assume μS/cm and convert
                 elif tendril_key == "ec":
-                    reading[tendril_key] = numeric / 1000 if numeric > 20 else numeric
+                    if scaled_numeric is not None:
+                        reading[tendril_key] = scaled_numeric
+                    else:
+                        reading[tendril_key] = numeric / 1000 if numeric > 20 else numeric
                 # pH: /status may send x100 (e.g. 575=5.75); logs sends actual (5.75)
                 elif tendril_key == "ph":
-                    reading[tendril_key] = numeric / 100 if numeric > 14 else numeric
+                    if scaled_numeric is not None:
+                        reading[tendril_key] = scaled_numeric
+                    else:
+                        reading[tendril_key] = numeric / 100 if numeric > 14 else numeric
                 else:
                     reading[tendril_key] = numeric
 
@@ -548,6 +571,48 @@ class TuyaConnector(BaseConnector):
                     raise
 
         return devices
+
+    async def debug_latest(self, device_id: str, dm: Any | None = None) -> dict[str, Any]:
+        """Fetch raw Tuya DPs and mapped reading for a single device.
+
+        Used for support/debugging when displayed values diverge from the
+        Tuya app. Returns both shadow/status payloads and the normalized
+        Tendril reading chosen by poll() source selection rules.
+        """
+        async with httpx.AsyncClient(timeout=15) as client:
+            shadow_statuses = await self._fetch_shadow_properties(client, device_id)
+
+            status_statuses: list[dict[str, Any]] = []
+            status_error: str | None = None
+            try:
+                status_data = await self._api_get(client, f"/v1.0/devices/{device_id}/status")
+                if status_data.get("success"):
+                    status_statuses = status_data.get("result", [])
+                else:
+                    status_error = str(status_data.get("msg") or "status call failed")
+            except Exception as exc:
+                status_error = str(exc)
+
+            source = "shadow" if shadow_statuses else "status"
+            selected_statuses = shadow_statuses or status_statuses
+
+            if dm is None:
+                dm = SimpleNamespace(
+                    external_id=device_id,
+                    bucket_id=None,
+                    tent_id=None,
+                    sensor_mapping={},
+                )
+
+            mapped = self._map_statuses(selected_statuses, dm)
+            return {
+                "device_id": device_id,
+                "mapped_source": source,
+                "shadow_statuses": shadow_statuses,
+                "status_statuses": status_statuses,
+                "status_error": status_error,
+                "mapped_reading": mapped,
+            }
 
     async def _get_app_user_uid(self, client: httpx.AsyncClient) -> str | None:
         """Get the UID of the linked Tuya app user."""

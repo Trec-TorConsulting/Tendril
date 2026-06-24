@@ -12,6 +12,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_tenant_session, require_role
@@ -35,6 +36,14 @@ from app.pagination import PaginatedResponse, PaginationParams, paginate
 logger = logging.getLogger("tendril.integrations")
 
 router = APIRouter()
+
+
+class DeviceDebugResponse(BaseModel):
+    device_map_id: UUID
+    integration_id: UUID
+    integration_type: str
+    external_id: str
+    payload: dict
 
 
 # ---------------------------------------------------------------------------
@@ -388,3 +397,46 @@ async def discover_devices(
         )
         for d in devices
     ]
+
+
+@router.get(
+    "/{integration_id}/devices/{device_id}/debug",
+    response_model=DeviceDebugResponse,
+)
+async def debug_device_map(
+    integration_id: UUID,
+    device_id: UUID,
+    user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Probe a mapped device and return raw source payload + mapped reading.
+
+    Useful for validating Tuya pH/EC normalization against vendor app values.
+    """
+    cfg = await _get_config_or_404(integration_id, session, tenant_id=user.tenant_id)
+    dm = await service.get_device_map(session, integration_id=integration_id, device_map_id=device_id)
+    if dm is None:
+        raise HTTPException(status_code=404, detail="Device mapping not found")
+
+    try:
+        payload = await service.debug_device_map(session, cfg=cfg, dm=dm)
+    except service.IntegrationDisabledError as exc:
+        raise HTTPException(status_code=409, detail="Integration is disabled") from exc
+    except service.UnsupportedConnectorError as exc:
+        raise HTTPException(
+            status_code=501,
+            detail=f"Connector '{exc.integration_type}' not implemented",
+        ) from exc
+    except service.DeviceDebugNotSupportedError as exc:
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
+    except Exception as exc:
+        logger.exception("Device debug probe failed for integration %s map %s", integration_id, device_id)
+        raise HTTPException(status_code=502, detail=f"Debug probe failed: {exc}") from exc
+
+    return DeviceDebugResponse(
+        device_map_id=dm.id,
+        integration_id=integration_id,
+        integration_type=cfg.type,
+        external_id=dm.external_id,
+        payload=payload,
+    )

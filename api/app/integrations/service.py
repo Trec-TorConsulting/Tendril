@@ -67,6 +67,11 @@ class DiscoveryNotSupportedError(Exception):
     Route → 501."""
 
 
+class DeviceDebugNotSupportedError(Exception):
+    """Raised when a connector doesn't implement device debug probing.
+    Route → 501."""
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Config CRUD
 # ─────────────────────────────────────────────────────────────────────────────
@@ -410,3 +415,27 @@ async def discover_devices(session: AsyncSession, *, cfg: IntegrationConfig) -> 
         raise DiscoveryNotSupportedError("Connector does not support device discovery")
 
     return await connector.discover_devices()
+
+
+async def debug_device_map(
+    session: AsyncSession,
+    *,
+    cfg: IntegrationConfig,
+    dm: IntegrationDeviceMap,
+) -> dict[str, Any]:
+    """Return connector-specific debug payload for a mapped device.
+
+    Raises ``IntegrationDisabledError`` (409),
+    ``UnsupportedConnectorError`` (501), or
+    ``DeviceDebugNotSupportedError`` (501).
+    """
+    if not cfg.enabled:
+        raise IntegrationDisabledError("Integration is disabled")
+
+    connector_cls = _resolve_connector(cfg)
+    connector = _instantiate_connector(connector_cls, cfg, [dm])
+
+    if not hasattr(connector, "debug_latest"):
+        raise DeviceDebugNotSupportedError("Connector does not support device debug")
+
+    return await connector.debug_latest(dm.external_id, dm)

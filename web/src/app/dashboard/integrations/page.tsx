@@ -16,6 +16,7 @@ import {
   createDeviceMap,
   updateDeviceMap,
   deleteDeviceMap,
+  debugDeviceMapReadings,
   listSyncLogs,
   triggerSync,
   discoverDevices,
@@ -181,6 +182,10 @@ export default function IntegrationsPage() {
   const [discovering, setDiscovering] = useState(false);
   const [showDeviceMapCreate, setShowDeviceMapCreate] = useState(false);
   const [editDeviceMap, setEditDeviceMap] = useState<DeviceMapResponse | null>(null);
+  const [deviceDebugOpen, setDeviceDebugOpen] = useState(false);
+  const [deviceDebugTitle, setDeviceDebugTitle] = useState("");
+  const [deviceDebugData, setDeviceDebugData] = useState<Record<string, unknown> | null>(null);
+  const [deviceDebugLoading, setDeviceDebugLoading] = useState(false);
   const confirm = useConfirm();
 
   const loadDetail = async (integration: IntegrationResponse) => {
@@ -261,6 +266,25 @@ export default function IntegrationsPage() {
       await deleteDeviceMap(token, selectedIntegration.id, deviceId);
       loadDetail(selectedIntegration);
     } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to remove device mapping"); }
+  };
+
+  const handleDebugDeviceMap = async (dm: DeviceMapResponse) => {
+    if (!selectedIntegration) return;
+    const token = getAccessToken();
+    if (!token) return;
+    setDeviceDebugOpen(true);
+    setDeviceDebugTitle(dm.external_name || dm.external_id);
+    setDeviceDebugData(null);
+    setDeviceDebugLoading(true);
+    try {
+      const data = await debugDeviceMapReadings(token, selectedIntegration.id, dm.id);
+      setDeviceDebugData(data);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to debug device mapping");
+      setDeviceDebugOpen(false);
+    } finally {
+      setDeviceDebugLoading(false);
+    }
   };
 
   if (loading) return <PageSkeleton rows={3} cards />;
@@ -405,6 +429,9 @@ export default function IntegrationsPage() {
                                       <DropdownMenuItem onClick={() => setEditDeviceMap(dm)}>
                                         <Pencil className="mr-2 size-4" /> Edit Target
                                       </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => handleDebugDeviceMap(dm)}>
+                                        <Activity className="mr-2 size-4" /> Debug Readings
+                                      </DropdownMenuItem>
                                       <DropdownMenuSeparator />
                                       <DropdownMenuItem className="text-destructive" onClick={() => handleDeleteDeviceMap(dm.id)}>
                                         <Trash2 className="mr-2 size-4" /> Remove
@@ -547,6 +574,21 @@ export default function IntegrationsPage() {
           onUpdated={() => { loadDetail(selectedIntegration); setEditDeviceMap(null); }}
         />
       )}
+
+      <Dialog open={deviceDebugOpen} onOpenChange={setDeviceDebugOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Device Debug: {deviceDebugTitle}</DialogTitle>
+          </DialogHeader>
+          {deviceDebugLoading ? (
+            <p className="text-sm text-muted-foreground">Loading latest raw and mapped telemetry...</p>
+          ) : (
+            <pre className="max-h-[60vh] overflow-auto rounded bg-muted p-3 text-xs leading-relaxed">
+              {JSON.stringify(deviceDebugData, null, 2)}
+            </pre>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 

@@ -2147,6 +2147,10 @@ export function discoverDevices(token: string, integrationId: string) {
   return apiFetch<DiscoveredDeviceResponse[]>(`/integrations/${integrationId}/discover`, { method: "POST", token });
 }
 
+export function debugDeviceMapReadings(token: string, integrationId: string, deviceId: string) {
+  return apiFetch<Record<string, unknown>>(`/integrations/${integrationId}/devices/${deviceId}/debug`, { token });
+}
+
 // ─── Missing CRUD Helpers ─────────────────────────────────────────────────────
 
 export function deleteSensorReading(token: string, readingId: string) {

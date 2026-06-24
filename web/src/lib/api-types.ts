@@ -3304,6 +3304,28 @@ export interface paths {
         patch: operations["update_device_map_v1_integrations__integration_id__devices__device_id__patch"];
         trace?: never;
     };
+    "/v1/integrations/{integration_id}/devices/{device_id}/debug": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Debug Device Map
+         * @description Probe a mapped device and return raw source payload + mapped reading.
+         *
+         *     Useful for validating Tuya pH/EC normalization against vendor app values.
+         */
+        get: operations["debug_device_map_v1_integrations__integration_id__devices__device_id__debug_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/integrations/{integration_id}/discover": {
         parameters: {
             query?: never;
@@ -6951,6 +6973,27 @@ export interface components {
             deletion_date?: string | null;
             /** Deletion Scheduled */
             deletion_scheduled: boolean;
+        };
+        /** DeviceDebugResponse */
+        DeviceDebugResponse: {
+            /**
+             * Device Map Id
+             * Format: uuid
+             */
+            device_map_id: string;
+            /** External Id */
+            external_id: string;
+            /**
+             * Integration Id
+             * Format: uuid
+             */
+            integration_id: string;
+            /** Integration Type */
+            integration_type: string;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
         };
         /** DeviceMapCreate */
         DeviceMapCreate: {
@@ -18591,6 +18634,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DeviceMapResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    debug_device_map_v1_integrations__integration_id__devices__device_id__debug_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                integration_id: string;
+                device_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceDebugResponse"];
                 };
             };
             /** @description Validation Error */
