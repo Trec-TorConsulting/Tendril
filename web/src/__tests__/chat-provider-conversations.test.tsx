@@ -193,4 +193,52 @@ describe("ChatProvider conversation resume", () => {
     expect(MockWebSocket.instances[1].sent[0]).not.toContain("conversation_id");
     expect(screen.queryByText("Increase airflow before lights out.")).not.toBeInTheDocument();
   });
+
+  it("responds to keepalive pings and renders structured action events", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ChatProvider>
+        <ChatHarness />
+      </ChatProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open chat" }));
+
+    await waitFor(() => {
+      expect(MockWebSocket.instances).toHaveLength(1);
+    });
+
+    await act(async () => {
+      MockWebSocket.instances[0].onopen?.(new Event("open"));
+      MockWebSocket.instances[0].onmessage?.(
+        {
+          data: JSON.stringify({ type: "ping", ts: "2026-06-24T00:00:10Z" }),
+        } as MessageEvent,
+      );
+      MockWebSocket.instances[0].onmessage?.(
+        {
+          data: JSON.stringify({
+            type: "action_event",
+            phase: "executing",
+            tool: "update_grow_stage",
+            message: "Running tool: update grow stage",
+          }),
+        } as MessageEvent,
+      );
+      MockWebSocket.instances[0].onmessage?.(
+        {
+          data: JSON.stringify({
+            type: "action",
+            tool: "update_grow_stage",
+            result: "legacy completion",
+          }),
+        } as MessageEvent,
+      );
+    });
+
+    expect(MockWebSocket.instances[0].sent).toContain(JSON.stringify({ type: "pong" }));
+    expect(screen.getByText("Running tool: update grow stage")).toBeInTheDocument();
+    expect(screen.queryByText("legacy completion")).not.toBeInTheDocument();
+  });
 });

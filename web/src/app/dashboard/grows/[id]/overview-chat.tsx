@@ -17,6 +17,17 @@ interface ChatMessage {
   tool?: string;
 }
 
+function formatActionLifecycleMessage(data: Record<string, unknown>) {
+  const message = typeof data.message === "string" ? data.message : null;
+  if (message) {
+    return message;
+  }
+
+  const phase = typeof data.phase === "string" ? data.phase : "updated";
+  const tool = typeof data.tool === "string" ? data.tool.replace(/_/g, " ") : "tool";
+  return `${tool}: ${phase}`;
+}
+
 interface OverviewChatProps {
   growId: string;
 }
@@ -47,6 +58,11 @@ export function OverviewChat({ growId }: OverviewChatProps) {
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
 
+      if (data.type === "ping") {
+        ws.send(JSON.stringify({ type: "pong" }));
+        return;
+      }
+
       if (data.type === "ready") {
         setConnected(true);
         return;
@@ -65,9 +81,17 @@ export function OverviewChat({ growId }: OverviewChatProps) {
       }
 
       if (data.type === "action") {
+        return;
+      }
+
+      if (data.type === "action_event") {
         setMessages((prev) => [
           ...prev,
-          { role: "action", content: data.result, tool: data.tool },
+          {
+            role: "action",
+            content: formatActionLifecycleMessage(data),
+            tool: typeof data.tool === "string" ? data.tool : undefined,
+          },
         ]);
         return;
       }
