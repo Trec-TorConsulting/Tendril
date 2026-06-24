@@ -21,40 +21,8 @@ vi.mock("@/lib/auth", () => ({
   clearTokens: vi.fn(),
 }));
 
-vi.mock("@/components/ui/sidebar", () => ({
-  Sidebar: ({ children }: any) => children,
-  SidebarContent: ({ children }: any) => children,
-  SidebarFooter: ({ children }: any) => children,
-  SidebarGroup: ({ children }: any) => children,
-  SidebarGroupAction: ({ children }: any) => children,
-  SidebarGroupContent: ({ children }: any) => children,
-  SidebarGroupLabel: ({ children }: any) => children,
-  SidebarHeader: ({ children }: any) => children,
-  SidebarInput: (props: any) => null,
-  SidebarInset: ({ children }: any) => children,
-  SidebarMenu: ({ children }: any) => children,
-  SidebarMenuAction: ({ children }: any) => children,
-  SidebarMenuBadge: ({ children }: any) => children,
-  SidebarMenuButton: ({ children }: any) => children,
-  SidebarMenuItem: ({ children }: any) => children,
-  SidebarMenuSkeleton: () => null,
-  SidebarMenuSub: ({ children }: any) => children,
-  SidebarMenuSubButton: ({ children }: any) => children,
-  SidebarMenuSubItem: ({ children }: any) => children,
-  SidebarProvider: ({ children }: any) => children,
-  SidebarRail: () => null,
-  SidebarSeparator: () => null,
-  SidebarTrigger: ({ children }: any) => children,
-  useSidebar: () => ({
-    state: "expanded",
-    open: true,
-    setOpen: vi.fn(),
-    openMobile: false,
-    setOpenMobile: vi.fn(),
-    isMobile: false,
-    toggleSidebar: vi.fn(),
-  }),
-}));
+vi.mock("@/components/ui/sidebar", async () =>
+  (await import("./helpers/sidebar-mock")).sidebarModuleMock());
 
 const { mockAuditPage } = vi.hoisted(() => {
   const mockAuditPage = {
