@@ -25,6 +25,7 @@ from app.ai.context import (
     build_insight_prompt,
 )
 from app.ai.gather import gather_grow_data
+from app.ai.integration_policy import IntegrationActionPolicyDecision, evaluate_integration_action_policy
 from app.ai.ollama import chat_completion, chat_completion_stream, chat_with_tools
 from app.ai.tools import CHAT_TOOLS, execute_tool
 from app.auth.jwt import decode_token
@@ -56,6 +57,7 @@ def _build_chat_action_event(
     correlation_id: str | None = None,
     result: Any | None = None,
     error: str | None = None,
+    policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a structured chat action lifecycle event for websocket clients."""
     payload: dict[str, Any] = {
@@ -74,7 +76,55 @@ def _build_chat_action_event(
         payload["result"] = result
     if error is not None:
         payload["error"] = error
+    if policy is not None:
+        payload["policy"] = policy
     return payload
+
+
+def _extract_integration_type_from_tool_arguments(tool_arguments: Any) -> str | None:
+    """Extract connector type from tool arguments for policy evaluation."""
+    if not isinstance(tool_arguments, dict):
+        return None
+
+    for key in ("integration_type", "connector_type", "connector"):
+        value = tool_arguments.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _resolve_integration_policy_for_tool_call(
+    *,
+    tool_name: str,
+    tool_arguments: Any,
+) -> IntegrationActionPolicyDecision | None:
+    """Resolve policy decision for integration-prefixed tool calls."""
+    if not tool_name.startswith("integration_"):
+        return None
+
+    integration_type = _extract_integration_type_from_tool_arguments(tool_arguments)
+    if integration_type is None:
+        return None
+
+    operation = tool_name.removeprefix("integration_")
+    return evaluate_integration_action_policy(
+        integration_type=integration_type,
+        operation=operation,
+    )
+
+
+def _build_policy_payload(decision: IntegrationActionPolicyDecision) -> dict[str, Any]:
+    """Serialize a policy decision for websocket lifecycle events."""
+    return {
+        "integration_type": decision.integration_type,
+        "operation": decision.operation,
+        "supported": decision.supported,
+        "allowed": decision.allowed,
+        "risk_level": decision.risk_level,
+        "requires_approval": decision.requires_approval,
+        "requires_simulation": decision.requires_simulation,
+        "reason": decision.reason,
+    }
 
 
 def _extract_action_id_from_tool_result(tool_result: Any) -> str | None:
@@ -291,6 +341,40 @@ async def websocket_chat(ws: WebSocket):
                             tool_call_id=tool_call_id,
                             tool_arguments=fn_args,
                         )
+                        policy_decision = _resolve_integration_policy_for_tool_call(
+                            tool_name=fn_name,
+                            tool_arguments=fn_args,
+                        )
+                        policy_payload = _build_policy_payload(policy_decision) if policy_decision is not None else None
+
+                        if policy_decision is not None and not policy_decision.allowed:
+                            blocked_reason = policy_decision.reason or "Blocked by integration action policy"
+                            blocked_result: dict[str, Any] = {
+                                "error": blocked_reason,
+                                "policy": policy_payload,
+                            }
+                            await ws.send_json(
+                                _build_chat_action_event(
+                                    phase="blocked",
+                                    tool=fn_name,
+                                    message=f"Tool blocked by policy: {fn_name.replace('_', ' ')}",
+                                    action_id=event_action_id,
+                                    correlation_id=event_correlation_id,
+                                    error=blocked_reason,
+                                    result=blocked_result,
+                                    policy=policy_payload,
+                                )
+                            )
+
+                            messages.append({"role": "tool", "content": blocked_result})
+                            await ws.send_json(
+                                {
+                                    "type": "action",
+                                    "tool": fn_name,
+                                    "result": blocked_result,
+                                }
+                            )
+                            continue
 
                         await ws.send_json(
                             _build_chat_action_event(
@@ -299,6 +383,7 @@ async def websocket_chat(ws: WebSocket):
                                 message=f"Planned tool call: {fn_name.replace('_', ' ')}",
                                 action_id=event_action_id,
                                 correlation_id=event_correlation_id,
+                                policy=policy_payload,
                             )
                         )
                         await ws.send_json(
@@ -308,6 +393,7 @@ async def websocket_chat(ws: WebSocket):
                                 message=f"Running tool: {fn_name.replace('_', ' ')}",
                                 action_id=event_action_id,
                                 correlation_id=event_correlation_id,
+                                policy=policy_payload,
                             )
                         )
 
@@ -334,6 +420,7 @@ async def websocket_chat(ws: WebSocket):
                                     action_id=event_action_id,
                                     correlation_id=event_correlation_id,
                                     error=str(e),
+                                    policy=policy_payload,
                                 )
                             )
                         else:
@@ -350,6 +437,7 @@ async def websocket_chat(ws: WebSocket):
                                     action_id=completed_action_id,
                                     correlation_id=completed_correlation_id,
                                     result=tool_result,
+                                    policy=policy_payload,
                                 )
                             )
 
