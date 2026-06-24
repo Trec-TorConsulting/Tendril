@@ -1,5 +1,3 @@
-const CSRF_KEY = "tendril_csrf_token";
-
 /**
  * Auth tokens are now stored in httpOnly cookies (set by the server).
  * JavaScript cannot read them — this is intentional (XSS protection).
