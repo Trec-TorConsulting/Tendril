@@ -487,7 +487,7 @@ function ChatDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   };
 
   const handleApproveAction = useCallback(
-    async (actionId: string) => {
+    async (actionId: string, reason?: string) => {
       const token = getAccessToken();
       if (!token) {
         toast.error("You need to sign in again to approve actions.");
@@ -496,7 +496,7 @@ function ChatDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
 
       setDecisionActionId(actionId);
       try {
-        await approveAiAction(token, actionId, "Approved from AI side panel");
+        await approveAiAction(token, actionId, reason);
         toast.success("Action approved");
         await mutateActions();
       } catch (error) {
@@ -509,7 +509,7 @@ function ChatDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   );
 
   const handleRejectAction = useCallback(
-    async (actionId: string) => {
+    async (actionId: string, reason?: string) => {
       const token = getAccessToken();
       if (!token) {
         toast.error("You need to sign in again to reject actions.");
@@ -518,7 +518,7 @@ function ChatDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
 
       setDecisionActionId(actionId);
       try {
-        await rejectAiAction(token, actionId, "Rejected from AI side panel");
+        await rejectAiAction(token, actionId, reason);
         toast.success("Action rejected");
         await mutateActions();
       } catch (error) {

@@ -96,10 +96,18 @@ describe("AiActionQueue", () => {
     expect(screen.getByText("High humidity")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Approve" }));
-    await user.click(screen.getByRole("button", { name: "Reject" }));
+    expect(screen.getByRole("heading", { name: "Approve action" })).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Approval note"), "Operator checked the fan plan.");
+    await user.click(screen.getByRole("button", { name: "Approve action" }));
 
-    expect(onApprove).toHaveBeenCalledWith("action-1");
-    expect(onReject).toHaveBeenCalledWith("action-1");
+    await user.click(screen.getByRole("button", { name: "Reject" }));
+    expect(screen.getByRole("heading", { name: "Reject action" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reject action" })).toBeDisabled();
+    await user.type(screen.getByLabelText("Reason for rejection"), "Needs a safer airflow target.");
+    await user.click(screen.getByRole("button", { name: "Reject action" }));
+
+    expect(onApprove).toHaveBeenCalledWith("action-1", "Operator checked the fan plan.");
+    expect(onReject).toHaveBeenCalledWith("action-1", "Needs a safer airflow target.");
   });
 
   it("shows the empty approval state when no actions are pending", () => {
