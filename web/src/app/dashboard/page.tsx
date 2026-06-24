@@ -42,6 +42,7 @@ import { Sprout, Droplets, Thermometer, Wind, Waves, CheckCircle2, TrendingUp, C
 import { cn, formatCalendarDate } from "@/lib/utils";
 import { useApiSWR } from "@/lib/swr";
 import { PullToRefresh } from "@/components/pull-to-refresh";
+import { selectPreferredWaterReadings } from "@/lib/water-readings";
 import {
   LineChart,
   Line,
@@ -177,12 +178,14 @@ export default function DashboardPage() {
         .flat()
         .sort((a, bb) => new Date(bb.recorded_at).getTime() - new Date(a.recorded_at).getTime());
 
-      const phVals = growSensorReadings.map((r) => r.ph).filter((v): v is number => v != null).slice(0, 30).reverse();
-      const ecVals = growSensorReadings.map((r) => r.ec).filter((v): v is number => v != null).slice(0, 30).reverse();
-      const ppmVals = growSensorReadings.map((r) => r.ppm).filter((v): v is number => v != null).slice(0, 30).reverse();
-      const waterTempVals = growSensorReadings.map((r) => r.water_temp_f).filter((v): v is number => v != null).slice(0, 30).reverse();
-      const waterLevelVals = growSensorReadings.map((r) => r.water_level_pct).filter((v): v is number => v != null).slice(0, 30).reverse();
-      const orpVals = growSensorReadings.map((r) => r.orp).filter((v): v is number => v != null).slice(0, 30).reverse();
+      const waterReadings = selectPreferredWaterReadings(perBucketReadings, buckets, selectedGrow!.grow_type);
+
+      const phVals = waterReadings.map((r) => r.ph).filter((v): v is number => v != null).slice(0, 30).reverse();
+      const ecVals = waterReadings.map((r) => r.ec).filter((v): v is number => v != null).slice(0, 30).reverse();
+      const ppmVals = waterReadings.map((r) => r.ppm).filter((v): v is number => v != null).slice(0, 30).reverse();
+      const waterTempVals = waterReadings.map((r) => r.water_temp_f).filter((v): v is number => v != null).slice(0, 30).reverse();
+      const waterLevelVals = waterReadings.map((r) => r.water_level_pct).filter((v): v is number => v != null).slice(0, 30).reverse();
+      const orpVals = waterReadings.map((r) => r.orp).filter((v): v is number => v != null).slice(0, 30).reverse();
       const tentTempVals = tentReadings.map((r) => r.ambient_temp_f).filter((v): v is number => v != null).reverse();
       const tentHumVals = tentReadings.map((r) => r.ambient_humidity).filter((v): v is number => v != null).reverse();
       const bucketTempVals = growSensorReadings.map((r) => r.ambient_temp_f).filter((v): v is number => v != null).slice(0, 30).reverse();
@@ -192,7 +195,7 @@ export default function DashboardPage() {
       const sensorTrends = { ph: phVals, ec: ecVals, ppm: ppmVals, water_temp: waterTempVals, water_level: waterLevelVals, orp: orpVals, temp: tempVals, humidity: humVals };
 
       const latestTentReading = tentReadings[0];
-      const latestBucketReading = growSensorReadings[0];
+      const latestBucketReading = waterReadings[0] ?? growSensorReadings[0];
       const tentTs = latestTentReading?.recorded_at ?? null;
       const bucketTs = latestBucketReading?.recorded_at ?? null;
       let lastReadingAt: string | null;
@@ -217,7 +220,7 @@ export default function DashboardPage() {
         existing.humidity = r.ambient_humidity ?? existing.humidity;
         timeSlots.set(time, existing);
       }
-      for (const r of growSensorReadings.slice(0, 30).reverse()) {
+      for (const r of waterReadings.slice(0, 30).reverse()) {
         const time = new Date(r.recorded_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
         const existing = timeSlots.get(time) || { time, temperature: null, humidity: null, water_temp: null, ph: null, ppm: null, water_level: null };
         existing.water_temp = r.water_temp_f ?? existing.water_temp;

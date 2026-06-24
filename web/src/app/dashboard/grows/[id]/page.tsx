@@ -95,6 +95,7 @@ import { CameraGrid } from "@/components/camera-grid";
 import { MultiMetricCard } from "@/components/multi-metric-card";
 import { useChat } from "@/components/chat-provider";
 import { useGrow } from "@/hooks/use-grow";
+import { selectPreferredWaterReadings } from "@/lib/water-readings";
 
 import { formatCalendarDate, formatDateTime } from "@/lib/utils";
 import { BucketsTab } from "./buckets-tab";
@@ -236,11 +237,7 @@ export default function GrowDetailPage() {
           Promise.all(bkts.map((b) => listSensorReadings(token, b.id, 30).catch(() => []))),
           listTentReadings(token, g.tent_id, 30).catch(() => []),
         ]);
-        const headerBkt = g.grow_type === "rdwc" ? bkts.find((b) => b.role === "header") : null;
-        const headerIdx = headerBkt ? bkts.indexOf(headerBkt) : -1;
-        const waterReadings = headerIdx >= 0
-          ? [...perBucketReadings[headerIdx]].sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime())
-          : perBucketReadings.flat().sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime());
+        const waterReadings = selectPreferredWaterReadings(perBucketReadings, bkts, g.grow_type);
         const allGrowSensor = perBucketReadings
           .flat()
           .sort((a, b) => new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime());
