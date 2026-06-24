@@ -68,14 +68,16 @@ function toIsoTimestamp(value: unknown) {
 
 function buildActionLifecycleEvent(data: Record<string, unknown>): ActionLifecycleEvent {
   const actionId = typeof data.action_id === "string" ? data.action_id : undefined;
+  const correlationId = typeof data.correlation_id === "string" ? data.correlation_id : undefined;
   const phase = typeof data.phase === "string" ? data.phase : "updated";
   const tool = typeof data.tool === "string" ? data.tool : undefined;
   const message = formatActionLifecycleMessage(data);
   const ts = toIsoTimestamp(data.ts);
 
   return {
-    id: [actionId ?? tool ?? "tool", phase, ts, message].join("|"),
+    id: [actionId ?? correlationId ?? tool ?? "tool", phase, ts, message].join("|"),
     actionId,
+    correlationId,
     phase,
     tool,
     message,
@@ -89,8 +91,11 @@ function mergeLifecycleEvent(
   incoming: ActionLifecycleEvent,
   maxEvents = 8,
 ): ActionLifecycleEvent[] {
-  if (incoming.actionId) {
-    const withoutSameAction = current.filter((event) => event.actionId !== incoming.actionId);
+  const dedupeKey = incoming.actionId || incoming.correlationId;
+  if (dedupeKey) {
+    const withoutSameAction = current.filter(
+      (event) => (event.actionId || event.correlationId) !== dedupeKey,
+    );
     return [incoming, ...withoutSameAction].slice(0, maxEvents);
   }
   return [incoming, ...current].slice(0, maxEvents);

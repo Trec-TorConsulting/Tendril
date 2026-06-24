@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from app.ai.routes import _build_chat_action_event, _build_keepalive_event
+from app.ai.routes import _build_chat_action_event, _build_keepalive_event, _extract_action_id_from_tool_result
 
 
 class TestAiWebsocketEventHelpers:
@@ -20,6 +20,7 @@ class TestAiWebsocketEventHelpers:
             tool="update_grow_stage",
             message="Tool completed: update grow stage",
             action_id="tool-call-1",
+            correlation_id="corr-1",
             result={"status": "ok"},
         )
 
@@ -29,6 +30,7 @@ class TestAiWebsocketEventHelpers:
             "tool": "update_grow_stage",
             "message": "Tool completed: update grow stage",
             "action_id": "tool-call-1",
+            "correlation_id": "corr-1",
             "refresh_actions": True,
             "result": {"status": "ok"},
             "ts": event["ts"],
@@ -43,5 +45,15 @@ class TestAiWebsocketEventHelpers:
         )
 
         assert "action_id" not in event
+        assert "correlation_id" not in event
         assert "result" not in event
         assert "error" not in event
+
+    def test_extract_action_id_from_tool_result_prefers_action_id(self):
+        assert _extract_action_id_from_tool_result({"action_id": "action-123", "agent_action_id": "legacy-1"}) == "action-123"
+
+    def test_extract_action_id_from_tool_result_uses_agent_action_id_fallback(self):
+        assert _extract_action_id_from_tool_result({"agent_action_id": "legacy-1"}) == "legacy-1"
+
+    def test_extract_action_id_from_tool_result_ignores_non_dict(self):
+        assert _extract_action_id_from_tool_result("ok") is None

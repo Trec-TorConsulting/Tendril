@@ -16,6 +16,7 @@ import { cn, formatShortDateTime, formatTime } from "@/lib/utils";
 export interface ActionLifecycleEvent {
   id: string;
   actionId?: string;
+  correlationId?: string;
   phase: string;
   tool?: string;
   message: string;
