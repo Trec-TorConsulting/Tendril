@@ -14,6 +14,11 @@
 #define MQTT_HOST           "emqx.your-domain.com"
 #define MQTT_PORT           8883        // 8883 = TLS, 1883 = plain
 #define MQTT_USE_TLS        true
+// PEM CA certificate used to verify the broker over TLS. Leave empty ("") for
+// insecure/dev mode (encrypted but UNVERIFIED). For production, paste the CA
+// chain with literal \n line breaks, e.g.:
+//   "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n"
+#define MQTT_CA_CERT        ""
 
 // ─── Device Identity (from Tendril dashboard) ────────
 #define MQTT_DEVICE_ID      "td-XXXXXXXXXXXX"

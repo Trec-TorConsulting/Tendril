@@ -10,6 +10,11 @@
 #define MQTT_HOST           "emqx.your-domain.com"
 #define MQTT_PORT           8883
 #define MQTT_USE_TLS        true
+// PEM CA certificate used to verify the broker over TLS. Leave empty ("") for
+// insecure/dev mode (encrypted but UNVERIFIED). For production, paste the CA
+// chain with literal \n line breaks, e.g.:
+//   "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----\n"
+#define MQTT_CA_CERT        ""
 #define MQTT_DEVICE_ID      "td-XXXXXXXXXXXX"
 #define MQTT_PSK            "YOUR_PRE_SHARED_KEY"
 #define TENANT_ID           "your-tenant-uuid"
