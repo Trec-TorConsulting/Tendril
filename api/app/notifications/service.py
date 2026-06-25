@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.notifications.models import (
     NotificationChannel,
     NotificationLog,
+    NotificationPreference,
     PushSubscription,
 )
 
@@ -25,6 +26,8 @@ async def dispatch_alert(
     severity: str,
     subject: str,
     body: str,
+    *,
+    event_type: str = "all",
 ) -> None:
     """Send a notification through all enabled channels for a tenant."""
     channels = (
@@ -40,7 +43,15 @@ async def dispatch_alert(
         .all()
     )
 
-    for channel in channels:
+    eligible_channels = await _filter_channels_for_event(
+        session,
+        tenant_id=tenant_id,
+        channels=channels,
+        severity=severity,
+        event_type=event_type,
+    )
+
+    for channel in eligible_channels:
         try:
             if channel.channel_type == "discord":
                 await _send_discord(channel.config, severity, subject, body)
@@ -79,6 +90,53 @@ async def dispatch_alert(
     await _send_web_push(session, tenant_id, severity, subject, body)
 
     await session.commit()
+
+
+def _preference_allows_event(pref: NotificationPreference, *, severity: str, event_type: str) -> bool:
+    severities = {item.strip() for item in pref.severity_filter.split(",") if item.strip()}
+    events = {item.strip() for item in pref.event_types.split(",") if item.strip()}
+
+    severity_matches = not severities or severity in severities
+    event_matches = not events or "all" in events or event_type in events
+    return severity_matches and event_matches
+
+
+async def _filter_channels_for_event(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    channels: list[NotificationChannel],
+    severity: str,
+    event_type: str,
+) -> list[NotificationChannel]:
+    if not channels:
+        return []
+
+    prefs = (
+        (
+            await session.execute(
+                select(NotificationPreference).where(
+                    NotificationPreference.tenant_id == tenant_id,
+                    NotificationPreference.enabled.is_(True),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    prefs_by_channel: dict[UUID, list[NotificationPreference]] = {}
+    for pref in prefs:
+        prefs_by_channel.setdefault(pref.channel_id, []).append(pref)
+
+    eligible: list[NotificationChannel] = []
+    for channel in channels:
+        channel_prefs = prefs_by_channel.get(channel.id, [])
+        if not channel_prefs:
+            eligible.append(channel)
+            continue
+        if any(_preference_allows_event(pref, severity=severity, event_type=event_type) for pref in channel_prefs):
+            eligible.append(channel)
+    return eligible
 
 
 async def _send_discord(config: dict, severity: str, subject: str, body: str) -> None:

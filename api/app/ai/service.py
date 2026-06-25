@@ -204,7 +204,14 @@ async def _dispatch_action_notification(session: AsyncSession, action: AgentActi
     from app.notifications.service import dispatch_alert
 
     severity, subject, body = notification
-    await dispatch_alert(session, action.tenant_id, severity, subject, body)
+    await dispatch_alert(
+        session,
+        action.tenant_id,
+        severity,
+        subject,
+        body,
+        event_type="ai_action_lifecycle",
+    )
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Conversations

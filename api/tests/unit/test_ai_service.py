@@ -694,6 +694,7 @@ class TestAgentActionServiceMethods:
             "warning",
             "AI approval needed: Control command for Pulse",
             "An AI action is waiting for review in the side panel before it can continue.",
+            event_type="ai_action_lifecycle",
         )
 
     async def test_transition_agent_action_dispatches_notification_for_failed(self):
