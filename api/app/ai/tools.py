@@ -252,20 +252,111 @@ async def execute_tool(
             return f"Updated grow: {', '.join(changes)}." if changes else "No changes specified."
 
         elif tool_name == "create_journal_entry":
+            event_type = arguments.get("event_type", "note")
+            content = arguments.get("content", "")
+            action = await ai_service.create_agent_action(
+                session,
+                tenant_id=tenant_id,
+                source="chat",
+                action_type="create_journal_entry",
+                title=f"Create journal entry: {event_type}",
+                idempotency_key=ai_service.build_agent_action_idempotency_key(
+                    tenant_id=tenant_id,
+                    source="chat",
+                    action_type="create_journal_entry",
+                    grow_cycle_id=grow.id,
+                    conversation_id=None,
+                    dedupe_token=f"{event_type}:{content}:{datetime.now(UTC).isoformat()}",
+                ),
+                grow_cycle_id=grow.id,
+                risk_level="low",
+                requires_approval=False,
+                auto_approved=True,
+                summary=content,
+                metadata_json={
+                    "phase": "chat",
+                    "safe_action": True,
+                    "event_type": event_type,
+                },
+                evidence_json={
+                    "recommended_action": content or f"Create {event_type} journal entry",
+                    "event_type": event_type,
+                },
+            )
+            await ai_service.transition_agent_action(
+                session,
+                action,
+                next_status=ai_service.AGENT_ACTION_STATUS_APPROVED,
+            )
+            await ai_service.transition_agent_action(
+                session,
+                action,
+                next_status=ai_service.AGENT_ACTION_STATUS_EXECUTING,
+                execution_json={
+                    "target": "journal_entry",
+                    "event_type": event_type,
+                },
+            )
+
             buckets = (
                 (await session.execute(select(Bucket).where(Bucket.grow_cycle_id == grow.id).limit(1))).scalars().all()
             )
             if not buckets:
-                return "Error: no buckets found for this grow."
+                error_text = "Error: no buckets found for this grow."
+                await ai_service.transition_agent_action(
+                    session,
+                    action,
+                    next_status=ai_service.AGENT_ACTION_STATUS_FAILED,
+                    execution_json={
+                        "target": "journal_entry",
+                        "event_type": event_type,
+                        "error": error_text,
+                    },
+                )
+                return {
+                    "status": "failed",
+                    "phase": "failed",
+                    "action_id": str(action.id),
+                    "error": error_text,
+                }
             entry = JournalEntry(
                 tenant_id=tenant_id,
                 bucket_id=buckets[0].id,
-                event_type=arguments.get("event_type", "note"),
-                content=arguments.get("content", ""),
+                event_type=event_type,
+                content=content,
             )
             session.add(entry)
             await session.commit()
-            return f"Journal entry added: [{arguments.get('event_type', 'note')}] {arguments.get('content', '')}"
+            await session.refresh(entry)
+            await ai_service.transition_agent_action(
+                session,
+                action,
+                next_status=ai_service.AGENT_ACTION_STATUS_COMPLETED,
+                execution_json={
+                    "target": "journal_entry",
+                    "event_type": event_type,
+                    "journal_entry_id": str(entry.id),
+                },
+            )
+            await ai_service.transition_agent_action(
+                session,
+                action,
+                next_status=ai_service.AGENT_ACTION_STATUS_VERIFIED,
+                verification_json={
+                    "result": "journal_entry_created",
+                    "journal_entry_id": str(entry.id),
+                    "event_type": event_type,
+                },
+            )
+            return {
+                "status": "completed",
+                "phase": "completed",
+                "action_id": str(action.id),
+                "result": {
+                    "journal_entry_id": str(entry.id),
+                    "event_type": event_type,
+                },
+            }
 
         elif tool_name == "update_feeding_schedule":
             schedules = (
