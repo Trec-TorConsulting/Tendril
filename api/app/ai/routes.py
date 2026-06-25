@@ -6,7 +6,8 @@ import asyncio
 import base64
 import json
 import logging
-from datetime import UTC
+from contextlib import suppress
+from datetime import UTC, datetime
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -35,6 +36,52 @@ logger = logging.getLogger("tendril.ai")
 router = APIRouter()
 
 MAX_TOOL_ROUNDS = 5
+KEEPALIVE_INTERVAL_SECONDS = 20
+
+
+def _build_keepalive_event() -> dict[str, str]:
+    """Build the websocket keepalive payload sent during long AI work."""
+    return {
+        "type": "ping",
+        "ts": datetime.now(UTC).isoformat(),
+    }
+
+
+def _build_chat_action_event(
+    *,
+    phase: str,
+    tool: str,
+    message: str,
+    result: Any | None = None,
+    error: str | None = None,
+) -> dict[str, Any]:
+    """Build a structured chat action lifecycle event for websocket clients."""
+    payload: dict[str, Any] = {
+        "type": "action_event",
+        "phase": phase,
+        "tool": tool,
+        "message": message,
+        "refresh_actions": True,
+        "ts": datetime.now(UTC).isoformat(),
+    }
+    if result is not None:
+        payload["result"] = result
+    if error is not None:
+        payload["error"] = error
+    return payload
+
+
+async def _send_keepalive_pings(ws: WebSocket, stop_event: asyncio.Event) -> None:
+    """Send periodic keepalive pings while the websocket is open."""
+    while not stop_event.is_set():
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=KEEPALIVE_INTERVAL_SECONDS)
+            break
+        except TimeoutError:
+            try:
+                await ws.send_json(_build_keepalive_event())
+            except Exception:
+                break
 
 
 # ---------- WebSocket Chat (4.1) — with tool support ----------
@@ -67,6 +114,9 @@ async def websocket_chat(ws: WebSocket):
         await ws.send_json({"type": "error", "message": "Authentication failed"})
         await ws.close()
         return
+
+    keepalive_stop = asyncio.Event()
+    keepalive_task = asyncio.create_task(_send_keepalive_pings(ws, keepalive_stop))
 
     # Load full grow context
     system_context = "You are Tendril, an AI grow assistant."
@@ -150,6 +200,9 @@ async def websocket_chat(ws: WebSocket):
     try:
         while True:
             data = await ws.receive_json()
+            if data.get("type") == "pong":
+                continue
+
             user_msg = data.get("message", "")
             if not user_msg:
                 continue
@@ -190,6 +243,21 @@ async def websocket_chat(ws: WebSocket):
                         fn_name = fn.get("name", "")
                         fn_args = fn.get("arguments", {})
 
+                        await ws.send_json(
+                            _build_chat_action_event(
+                                phase="proposed",
+                                tool=fn_name,
+                                message=f"Planned tool call: {fn_name.replace('_', ' ')}",
+                            )
+                        )
+                        await ws.send_json(
+                            _build_chat_action_event(
+                                phase="executing",
+                                tool=fn_name,
+                                message=f"Running tool: {fn_name.replace('_', ' ')}",
+                            )
+                        )
+
                         try:
                             from app.database import async_session_factory, set_rls_tenant
 
@@ -205,6 +273,23 @@ async def websocket_chat(ws: WebSocket):
                         except Exception as e:
                             logger.exception("Tool execution error")
                             tool_result = {"error": f"Error: {e}"}  # type: ignore[assignment]
+                            await ws.send_json(
+                                _build_chat_action_event(
+                                    phase="failed",
+                                    tool=fn_name,
+                                    message=f"Tool failed: {fn_name.replace('_', ' ')}",
+                                    error=str(e),
+                                )
+                            )
+                        else:
+                            await ws.send_json(
+                                _build_chat_action_event(
+                                    phase="completed",
+                                    tool=fn_name,
+                                    message=f"Tool completed: {fn_name.replace('_', ' ')}",
+                                    result=tool_result,
+                                )
+                            )
 
                         messages.append({"role": "tool", "content": tool_result})
                         await ws.send_json(
@@ -260,6 +345,11 @@ async def websocket_chat(ws: WebSocket):
 
     except WebSocketDisconnect:
         logger.debug("Chat WebSocket disconnected")
+    finally:
+        keepalive_stop.set()
+        keepalive_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await keepalive_task
 
 
 # ---------- Health Check (4.2) — powered by Gemini with camera + full data ----------

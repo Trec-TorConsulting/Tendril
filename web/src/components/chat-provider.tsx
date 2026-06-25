@@ -48,6 +48,17 @@ interface ChatMessage {
   tool?: string;
 }
 
+function formatActionLifecycleMessage(data: Record<string, unknown>) {
+  const message = typeof data.message === "string" ? data.message : null;
+  if (message) {
+    return message;
+  }
+
+  const phase = typeof data.phase === "string" ? data.phase : "updated";
+  const tool = typeof data.tool === "string" ? data.tool.replace(/_/g, " ") : "tool";
+  return `${tool}: ${phase}`;
+}
+
 const CONVERSATION_SCOPE_GLOBAL = "global";
 const CONVERSATION_STORAGE_KEY = "tendril.ai.drawer.conversations";
 const NEW_CONVERSATION_SENTINEL = "__new__";
@@ -355,6 +366,11 @@ function ChatDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
 
+        if (data.type === "ping") {
+          ws.send(JSON.stringify({ type: "pong" }));
+          return;
+        }
+
         if (data.type === "ready") {
           setConnected(true);
           retryCount.current = 0;
@@ -384,12 +400,17 @@ function ChatDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
 
         if (data.type === "action") {
           void mutateActions();
+          return;
+        }
+
+        if (data.type === "action_event") {
+          void mutateActions();
           setMessages((prev) => [
             ...prev,
             {
               role: "action",
-              content: typeof data.result === "string" ? data.result : `${data.tool} updated`,
-              tool: data.tool,
+              content: formatActionLifecycleMessage(data),
+              tool: typeof data.tool === "string" ? data.tool : undefined,
             },
           ]);
           return;
