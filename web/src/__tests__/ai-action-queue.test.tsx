@@ -79,6 +79,7 @@ describe("AiActionQueue", () => {
     render(
       <AiActionQueue
         actions={[buildAction()]}
+        liveEvents={[]}
         growName="Flower Tent"
         isLoading={false}
         isRefreshing={false}
@@ -157,6 +158,7 @@ describe("AiActionQueue", () => {
             },
           }),
         ]}
+        liveEvents={[]}
         growName="Veg Tent"
         isLoading={false}
         isRefreshing={false}
@@ -176,5 +178,41 @@ describe("AiActionQueue", () => {
     expect(screen.getByText("Verification:")).toBeInTheDocument();
     expect(screen.getByText("task created")).toBeInTheDocument();
     expect(screen.getByText(/Last update /)).toBeInTheDocument();
+  });
+
+  it("shows live lifecycle websocket updates", () => {
+    render(
+      <AiActionQueue
+        actions={[]}
+        liveEvents={[
+          {
+            id: "evt-1",
+            phase: "executing",
+            tool: "update_grow_stage",
+            message: "Running tool: update grow stage",
+            ts: "2026-06-24T00:12:00Z",
+          },
+          {
+            id: "evt-2",
+            phase: "failed",
+            tool: "update_grow_stage",
+            message: "Tool failed: update grow stage",
+            ts: "2026-06-24T00:13:00Z",
+            isError: true,
+          },
+        ]}
+        growName="Veg Tent"
+        isLoading={false}
+        isRefreshing={false}
+        decisionActionId={null}
+        onApprove={vi.fn()}
+        onReject={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Live lifecycle")).toBeInTheDocument();
+    expect(screen.getByText("Running tool: update grow stage")).toBeInTheDocument();
+    expect(screen.getByText("Tool failed: update grow stage")).toBeInTheDocument();
   });
 });

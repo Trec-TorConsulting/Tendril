@@ -11,10 +11,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
-import { cn, formatShortDateTime } from "@/lib/utils";
+import { cn, formatShortDateTime, formatTime } from "@/lib/utils";
+
+export interface ActionLifecycleEvent {
+  id: string;
+  phase: string;
+  tool?: string;
+  message: string;
+  ts: string;
+  isError?: boolean;
+}
 
 interface AiActionQueueProps {
   actions: AgentActionResponse[];
+  liveEvents: ActionLifecycleEvent[];
   growName?: string;
   isLoading: boolean;
   isRefreshing: boolean;
@@ -127,6 +137,7 @@ function buildRecentActivityDetails(action: AgentActionResponse) {
 
 export function AiActionQueue({
   actions,
+  liveEvents,
   growName,
   isLoading,
   isRefreshing,
@@ -296,6 +307,35 @@ export function AiActionQueue({
                     </Card>
                   );
                 })}
+              </div>
+            ) : null}
+
+            {liveEvents.length > 0 ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  <Loader2 className="size-3.5" />
+                  Live lifecycle
+                </div>
+                {liveEvents.map((event) => (
+                  <div
+                    key={event.id}
+                    className={cn(
+                      "rounded-xl border px-3 py-2",
+                      event.isError
+                        ? "border-destructive/30 bg-destructive/10"
+                        : "border-border/70 bg-background/80",
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs font-medium text-foreground">{event.message}</p>
+                      <Badge variant={event.isError ? "destructive" : "outline"}>{statusLabel(event.phase)}</Badge>
+                    </div>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      {event.tool ? `${event.tool.replace(/_/g, " ")} • ` : ""}
+                      {formatTime(event.ts)}
+                    </p>
+                  </div>
+                ))}
               </div>
             ) : null}
 
