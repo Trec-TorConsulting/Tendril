@@ -22,8 +22,8 @@
 ## 3. Observability and Rollout
 - [x] 3.1 Emit metrics for proposal volume, approvals, execution success/failure, and policy blocks.
 - [x] 3.2 Add structured logs for action lifecycle with tenant and conversation correlation IDs.
-- [ ] 3.3 Add platform-wide rollout checklist, migration safety checks, and backout procedure.
-- [ ] 3.4 Add operator documentation for approvals, controls, and troubleshooting.
+- [x] 3.3 Add platform-wide rollout checklist, migration safety checks, and backout procedure.
+- [x] 3.4 Add operator documentation for approvals, controls, and troubleshooting.
 
 ## 4. PR Slicing Plan (Small, Verifiable Increments)
 
