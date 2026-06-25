@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from app.ai.routes import _build_chat_action_event, _build_keepalive_event, _extract_action_id_from_tool_result
+from app.ai.routes import (
+    _build_chat_action_event,
+    _build_keepalive_event,
+    _extract_action_id_from_tool_arguments,
+    _extract_action_id_from_tool_result,
+)
 
 
 class TestAiWebsocketEventHelpers:
@@ -57,3 +62,12 @@ class TestAiWebsocketEventHelpers:
 
     def test_extract_action_id_from_tool_result_ignores_non_dict(self):
         assert _extract_action_id_from_tool_result("ok") is None
+
+    def test_extract_action_id_from_tool_arguments_prefers_action_id(self):
+        assert _extract_action_id_from_tool_arguments({"action_id": "action-456", "agent_action_id": "legacy-1"}) == "action-456"
+
+    def test_extract_action_id_from_tool_arguments_uses_agent_action_id_fallback(self):
+        assert _extract_action_id_from_tool_arguments({"agent_action_id": "legacy-1"}) == "legacy-1"
+
+    def test_extract_action_id_from_tool_arguments_ignores_non_dict(self):
+        assert _extract_action_id_from_tool_arguments("ok") is None
