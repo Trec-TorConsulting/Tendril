@@ -176,3 +176,57 @@ class TestAiActionRoutes:
         )
         assert resp.status_code == 409
         assert "no pending approval" in resp.json()["detail"].lower()
+
+    async def test_cannot_approve_integration_control_action_without_simulation_support(
+        self,
+        client,
+        tenant,
+        db_session,
+    ):
+        action = await service.create_agent_action(
+            db_session,
+            tenant_id=tenant["tenant"].id,
+            source="chat",
+            action_type="integration_control_command",
+            title="Control command for Pulse test",
+            idempotency_key=service.build_agent_action_idempotency_key(
+                tenant_id=tenant["tenant"].id,
+                source="chat",
+                action_type="integration_control_command",
+                grow_cycle_id=None,
+                conversation_id=None,
+                dedupe_token="integration-control-pending",
+            ),
+            created_by_user_id=tenant["user"].id,
+            requires_approval=True,
+            auto_approved=False,
+            metadata_json={
+                "integration_type": "pulse",
+                "operation": "outbound_control",
+                "command": "turn_on_pump",
+                "policy": {
+                    "requires_simulation": True,
+                },
+            },
+        )
+        await service.transition_agent_action(
+            db_session,
+            action,
+            next_status=service.AGENT_ACTION_STATUS_PENDING_APPROVAL,
+        )
+        await service.create_agent_action_approval(
+            db_session,
+            tenant_id=tenant["tenant"].id,
+            action_id=action.id,
+            requested_by_user_id=tenant["user"].id,
+            reason="Awaiting simulation support",
+        )
+
+        resp = await client.post(
+            f"/v1/ai/actions/{action.id}/approve",
+            json={"reason": "Looks good"},
+            headers=tenant["headers"],
+        )
+
+        assert resp.status_code == 409
+        assert "simulation/execution support" in resp.json()["detail"].lower()

@@ -26,10 +26,13 @@ from app.ai.service import (
     MAX_DIAGNOSE_IMAGE_BYTES,
     AgentAction,
     AgentActionApproval,
+    AgentActionApprovalPreconditionError,
     Conversation,
     DiagnoseImageError,
     InvalidAgentActionTransitionError,
     InvalidAgentApprovalTransitionError,
+    action_requires_simulation_before_approval,
+    approve_agent_action,
     build_agent_action_idempotency_key,
     build_agent_action_lifecycle_steps,
     build_agent_action_proposal,
@@ -601,6 +604,45 @@ class TestAgentActionServiceMethods:
                 decision_status=AGENT_APPROVAL_STATUS_APPROVED,
                 reviewed_by_user_id=uuid4(),
             )
+
+    async def test_approve_agent_action_rejects_simulation_required_integration_control(self):
+        session = AsyncMock()
+        action = AgentAction(
+            tenant_id=uuid4(),
+            source="chat",
+            action_type="integration_control_command",
+            title="Control command for Pulse",
+            status=AGENT_ACTION_STATUS_PENDING_APPROVAL,
+            risk_level="high",
+            idempotency_key="c" * 64,
+            requires_approval=True,
+            metadata_json={
+                "policy": {
+                    "requires_simulation": True,
+                }
+            },
+        )
+        approval = AgentActionApproval(
+            tenant_id=action.tenant_id,
+            action_id=uuid4(),
+            status=AGENT_APPROVAL_STATUS_PENDING,
+        )
+        action.approvals = [approval]
+
+        assert action_requires_simulation_before_approval(action) is True
+
+        with pytest.raises(
+            AgentActionApprovalPreconditionError,
+            match="requires simulation/execution support before it can be approved",
+        ):
+            await approve_agent_action(
+                session,
+                action,
+                reviewed_by_user_id=uuid4(),
+                reason="Ship it",
+            )
+
+        session.commit.assert_not_awaited()
 
 
 class TestAiServiceQueries:
