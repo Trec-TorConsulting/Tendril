@@ -54,6 +54,16 @@ class JSONFormatter(logging.Formatter):
             "provider_type",
             "error_code",
             "email",
+            "ai_action_id",
+            "approval_id",
+            "action_type",
+            "action_status",
+            "approval_status",
+            "previous_status",
+            "conversation_id",
+            "grow_cycle_id",
+            "actor_user_id",
+            "risk_level",
         ):
             val = getattr(record, key, None)
             if val is not None:
