@@ -160,6 +160,31 @@ CHAT_TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "integration_control_command",
+            "description": "Prepare a high-risk outbound integration control command for approval.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "integration_id": {
+                        "type": "string",
+                        "description": "Integration config ID to target",
+                    },
+                    "command": {
+                        "type": "string",
+                        "description": "Control command to send after approval",
+                    },
+                    "integration_type": {
+                        "type": "string",
+                        "description": "Connector type hint (pulse, openweather, ecowitt)",
+                    },
+                },
+                "required": ["integration_id", "command"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "update_tent",
             "description": "Update the grow space/tent name or notes.",
             "parameters": {
@@ -515,6 +540,158 @@ async def execute_tool(
                     "readings_count": result.readings_count,
                 },
                 "policy": policy_payload,
+            }
+
+        elif tool_name == "integration_control_command":
+            raw_integration_id = arguments.get("integration_id")
+            if not isinstance(raw_integration_id, str) or not raw_integration_id.strip():
+                return "Error: integration_id is required."
+
+            command = arguments.get("command")
+            if not isinstance(command, str) or not command.strip():
+                return "Error: command is required."
+
+            try:
+                integration_id = UUID(raw_integration_id.strip())
+            except ValueError:
+                return "Error: integration_id must be a valid UUID."
+
+            cfg = await integration_service.get_integration(
+                session,
+                integration_id,
+                tenant_id=tenant_id,
+            )
+            if cfg is None:
+                return "Error: integration not found or access denied."
+
+            policy_decision = evaluate_integration_action_policy(
+                integration_type=cfg.type,
+                operation="outbound_control",
+            )
+            policy_payload = {
+                "integration_type": cfg.type,
+                "operation": "outbound_control",
+                "supported": policy_decision.supported,
+                "allowed": policy_decision.allowed,
+                "risk_level": policy_decision.risk_level,
+                "requires_approval": policy_decision.requires_approval,
+                "requires_simulation": policy_decision.requires_simulation,
+            }
+
+            if not policy_decision.allowed:
+                reason = policy_decision.reason or "Blocked by integration action policy"
+                action = await ai_service.create_agent_action(
+                    session,
+                    tenant_id=tenant_id,
+                    source="chat",
+                    action_type="integration_control_command",
+                    title=f"Control command for {cfg.name}",
+                    idempotency_key=ai_service.build_agent_action_idempotency_key(
+                        tenant_id=tenant_id,
+                        source="chat",
+                        action_type="integration_control_command",
+                        grow_cycle_id=grow.id,
+                        conversation_id=None,
+                        dedupe_token=f"{cfg.id}:control:blocked:{datetime.now(UTC).isoformat()}",
+                    ),
+                    grow_cycle_id=grow.id,
+                    risk_level=policy_decision.risk_level,
+                    requires_approval=policy_decision.requires_approval,
+                    auto_approved=False,
+                    summary=reason,
+                    metadata_json={
+                        "integration_id": str(cfg.id),
+                        "integration_name": cfg.name,
+                        "integration_type": cfg.type,
+                        "operation": "outbound_control",
+                        "command": command,
+                        "policy": {**policy_payload, "reason": reason},
+                    },
+                    evidence_json={
+                        "integration_id": str(cfg.id),
+                        "integration_type": cfg.type,
+                        "operation": "outbound_control",
+                        "command": command,
+                    },
+                )
+                await ai_service.transition_agent_action(
+                    session,
+                    action,
+                    next_status=ai_service.AGENT_ACTION_STATUS_BLOCKED,
+                    execution_json={
+                        "target": "integration",
+                        "integration_id": str(cfg.id),
+                        "integration_type": cfg.type,
+                        "operation": "outbound_control",
+                        "command": command,
+                        "error": reason,
+                    },
+                )
+                return {
+                    "status": "blocked",
+                    "phase": "blocked",
+                    "action_id": str(action.id),
+                    "error": reason,
+                    "policy": {**policy_payload, "reason": reason},
+                }
+
+            approval_reason = (
+                "High-risk integration control command requires approval and simulation before execution"
+            )
+            action = await ai_service.create_agent_action(
+                session,
+                tenant_id=tenant_id,
+                source="chat",
+                action_type="integration_control_command",
+                title=f"Control command for {cfg.name}",
+                idempotency_key=ai_service.build_agent_action_idempotency_key(
+                    tenant_id=tenant_id,
+                    source="chat",
+                    action_type="integration_control_command",
+                    grow_cycle_id=grow.id,
+                    conversation_id=None,
+                    dedupe_token=f"{cfg.id}:control:pending:{datetime.now(UTC).isoformat()}",
+                ),
+                grow_cycle_id=grow.id,
+                risk_level=policy_decision.risk_level,
+                requires_approval=True,
+                auto_approved=False,
+                summary=command,
+                metadata_json={
+                    "integration_id": str(cfg.id),
+                    "integration_name": cfg.name,
+                    "integration_type": cfg.type,
+                    "operation": "outbound_control",
+                    "command": command,
+                    "policy": policy_payload,
+                },
+                evidence_json={
+                    "integration_id": str(cfg.id),
+                    "integration_type": cfg.type,
+                    "operation": "outbound_control",
+                    "command": command,
+                },
+            )
+            await ai_service.transition_agent_action(
+                session,
+                action,
+                next_status=ai_service.AGENT_ACTION_STATUS_PENDING_APPROVAL,
+            )
+            await ai_service.create_agent_action_approval(
+                session,
+                tenant_id=tenant_id,
+                action_id=action.id,
+                requested_by_user_id=None,
+                reason=approval_reason,
+            )
+            return {
+                "status": "pending_approval",
+                "phase": "pending_approval",
+                "action_id": str(action.id),
+                "result": {
+                    "message": "Command queued for approval",
+                },
+                "policy": {**policy_payload, "reason": approval_reason},
             }
 
         else:

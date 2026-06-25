@@ -107,6 +107,8 @@ def _resolve_integration_policy_for_tool_call(
         return None
 
     operation = tool_name.removeprefix("integration_")
+    if operation == "control_command":
+        operation = "outbound_control"
     return evaluate_integration_action_policy(
         integration_type=integration_type,
         operation=operation,
@@ -153,7 +155,7 @@ def _resolve_action_event_phase(tool_result: Any) -> str:
     """Resolve websocket lifecycle phase from tool output for additive protocol upgrades."""
     if isinstance(tool_result, dict):
         phase = tool_result.get("phase")
-        if phase in {"blocked", "failed", "completed"}:
+        if phase in {"pending_approval", "blocked", "failed", "completed"}:
             return str(phase)
     return "completed"
 
@@ -465,7 +467,11 @@ async def websocket_chat(ws: WebSocket):
                             event_message = (
                                 f"Tool blocked by policy: {fn_name.replace('_', ' ')}"
                                 if event_phase == "blocked"
-                                else f"Tool completed: {fn_name.replace('_', ' ')}"
+                                else (
+                                    f"Tool queued for approval: {fn_name.replace('_', ' ')}"
+                                    if event_phase == "pending_approval"
+                                    else f"Tool completed: {fn_name.replace('_', ' ')}"
+                                )
                             )
                             await ws.send_json(
                                 _build_chat_action_event(

@@ -90,6 +90,9 @@ class TestAiWebsocketEventHelpers:
     def test_resolve_action_event_phase_reads_blocked_from_tool_result(self):
         assert _resolve_action_event_phase({"phase": "blocked"}) == "blocked"
 
+    def test_resolve_action_event_phase_reads_pending_approval_from_tool_result(self):
+        assert _resolve_action_event_phase({"phase": "pending_approval"}) == "pending_approval"
+
     def test_resolve_action_event_phase_defaults_to_completed(self):
         assert _resolve_action_event_phase({"status": "ok"}) == "completed"
 
@@ -135,6 +138,16 @@ class TestAiWebsocketEventHelpers:
         )
 
         assert decision is None
+
+    def test_resolve_integration_policy_for_control_command_maps_to_outbound_control(self):
+        decision = _resolve_integration_policy_for_tool_call(
+            tool_name="integration_control_command",
+            tool_arguments={"integration_type": "pulse"},
+        )
+
+        assert decision is not None
+        assert decision.operation == "outbound_control"
+        assert decision.risk_level == "high"
 
     def test_resolve_action_event_ids_prefers_result_then_args_then_correlation(self):
         action_id, correlation_id = _resolve_action_event_ids(
