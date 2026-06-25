@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
+from uuid import UUID
 
 import pytest
 
+from app.ai.models import AgentAction
 from app.ai.tools import CHAT_TOOLS, execute_tool
 from app.integrations.service import WebhookSyncResult
 
@@ -85,7 +87,17 @@ class TestExecuteToolIntegrationSync:
             grow_id=grow.id,
         )
 
-        assert out == "Blocked by integration policy: Unsupported integration connector: tuya"
+        assert isinstance(out, dict)
+        assert out["status"] == "blocked"
+        assert out["phase"] == "blocked"
+        assert out["error"] == "Unsupported integration connector: tuya"
+        assert out["policy"]["integration_type"] == "tuya"
+
+        action = await db_session.get(AgentAction, UUID(out["action_id"]))
+        assert action is not None
+        assert action.status == "blocked"
+        assert action.action_type == "integration_trigger_sync"
+        assert action.execution_json["error"] == "Unsupported integration connector: tuya"
 
     @pytest.mark.asyncio(loop_scope="session")
     async def test_integration_trigger_sync_runs_when_allowed(self, db_session, db_tenant):

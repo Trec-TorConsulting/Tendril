@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -183,8 +184,9 @@ async def execute_tool(
     session: AsyncSession,
     tenant_id: UUID,
     grow_id: UUID,
-) -> str:
+) -> str | dict[str, Any]:
     """Execute a tool call and return a human-readable result string."""
+    from app.ai import service as ai_service
     from app.grows.models import (
         Bucket,
         FeedingSchedule,
@@ -206,8 +208,6 @@ async def execute_tool(
             # Auto-record milestone
             if grow.milestones is None:
                 grow.milestones = {}
-            from datetime import datetime
-
             grow.milestones = {**grow.milestones, stage: datetime.now(UTC).isoformat()}
             await session.commit()
             return f"Updated grow stage from '{old}' to '{stage}'."
@@ -334,7 +334,73 @@ async def execute_tool(
             )
             if not policy_decision.allowed:
                 reason = policy_decision.reason or "Blocked by integration action policy"
-                return f"Blocked by integration policy: {reason}"
+                action = await ai_service.create_agent_action(
+                    session,
+                    tenant_id=tenant_id,
+                    source="chat",
+                    action_type="integration_trigger_sync",
+                    title=f"Trigger sync for {cfg.name}",
+                    idempotency_key=ai_service.build_agent_action_idempotency_key(
+                        tenant_id=tenant_id,
+                        source="chat",
+                        action_type="integration_trigger_sync",
+                        grow_cycle_id=grow.id,
+                        conversation_id=None,
+                        dedupe_token=f"{cfg.id}:blocked:{datetime.now(UTC).isoformat()}",
+                    ),
+                    grow_cycle_id=grow.id,
+                    risk_level=policy_decision.risk_level,
+                    requires_approval=policy_decision.requires_approval,
+                    auto_approved=False,
+                    summary=reason,
+                    metadata_json={
+                        "integration_id": str(cfg.id),
+                        "integration_name": cfg.name,
+                        "integration_type": cfg.type,
+                        "operation": "trigger_sync",
+                        "policy": {
+                            "supported": policy_decision.supported,
+                            "allowed": policy_decision.allowed,
+                            "risk_level": policy_decision.risk_level,
+                            "requires_approval": policy_decision.requires_approval,
+                            "requires_simulation": policy_decision.requires_simulation,
+                            "reason": reason,
+                        },
+                    },
+                    evidence_json={
+                        "integration_id": str(cfg.id),
+                        "integration_type": cfg.type,
+                        "operation": "trigger_sync",
+                    },
+                )
+                await ai_service.transition_agent_action(
+                    session,
+                    action,
+                    next_status=ai_service.AGENT_ACTION_STATUS_BLOCKED,
+                    execution_json={
+                        "target": "integration",
+                        "integration_id": str(cfg.id),
+                        "integration_type": cfg.type,
+                        "operation": "trigger_sync",
+                        "error": reason,
+                    },
+                )
+                return {
+                    "status": "blocked",
+                    "phase": "blocked",
+                    "action_id": str(action.id),
+                    "error": reason,
+                    "policy": {
+                        "integration_type": cfg.type,
+                        "operation": "trigger_sync",
+                        "supported": policy_decision.supported,
+                        "allowed": policy_decision.allowed,
+                        "risk_level": policy_decision.risk_level,
+                        "requires_approval": policy_decision.requires_approval,
+                        "requires_simulation": policy_decision.requires_simulation,
+                        "reason": reason,
+                    },
+                }
 
             result = await integration_service.trigger_sync(session, cfg=cfg)
             if result.error_message:
