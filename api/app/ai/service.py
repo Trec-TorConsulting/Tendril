@@ -600,6 +600,14 @@ def build_agent_action_proposal(action: AgentAction) -> dict[str, object]:
     }
     if evidence_json.get("issue_count") is not None:
         evidence["issue_count"] = evidence_json["issue_count"]
+    if evidence_json.get("integration_id") is not None:
+        evidence["integration_id"] = evidence_json["integration_id"]
+    if evidence_json.get("integration_type") is not None:
+        evidence["integration_type"] = evidence_json["integration_type"]
+    if evidence_json.get("operation") is not None:
+        evidence["operation"] = evidence_json["operation"]
+    if evidence_json.get("command") is not None:
+        evidence["command"] = evidence_json["command"]
 
     context: dict[str, object] = {}
     if metadata.get("phase") is not None:
@@ -612,6 +620,22 @@ def build_agent_action_proposal(action: AgentAction) -> dict[str, object]:
         context["issues"] = metadata["issues"]
     if metadata.get("safe_action") is not None:
         context["safe_action"] = metadata["safe_action"]
+    if metadata.get("integration_id") is not None:
+        context["integration_id"] = metadata["integration_id"]
+    if metadata.get("integration_name") is not None:
+        context["integration_name"] = metadata["integration_name"]
+    if metadata.get("integration_type") is not None:
+        context["integration_type"] = metadata["integration_type"]
+    if metadata.get("operation") is not None:
+        context["operation"] = metadata["operation"]
+    if metadata.get("command") is not None:
+        context["command"] = metadata["command"]
+    policy = metadata.get("policy")
+    if isinstance(policy, dict):
+        if policy.get("risk_level") is not None:
+            context["policy_risk_level"] = policy["risk_level"]
+        if policy.get("requires_simulation") is not None:
+            context["requires_simulation"] = policy["requires_simulation"]
 
     return {
         "headline": action.title,
