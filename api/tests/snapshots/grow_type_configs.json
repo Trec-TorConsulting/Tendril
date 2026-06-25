@@ -48136,6 +48136,18 @@
             "min": 300,
             "target": 400
           },
+          "orp_mv_variants": {
+            "live_beneficial": {
+              "max": 250,
+              "min": 150,
+              "target": 200
+            },
+            "sterilized": {
+              "max": 500,
+              "min": 300,
+              "target": 400
+            }
+          },
           "ph": {
             "max": 6.0,
             "min": 5.8,
@@ -48347,6 +48359,18 @@
             "max": 500,
             "min": 300,
             "target": 400
+          },
+          "orp_mv_variants": {
+            "live_beneficial": {
+              "max": 250,
+              "min": 150,
+              "target": 200
+            },
+            "sterilized": {
+              "max": 500,
+              "min": 300,
+              "target": 400
+            }
           },
           "ph": {
             "max": 6.0,
@@ -48570,6 +48594,18 @@
             "max": 500,
             "min": 300,
             "target": 400
+          },
+          "orp_mv_variants": {
+            "live_beneficial": {
+              "max": 250,
+              "min": 150,
+              "target": 200
+            },
+            "sterilized": {
+              "max": 500,
+              "min": 300,
+              "target": 400
+            }
           },
           "ph": {
             "max": 6.2,
@@ -48810,6 +48846,18 @@
             "min": 300,
             "target": 400
           },
+          "orp_mv_variants": {
+            "live_beneficial": {
+              "max": 250,
+              "min": 150,
+              "target": 200
+            },
+            "sterilized": {
+              "max": 500,
+              "min": 300,
+              "target": 400
+            }
+          },
           "ph": {
             "max": 6.2,
             "min": 5.5,
@@ -49033,6 +49081,18 @@
             "max": 500,
             "min": 300,
             "target": 400
+          },
+          "orp_mv_variants": {
+            "live_beneficial": {
+              "max": 250,
+              "min": 150,
+              "target": 200
+            },
+            "sterilized": {
+              "max": 500,
+              "min": 300,
+              "target": 400
+            }
           },
           "ph": {
             "max": 6.2,
@@ -49267,6 +49327,18 @@
             "min": 300,
             "target": 400
           },
+          "orp_mv_variants": {
+            "live_beneficial": {
+              "max": 250,
+              "min": 150,
+              "target": 200
+            },
+            "sterilized": {
+              "max": 500,
+              "min": 300,
+              "target": 400
+            }
+          },
           "ph": {
             "max": 6.2,
             "min": 5.8,
@@ -49488,6 +49560,18 @@
             "min": 300,
             "target": 400
           },
+          "orp_mv_variants": {
+            "live_beneficial": {
+              "max": 250,
+              "min": 150,
+              "target": 200
+            },
+            "sterilized": {
+              "max": 500,
+              "min": 300,
+              "target": 400
+            }
+          },
           "ph": {
             "max": 6.2,
             "min": 5.8,
@@ -49699,6 +49783,18 @@
             "min": 300,
             "target": 400
           },
+          "orp_mv_variants": {
+            "live_beneficial": {
+              "max": 250,
+              "min": 150,
+              "target": 200
+            },
+            "sterilized": {
+              "max": 500,
+              "min": 300,
+              "target": 400
+            }
+          },
           "ph": {
             "max": 6.2,
             "min": 5.8,
@@ -49878,6 +49974,18 @@
             "max": 500,
             "min": 300,
             "target": 400
+          },
+          "orp_mv_variants": {
+            "live_beneficial": {
+              "max": 250,
+              "min": 150,
+              "target": 200
+            },
+            "sterilized": {
+              "max": 500,
+              "min": 300,
+              "target": 400
+            }
           },
           "ph": {
             "max": 6.2,

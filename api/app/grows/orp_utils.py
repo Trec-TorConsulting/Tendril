@@ -11,13 +11,13 @@ ORP_DEFAULTS = {
         "min": 150,
         "max": 250,
         "target": 200,
-        "description": "Live system with beneficial bacteria (Hydroguard, mycorrhizae, etc.). Lower ORP favors beneficial microbes.",
+        "description": "Live system (Hydroguard). Lower ORP favors beneficial microbes.",
     },
     "sterilized": {
         "min": 300,
         "max": 450,
         "target": 375,
-        "description": "Sterilized system with H2O2 or other oxidizing agents. Higher ORP kills pathogens.",
+        "description": "Sterilized system (H2O2). Higher ORP kills pathogens.",
     },
 }
 
