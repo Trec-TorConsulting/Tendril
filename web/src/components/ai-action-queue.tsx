@@ -113,6 +113,11 @@ function readProposalString(record: Record<string, unknown> | null | undefined, 
   return typeof value === "string" && value.trim() ? value : null;
 }
 
+function readProposalBoolean(record: Record<string, unknown> | null | undefined, key: string) {
+  const value = record?.[key];
+  return typeof value === "boolean" ? value : false;
+}
+
 function buildIntegrationSummary(action: AgentActionResponse) {
   const context = action.proposal.context;
   const integrationName = readProposalString(context, "integration_name");
@@ -307,6 +312,7 @@ export function AiActionQueue({
                 {pendingActions.map((action) => {
                   const issues = formatContextIssues(action);
                   const integrationSummary = buildIntegrationSummary(action);
+                  const requiresSimulation = readProposalBoolean(action.proposal.context, "requires_simulation");
                   const isBusy = decisionActionId === action.id;
 
                   return (
@@ -338,6 +344,11 @@ export function AiActionQueue({
                           <div className="rounded-lg bg-background/80 px-3 py-2 text-xs text-muted-foreground">
                             <p className="font-medium text-foreground">Integration command</p>
                             <p className="mt-1">{integrationSummary.join(" • ")}</p>
+                            {requiresSimulation ? (
+                              <p className="mt-1 text-amber-700 dark:text-amber-300">
+                                Simulation support is required before this command can be approved.
+                              </p>
+                            ) : null}
                           </div>
                         ) : null}
 
@@ -356,7 +367,12 @@ export function AiActionQueue({
                         </div>
 
                         <div className="flex gap-2">
-                          <Button size="sm" className="flex-1" disabled={isBusy} onClick={() => openDecisionDialog(action.id, "approve")}>
+                          <Button
+                            size="sm"
+                            className="flex-1"
+                            disabled={isBusy || requiresSimulation}
+                            onClick={() => openDecisionDialog(action.id, "approve")}
+                          >
                             {isBusy ? <Loader2 className="size-3.5 animate-spin" /> : <ShieldCheck className="size-3.5" />}
                             Approve
                           </Button>
