@@ -432,6 +432,100 @@ def split_health_check_actions_by_safety(actions: list[str]) -> tuple[list[str],
     return safe_actions, approval_actions
 
 
+def build_agent_action_lifecycle_steps(action: AgentAction) -> list[dict[str, object]]:
+    """Build a UI-oriented lifecycle plan for one agent action."""
+
+    def approval_step_status() -> str:
+        if not action.requires_approval:
+            return "skipped"
+        if action.status == AGENT_ACTION_STATUS_PENDING_APPROVAL:
+            return "current"
+        if action.status in {
+            AGENT_ACTION_STATUS_APPROVED,
+            AGENT_ACTION_STATUS_EXECUTING,
+            AGENT_ACTION_STATUS_COMPLETED,
+            AGENT_ACTION_STATUS_VERIFIED,
+            AGENT_ACTION_STATUS_FAILED,
+            AGENT_ACTION_STATUS_BLOCKED,
+        }:
+            return "completed"
+        if action.status in {
+            AGENT_ACTION_STATUS_REJECTED,
+            AGENT_ACTION_STATUS_EXPIRED,
+            AGENT_ACTION_STATUS_CANCELLED,
+        }:
+            return "blocked"
+        return "pending"
+
+    def execution_step_status() -> str:
+        if action.status == AGENT_ACTION_STATUS_EXECUTING:
+            return "current"
+        if action.status in {
+            AGENT_ACTION_STATUS_COMPLETED,
+            AGENT_ACTION_STATUS_VERIFIED,
+        }:
+            return "completed"
+        if action.status == AGENT_ACTION_STATUS_FAILED:
+            return "failed"
+        if action.status in {
+            AGENT_ACTION_STATUS_BLOCKED,
+            AGENT_ACTION_STATUS_REJECTED,
+            AGENT_ACTION_STATUS_EXPIRED,
+            AGENT_ACTION_STATUS_CANCELLED,
+        }:
+            return "blocked"
+        return "pending"
+
+    def verification_step_status() -> str:
+        if action.status == AGENT_ACTION_STATUS_VERIFIED:
+            return "completed"
+        if action.status == AGENT_ACTION_STATUS_COMPLETED:
+            return "current"
+        if action.status in {
+            AGENT_ACTION_STATUS_FAILED,
+            AGENT_ACTION_STATUS_BLOCKED,
+            AGENT_ACTION_STATUS_REJECTED,
+            AGENT_ACTION_STATUS_EXPIRED,
+            AGENT_ACTION_STATUS_CANCELLED,
+        }:
+            return "blocked"
+        return "pending"
+
+    return [
+        {
+            "key": "observe",
+            "label": "Observe",
+            "status": "completed",
+            "description": "Collect grow signals and evidence for this recommendation.",
+        },
+        {
+            "key": "plan",
+            "label": "Plan",
+            "status": "completed",
+            "description": "Convert the recommendation into a lifecycle-tracked action proposal.",
+        },
+        {
+            "key": "approve",
+            "label": "Approve",
+            "status": approval_step_status(),
+            "description": "Wait for an authorized approver when the action is not in the safe auto-approve set.",
+            "required": action.requires_approval,
+        },
+        {
+            "key": "execute",
+            "label": "Execute",
+            "status": execution_step_status(),
+            "description": "Run the approved action and capture execution evidence.",
+        },
+        {
+            "key": "verify",
+            "label": "Verify",
+            "status": verification_step_status(),
+            "description": "Confirm the expected postcondition and store the result.",
+        },
+    ]
+
+
 def list_agent_actions_query(
     *,
     tenant_id: UUID,
@@ -439,7 +533,12 @@ def list_agent_actions_query(
     status: str | None = None,
 ) -> Select:
     """Build the listing query for tenant-scoped AI agent actions."""
-    query = select(AgentAction).where(AgentAction.tenant_id == tenant_id).order_by(desc(AgentAction.created_at))
+    query = (
+        select(AgentAction)
+        .options(selectinload(AgentAction.approvals))
+        .where(AgentAction.tenant_id == tenant_id)
+        .order_by(desc(AgentAction.created_at))
+    )
     if grow_cycle_id is not None:
         query = query.where(AgentAction.grow_cycle_id == grow_cycle_id)
     if status is not None:
@@ -481,6 +580,55 @@ def get_pending_approval(action: AgentAction) -> AgentActionApproval | None:
         if approval.status == AGENT_APPROVAL_STATUS_PENDING:
             return approval
     return None
+
+
+def get_latest_approval(action: AgentAction) -> AgentActionApproval | None:
+    """Return the latest approval row for an action, if present."""
+    if not action.approvals:
+        return None
+    return action.approvals[-1]
+
+
+def build_agent_action_proposal(action: AgentAction) -> dict[str, object]:
+    """Build a normalized proposal payload for UI consumers."""
+    metadata = action.metadata_json or {}
+    evidence_json = action.evidence_json or {}
+    approval = get_pending_approval(action) or get_latest_approval(action)
+
+    evidence: dict[str, object] = {
+        "recommended_action": evidence_json.get("recommended_action") or action.summary or action.title,
+    }
+    if evidence_json.get("issue_count") is not None:
+        evidence["issue_count"] = evidence_json["issue_count"]
+
+    context: dict[str, object] = {}
+    if metadata.get("phase") is not None:
+        context["phase"] = metadata["phase"]
+    if metadata.get("health_eval_id") is not None:
+        context["health_eval_id"] = metadata["health_eval_id"]
+    if metadata.get("health_score") is not None:
+        context["health_score"] = metadata["health_score"]
+    if metadata.get("issues") is not None:
+        context["issues"] = metadata["issues"]
+    if metadata.get("safe_action") is not None:
+        context["safe_action"] = metadata["safe_action"]
+
+    return {
+        "headline": action.title,
+        "summary": action.summary,
+        "confidence": metadata.get("planner_confidence"),
+        "phase": metadata.get("phase"),
+        "surface": "ai_side_panel",
+        "steps": build_agent_action_lifecycle_steps(action),
+        "evidence": evidence,
+        "context": context or None,
+        "approval": {
+            "required": action.requires_approval,
+            "status": approval.status if approval is not None else "not_required",
+            "reason": approval.reason if approval is not None else None,
+            "expires_at": approval.expires_at.isoformat() if approval and approval.expires_at else None,
+        },
+    }
 
 
 async def approve_agent_action(
@@ -660,6 +808,8 @@ __all__ = [
     "InvalidAgentApprovalTransitionError",
     "approve_agent_action",
     "build_agent_action_idempotency_key",
+    "build_agent_action_lifecycle_steps",
+    "build_agent_action_proposal",
     "can_transition_agent_action",
     "classify_health_check_action",
     "create_agent_action",
@@ -670,6 +820,7 @@ __all__ = [
     "get_agent_action_with_approvals",
     "get_conversation",
     "get_conversation_with_messages",
+    "get_latest_approval",
     "get_pending_approval",
     "list_agent_actions_query",
     "list_user_conversations_query",

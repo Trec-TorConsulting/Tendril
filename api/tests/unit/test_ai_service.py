@@ -31,6 +31,8 @@ from app.ai.service import (
     InvalidAgentActionTransitionError,
     InvalidAgentApprovalTransitionError,
     build_agent_action_idempotency_key,
+    build_agent_action_lifecycle_steps,
+    build_agent_action_proposal,
     build_diagnosis_prompt,
     build_photo_url_base,
     can_transition_agent_action,
@@ -43,6 +45,7 @@ from app.ai.service import (
     get_conversation,
     get_conversation_with_messages,
     get_health_eval,
+    get_latest_approval,
     get_treatment,
     list_health_evals_query,
     list_treatments_query,
@@ -688,6 +691,107 @@ class TestAiServiceQueries:
         q = search_treatments_query(query_text="Yellow")
         params = q.compile().params
         assert "%yellow%" in params.values()
+
+    def test_build_agent_action_lifecycle_steps_for_pending_approval(self):
+        action = AgentAction(
+            tenant_id=uuid4(),
+            source="health_check",
+            action_type="control_equipment",
+            title="Turn on exhaust fan now",
+            status=AGENT_ACTION_STATUS_PENDING_APPROVAL,
+            risk_level="high",
+            idempotency_key="k" * 64,
+            requires_approval=True,
+        )
+
+        steps = build_agent_action_lifecycle_steps(action)
+
+        assert [step["key"] for step in steps] == ["observe", "plan", "approve", "execute", "verify"]
+        assert steps[2]["status"] == "current"
+        assert steps[3]["status"] == "pending"
+        assert steps[4]["status"] == "pending"
+
+    def test_build_agent_action_proposal_uses_pending_approval_and_health_context(self):
+        requester = uuid4()
+        action = AgentAction(
+            tenant_id=uuid4(),
+            source="health_check",
+            action_type="control_equipment",
+            title="Turn on exhaust fan now",
+            status=AGENT_ACTION_STATUS_PENDING_APPROVAL,
+            risk_level="high",
+            idempotency_key="k" * 64,
+            requires_approval=True,
+            auto_approved=False,
+            summary="Turn on exhaust fan now",
+            metadata_json={
+                "phase": "health_check",
+                "health_eval_id": "eval-123",
+                "health_score": 70,
+                "issues": ["High humidity"],
+                "safe_action": False,
+            },
+            evidence_json={
+                "recommended_action": "Turn on exhaust fan now",
+                "issue_count": 1,
+            },
+        )
+        pending = AgentActionApproval(
+            tenant_id=action.tenant_id,
+            action_id=uuid4(),
+            requested_by_user_id=requester,
+            status=AGENT_APPROVAL_STATUS_PENDING,
+            reason="Needs approval before sending a control command",
+        )
+        action.approvals = [pending]
+
+        proposal = build_agent_action_proposal(action)
+
+        assert proposal["headline"] == "Turn on exhaust fan now"
+        assert proposal["surface"] == "ai_side_panel"
+        assert proposal["context"] == {
+            "phase": "health_check",
+            "health_eval_id": "eval-123",
+            "health_score": 70,
+            "issues": ["High humidity"],
+            "safe_action": False,
+        }
+        assert proposal["evidence"] == {
+            "recommended_action": "Turn on exhaust fan now",
+            "issue_count": 1,
+        }
+        assert proposal["approval"] == {
+            "required": True,
+            "status": AGENT_APPROVAL_STATUS_PENDING,
+            "reason": "Needs approval before sending a control command",
+            "expires_at": None,
+        }
+        assert proposal["steps"][2]["status"] == "current"
+
+    def test_get_latest_approval_returns_last_row(self):
+        action = AgentAction(
+            tenant_id=uuid4(),
+            source="health_check",
+            action_type="control_equipment",
+            title="Turn on exhaust fan now",
+            status=AGENT_ACTION_STATUS_APPROVED,
+            risk_level="high",
+            idempotency_key="k" * 64,
+            requires_approval=True,
+        )
+        first = AgentActionApproval(
+            tenant_id=action.tenant_id,
+            action_id=uuid4(),
+            status=AGENT_APPROVAL_STATUS_PENDING,
+        )
+        second = AgentActionApproval(
+            tenant_id=action.tenant_id,
+            action_id=uuid4(),
+            status=AGENT_APPROVAL_STATUS_APPROVED,
+        )
+        action.approvals = [first, second]
+
+        assert get_latest_approval(action) is second
 
 
 class TestAiServicePhotoUrls:
