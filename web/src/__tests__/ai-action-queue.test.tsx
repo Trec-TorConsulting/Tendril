@@ -118,6 +118,10 @@ describe("AiActionQueue", () => {
         actions={[
           buildAction({
             id: "action-2",
+            execution_json: {
+              target: "task",
+              tasks_created: 1,
+            },
             pending_approval: null,
             proposal: {
               ...baseProposal,
@@ -132,6 +136,13 @@ describe("AiActionQueue", () => {
                 issue_count: 1,
               },
               headline: "Adjust pH down",
+              steps: [
+                { key: "observe", label: "Observe", status: "completed", description: "Observed" },
+                { key: "plan", label: "Plan", status: "completed", description: "Planned" },
+                { key: "approve", label: "Approve", status: "completed", description: "Auto-approved" },
+                { key: "execute", label: "Execute", status: "completed", description: "Executed" },
+                { key: "verify", label: "Verify", status: "completed", description: "Verified" },
+              ],
               summary: "Create a task to nudge pH back into range.",
             },
             requires_approval: false,
@@ -141,6 +152,9 @@ describe("AiActionQueue", () => {
             status: "verified",
             title: "Adjust pH down",
             summary: "Create a task to nudge pH back into range.",
+            verification_json: {
+              result: "task_created",
+            },
           }),
         ]}
         growName="Veg Tent"
@@ -157,5 +171,10 @@ describe("AiActionQueue", () => {
     expect(screen.getByText("Recent activity")).toBeInTheDocument();
     expect(screen.getByText("Adjust pH down")).toBeInTheDocument();
     expect(screen.getByText("Verified")).toBeInTheDocument();
+    expect(screen.getByText("Execution target:")).toBeInTheDocument();
+    expect(screen.getByText("task")).toBeInTheDocument();
+    expect(screen.getByText("Verification:")).toBeInTheDocument();
+    expect(screen.getByText("task created")).toBeInTheDocument();
+    expect(screen.getByText(/Last update /)).toBeInTheDocument();
   });
 });

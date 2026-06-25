@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
+import { cn, formatShortDateTime } from "@/lib/utils";
 
 interface AiActionQueueProps {
   actions: AgentActionResponse[];
@@ -74,6 +74,55 @@ function formatContextIssues(action: AgentActionResponse) {
 function formatEvidence(action: AgentActionResponse) {
   const recommended = action.proposal.evidence?.recommended_action;
   return typeof recommended === "string" && recommended.trim() ? recommended : action.title;
+}
+
+function readRecordString(record: Record<string, unknown> | null | undefined, key: string) {
+  const value = record?.[key];
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function formatLifecycleValue(value: string) {
+  return value.replace(/_/g, " ");
+}
+
+function buildRecentActivityDetails(action: AgentActionResponse) {
+  const details: Array<{ label: string; value: string }> = [];
+  const approvalReason = action.pending_approval?.reason || action.proposal.approval?.reason || null;
+  const executionTarget = readRecordString(action.execution_json, "target");
+  const executionError = readRecordString(action.execution_json, "error");
+  const verificationResult =
+    readRecordString(action.verification_json, "result") ||
+    readRecordString(action.verification_json, "status") ||
+    readRecordString(action.verification_json, "message");
+
+  if ((action.status === "pending_approval" || action.status === "blocked") && approvalReason) {
+    details.push({
+      label: action.status === "blocked" ? "Blocked by" : "Approval gate",
+      value: approvalReason,
+    });
+  }
+
+  if (action.status === "rejected" && approvalReason) {
+    details.push({ label: "Rejected because", value: approvalReason });
+  }
+
+  if (executionError) {
+    details.push({ label: "Execution issue", value: executionError });
+  } else if (executionTarget) {
+    details.push({ label: "Execution target", value: formatLifecycleValue(executionTarget) });
+  }
+
+  if (verificationResult) {
+    details.push({ label: "Verification", value: formatLifecycleValue(verificationResult) });
+  } else if (action.status === "verified") {
+    details.push({ label: "Verification", value: "Outcome confirmed" });
+  }
+
+  if (details.length === 0 && action.summary) {
+    details.push({ label: "Summary", value: action.summary });
+  }
+
+  return details.slice(0, 3);
 }
 
 export function AiActionQueue({
@@ -259,13 +308,44 @@ export function AiActionQueue({
                 {recentActions.map((action) => (
                   <div
                     key={`recent-${action.id}`}
-                    className="rounded-xl border border-border/70 bg-background/80 px-3 py-2"
+                    className="rounded-xl border border-border/70 bg-background/80 px-3 py-3"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-xs font-medium text-foreground">{action.proposal.headline}</p>
                       <Badge variant={statusVariant(action.status)}>{statusLabel(action.status)}</Badge>
                     </div>
                     <p className="mt-1 text-[11px] text-muted-foreground">{action.proposal.summary || formatEvidence(action)}</p>
+
+                    <div className="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+                      <Badge variant="outline">{action.action_type.replace(/_/g, " ")}</Badge>
+                      <Badge variant={action.risk_level === "high" ? "destructive" : "outline"}>{action.risk_level} risk</Badge>
+                      <span className="rounded-full border border-border bg-muted/40 px-2 py-1 text-[10px] text-muted-foreground">
+                        Last update {formatShortDateTime(action.updated_at)}
+                      </span>
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {action.proposal.steps.map((step) => (
+                        <span
+                          key={`recent-${action.id}-${step.key}`}
+                          className={cn(
+                            "rounded-full border px-2 py-1 text-[10px] font-medium",
+                            STEP_STATUS_STYLES[step.status] ?? STEP_STATUS_STYLES.pending,
+                          )}
+                        >
+                          {step.label}
+                        </span>
+                      ))}
+                    </div>
+
+                    <div className="mt-2 space-y-1.5">
+                      {buildRecentActivityDetails(action).map((detail) => (
+                        <div key={`${action.id}-${detail.label}`} className="flex flex-wrap items-start gap-1.5 text-[11px]">
+                          <span className="font-medium text-foreground">{detail.label}:</span>
+                          <span className="text-muted-foreground">{detail.value}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>
