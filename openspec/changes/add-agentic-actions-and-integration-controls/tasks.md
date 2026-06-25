@@ -9,8 +9,8 @@
 - [x] 1.8 Add web chat UI support for pending approvals, action timeline, and execution status in the existing AI side panel.
 - [x] 1.9 Add integration control policy models and enforcement checks for outbound operations across Pulse, OpenWeather, and Ecowitt (extensible to all connectors).
 - [x] 1.10 Add dry-run/simulation requirement for high-risk operations (outbound device control commands).
-- [ ] 1.11 Implement safe auto-approval path for create task, create journal entry, and checklist generation only.
-- [ ] 1.12 Add notification fanout for approval and lifecycle events: in-app, web push, email.
+- [x] 1.11 Implement safe auto-approval path for create task, create journal entry, and checklist generation only.
+- [x] 1.12 Add notification fanout for approval and lifecycle events: in-app, web push, email.
 
 ## 2. Testing
 - [x] 2.1 Add unit tests for lifecycle state transitions and invalid transitions.

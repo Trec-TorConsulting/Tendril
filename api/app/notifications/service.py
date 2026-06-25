@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Sequence
 from uuid import UUID
 
 import httpx
@@ -18,6 +19,40 @@ from app.notifications.models import (
 )
 
 logger = logging.getLogger("tendril.notifications")
+
+
+def _record_notification_log(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    channel_type: str,
+    severity: str,
+    subject: str,
+    body: str,
+    status: str,
+    event_type: str,
+    error: str | None = None,
+) -> None:
+    session.add(
+        NotificationLog(
+            tenant_id=tenant_id,
+            channel_type=channel_type,
+            event_type=event_type,
+            severity=severity,
+            subject=subject,
+            body=body,
+            status=status,
+            error=error,
+        )
+    )
+
+
+def _in_app_delivery_status(
+    *,
+    eligible_channels: Sequence[NotificationChannel],
+    push_subscriptions: Sequence[PushSubscription],
+) -> str:
+    return "sent" if eligible_channels or push_subscriptions else "skipped"
 
 
 async def dispatch_alert(
@@ -50,6 +85,21 @@ async def dispatch_alert(
         severity=severity,
         event_type=event_type,
     )
+    push_subscriptions = await _list_push_subscriptions(session, tenant_id=tenant_id)
+
+    _record_notification_log(
+        session,
+        tenant_id=tenant_id,
+        channel_type="in_app",
+        severity=severity,
+        subject=subject,
+        body=body,
+        status=_in_app_delivery_status(
+            eligible_channels=eligible_channels,
+            push_subscriptions=push_subscriptions,
+        ),
+        event_type=event_type,
+    )
 
     for channel in eligible_channels:
         try:
@@ -62,32 +112,32 @@ async def dispatch_alert(
             elif channel.channel_type == "sms":
                 await _send_sms(channel.config, severity, subject, body)
 
-            session.add(
-                NotificationLog(
-                    tenant_id=tenant_id,
-                    channel_type=channel.channel_type,
-                    severity=severity,
-                    subject=subject,
-                    body=body,
-                    status="sent",
-                )
+            _record_notification_log(
+                session,
+                tenant_id=tenant_id,
+                channel_type=channel.channel_type,
+                severity=severity,
+                subject=subject,
+                body=body,
+                status="sent",
+                event_type=event_type,
             )
         except Exception as e:
             logger.exception("Failed to send %s notification for tenant %s", channel.channel_type, tenant_id)
-            session.add(
-                NotificationLog(
-                    tenant_id=tenant_id,
-                    channel_type=channel.channel_type,
-                    severity=severity,
-                    subject=subject,
-                    body=body,
-                    status="failed",
-                    error=str(e),
-                )
+            _record_notification_log(
+                session,
+                tenant_id=tenant_id,
+                channel_type=channel.channel_type,
+                severity=severity,
+                subject=subject,
+                body=body,
+                status="failed",
+                event_type=event_type,
+                error=str(e),
             )
 
     # Send Web Push to all subscribed users
-    await _send_web_push(session, tenant_id, severity, subject, body)
+    await _send_web_push(session, push_subscriptions, severity, subject, body)
 
     await session.commit()
 
@@ -237,7 +287,7 @@ async def _send_sms(config: dict, severity: str, subject: str, body: str) -> Non
 
 async def _send_web_push(
     session: AsyncSession,
-    tenant_id: UUID,
+    subscriptions: Sequence[PushSubscription],
     severity: str,
     subject: str,
     body: str,
@@ -253,10 +303,6 @@ async def _send_web_push(
     if not vapid_private:
         return
 
-    subs = (
-        (await session.execute(select(PushSubscription).where(PushSubscription.tenant_id == tenant_id))).scalars().all()
-    )
-
     payload = json.dumps(
         {
             "title": f"[{severity.upper()}] {subject}",
@@ -266,7 +312,7 @@ async def _send_web_push(
         }
     )
 
-    for sub in subs:
+    for sub in subscriptions:
         try:
             webpush(
                 subscription_info={
@@ -281,3 +327,13 @@ async def _send_web_push(
             logger.warning("Web push failed for subscription %s: %s", sub.id, e)
             if "410" in str(e) or "404" in str(e):
                 await session.delete(sub)
+
+
+async def _list_push_subscriptions(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+) -> list[PushSubscription]:
+    return (
+        (await session.execute(select(PushSubscription).where(PushSubscription.tenant_id == tenant_id))).scalars().all()
+    )

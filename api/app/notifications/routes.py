@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -11,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
-from app.notifications.models import NotificationChannel, NotificationPreference, PushSubscription
+from app.notifications.models import NotificationChannel, NotificationLog, NotificationPreference, PushSubscription
 from app.pagination import PaginatedResponse, PaginationParams, paginate
 
 router = APIRouter()
@@ -69,6 +70,18 @@ class PushSubCreate(BaseModel):
 class PushSubResponse(BaseModel):
     id: str
     endpoint: str
+
+
+class NotificationLogResponse(BaseModel):
+    id: str
+    channel_type: str
+    event_type: str
+    severity: str
+    subject: str
+    body: str | None
+    status: str
+    error: str | None
+    created_at: datetime
 
 
 # ---------- Notification Channels ----------
@@ -388,3 +401,46 @@ async def push_unsubscribe(
     for sub in subs:
         await session.delete(sub)
     await session.commit()
+
+
+# ---------- Notification Log ----------
+
+
+@router.get("/logs", response_model=PaginatedResponse[NotificationLogResponse])
+async def list_notification_logs(
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    pagination: Annotated[PaginationParams, Depends()],
+    event_type: str | None = None,
+    channel_type: str | None = None,
+    status: str | None = None,
+):
+    """List notification log entries for the current tenant."""
+    query = select(NotificationLog).where(NotificationLog.tenant_id == user.tenant_id)
+    if event_type:
+        query = query.where(NotificationLog.event_type == event_type)
+    if channel_type:
+        query = query.where(NotificationLog.channel_type == channel_type)
+    if status:
+        query = query.where(NotificationLog.status == status)
+
+    items, total = await paginate(session, query.order_by(NotificationLog.created_at.desc()), pagination)
+    return PaginatedResponse(
+        items=[
+            NotificationLogResponse(
+                id=str(item.id),
+                channel_type=item.channel_type,
+                event_type=item.event_type,
+                severity=item.severity,
+                subject=item.subject,
+                body=item.body,
+                status=item.status,
+                error=item.error,
+                created_at=item.created_at,
+            )
+            for item in items
+        ],
+        total=total,
+        page=pagination.page,
+        page_size=pagination.page_size,
+    )

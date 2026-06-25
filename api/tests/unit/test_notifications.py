@@ -156,7 +156,10 @@ class TestNotificationDispatchPreferences:
         send_email.assert_not_awaited()
         send_web_push.assert_awaited_once()
         logs = (await db_session.execute(select(NotificationLog))).scalars().all()
-        assert logs == []
+        assert len(logs) == 1
+        assert logs[0].channel_type == "in_app"
+        assert logs[0].event_type == "ai_action_lifecycle"
+        assert logs[0].status == "skipped"
 
     async def test_dispatch_alert_sends_when_preference_allows_ai_lifecycle_event(self, db_session, tenant):
         channel = NotificationChannel(
@@ -194,6 +197,47 @@ class TestNotificationDispatchPreferences:
 
         send_email.assert_awaited_once()
         send_web_push.assert_awaited_once()
+        logs = (await db_session.execute(select(NotificationLog).order_by(NotificationLog.created_at.asc()))).scalars().all()
+        assert [log.channel_type for log in logs] == ["in_app", "email"]
+        assert all(log.event_type == "ai_action_lifecycle" for log in logs)
+
+
+class TestNotificationLogs:
+    async def test_list_notification_logs_filters_ai_lifecycle_in_app_entries(self, client, db_session, tenant):
+        db_session.add_all(
+            [
+                NotificationLog(
+                    tenant_id=tenant["tenant"].id,
+                    channel_type="in_app",
+                    event_type="ai_action_lifecycle",
+                    severity="warning",
+                    subject="Approval needed",
+                    body="Review a pending action.",
+                    status="sent",
+                ),
+                NotificationLog(
+                    tenant_id=tenant["tenant"].id,
+                    channel_type="email",
+                    event_type="billing",
+                    severity="info",
+                    subject="Invoice ready",
+                    body="A new invoice is available.",
+                    status="sent",
+                ),
+            ]
+        )
+        await db_session.commit()
+
+        resp = await client.get(
+            "/v1/notifications/logs?event_type=ai_action_lifecycle&channel_type=in_app",
+            headers=tenant["headers"],
+        )
+
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["total"] == 1
+        assert payload["items"][0]["subject"] == "Approval needed"
+        assert payload["items"][0]["event_type"] == "ai_action_lifecycle"
 
 
 # ---------- Push Subscriptions ----------

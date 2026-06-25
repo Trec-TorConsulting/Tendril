@@ -180,6 +180,71 @@ describe("AiActionQueue", () => {
     expect(screen.getByText(/Last update /)).toBeInTheDocument();
   });
 
+  it("surfaces checklist-specific recent activity details", () => {
+    const baseProposal = buildAction().proposal;
+
+    render(
+      <AiActionQueue
+        actions={[
+          buildAction({
+            id: "action-3",
+            action_type: "generate_checklist",
+            auto_approved: true,
+            requires_approval: false,
+            risk_level: "low",
+            status: "verified",
+            title: "Generate checklist: Pre-flip prep",
+            summary: "Pre-flip prep (3 items)",
+            pending_approval: null,
+            evidence_json: {
+              checklist_title: "Pre-flip prep",
+              items: ["Inspect trellis anchors", "Top off reservoir", "Document canopy height"],
+            },
+            execution_json: {
+              target: "checklist",
+              task_count: 3,
+            },
+            verification_json: {
+              result: "checklist_created",
+              checklist_title: "Pre-flip prep",
+              task_count: 3,
+            },
+            proposal: {
+              ...baseProposal,
+              approval: {
+                required: false,
+                status: "not_required",
+                reason: null,
+                expires_at: null,
+              },
+              headline: "Generate checklist: Pre-flip prep",
+              summary: "Turn a prep checklist into actionable tasks.",
+              steps: [
+                { key: "observe", label: "Observe", status: "completed", description: "Observed" },
+                { key: "plan", label: "Plan", status: "completed", description: "Planned" },
+                { key: "approve", label: "Approve", status: "completed", description: "Auto-approved" },
+                { key: "execute", label: "Execute", status: "completed", description: "Executed" },
+                { key: "verify", label: "Verify", status: "completed", description: "Verified" },
+              ],
+            },
+          }),
+        ]}
+        liveEvents={[]}
+        growName="Flower Tent"
+        isLoading={false}
+        isRefreshing={false}
+        decisionActionId={null}
+        onApprove={vi.fn()}
+        onReject={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Checklist:")).toBeInTheDocument();
+    expect(screen.getByText("Pre-flip prep • 3 tasks")).toBeInTheDocument();
+    expect(screen.getByText("checklist created")).toBeInTheDocument();
+  });
+
   it("shows live lifecycle websocket updates", () => {
     render(
       <AiActionQueue

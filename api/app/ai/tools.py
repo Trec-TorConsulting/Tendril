@@ -65,6 +65,61 @@ CHAT_TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "create_task",
+            "description": "Create a single follow-up task for the grower. Use for safe reminders, to-dos, or documented next steps that do not control equipment.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "Short task title"},
+                    "description": {"type": "string", "description": "Optional details or checklist notes"},
+                    "priority": {
+                        "type": "string",
+                        "description": "Task priority",
+                        "enum": ["low", "medium", "high", "urgent"],
+                    },
+                    "category": {"type": "string", "description": "Optional task category label"},
+                    "due_date": {
+                        "type": "string",
+                        "description": "Optional ISO-8601 due date/time",
+                    },
+                },
+                "required": ["title"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "generate_checklist",
+            "description": "Create a recommended checklist as multiple safe follow-up tasks. Use for prep lists, maintenance runs, or staged reminders.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "Checklist title or theme"},
+                    "items": {
+                        "type": "array",
+                        "description": "Checklist items to turn into tasks",
+                        "items": {"type": "string"},
+                        "minItems": 1,
+                    },
+                    "priority": {
+                        "type": "string",
+                        "description": "Default priority for created tasks",
+                        "enum": ["low", "medium", "high", "urgent"],
+                    },
+                    "category": {"type": "string", "description": "Optional shared task category label"},
+                    "due_date": {
+                        "type": "string",
+                        "description": "Optional ISO-8601 due date/time for all checklist tasks",
+                    },
+                },
+                "required": ["title", "items"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "create_journal_entry",
             "description": "Add a journal entry or note to the grow log. Use for recording feedings, water changes, training, observations, etc.",
             "parameters": {
@@ -199,6 +254,35 @@ CHAT_TOOLS = [
 ]
 
 
+def _parse_due_date(raw_due_date: Any) -> datetime | None:
+    if not isinstance(raw_due_date, str) or not raw_due_date.strip():
+        return None
+
+    parsed = datetime.fromisoformat(raw_due_date.strip().replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed
+
+
+async def _get_task_owner_id(session: AsyncSession, *, tenant_id: UUID) -> UUID | None:
+    from app.tenants.models import TenantMembership, TenantRole
+
+    return (
+        await session.execute(
+            select(TenantMembership.user_id)
+            .where(TenantMembership.tenant_id == tenant_id, TenantMembership.role == TenantRole.admin)
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
+async def _tenant_supports_tasks(session: AsyncSession, *, tenant_id: UUID) -> bool:
+    from app.tenants.models import Tenant
+
+    tenant = await session.get(Tenant, tenant_id)
+    return tenant is not None and tenant.plan == "commercial"
+
+
 # ── Tool execution ───────────────────────────────────────────────────
 
 
@@ -212,6 +296,7 @@ async def execute_tool(
 ) -> str | dict[str, Any]:
     """Execute a tool call and return a human-readable result string."""
     from app.ai import service as ai_service
+    from app.commercial.models import Task
     from app.grows.models import (
         Bucket,
         FeedingSchedule,
@@ -250,6 +335,319 @@ async def execute_tool(
                 changes.append("notes updated")
             await session.commit()
             return f"Updated grow: {', '.join(changes)}." if changes else "No changes specified."
+
+        elif tool_name == "create_task":
+            title = str(arguments.get("title", "")).strip()
+            if not title:
+                return "Error: title is required."
+
+            description = arguments.get("description")
+            if description is not None and not isinstance(description, str):
+                description = str(description)
+            priority = str(arguments.get("priority") or "medium")
+            category = arguments.get("category")
+            if category is not None and not isinstance(category, str):
+                category = str(category)
+
+            action = await ai_service.create_agent_action(
+                session,
+                tenant_id=tenant_id,
+                source="chat",
+                action_type="create_task",
+                title=f"Create task: {title}"[:255],
+                idempotency_key=ai_service.build_agent_action_idempotency_key(
+                    tenant_id=tenant_id,
+                    source="chat",
+                    action_type="create_task",
+                    grow_cycle_id=grow.id,
+                    conversation_id=None,
+                    dedupe_token=f"{title}:{description}:{datetime.now(UTC).isoformat()}",
+                ),
+                grow_cycle_id=grow.id,
+                risk_level="low",
+                requires_approval=False,
+                auto_approved=True,
+                summary=description or title,
+                metadata_json={
+                    "phase": "chat",
+                    "safe_action": True,
+                    "priority": priority,
+                    "category": category,
+                },
+                evidence_json={
+                    "recommended_action": title,
+                    "description": description,
+                },
+            )
+            await ai_service.transition_agent_action(
+                session,
+                action,
+                next_status=ai_service.AGENT_ACTION_STATUS_APPROVED,
+            )
+            await ai_service.transition_agent_action(
+                session,
+                action,
+                next_status=ai_service.AGENT_ACTION_STATUS_EXECUTING,
+                execution_json={"target": "task"},
+            )
+
+            if not await _tenant_supports_tasks(session, tenant_id=tenant_id):
+                error_text = "Task management requires Commercial plan"
+                await ai_service.transition_agent_action(
+                    session,
+                    action,
+                    next_status=ai_service.AGENT_ACTION_STATUS_FAILED,
+                    execution_json={"target": "task", "error": error_text},
+                )
+                return {
+                    "status": "failed",
+                    "phase": "failed",
+                    "action_id": str(action.id),
+                    "error": error_text,
+                }
+
+            owner_id = await _get_task_owner_id(session, tenant_id=tenant_id)
+            if owner_id is None:
+                error_text = "Error: no tenant admin available to own the task."
+                await ai_service.transition_agent_action(
+                    session,
+                    action,
+                    next_status=ai_service.AGENT_ACTION_STATUS_FAILED,
+                    execution_json={"target": "task", "error": error_text},
+                )
+                return {
+                    "status": "failed",
+                    "phase": "failed",
+                    "action_id": str(action.id),
+                    "error": error_text,
+                }
+
+            try:
+                due_date = _parse_due_date(arguments.get("due_date"))
+            except ValueError:
+                error_text = "Error: due_date must be a valid ISO-8601 datetime."
+                await ai_service.transition_agent_action(
+                    session,
+                    action,
+                    next_status=ai_service.AGENT_ACTION_STATUS_FAILED,
+                    execution_json={"target": "task", "error": error_text},
+                )
+                return {
+                    "status": "failed",
+                    "phase": "failed",
+                    "action_id": str(action.id),
+                    "error": error_text,
+                }
+
+            task = Task(
+                tenant_id=tenant_id,
+                title=title[:500],
+                description=description,
+                priority=priority,
+                category=category,
+                source="ai",
+                created_by=owner_id,
+                grow_cycle_id=grow.id,
+                tent_id=grow.tent_id,
+                due_date=due_date,
+                routine="on_demand",
+            )
+            session.add(task)
+            await session.commit()
+            await session.refresh(task)
+
+            await ai_service.transition_agent_action(
+                session,
+                action,
+                next_status=ai_service.AGENT_ACTION_STATUS_COMPLETED,
+                execution_json={
+                    "target": "task",
+                    "task_id": str(task.id),
+                    "priority": task.priority,
+                },
+            )
+            await ai_service.transition_agent_action(
+                session,
+                action,
+                next_status=ai_service.AGENT_ACTION_STATUS_VERIFIED,
+                verification_json={
+                    "result": "task_created",
+                    "task_id": str(task.id),
+                },
+            )
+            return {
+                "status": "completed",
+                "phase": "completed",
+                "action_id": str(action.id),
+                "result": {
+                    "task_id": str(task.id),
+                    "title": task.title,
+                },
+            }
+
+        elif tool_name == "generate_checklist":
+            checklist_title = str(arguments.get("title", "")).strip()
+            if not checklist_title:
+                return "Error: title is required."
+
+            raw_items = arguments.get("items")
+            if not isinstance(raw_items, list):
+                return "Error: items must be a list of checklist strings."
+            items = [str(item).strip() for item in raw_items if str(item).strip()]
+            if not items:
+                return "Error: at least one checklist item is required."
+
+            priority = str(arguments.get("priority") or "medium")
+            category = arguments.get("category")
+            if category is not None and not isinstance(category, str):
+                category = str(category)
+
+            action = await ai_service.create_agent_action(
+                session,
+                tenant_id=tenant_id,
+                source="chat",
+                action_type="generate_checklist",
+                title=f"Generate checklist: {checklist_title}"[:255],
+                idempotency_key=ai_service.build_agent_action_idempotency_key(
+                    tenant_id=tenant_id,
+                    source="chat",
+                    action_type="generate_checklist",
+                    grow_cycle_id=grow.id,
+                    conversation_id=None,
+                    dedupe_token=f"{checklist_title}:{'|'.join(items)}:{datetime.now(UTC).isoformat()}",
+                ),
+                grow_cycle_id=grow.id,
+                risk_level="low",
+                requires_approval=False,
+                auto_approved=True,
+                summary=f"{checklist_title} ({len(items)} items)",
+                metadata_json={
+                    "phase": "chat",
+                    "safe_action": True,
+                    "priority": priority,
+                    "category": category,
+                    "item_count": len(items),
+                },
+                evidence_json={
+                    "checklist_title": checklist_title,
+                    "items": items,
+                },
+            )
+            await ai_service.transition_agent_action(
+                session,
+                action,
+                next_status=ai_service.AGENT_ACTION_STATUS_APPROVED,
+            )
+            await ai_service.transition_agent_action(
+                session,
+                action,
+                next_status=ai_service.AGENT_ACTION_STATUS_EXECUTING,
+                execution_json={"target": "checklist", "item_count": len(items)},
+            )
+
+            if not await _tenant_supports_tasks(session, tenant_id=tenant_id):
+                error_text = "Task management requires Commercial plan"
+                await ai_service.transition_agent_action(
+                    session,
+                    action,
+                    next_status=ai_service.AGENT_ACTION_STATUS_FAILED,
+                    execution_json={"target": "checklist", "error": error_text},
+                )
+                return {
+                    "status": "failed",
+                    "phase": "failed",
+                    "action_id": str(action.id),
+                    "error": error_text,
+                }
+
+            owner_id = await _get_task_owner_id(session, tenant_id=tenant_id)
+            if owner_id is None:
+                error_text = "Error: no tenant admin available to own checklist tasks."
+                await ai_service.transition_agent_action(
+                    session,
+                    action,
+                    next_status=ai_service.AGENT_ACTION_STATUS_FAILED,
+                    execution_json={"target": "checklist", "error": error_text},
+                )
+                return {
+                    "status": "failed",
+                    "phase": "failed",
+                    "action_id": str(action.id),
+                    "error": error_text,
+                }
+
+            try:
+                due_date = _parse_due_date(arguments.get("due_date"))
+            except ValueError:
+                error_text = "Error: due_date must be a valid ISO-8601 datetime."
+                await ai_service.transition_agent_action(
+                    session,
+                    action,
+                    next_status=ai_service.AGENT_ACTION_STATUS_FAILED,
+                    execution_json={"target": "checklist", "error": error_text},
+                )
+                return {
+                    "status": "failed",
+                    "phase": "failed",
+                    "action_id": str(action.id),
+                    "error": error_text,
+                }
+
+            created_tasks: list[Task] = []
+            for index, item in enumerate(items, start=1):
+                task = Task(
+                    tenant_id=tenant_id,
+                    title=item[:500],
+                    description=f"Checklist: {checklist_title}\n\nItem {index} of {len(items)}",
+                    priority=priority,
+                    category=category,
+                    source="ai",
+                    created_by=owner_id,
+                    grow_cycle_id=grow.id,
+                    tent_id=grow.tent_id,
+                    due_date=due_date,
+                    routine="on_demand",
+                )
+                session.add(task)
+                created_tasks.append(task)
+
+            await session.commit()
+            for task in created_tasks:
+                await session.refresh(task)
+
+            task_ids = [str(task.id) for task in created_tasks]
+            await ai_service.transition_agent_action(
+                session,
+                action,
+                next_status=ai_service.AGENT_ACTION_STATUS_COMPLETED,
+                execution_json={
+                    "target": "checklist",
+                    "checklist_title": checklist_title,
+                    "task_count": len(created_tasks),
+                    "task_ids": task_ids,
+                },
+            )
+            await ai_service.transition_agent_action(
+                session,
+                action,
+                next_status=ai_service.AGENT_ACTION_STATUS_VERIFIED,
+                verification_json={
+                    "result": "checklist_created",
+                    "checklist_title": checklist_title,
+                    "task_count": len(created_tasks),
+                    "task_ids": task_ids,
+                },
+            )
+            return {
+                "status": "completed",
+                "phase": "completed",
+                "action_id": str(action.id),
+                "result": {
+                    "checklist_title": checklist_title,
+                    "task_count": len(created_tasks),
+                    "task_ids": task_ids,
+                },
+            }
 
         elif tool_name == "create_journal_entry":
             event_type = arguments.get("event_type", "note")

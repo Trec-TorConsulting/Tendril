@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
 import { useApiSWR } from "@/lib/swr";
 import {
@@ -12,10 +12,12 @@ import {
   pushSubscribe,
   pushUnsubscribe,
   listNotificationPreferences,
+  listNotificationLogs,
   createNotificationPreference,
   updateNotificationPreference,
   deleteNotificationPreference,
   type ChannelResponse,
+  type NotificationLogEntry,
   type NotificationPreference,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -60,6 +62,7 @@ import {
   Smartphone,
   Loader2,
   Pencil,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useConfirm } from "@/components/confirm-dialog";
@@ -70,6 +73,35 @@ const typeIcon: Record<string, React.ReactNode> = {
   email: <Mail className="size-4" />,
   sms: <Smartphone className="size-4" />,
 };
+
+const notificationEventLabels: Record<string, string> = {
+  all: "All Events",
+  ai_action_lifecycle: "AI Lifecycle",
+  sensor_alert: "Sensor Alerts",
+  automation: "Automation Triggers",
+  health_check: "Health Checks",
+  stage_change: "Stage Changes",
+  feeding_reminder: "Feeding Reminders",
+};
+
+const severityBadgeClass: Record<string, string> = {
+  critical: "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300",
+  warning: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+  info: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+};
+
+const statusBadgeClass: Record<string, string> = {
+  sent: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
+  skipped: "border-slate-500/30 bg-slate-500/10 text-slate-700 dark:text-slate-300",
+  failed: "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300",
+};
+
+function formatNotificationTimestamp(timestamp: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(timestamp));
+}
 
 export default function NotificationsPage() {
   const confirm = useConfirm();
@@ -82,16 +114,22 @@ export default function NotificationsPage() {
   const { data, isLoading: loading, mutate } = useApiSWR(
     ["notifications"],
     async (token) => {
-      const [ch, prefs] = await Promise.all([
+      const [ch, prefs, logs] = await Promise.all([
         listChannels(token).catch(() => [] as ChannelResponse[]),
         listNotificationPreferences(token).catch(() => [] as NotificationPreference[]),
+        listNotificationLogs(token, {
+          eventType: "ai_action_lifecycle",
+          channelType: "in_app",
+          pageSize: 8,
+        }).catch(() => [] as NotificationLogEntry[]),
       ]);
-      return { channels: ch, preferences: prefs };
+      return { channels: ch, preferences: prefs, logs };
     },
   );
 
   const channels = data?.channels ?? [];
   const preferences = data?.preferences ?? [];
+  const aiLifecycleLogs = data?.logs ?? [];
 
   const refresh = mutate;
 
@@ -209,6 +247,55 @@ export default function NotificationsPage() {
               onCheckedChange={handlePushToggle}
             />
           </CardHeader>
+        </Card>
+
+        <Card className="overflow-hidden border-border/70 bg-card">
+          <CardHeader className="border-b border-border/60 bg-muted/30">
+            <div className="flex items-start gap-3">
+              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 p-2 text-emerald-700 dark:text-emerald-300">
+                <Sparkles className="size-4" />
+              </div>
+              <div className="space-y-1">
+                <CardTitle className="text-base">AI Lifecycle Feed</CardTitle>
+                <CardDescription>
+                  Recent approvals, blocks, failures, and verifications routed into your notification system.
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3 p-4">
+            {aiLifecycleLogs.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-border/70 bg-muted/20 p-5 text-sm text-muted-foreground">
+                AI lifecycle alerts will appear here after the assistant proposes, blocks, fails, or verifies an action.
+              </div>
+            ) : (
+              aiLifecycleLogs.map((log) => (
+                <div key={log.id} className="rounded-xl border border-border/70 bg-background/80 p-4 shadow-sm">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge className={cn("border", severityBadgeClass[log.severity] ?? severityBadgeClass.info)} variant="outline">
+                          {log.severity}
+                        </Badge>
+                        <Badge className={cn("border", statusBadgeClass[log.status] ?? statusBadgeClass.sent)} variant="outline">
+                          {log.status}
+                        </Badge>
+                        <Badge variant="secondary">
+                          {notificationEventLabels[log.event_type] ?? log.event_type}
+                        </Badge>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">{log.subject}</p>
+                        {log.body ? <p className="mt-1 text-sm text-muted-foreground">{log.body}</p> : null}
+                        {log.error ? <p className="mt-2 text-xs text-destructive">Delivery error: {log.error}</p> : null}
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground sm:text-right">{formatNotificationTimestamp(log.created_at)}</p>
+                  </div>
+                </div>
+              ))
+            )}
+          </CardContent>
         </Card>
 
         {/* Channels */}
@@ -366,6 +453,7 @@ export default function NotificationsPage() {
 
       {editingPref && (
         <EditPreferenceDialog
+          key={editingPref.id}
           open={!!editingPref}
           onOpenChange={(open) => { if (!open) setEditingPref(null); }}
           pref={editingPref}
@@ -488,6 +576,7 @@ function CreateChannelDialog({
 
 const EVENT_TYPE_OPTIONS = [
   { value: "all", label: "All Events" },
+  { value: "ai_action_lifecycle", label: "AI Action Lifecycle" },
   { value: "sensor_alert", label: "Sensor Alerts" },
   { value: "automation", label: "Automation Triggers" },
   { value: "health_check", label: "Health Checks" },
@@ -512,25 +601,22 @@ function CreatePreferenceDialog({
   channels: ChannelResponse[];
   onCreated: () => void;
 }) {
+  const enabledChannels = channels.filter((channel) => channel.enabled);
   const [channelId, setChannelId] = useState("");
   const [eventTypes, setEventTypes] = useState("all");
   const [severity, setSeverity] = useState("warning,critical");
   const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => {
-    if (open && channels.length > 0 && !channelId) {
-      setChannelId(channels[0].id);
-    }
-  }, [open, channels, channelId]);
+  const resolvedChannelId = channelId || enabledChannels[0]?.id || "";
+  const selectedChannel = enabledChannels.find((channel) => channel.id === resolvedChannelId);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const token = getAccessToken();
-    if (!token || !channelId) return;
+    if (!token || !resolvedChannelId) return;
     setSubmitting(true);
     try {
       await createNotificationPreference(token, {
-        channel_id: channelId,
+        channel_id: resolvedChannelId,
         severity_filter: severity,
         event_types: eventTypes,
       });
@@ -552,10 +638,14 @@ function CreatePreferenceDialog({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label>Channel</Label>
-            <Select value={channelId} onValueChange={(v) => setChannelId(v ?? "")}>
-              <SelectTrigger className="w-full"><SelectValue placeholder="Select channel" /></SelectTrigger>
+            <Select value={resolvedChannelId} onValueChange={(v) => setChannelId(v ?? "")}>
+              <SelectTrigger className="w-full">
+                <span>
+                  {selectedChannel ? `${selectedChannel.name} (${selectedChannel.channel_type})` : "Select channel"}
+                </span>
+              </SelectTrigger>
               <SelectContent>
-                {channels.filter((c) => c.enabled).map((c) => (
+                {enabledChannels.map((c) => (
                   <SelectItem key={c.id} value={c.id}>{c.name} ({c.channel_type})</SelectItem>
                 ))}
               </SelectContent>
@@ -581,7 +671,7 @@ function CreatePreferenceDialog({
           </div>
           <DialogFooter>
             <Button variant="outline" type="button" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button type="submit" disabled={submitting || !channelId}>
+            <Button type="submit" disabled={submitting || !resolvedChannelId}>
               {submitting && <Loader2 className="mr-1 size-4 animate-spin" />}
               Save Preference
             </Button>
@@ -609,12 +699,6 @@ function EditPreferenceDialog({
   const [severity, setSeverity] = useState(pref.severity_filter);
   const [enabled, setEnabled] = useState(pref.enabled);
   const [submitting, setSubmitting] = useState(false);
-
-  useEffect(() => {
-    setEventTypes(pref.event_types);
-    setSeverity(pref.severity_filter);
-    setEnabled(pref.enabled);
-  }, [pref]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

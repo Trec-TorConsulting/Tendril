@@ -3633,6 +3633,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/notifications/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Notification Logs
+         * @description List notification log entries for the current tenant.
+         */
+        get: operations["list_notification_logs_v1_notifications_logs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/notifications/preferences": {
         parameters: {
             query?: never;
@@ -8800,6 +8820,30 @@ export interface components {
             /** Wind Speed Mph */
             wind_speed_mph?: number | null;
         };
+        /** NotificationLogResponse */
+        NotificationLogResponse: {
+            /** Body */
+            body: string | null;
+            /** Channel Type */
+            channel_type: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Error */
+            error: string | null;
+            /** Event Type */
+            event_type: string;
+            /** Id */
+            id: string;
+            /** Severity */
+            severity: string;
+            /** Status */
+            status: string;
+            /** Subject */
+            subject: string;
+        };
         /** NutrientCreate */
         NutrientCreate: {
             /** Base Nutrients */
@@ -9043,6 +9087,17 @@ export interface components {
         PaginatedResponse_JournalResponse_: {
             /** Items */
             items: components["schemas"]["JournalResponse"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Total */
+            total: number;
+        };
+        /** PaginatedResponse[NotificationLogResponse] */
+        PaginatedResponse_NotificationLogResponse_: {
+            /** Items */
+            items: components["schemas"]["NotificationLogResponse"][];
             /** Page */
             page: number;
             /** Page Size */
@@ -19594,6 +19649,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_notification_logs_v1_notifications_logs_get: {
+        parameters: {
+            query?: {
+                event_type?: string | null;
+                channel_type?: string | null;
+                status?: string | null;
+                /** @description Page number */
+                page?: number;
+                /** @description Items per page */
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponse_NotificationLogResponse_"];
                 };
             };
             /** @description Validation Error */
