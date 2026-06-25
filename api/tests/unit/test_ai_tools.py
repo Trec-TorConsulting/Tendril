@@ -36,6 +36,21 @@ async def _create_grow(session, *, tenant_id):
     return grow
 
 
+async def _create_bucket(session, *, tenant_id, grow_cycle_id):
+    from app.grows.models import Bucket
+
+    bucket = Bucket(
+        tenant_id=tenant_id,
+        grow_cycle_id=grow_cycle_id,
+        position=1,
+        growth_stage="vegetative",
+    )
+    session.add(bucket)
+    await session.commit()
+    await session.refresh(bucket)
+    return bucket
+
+
 async def _create_integration(session, *, tenant_id, integration_type: str):
     from app.integrations.models import IntegrationConfig
 
@@ -220,3 +235,58 @@ class TestExecuteToolIntegrationControlCommand:
         ).scalar_one()
         assert approval.status == "pending"
         assert "approval and simulation" in (approval.reason or "")
+
+
+class TestExecuteToolCreateJournalEntry:
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_create_journal_entry_records_auto_approved_lifecycle(self, db_session, db_tenant):
+        grow = await _create_grow(db_session, tenant_id=db_tenant["tenant"].id)
+        await _create_bucket(db_session, tenant_id=db_tenant["tenant"].id, grow_cycle_id=grow.id)
+
+        out = await execute_tool(
+            "create_journal_entry",
+            {
+                "event_type": "note",
+                "content": "Raised reservoir temperature slightly.",
+            },
+            session=db_session,
+            tenant_id=db_tenant["tenant"].id,
+            grow_id=grow.id,
+        )
+
+        assert isinstance(out, dict)
+        assert out["status"] == "completed"
+        assert out["phase"] == "completed"
+        assert out["result"]["event_type"] == "note"
+
+        action = await db_session.get(AgentAction, UUID(out["action_id"]))
+        assert action is not None
+        assert action.status == "verified"
+        assert action.auto_approved is True
+        assert action.requires_approval is False
+        assert action.verification_json["result"] == "journal_entry_created"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_create_journal_entry_records_failed_lifecycle_without_bucket(self, db_session, db_tenant):
+        grow = await _create_grow(db_session, tenant_id=db_tenant["tenant"].id)
+
+        out = await execute_tool(
+            "create_journal_entry",
+            {
+                "event_type": "note",
+                "content": "No bucket available.",
+            },
+            session=db_session,
+            tenant_id=db_tenant["tenant"].id,
+            grow_id=grow.id,
+        )
+
+        assert isinstance(out, dict)
+        assert out["status"] == "failed"
+        assert out["phase"] == "failed"
+        assert out["error"] == "Error: no buckets found for this grow."
+
+        action = await db_session.get(AgentAction, UUID(out["action_id"]))
+        assert action is not None
+        assert action.status == "failed"
+        assert action.execution_json["error"] == "Error: no buckets found for this grow."
