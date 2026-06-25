@@ -52,6 +52,7 @@ def _build_chat_action_event(
     phase: str,
     tool: str,
     message: str,
+    action_id: str | None = None,
     result: Any | None = None,
     error: str | None = None,
 ) -> dict[str, Any]:
@@ -64,6 +65,8 @@ def _build_chat_action_event(
         "refresh_actions": True,
         "ts": datetime.now(UTC).isoformat(),
     }
+    if action_id is not None:
+        payload["action_id"] = action_id
     if result is not None:
         payload["result"] = result
     if error is not None:
@@ -242,12 +245,14 @@ async def websocket_chat(ws: WebSocket):
                         fn = tc.get("function", {})
                         fn_name = fn.get("name", "")
                         fn_args = fn.get("arguments", {})
+                        tool_call_id = tc.get("id") if isinstance(tc.get("id"), str) else None
 
                         await ws.send_json(
                             _build_chat_action_event(
                                 phase="proposed",
                                 tool=fn_name,
                                 message=f"Planned tool call: {fn_name.replace('_', ' ')}",
+                                action_id=tool_call_id,
                             )
                         )
                         await ws.send_json(
@@ -255,6 +260,7 @@ async def websocket_chat(ws: WebSocket):
                                 phase="executing",
                                 tool=fn_name,
                                 message=f"Running tool: {fn_name.replace('_', ' ')}",
+                                action_id=tool_call_id,
                             )
                         )
 
@@ -278,6 +284,7 @@ async def websocket_chat(ws: WebSocket):
                                     phase="failed",
                                     tool=fn_name,
                                     message=f"Tool failed: {fn_name.replace('_', ' ')}",
+                                    action_id=tool_call_id,
                                     error=str(e),
                                 )
                             )
@@ -287,6 +294,7 @@ async def websocket_chat(ws: WebSocket):
                                     phase="completed",
                                     tool=fn_name,
                                     message=f"Tool completed: {fn_name.replace('_', ' ')}",
+                                    action_id=tool_call_id,
                                     result=tool_result,
                                 )
                             )

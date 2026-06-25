@@ -187,6 +187,7 @@ describe("AiActionQueue", () => {
         liveEvents={[
           {
             id: "evt-1",
+            actionId: "action-1",
             phase: "executing",
             tool: "update_grow_stage",
             message: "Running tool: update grow stage",
@@ -214,5 +215,34 @@ describe("AiActionQueue", () => {
     expect(screen.getByText("Live lifecycle")).toBeInTheDocument();
     expect(screen.getByText("Running tool: update grow stage")).toBeInTheDocument();
     expect(screen.getByText("Tool failed: update grow stage")).toBeInTheDocument();
+    expect(screen.getByText("Action action-1")).toBeInTheDocument();
+  });
+
+  it("highlights recent activity when live event matches action id", () => {
+    render(
+      <AiActionQueue
+        actions={[buildAction({ status: "executing" })]}
+        liveEvents={[
+          {
+            id: "evt-3",
+            actionId: "action-1",
+            phase: "executing",
+            tool: "update_grow_stage",
+            message: "Execution in progress",
+            ts: "2026-06-24T00:14:00Z",
+          },
+        ]}
+        growName="Veg Tent"
+        isLoading={false}
+        isRefreshing={false}
+        decisionActionId={null}
+        onApprove={vi.fn()}
+        onReject={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Live Executing")).toBeInTheDocument();
+    expect(screen.getAllByText("Execution in progress")).toHaveLength(2);
   });
 });

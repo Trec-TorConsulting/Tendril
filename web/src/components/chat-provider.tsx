@@ -67,13 +67,15 @@ function toIsoTimestamp(value: unknown) {
 }
 
 function buildActionLifecycleEvent(data: Record<string, unknown>): ActionLifecycleEvent {
+  const actionId = typeof data.action_id === "string" ? data.action_id : undefined;
   const phase = typeof data.phase === "string" ? data.phase : "updated";
   const tool = typeof data.tool === "string" ? data.tool : undefined;
   const message = formatActionLifecycleMessage(data);
   const ts = toIsoTimestamp(data.ts);
 
   return {
-    id: [tool ?? "tool", phase, ts, message].join("|"),
+    id: [actionId ?? tool ?? "tool", phase, ts, message].join("|"),
+    actionId,
     phase,
     tool,
     message,

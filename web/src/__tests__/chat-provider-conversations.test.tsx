@@ -33,12 +33,15 @@ vi.mock("@/lib/api", () => ({
 }));
 
 vi.mock("@/components/ai-action-queue", () => ({
-  AiActionQueue: ({ liveEvents }: { liveEvents: Array<{ message: string }> }) => (
+  AiActionQueue: ({ liveEvents }: { liveEvents: Array<{ message: string; actionId?: string }> }) => (
     <div>
       <div>Action queue mock</div>
       <div>Live event count: {liveEvents.length}</div>
       {liveEvents.map((event) => (
-        <div key={event.message}>{event.message}</div>
+        <div key={event.message}>
+          {event.message}
+          {event.actionId ? ` (${event.actionId})` : ""}
+        </div>
       ))}
     </div>
   ),
@@ -231,6 +234,7 @@ describe("ChatProvider conversation resume", () => {
             phase: "executing",
             tool: "update_grow_stage",
             message: "Running tool: update grow stage",
+            action_id: "tool-call-1",
           }),
         } as MessageEvent,
       );
@@ -247,7 +251,8 @@ describe("ChatProvider conversation resume", () => {
 
     expect(MockWebSocket.instances[0].sent).toContain(JSON.stringify({ type: "pong" }));
     expect(screen.getByText("Live event count: 1")).toBeInTheDocument();
-    expect(screen.getAllByText("Running tool: update grow stage")).toHaveLength(2);
+    expect(screen.getByText("Running tool: update grow stage")).toBeInTheDocument();
+    expect(screen.getByText("Running tool: update grow stage (tool-call-1)")).toBeInTheDocument();
     expect(screen.queryByText("legacy completion")).not.toBeInTheDocument();
   });
 });
