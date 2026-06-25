@@ -9,6 +9,8 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.integration_policy import evaluate_integration_action_policy
+
 logger = logging.getLogger("tendril.ai.tools")
 
 # ── Ollama tool schemas ──────────────────────────────────────────────
@@ -136,6 +138,27 @@ CHAT_TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "integration_trigger_sync",
+            "description": "Trigger an immediate integration sync for one configured connector.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "integration_id": {
+                        "type": "string",
+                        "description": "Integration config ID to sync",
+                    },
+                    "integration_type": {
+                        "type": "string",
+                        "description": "Connector type hint (pulse, openweather, ecowitt)",
+                    },
+                },
+                "required": ["integration_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "update_tent",
             "description": "Update the grow space/tent name or notes.",
             "parameters": {
@@ -169,6 +192,7 @@ async def execute_tool(
         JournalEntry,
         Tent,
     )
+    from app.integrations import service as integration_service
 
     grow = await session.get(GrowCycle, grow_id)
     if not grow or grow.tenant_id != tenant_id:
@@ -285,6 +309,40 @@ async def execute_tool(
                 changes.append("notes updated")
             await session.commit()
             return f"Tent updated: {', '.join(changes)}." if changes else "No changes specified."
+
+        elif tool_name == "integration_trigger_sync":
+            raw_integration_id = arguments.get("integration_id")
+            if not isinstance(raw_integration_id, str) or not raw_integration_id.strip():
+                return "Error: integration_id is required."
+
+            try:
+                integration_id = UUID(raw_integration_id.strip())
+            except ValueError:
+                return "Error: integration_id must be a valid UUID."
+
+            cfg = await integration_service.get_integration(
+                session,
+                integration_id,
+                tenant_id=tenant_id,
+            )
+            if cfg is None:
+                return "Error: integration not found or access denied."
+
+            policy_decision = evaluate_integration_action_policy(
+                integration_type=cfg.type,
+                operation="trigger_sync",
+            )
+            if not policy_decision.allowed:
+                reason = policy_decision.reason or "Blocked by integration action policy"
+                return f"Blocked by integration policy: {reason}"
+
+            result = await integration_service.trigger_sync(session, cfg=cfg)
+            if result.error_message:
+                return (
+                    "Integration sync completed with issues: "
+                    f"status={result.status}, readings={result.readings_count}, error={result.error_message}"
+                )
+            return f"Integration sync completed: status={result.status}, readings={result.readings_count}"
 
         else:
             return f"Unknown tool: {tool_name}"
