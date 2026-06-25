@@ -53,6 +53,7 @@ def _build_chat_action_event(
     tool: str,
     message: str,
     action_id: str | None = None,
+    correlation_id: str | None = None,
     result: Any | None = None,
     error: str | None = None,
 ) -> dict[str, Any]:
@@ -67,11 +68,25 @@ def _build_chat_action_event(
     }
     if action_id is not None:
         payload["action_id"] = action_id
+    if correlation_id is not None:
+        payload["correlation_id"] = correlation_id
     if result is not None:
         payload["result"] = result
     if error is not None:
         payload["error"] = error
     return payload
+
+
+def _extract_action_id_from_tool_result(tool_result: Any) -> str | None:
+    """Extract a persisted agent action ID from tool output when available."""
+    if not isinstance(tool_result, dict):
+        return None
+
+    for key in ("action_id", "agent_action_id"):
+        value = tool_result.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
 
 
 async def _send_keepalive_pings(ws: WebSocket, stop_event: asyncio.Event) -> None:
@@ -253,6 +268,7 @@ async def websocket_chat(ws: WebSocket):
                                 tool=fn_name,
                                 message=f"Planned tool call: {fn_name.replace('_', ' ')}",
                                 action_id=tool_call_id,
+                                correlation_id=tool_call_id,
                             )
                         )
                         await ws.send_json(
@@ -261,6 +277,7 @@ async def websocket_chat(ws: WebSocket):
                                 tool=fn_name,
                                 message=f"Running tool: {fn_name.replace('_', ' ')}",
                                 action_id=tool_call_id,
+                                correlation_id=tool_call_id,
                             )
                         )
 
@@ -285,16 +302,19 @@ async def websocket_chat(ws: WebSocket):
                                     tool=fn_name,
                                     message=f"Tool failed: {fn_name.replace('_', ' ')}",
                                     action_id=tool_call_id,
+                                    correlation_id=tool_call_id,
                                     error=str(e),
                                 )
                             )
                         else:
+                            persisted_action_id = _extract_action_id_from_tool_result(tool_result)
                             await ws.send_json(
                                 _build_chat_action_event(
                                     phase="completed",
                                     tool=fn_name,
                                     message=f"Tool completed: {fn_name.replace('_', ' ')}",
-                                    action_id=tool_call_id,
+                                    action_id=persisted_action_id or tool_call_id,
+                                    correlation_id=tool_call_id,
                                     result=tool_result,
                                 )
                             )

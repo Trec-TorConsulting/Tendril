@@ -33,14 +33,14 @@ vi.mock("@/lib/api", () => ({
 }));
 
 vi.mock("@/components/ai-action-queue", () => ({
-  AiActionQueue: ({ liveEvents }: { liveEvents: Array<{ message: string; actionId?: string }> }) => (
+  AiActionQueue: ({ liveEvents }: { liveEvents: Array<{ message: string; actionId?: string; correlationId?: string }> }) => (
     <div>
       <div>Action queue mock</div>
       <div>Live event count: {liveEvents.length}</div>
       {liveEvents.map((event) => (
         <div key={event.message}>
           {event.message}
-          {event.actionId ? ` (${event.actionId})` : ""}
+          {event.actionId ? ` (${event.actionId})` : event.correlationId ? ` ({event:${event.correlationId}})` : ""}
         </div>
       ))}
     </div>
@@ -235,6 +235,7 @@ describe("ChatProvider conversation resume", () => {
             tool: "update_grow_stage",
             message: "Running tool: update grow stage",
             action_id: "tool-call-1",
+            correlation_id: "tool-call-1",
           }),
         } as MessageEvent,
       );
@@ -256,7 +257,7 @@ describe("ChatProvider conversation resume", () => {
     expect(screen.queryByText("legacy completion")).not.toBeInTheDocument();
   });
 
-  it("keeps only the latest live queue event for a correlated action id", async () => {
+  it("keeps only the latest live queue event for a shared correlation id", async () => {
     const user = userEvent.setup();
 
     render(
@@ -280,7 +281,7 @@ describe("ChatProvider conversation resume", () => {
             phase: "executing",
             tool: "update_grow_stage",
             message: "Execution started",
-            action_id: "tool-call-2",
+            correlation_id: "tool-call-2",
           }),
         } as MessageEvent,
       );
@@ -291,14 +292,14 @@ describe("ChatProvider conversation resume", () => {
             phase: "completed",
             tool: "update_grow_stage",
             message: "Execution completed",
-            action_id: "tool-call-2",
+            correlation_id: "tool-call-2",
           }),
         } as MessageEvent,
       );
     });
 
     expect(screen.getByText("Live event count: 1")).toBeInTheDocument();
-    expect(screen.getByText("Execution completed (tool-call-2)")).toBeInTheDocument();
-    expect(screen.queryByText("Execution started (tool-call-2)")).not.toBeInTheDocument();
+    expect(screen.getByText("Execution completed ({event:tool-call-2})")).toBeInTheDocument();
+    expect(screen.queryByText("Execution started ({event:tool-call-2})")).not.toBeInTheDocument();
   });
 });
