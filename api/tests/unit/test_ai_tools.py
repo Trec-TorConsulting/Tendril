@@ -10,7 +10,9 @@ from sqlalchemy import select
 
 from app.ai.models import AgentAction, AgentActionApproval
 from app.ai.tools import CHAT_TOOLS, execute_tool
+from app.commercial.models import Task
 from app.integrations.service import WebhookSyncResult
+from tests.conftest import TenantFactory
 
 
 async def _create_grow(session, *, tenant_id):
@@ -70,6 +72,14 @@ async def _create_integration(session, *, tenant_id, integration_type: str):
 
 
 class TestChatToolsSchema:
+    def test_chat_tools_include_create_task(self):
+        names = {tool["function"]["name"] for tool in CHAT_TOOLS}
+        assert "create_task" in names
+
+    def test_chat_tools_include_generate_checklist(self):
+        names = {tool["function"]["name"] for tool in CHAT_TOOLS}
+        assert "generate_checklist" in names
+
     def test_chat_tools_include_integration_trigger_sync(self):
         names = {tool["function"]["name"] for tool in CHAT_TOOLS}
         assert "integration_trigger_sync" in names
@@ -290,3 +300,105 @@ class TestExecuteToolCreateJournalEntry:
         assert action is not None
         assert action.status == "failed"
         assert action.execution_json["error"] == "Error: no buckets found for this grow."
+
+
+class TestExecuteToolTaskActions:
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_create_task_records_auto_approved_lifecycle(self, db_session):
+        tenant = await TenantFactory(db_session).create(plan="commercial")
+        grow = await _create_grow(db_session, tenant_id=tenant["tenant"].id)
+
+        out = await execute_tool(
+            "create_task",
+            {
+                "title": "Calibrate pH pen",
+                "description": "Use fresh 7.0 solution before the next feeding.",
+                "priority": "high",
+            },
+            session=db_session,
+            tenant_id=tenant["tenant"].id,
+            grow_id=grow.id,
+        )
+
+        assert isinstance(out, dict)
+        assert out["status"] == "completed"
+        assert out["phase"] == "completed"
+
+        action = await db_session.get(AgentAction, UUID(out["action_id"]))
+        assert action is not None
+        assert action.status == "verified"
+        assert action.auto_approved is True
+        assert action.verification_json["result"] == "task_created"
+
+        task = await db_session.get(Task, UUID(out["result"]["task_id"]))
+        assert task is not None
+        assert task.title == "Calibrate pH pen"
+        assert task.source == "ai"
+        assert task.priority == "high"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_create_task_fails_for_non_commercial_tenant(self, db_session, db_tenant):
+        grow = await _create_grow(db_session, tenant_id=db_tenant["tenant"].id)
+
+        out = await execute_tool(
+            "create_task",
+            {"title": "Calibrate pH pen"},
+            session=db_session,
+            tenant_id=db_tenant["tenant"].id,
+            grow_id=grow.id,
+        )
+
+        assert isinstance(out, dict)
+        assert out["status"] == "failed"
+        assert out["phase"] == "failed"
+        assert out["error"] == "Task management requires Commercial plan"
+
+        action = await db_session.get(AgentAction, UUID(out["action_id"]))
+        assert action is not None
+        assert action.status == "failed"
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_generate_checklist_records_auto_approved_lifecycle(self, db_session):
+        tenant = await TenantFactory(db_session).create(plan="commercial")
+        grow = await _create_grow(db_session, tenant_id=tenant["tenant"].id)
+
+        out = await execute_tool(
+            "generate_checklist",
+            {
+                "title": "Pre-flip prep",
+                "items": [
+                    "Inspect trellis anchors",
+                    "Top off reservoir",
+                    "Document canopy height",
+                ],
+                "priority": "medium",
+                "category": "prep_checklist",
+            },
+            session=db_session,
+            tenant_id=tenant["tenant"].id,
+            grow_id=grow.id,
+        )
+
+        assert isinstance(out, dict)
+        assert out["status"] == "completed"
+        assert out["phase"] == "completed"
+        assert out["result"]["task_count"] == 3
+
+        action = await db_session.get(AgentAction, UUID(out["action_id"]))
+        assert action is not None
+        assert action.status == "verified"
+        assert action.auto_approved is True
+        assert action.verification_json["result"] == "checklist_created"
+
+        tasks = (
+            await db_session.execute(
+                select(Task).where(Task.grow_cycle_id == grow.id).order_by(Task.created_at.asc())
+            )
+        ).scalars().all()
+        assert len(tasks) == 3
+        assert [task.title for task in tasks] == [
+            "Inspect trellis anchors",
+            "Top off reservoir",
+            "Document canopy height",
+        ]
+        assert all(task.source == "ai" for task in tasks)

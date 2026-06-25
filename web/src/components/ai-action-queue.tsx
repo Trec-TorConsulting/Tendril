@@ -143,11 +143,21 @@ function formatLifecycleValue(value: string) {
   return value.replace(/_/g, " ");
 }
 
+function readRecordNumber(record: Record<string, unknown> | null | undefined, key: string) {
+  const value = record?.[key];
+  return typeof value === "number" ? value : null;
+}
+
 function buildRecentActivityDetails(action: AgentActionResponse) {
   const details: Array<{ label: string; value: string }> = [];
   const approvalReason = action.pending_approval?.reason || action.proposal.approval?.reason || null;
   const executionTarget = readRecordString(action.execution_json, "target");
   const executionError = readRecordString(action.execution_json, "error");
+  const executionTaskId = readRecordString(action.execution_json, "task_id");
+  const checklistTitle =
+    readRecordString(action.verification_json, "checklist_title") ||
+    readRecordString(action.evidence_json, "checklist_title");
+  const checklistTaskCount = readRecordNumber(action.verification_json, "task_count");
   const verificationResult =
     readRecordString(action.verification_json, "result") ||
     readRecordString(action.verification_json, "status") ||
@@ -168,6 +178,17 @@ function buildRecentActivityDetails(action: AgentActionResponse) {
     details.push({ label: "Execution issue", value: executionError });
   } else if (executionTarget) {
     details.push({ label: "Execution target", value: formatLifecycleValue(executionTarget) });
+  }
+
+  if (action.action_type === "create_task" && executionTaskId) {
+    details.push({ label: "Task created", value: executionTaskId });
+  }
+
+  if (action.action_type === "generate_checklist" && checklistTitle && checklistTaskCount) {
+    details.push({
+      label: "Checklist",
+      value: `${checklistTitle} • ${checklistTaskCount} task${checklistTaskCount === 1 ? "" : "s"}`,
+    });
   }
 
   if (verificationResult) {

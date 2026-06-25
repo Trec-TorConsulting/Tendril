@@ -1118,8 +1118,21 @@ export interface NotificationPreference {
   enabled: boolean;
 }
 
-export function listNotificationPreferences(token: string) {
-  return apiFetch<NotificationPreference[]>("/notifications/preferences", { token });
+export interface NotificationLogEntry {
+  id: string;
+  channel_type: string;
+  event_type: string;
+  severity: string;
+  subject: string;
+  body: string | null;
+  status: string;
+  error: string | null;
+  created_at: string;
+}
+
+export async function listNotificationPreferences(token: string) {
+  const res = await apiFetch<PaginatedResponse<NotificationPreference>>("/notifications/preferences", { token });
+  return res.items;
 }
 
 export function createNotificationPreference(token: string, data: { channel_id: string; severity_filter?: string; event_types?: string }) {
@@ -1128,6 +1141,30 @@ export function createNotificationPreference(token: string, data: { channel_id: 
 
 export function deleteNotificationPreference(token: string, id: string) {
   return apiFetch<void>(`/notifications/preferences/${id}`, { method: "DELETE", token });
+}
+
+export async function listNotificationLogs(
+  token: string,
+  params: {
+    eventType?: string;
+    channelType?: string;
+    status?: string;
+    page?: number;
+    pageSize?: number;
+  } = {},
+) {
+  const search = new URLSearchParams();
+  if (params.eventType) search.set("event_type", params.eventType);
+  if (params.channelType) search.set("channel_type", params.channelType);
+  if (params.status) search.set("status", params.status);
+  if (params.page) search.set("page", String(params.page));
+  if (params.pageSize) search.set("page_size", String(params.pageSize));
+
+  const qs = search.toString();
+  const res = await apiFetch<PaginatedResponse<NotificationLogEntry>>(`/notifications/logs${qs ? `?${qs}` : ""}`, {
+    token,
+  });
+  return res.items;
 }
 
 // Grow Cloning (client-side — no backend endpoint)
