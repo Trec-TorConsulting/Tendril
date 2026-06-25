@@ -473,17 +473,19 @@ async def run_health_check(
 
     created_task_count = 0
     task_error: str | None = None
+    safe_actions, _approval_actions = service.split_health_check_actions_by_safety(actions)
 
     # Generate fresh tasks from health check actions (cancels old ones first)
-    if actions:
+    if safe_actions:
         from app.scheduler.task_generator import create_tasks_from_health_eval
 
         try:
-            created_task_count = await create_tasks_from_health_eval(session, grow, score, issues, actions)
+            created_task_count = await create_tasks_from_health_eval(session, grow, score, issues, safe_actions)
         except Exception as exc:
             task_error = str(exc)
             logger.exception("Failed to create tasks from manual health check for grow %s", grow.id)
 
+    if actions:
         try:
             await service.record_health_check_task_actions(
                 session,
