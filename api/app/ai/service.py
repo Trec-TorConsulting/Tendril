@@ -107,6 +107,10 @@ class InvalidAgentApprovalTransitionError(Exception):
 class AgentActionApprovalMissingError(Exception):
     """Raised when an action approval decision is requested without a pending approval."""
 
+
+class AgentActionApprovalPreconditionError(Exception):
+    """Raised when an action cannot be approved until an extra prerequisite is satisfied."""
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Conversations
 # ─────────────────────────────────────────────────────────────────────────────
@@ -655,6 +659,17 @@ def build_agent_action_proposal(action: AgentAction) -> dict[str, object]:
     }
 
 
+def action_requires_simulation_before_approval(action: AgentAction) -> bool:
+    """Return whether this action is gated on simulation support before approval."""
+    metadata = action.metadata_json or {}
+    policy = metadata.get("policy")
+    return (
+        action.action_type == "integration_control_command"
+        and isinstance(policy, dict)
+        and policy.get("requires_simulation") is True
+    )
+
+
 async def approve_agent_action(
     session: AsyncSession,
     action: AgentAction,
@@ -666,6 +681,10 @@ async def approve_agent_action(
     approval = get_pending_approval(action)
     if approval is None:
         raise AgentActionApprovalMissingError("Action has no pending approval")
+    if action_requires_simulation_before_approval(action):
+        raise AgentActionApprovalPreconditionError(
+            "Action requires simulation/execution support before it can be approved"
+        )
 
     await record_agent_action_approval_decision(
         session,
@@ -826,10 +845,12 @@ __all__ = [
     "AgentAction",
     "AgentActionApproval",
     "AgentActionApprovalMissingError",
+    "AgentActionApprovalPreconditionError",
     "Conversation",
     "ConversationMessage",
     "InvalidAgentActionTransitionError",
     "InvalidAgentApprovalTransitionError",
+    "action_requires_simulation_before_approval",
     "approve_agent_action",
     "build_agent_action_idempotency_key",
     "build_agent_action_lifecycle_steps",

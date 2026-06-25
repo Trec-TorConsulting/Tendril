@@ -209,6 +209,8 @@ async def approve_agent_action(
         )
     except service.AgentActionApprovalMissingError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except service.AgentActionApprovalPreconditionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except service.InvalidAgentActionTransitionError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except service.InvalidAgentApprovalTransitionError as exc:
