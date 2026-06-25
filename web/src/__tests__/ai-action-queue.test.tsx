@@ -259,4 +259,40 @@ describe("AiActionQueue", () => {
     expect(screen.getByText("Live Executing")).toBeInTheDocument();
     expect(screen.getAllByText("Execution in progress")).toHaveLength(2);
   });
+
+  it("surfaces pending approval live lifecycle events distinctly", () => {
+    render(
+      <AiActionQueue
+        actions={[]}
+        liveEvents={[
+          {
+            id: "evt-4",
+            actionId: "action-99",
+            phase: "pending_approval",
+            tool: "integration_control_command",
+            message: "Tool queued for approval: integration control command",
+            ts: "2026-06-24T00:15:00Z",
+            policy: {
+              integration_type: "pulse",
+              risk_level: "high",
+              requires_simulation: true,
+              reason: "High-risk integration control command requires approval and simulation before execution",
+            },
+          },
+        ]}
+        growName="Veg Tent"
+        isLoading={false}
+        isRefreshing={false}
+        decisionActionId={null}
+        onApprove={vi.fn()}
+        onReject={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Tool queued for approval: integration control command")).toBeInTheDocument();
+    expect(screen.getByText("Awaiting approval")).toBeInTheDocument();
+    expect(screen.getByText("Pending approval")).toBeInTheDocument();
+    expect(screen.getByText("pulse")).toBeInTheDocument();
+  });
 });

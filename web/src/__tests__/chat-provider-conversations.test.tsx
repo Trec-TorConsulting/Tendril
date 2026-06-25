@@ -395,4 +395,50 @@ describe("ChatProvider conversation resume", () => {
       screen.getByText("integration trigger sync: blocked (Unsupported integration connector: tuya) (tool-call-9)"),
     ).toBeInTheDocument();
   });
+
+  it("renders pending approval lifecycle events for control commands", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ChatProvider>
+        <ChatHarness />
+      </ChatProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open chat" }));
+
+    await waitFor(() => {
+      expect(MockWebSocket.instances).toHaveLength(1);
+    });
+
+    await act(async () => {
+      MockWebSocket.instances[0].onopen?.(new Event("open"));
+      MockWebSocket.instances[0].onmessage?.(
+        {
+          data: JSON.stringify({
+            type: "action_event",
+            phase: "pending_approval",
+            tool: "integration_control_command",
+            message: "Tool queued for approval: integration control command",
+            action_id: "action-approval-1",
+            policy: {
+              integration_type: "pulse",
+              operation: "outbound_control",
+              supported: true,
+              allowed: true,
+              risk_level: "high",
+              requires_approval: true,
+              requires_simulation: true,
+              reason: "High-risk integration control command requires approval and simulation before execution",
+            },
+          }),
+        } as MessageEvent,
+      );
+    });
+
+    expect(screen.getByText("Live event count: 1")).toBeInTheDocument();
+    expect(
+      screen.getByText("Tool queued for approval: integration control command (action-approval-1)"),
+    ).toBeInTheDocument();
+  });
 });
