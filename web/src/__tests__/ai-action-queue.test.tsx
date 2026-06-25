@@ -195,6 +195,7 @@ describe("AiActionQueue", () => {
           },
           {
             id: "evt-2",
+            correlationId: "corr-22",
             phase: "failed",
             tool: "update_grow_stage",
             message: "Tool failed: update grow stage",
@@ -216,6 +217,9 @@ describe("AiActionQueue", () => {
     expect(screen.getByText("Running tool: update grow stage")).toBeInTheDocument();
     expect(screen.getByText("Tool failed: update grow stage")).toBeInTheDocument();
     expect(screen.getByText("Action action-1")).toBeInTheDocument();
+    expect(screen.getByText("Action linked")).toBeInTheDocument();
+    expect(screen.getByText("Correlation only")).toBeInTheDocument();
+    expect(screen.getByText("Correlation corr-22")).toBeInTheDocument();
   });
 
   it("highlights recent activity when live event matches action id", () => {
