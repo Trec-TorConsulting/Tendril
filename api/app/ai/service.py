@@ -28,6 +28,7 @@ from sqlalchemy import Select, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.ai import metrics as ai_metrics
 from app.ai.models import AgentAction, AgentActionApproval, Conversation, ConversationMessage
 
 logger = logging.getLogger("tendril.ai.service")
@@ -263,6 +264,7 @@ async def create_agent_action(
     session.add(action)
     await session.commit()
     await session.refresh(action)
+    ai_metrics.record_action_proposed(action_type=action.action_type, source=action.source)
     _log_agent_action_lifecycle(action, event_type="action_created", outcome=action.status)
     return action
 
@@ -331,6 +333,19 @@ async def transition_agent_action(
 
     await session.commit()
     await session.refresh(action)
+    if next_status == AGENT_ACTION_STATUS_VERIFIED:
+        ai_metrics.record_execution_outcome(outcome="success", action_type=action.action_type)
+    elif next_status == AGENT_ACTION_STATUS_FAILED:
+        ai_metrics.record_execution_outcome(outcome="failure", action_type=action.action_type)
+    elif next_status == AGENT_ACTION_STATUS_BLOCKED:
+        metadata = action.metadata_json or {}
+        policy = metadata.get("policy")
+        if isinstance(policy, dict):
+            ai_metrics.record_policy_block(
+                action_type=action.action_type,
+                integration_type=str(metadata.get("integration_type") or "unknown"),
+                operation=str(metadata.get("operation") or "unknown"),
+            )
     _log_agent_action_lifecycle(
         action,
         event_type="action_transitioned",
@@ -369,6 +384,9 @@ async def record_agent_action_approval_decision(
         approval.reason = reason
     await session.commit()
     await session.refresh(approval)
+    action = approval.action
+    action_type = action.action_type if action is not None else "unknown"
+    ai_metrics.record_approval_decision(decision=approval.status, action_type=action_type)
     _log_agent_action_approval(approval, event_type="approval_reviewed", outcome=approval.status)
     return approval
 

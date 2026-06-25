@@ -11,8 +11,10 @@ import pytest
 
 from app.ai.service import (
     AGENT_ACTION_STATUS_APPROVED,
+    AGENT_ACTION_STATUS_BLOCKED,
     AGENT_ACTION_STATUS_COMPLETED,
     AGENT_ACTION_STATUS_EXECUTING,
+    AGENT_ACTION_STATUS_FAILED,
     AGENT_ACTION_STATUS_PENDING_APPROVAL,
     AGENT_ACTION_STATUS_PROPOSED,
     AGENT_ACTION_STATUS_VERIFIED,
@@ -498,7 +500,9 @@ class TestAgentActionServiceMethods:
         session = AsyncMock()
         session.add = Mock()
 
-        with patch("app.ai.service.logger.info") as log_info:
+        with patch("app.ai.service.ai_metrics.record_action_proposed") as record_action_proposed, patch(
+            "app.ai.service.logger.info"
+        ) as log_info:
             action = await create_agent_action(
                 session,
                 tenant_id=uuid4(),
@@ -511,6 +515,10 @@ class TestAgentActionServiceMethods:
                 created_by_user_id=uuid4(),
             )
 
+        record_action_proposed.assert_called_once_with(
+            action_type="integration_trigger_sync",
+            source="chat",
+        )
         log_info.assert_called_once()
         assert log_info.call_args.args[0] == "AI action lifecycle"
         assert log_info.call_args.kwargs["extra"]["event_type"] == "action_created"
@@ -585,14 +593,78 @@ class TestAgentActionServiceMethods:
             idempotency_key="k" * 64,
         )
 
-        with patch("app.ai.service.logger.info") as log_info:
+        with patch("app.ai.service.ai_metrics.record_execution_outcome") as record_execution_outcome, patch(
+            "app.ai.service.ai_metrics.record_policy_block"
+        ) as record_policy_block, patch("app.ai.service.logger.info") as log_info:
             await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_APPROVED)
 
+        record_execution_outcome.assert_not_called()
+        record_policy_block.assert_not_called()
         log_info.assert_called_once()
         assert log_info.call_args.args[0] == "AI action lifecycle"
         assert log_info.call_args.kwargs["extra"]["event_type"] == "action_transitioned"
         assert log_info.call_args.kwargs["extra"]["previous_status"] == AGENT_ACTION_STATUS_PENDING_APPROVAL
         assert log_info.call_args.kwargs["extra"]["outcome"] == AGENT_ACTION_STATUS_APPROVED
+
+    async def test_transition_agent_action_records_success_metric_on_verified(self):
+        session = AsyncMock()
+        action = AgentAction(
+            tenant_id=uuid4(),
+            source="chat",
+            action_type="integration_trigger_sync",
+            title="Task",
+            status=AGENT_ACTION_STATUS_COMPLETED,
+            risk_level="low",
+            idempotency_key="k" * 64,
+        )
+
+        with patch("app.ai.service.ai_metrics.record_execution_outcome") as record_execution_outcome:
+            await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_VERIFIED)
+
+        record_execution_outcome.assert_called_once_with(outcome="success", action_type="integration_trigger_sync")
+
+    async def test_transition_agent_action_records_failure_metric_on_failed(self):
+        session = AsyncMock()
+        action = AgentAction(
+            tenant_id=uuid4(),
+            source="chat",
+            action_type="integration_trigger_sync",
+            title="Task",
+            status=AGENT_ACTION_STATUS_EXECUTING,
+            risk_level="low",
+            idempotency_key="k" * 64,
+        )
+
+        with patch("app.ai.service.ai_metrics.record_execution_outcome") as record_execution_outcome:
+            await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_FAILED)
+
+        record_execution_outcome.assert_called_once_with(outcome="failure", action_type="integration_trigger_sync")
+
+    async def test_transition_agent_action_records_policy_block_metric(self):
+        session = AsyncMock()
+        action = AgentAction(
+            tenant_id=uuid4(),
+            source="chat",
+            action_type="integration_control_command",
+            title="Task",
+            status=AGENT_ACTION_STATUS_EXECUTING,
+            risk_level="high",
+            idempotency_key="k" * 64,
+            metadata_json={
+                "integration_type": "pulse",
+                "operation": "outbound_control",
+                "policy": {"requires_simulation": True},
+            },
+        )
+
+        with patch("app.ai.service.ai_metrics.record_policy_block") as record_policy_block:
+            await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_BLOCKED)
+
+        record_policy_block.assert_called_once_with(
+            action_type="integration_control_command",
+            integration_type="pulse",
+            operation="outbound_control",
+        )
 
     async def test_transition_agent_action_rejects_invalid_transition(self):
         session = AsyncMock()
@@ -636,13 +708,25 @@ class TestAgentActionServiceMethods:
     async def test_record_agent_action_approval_decision_logs_structured_review_event(self):
         session = AsyncMock()
         reviewer = uuid4()
-        approval = AgentActionApproval(
+        action = AgentAction(
             tenant_id=uuid4(),
+            source="chat",
+            action_type="integration_control_command",
+            title="Task",
+            status=AGENT_ACTION_STATUS_PENDING_APPROVAL,
+            risk_level="high",
+            idempotency_key="k" * 64,
+        )
+        approval = AgentActionApproval(
+            tenant_id=action.tenant_id,
             action_id=uuid4(),
             status=AGENT_APPROVAL_STATUS_PENDING,
         )
+        approval.action = action
 
-        with patch("app.ai.service.logger.info") as log_info:
+        with patch("app.ai.service.ai_metrics.record_approval_decision") as record_approval_decision, patch(
+            "app.ai.service.logger.info"
+        ) as log_info:
             await record_agent_action_approval_decision(
                 session,
                 approval,
@@ -651,6 +735,10 @@ class TestAgentActionServiceMethods:
                 reason="Safe action",
             )
 
+        record_approval_decision.assert_called_once_with(
+            decision=AGENT_APPROVAL_STATUS_APPROVED,
+            action_type="integration_control_command",
+        )
         log_info.assert_called_once()
         assert log_info.call_args.args[0] == "AI action approval"
         assert log_info.call_args.kwargs["extra"]["event_type"] == "approval_reviewed"
