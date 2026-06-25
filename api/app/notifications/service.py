@@ -155,7 +155,7 @@ async def _filter_channels_for_event(
     session: AsyncSession,
     *,
     tenant_id: UUID,
-    channels: list[NotificationChannel],
+    channels: Sequence[NotificationChannel],
     severity: str,
     event_type: str,
 ) -> list[NotificationChannel]:
@@ -334,6 +334,6 @@ async def _list_push_subscriptions(
     *,
     tenant_id: UUID,
 ) -> list[PushSubscription]:
-    return (
+    return list(
         (await session.execute(select(PushSubscription).where(PushSubscription.tenant_id == tenant_id))).scalars().all()
     )
