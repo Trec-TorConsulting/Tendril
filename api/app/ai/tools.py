@@ -332,6 +332,15 @@ async def execute_tool(
                 integration_type=cfg.type,
                 operation="trigger_sync",
             )
+            policy_payload = {
+                "integration_type": cfg.type,
+                "operation": "trigger_sync",
+                "supported": policy_decision.supported,
+                "allowed": policy_decision.allowed,
+                "risk_level": policy_decision.risk_level,
+                "requires_approval": policy_decision.requires_approval,
+                "requires_simulation": policy_decision.requires_simulation,
+            }
             if not policy_decision.allowed:
                 reason = policy_decision.reason or "Blocked by integration action policy"
                 action = await ai_service.create_agent_action(
@@ -390,25 +399,123 @@ async def execute_tool(
                     "phase": "blocked",
                     "action_id": str(action.id),
                     "error": reason,
-                    "policy": {
-                        "integration_type": cfg.type,
-                        "operation": "trigger_sync",
-                        "supported": policy_decision.supported,
-                        "allowed": policy_decision.allowed,
-                        "risk_level": policy_decision.risk_level,
-                        "requires_approval": policy_decision.requires_approval,
-                        "requires_simulation": policy_decision.requires_simulation,
-                        "reason": reason,
-                    },
+                    "policy": {**policy_payload, "reason": reason},
                 }
 
+            action = await ai_service.create_agent_action(
+                session,
+                tenant_id=tenant_id,
+                source="chat",
+                action_type="integration_trigger_sync",
+                title=f"Trigger sync for {cfg.name}",
+                idempotency_key=ai_service.build_agent_action_idempotency_key(
+                    tenant_id=tenant_id,
+                    source="chat",
+                    action_type="integration_trigger_sync",
+                    grow_cycle_id=grow.id,
+                    conversation_id=None,
+                    dedupe_token=f"{cfg.id}:execute:{datetime.now(UTC).isoformat()}",
+                ),
+                grow_cycle_id=grow.id,
+                risk_level=policy_decision.risk_level,
+                requires_approval=policy_decision.requires_approval,
+                auto_approved=not policy_decision.requires_approval,
+                summary=f"Trigger sync for {cfg.name}",
+                metadata_json={
+                    "integration_id": str(cfg.id),
+                    "integration_name": cfg.name,
+                    "integration_type": cfg.type,
+                    "operation": "trigger_sync",
+                    "policy": policy_payload,
+                },
+                evidence_json={
+                    "integration_id": str(cfg.id),
+                    "integration_type": cfg.type,
+                    "operation": "trigger_sync",
+                },
+            )
+            await ai_service.transition_agent_action(
+                session,
+                action,
+                next_status=ai_service.AGENT_ACTION_STATUS_APPROVED,
+            )
+            await ai_service.transition_agent_action(
+                session,
+                action,
+                next_status=ai_service.AGENT_ACTION_STATUS_EXECUTING,
+                execution_json={
+                    "target": "integration",
+                    "integration_id": str(cfg.id),
+                    "integration_type": cfg.type,
+                    "operation": "trigger_sync",
+                },
+            )
+
             result = await integration_service.trigger_sync(session, cfg=cfg)
-            if result.error_message:
-                return (
-                    "Integration sync completed with issues: "
-                    f"status={result.status}, readings={result.readings_count}, error={result.error_message}"
+            if result.error_message or result.status == "error":
+                error_text = result.error_message or "Integration sync failed"
+                await ai_service.transition_agent_action(
+                    session,
+                    action,
+                    next_status=ai_service.AGENT_ACTION_STATUS_FAILED,
+                    execution_json={
+                        "target": "integration",
+                        "integration_id": str(cfg.id),
+                        "integration_type": cfg.type,
+                        "operation": "trigger_sync",
+                        "sync_status": result.status,
+                        "readings_count": result.readings_count,
+                        "error": error_text,
+                    },
                 )
-            return f"Integration sync completed: status={result.status}, readings={result.readings_count}"
+                return {
+                    "status": "failed",
+                    "phase": "failed",
+                    "action_id": str(action.id),
+                    "error": error_text,
+                    "result": {
+                        "sync_status": result.status,
+                        "readings_count": result.readings_count,
+                    },
+                    "policy": policy_payload,
+                }
+
+            await ai_service.transition_agent_action(
+                session,
+                action,
+                next_status=ai_service.AGENT_ACTION_STATUS_COMPLETED,
+                execution_json={
+                    "target": "integration",
+                    "integration_id": str(cfg.id),
+                    "integration_type": cfg.type,
+                    "operation": "trigger_sync",
+                    "sync_status": result.status,
+                    "readings_count": result.readings_count,
+                },
+            )
+            await ai_service.transition_agent_action(
+                session,
+                action,
+                next_status=ai_service.AGENT_ACTION_STATUS_VERIFIED,
+                verification_json={
+                    "result": "integration_sync_completed",
+                    "integration_id": str(cfg.id),
+                    "integration_type": cfg.type,
+                    "operation": "trigger_sync",
+                    "sync_status": result.status,
+                    "readings_count": result.readings_count,
+                },
+            )
+            return {
+                "status": "completed",
+                "phase": "completed",
+                "action_id": str(action.id),
+                "result": {
+                    "sync_status": result.status,
+                    "readings_count": result.readings_count,
+                },
+                "policy": policy_payload,
+            }
 
         else:
             return f"Unknown tool: {tool_name}"
