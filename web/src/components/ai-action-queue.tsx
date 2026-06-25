@@ -81,6 +81,16 @@ function statusVariant(status: string): "default" | "secondary" | "destructive" 
   return "outline";
 }
 
+function liveEventContainerClass(event: ActionLifecycleEvent) {
+  if (event.phase === "pending_approval") {
+    return "border-amber-500/30 bg-amber-500/10";
+  }
+  if (event.isError) {
+    return "border-destructive/30 bg-destructive/10";
+  }
+  return "border-border/70 bg-background/80";
+}
+
 function statusLabel(status: string) {
   return STATUS_LABELS[status] ?? status.replace(/_/g, " ");
 }
@@ -345,17 +355,26 @@ export function AiActionQueue({
                     key={event.id}
                     className={cn(
                       "rounded-xl border px-3 py-2",
-                      event.isError
-                        ? "border-destructive/30 bg-destructive/10"
-                        : "border-border/70 bg-background/80",
+                      liveEventContainerClass(event),
                     )}
                   >
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-xs font-medium text-foreground">{event.message}</p>
                       <div className="flex items-center gap-1.5">
+                        {event.phase === "pending_approval" ? <Badge variant="secondary">Awaiting approval</Badge> : null}
                         {event.actionId ? <Badge variant="secondary">Action linked</Badge> : null}
                         {!event.actionId && event.correlationId ? <Badge variant="outline">Correlation only</Badge> : null}
-                        <Badge variant={event.isError ? "destructive" : "outline"}>{statusLabel(event.phase)}</Badge>
+                        <Badge
+                          variant={
+                            event.phase === "pending_approval"
+                              ? "secondary"
+                              : event.isError
+                                ? "destructive"
+                                : "outline"
+                          }
+                        >
+                          {statusLabel(event.phase)}
+                        </Badge>
                       </div>
                     </div>
                     <p className="mt-1 text-[11px] text-muted-foreground">
