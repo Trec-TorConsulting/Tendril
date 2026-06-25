@@ -558,23 +558,24 @@ class TestAgentActionServiceMethods:
             idempotency_key="k" * 64,
         )
 
-        approved = await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_APPROVED)
-        assert approved.status == AGENT_ACTION_STATUS_APPROVED
-        assert approved.approved_at is not None
+        with patch("app.notifications.service.dispatch_alert", new_callable=AsyncMock):
+            approved = await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_APPROVED)
+            assert approved.status == AGENT_ACTION_STATUS_APPROVED
+            assert approved.approved_at is not None
 
-        executing = await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_EXECUTING)
-        assert executing.status == AGENT_ACTION_STATUS_EXECUTING
-        assert executing.executed_at is not None
+            executing = await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_EXECUTING)
+            assert executing.status == AGENT_ACTION_STATUS_EXECUTING
+            assert executing.executed_at is not None
 
-        completed = await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_COMPLETED)
-        assert completed.status == AGENT_ACTION_STATUS_COMPLETED
+            completed = await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_COMPLETED)
+            assert completed.status == AGENT_ACTION_STATUS_COMPLETED
 
-        verified = await transition_agent_action(
-            session,
-            action,
-            next_status=AGENT_ACTION_STATUS_VERIFIED,
-            verification_json={"result": "ok"},
-        )
+            verified = await transition_agent_action(
+                session,
+                action,
+                next_status=AGENT_ACTION_STATUS_VERIFIED,
+                verification_json={"result": "ok"},
+            )
         assert verified.status == AGENT_ACTION_STATUS_VERIFIED
         assert verified.verified_at is not None
         assert verified.verification_json == {"result": "ok"}
@@ -618,7 +619,9 @@ class TestAgentActionServiceMethods:
             idempotency_key="k" * 64,
         )
 
-        with patch("app.ai.service.ai_metrics.record_execution_outcome") as record_execution_outcome:
+        with patch("app.ai.service.ai_metrics.record_execution_outcome") as record_execution_outcome, patch(
+            "app.notifications.service.dispatch_alert", new_callable=AsyncMock
+        ):
             await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_VERIFIED)
 
         record_execution_outcome.assert_called_once_with(outcome="success", action_type="integration_trigger_sync")
@@ -635,7 +638,9 @@ class TestAgentActionServiceMethods:
             idempotency_key="k" * 64,
         )
 
-        with patch("app.ai.service.ai_metrics.record_execution_outcome") as record_execution_outcome:
+        with patch("app.ai.service.ai_metrics.record_execution_outcome") as record_execution_outcome, patch(
+            "app.notifications.service.dispatch_alert", new_callable=AsyncMock
+        ):
             await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_FAILED)
 
         record_execution_outcome.assert_called_once_with(outcome="failure", action_type="integration_trigger_sync")
@@ -657,7 +662,9 @@ class TestAgentActionServiceMethods:
             },
         )
 
-        with patch("app.ai.service.ai_metrics.record_policy_block") as record_policy_block:
+        with patch("app.ai.service.ai_metrics.record_policy_block") as record_policy_block, patch(
+            "app.notifications.service.dispatch_alert", new_callable=AsyncMock
+        ):
             await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_BLOCKED)
 
         record_policy_block.assert_called_once_with(
@@ -665,6 +672,82 @@ class TestAgentActionServiceMethods:
             integration_type="pulse",
             operation="outbound_control",
         )
+
+    async def test_transition_agent_action_dispatches_notification_for_pending_approval(self):
+        session = AsyncMock()
+        action = AgentAction(
+            tenant_id=uuid4(),
+            source="chat",
+            action_type="integration_control_command",
+            title="Control command for Pulse",
+            status=AGENT_ACTION_STATUS_PROPOSED,
+            risk_level="high",
+            idempotency_key="n" * 64,
+        )
+
+        with patch("app.notifications.service.dispatch_alert", new_callable=AsyncMock) as dispatch_alert:
+            await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_PENDING_APPROVAL)
+
+        dispatch_alert.assert_awaited_once_with(
+            session,
+            action.tenant_id,
+            "warning",
+            "AI approval needed: Control command for Pulse",
+            "An AI action is waiting for review in the side panel before it can continue.",
+        )
+
+    async def test_transition_agent_action_dispatches_notification_for_failed(self):
+        session = AsyncMock()
+        action = AgentAction(
+            tenant_id=uuid4(),
+            source="chat",
+            action_type="integration_trigger_sync",
+            title="Trigger sync for Pulse",
+            status=AGENT_ACTION_STATUS_EXECUTING,
+            risk_level="low",
+            idempotency_key="n" * 64,
+        )
+
+        with patch("app.notifications.service.dispatch_alert", new_callable=AsyncMock) as dispatch_alert:
+            await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_FAILED)
+
+        dispatch_alert.assert_awaited_once()
+        assert dispatch_alert.await_args.args[2] == "critical"
+
+    async def test_transition_agent_action_dispatches_notification_for_verified(self):
+        session = AsyncMock()
+        action = AgentAction(
+            tenant_id=uuid4(),
+            source="chat",
+            action_type="create_journal_entry",
+            title="Create journal entry: note",
+            status=AGENT_ACTION_STATUS_COMPLETED,
+            risk_level="low",
+            idempotency_key="n" * 64,
+        )
+
+        with patch("app.notifications.service.dispatch_alert", new_callable=AsyncMock) as dispatch_alert:
+            await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_VERIFIED)
+
+        dispatch_alert.assert_awaited_once()
+        assert dispatch_alert.await_args.args[2] == "info"
+
+    async def test_transition_agent_action_skips_notification_for_approved(self):
+        session = AsyncMock()
+        action = AgentAction(
+            tenant_id=uuid4(),
+            source="chat",
+            action_type="create_task",
+            title="Create task",
+            status=AGENT_ACTION_STATUS_PENDING_APPROVAL,
+            risk_level="low",
+            idempotency_key="n" * 64,
+        )
+
+        with patch("app.notifications.service.dispatch_alert", new_callable=AsyncMock) as dispatch_alert:
+            await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_APPROVED)
+
+        dispatch_alert.assert_not_awaited()
 
     async def test_transition_agent_action_rejects_invalid_transition(self):
         session = AsyncMock()

@@ -166,6 +166,46 @@ def _log_agent_action_approval(
         },
     )
 
+
+def _build_action_notification(action: AgentAction, *, next_status: str) -> tuple[str, str, str] | None:
+    title = action.title or action.action_type.replace("_", " ")
+    if next_status == AGENT_ACTION_STATUS_PENDING_APPROVAL:
+        return (
+            "warning",
+            f"AI approval needed: {title}",
+            "An AI action is waiting for review in the side panel before it can continue.",
+        )
+    if next_status == AGENT_ACTION_STATUS_BLOCKED:
+        return (
+            "warning",
+            f"AI action blocked: {title}",
+            "An AI action was blocked by policy or safety checks.",
+        )
+    if next_status == AGENT_ACTION_STATUS_FAILED:
+        return (
+            "critical",
+            f"AI action failed: {title}",
+            "An AI action executed but did not succeed. Review execution details before retrying.",
+        )
+    if next_status == AGENT_ACTION_STATUS_VERIFIED:
+        return (
+            "info",
+            f"AI action verified: {title}",
+            "An AI action completed successfully and its result was verified.",
+        )
+    return None
+
+
+async def _dispatch_action_notification(session: AsyncSession, action: AgentAction, *, next_status: str) -> None:
+    notification = _build_action_notification(action, next_status=next_status)
+    if notification is None:
+        return
+
+    from app.notifications.service import dispatch_alert
+
+    severity, subject, body = notification
+    await dispatch_alert(session, action.tenant_id, severity, subject, body)
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Conversations
 # ─────────────────────────────────────────────────────────────────────────────
@@ -352,6 +392,7 @@ async def transition_agent_action(
         outcome=next_status,
         previous_status=previous_status,
     )
+    await _dispatch_action_notification(session, action, next_status=next_status)
     return action
 
 
