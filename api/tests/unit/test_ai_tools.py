@@ -6,8 +6,9 @@ from unittest.mock import AsyncMock, patch
 from uuid import UUID
 
 import pytest
+from sqlalchemy import select
 
-from app.ai.models import AgentAction
+from app.ai.models import AgentAction, AgentActionApproval
 from app.ai.tools import CHAT_TOOLS, execute_tool
 from app.integrations.service import WebhookSyncResult
 
@@ -57,6 +58,10 @@ class TestChatToolsSchema:
     def test_chat_tools_include_integration_trigger_sync(self):
         names = {tool["function"]["name"] for tool in CHAT_TOOLS}
         assert "integration_trigger_sync" in names
+
+    def test_chat_tools_include_integration_control_command(self):
+        names = {tool["function"]["name"] for tool in CHAT_TOOLS}
+        assert "integration_control_command" in names
 
 
 class TestExecuteToolIntegrationSync:
@@ -161,3 +166,57 @@ class TestExecuteToolIntegrationSync:
         assert action is not None
         assert action.status == "failed"
         assert action.execution_json["error"] == "Connector unavailable"
+
+
+class TestExecuteToolIntegrationControlCommand:
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_integration_control_command_requires_command(self, db_session, db_tenant):
+        grow = await _create_grow(db_session, tenant_id=db_tenant["tenant"].id)
+        cfg = await _create_integration(db_session, tenant_id=db_tenant["tenant"].id, integration_type="pulse")
+
+        out = await execute_tool(
+            "integration_control_command",
+            {"integration_id": str(cfg.id)},
+            session=db_session,
+            tenant_id=db_tenant["tenant"].id,
+            grow_id=grow.id,
+        )
+
+        assert out == "Error: command is required."
+
+    @pytest.mark.asyncio(loop_scope="session")
+    async def test_integration_control_command_creates_pending_approval_action(self, db_session, db_tenant):
+        grow = await _create_grow(db_session, tenant_id=db_tenant["tenant"].id)
+        cfg = await _create_integration(db_session, tenant_id=db_tenant["tenant"].id, integration_type="pulse")
+
+        out = await execute_tool(
+            "integration_control_command",
+            {
+                "integration_id": str(cfg.id),
+                "command": "turn_on_pump",
+            },
+            session=db_session,
+            tenant_id=db_tenant["tenant"].id,
+            grow_id=grow.id,
+        )
+
+        assert isinstance(out, dict)
+        assert out["status"] == "pending_approval"
+        assert out["phase"] == "pending_approval"
+        assert out["policy"]["requires_approval"] is True
+        assert out["policy"]["requires_simulation"] is True
+
+        action = await db_session.get(AgentAction, UUID(out["action_id"]))
+        assert action is not None
+        assert action.status == "pending_approval"
+        assert action.action_type == "integration_control_command"
+        assert action.metadata_json["operation"] == "outbound_control"
+        assert action.metadata_json["command"] == "turn_on_pump"
+
+        approval = (
+            await db_session.execute(
+                select(AgentActionApproval).where(AgentActionApproval.action_id == action.id)
+            )
+        ).scalar_one()
+        assert approval.status == "pending"
+        assert "approval and simulation" in (approval.reason or "")
