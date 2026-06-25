@@ -7,15 +7,15 @@
 - [x] 1.6 Add post-execution verification hooks and result recording.
 - [x] 1.7 Add websocket keepalive support and conversation-thread binding in chat flow.
 - [x] 1.8 Add web chat UI support for pending approvals, action timeline, and execution status in the existing AI side panel.
-- [ ] 1.9 Add integration control policy models and enforcement checks for outbound operations across Pulse, OpenWeather, and Ecowitt (extensible to all connectors).
-- [ ] 1.10 Add dry-run/simulation requirement for high-risk operations (outbound device control commands).
+- [x] 1.9 Add integration control policy models and enforcement checks for outbound operations across Pulse, OpenWeather, and Ecowitt (extensible to all connectors).
+- [x] 1.10 Add dry-run/simulation requirement for high-risk operations (outbound device control commands).
 - [ ] 1.11 Implement safe auto-approval path for create task, create journal entry, and checklist generation only.
 - [ ] 1.12 Add notification fanout for approval and lifecycle events: in-app, web push, email.
 
 ## 2. Testing
 - [x] 2.1 Add unit tests for lifecycle state transitions and invalid transitions.
 - [x] 2.2 Add policy and approval gate tests for allowed/blocked action cases.
-- [ ] 2.3 Add integration control tests across connectors and risk tiers.
+- [x] 2.3 Add integration control tests across connectors and risk tiers.
 - [x] 2.4 Add websocket tests for keepalive, reconnect, and conversation-thread resume.
 - [x] 2.5 Add end-to-end tests for propose -> approve -> execute -> verify flows.
 
