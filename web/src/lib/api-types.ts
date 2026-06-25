@@ -496,6 +496,86 @@ export interface paths {
         patch: operations["update_user_flags_v1_admin_users__user_id__patch"];
         trace?: never;
     };
+    "/v1/ai/actions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Agent Actions
+         * @description List AI agent actions for the current tenant.
+         */
+        get: operations["list_agent_actions_v1_ai_actions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ai/actions/{action_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Agent Action
+         * @description Get one AI agent action with approval history.
+         */
+        get: operations["get_agent_action_v1_ai_actions__action_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ai/actions/{action_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Agent Action
+         * @description Approve a pending AI agent action.
+         */
+        post: operations["approve_agent_action_v1_ai_actions__action_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ai/actions/{action_id}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject Agent Action
+         * @description Reject a pending AI agent action.
+         */
+        post: operations["reject_agent_action_v1_ai_actions__action_id__reject_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/ai/coach-tip": {
         parameters: {
             query?: never;
@@ -3553,6 +3633,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/notifications/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Notification Logs
+         * @description List notification log entries for the current tenant.
+         */
+        get: operations["list_notification_logs_v1_notifications_logs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/notifications/preferences": {
         parameters: {
             query?: never;
@@ -6040,6 +6140,150 @@ export interface components {
              */
             is_internal: boolean;
         };
+        /** AgentActionDetailResponse */
+        AgentActionDetailResponse: {
+            /** Action Type */
+            action_type: string;
+            /** Approvals */
+            approvals: components["schemas"]["ApprovalResponse"][];
+            /** Auto Approved */
+            auto_approved: boolean;
+            /** Conversation Id */
+            conversation_id: string | null;
+            /** Created At */
+            created_at: string;
+            /** Evidence Json */
+            evidence_json: {
+                [key: string]: unknown;
+            } | null;
+            /** Execution Json */
+            execution_json: {
+                [key: string]: unknown;
+            } | null;
+            /** Grow Cycle Id */
+            grow_cycle_id: string | null;
+            /** Id */
+            id: string;
+            /** Metadata Json */
+            metadata_json: {
+                [key: string]: unknown;
+            } | null;
+            pending_approval: components["schemas"]["PendingApprovalResponse"] | null;
+            proposal: components["schemas"]["AgentActionProposalResponse"];
+            /** Requires Approval */
+            requires_approval: boolean;
+            /** Risk Level */
+            risk_level: string;
+            /** Source */
+            source: string;
+            /** Status */
+            status: string;
+            /** Summary */
+            summary: string | null;
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string;
+            /** Verification Json */
+            verification_json: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** AgentActionProposalApprovalResponse */
+        AgentActionProposalApprovalResponse: {
+            /** Expires At */
+            expires_at: string | null;
+            /** Reason */
+            reason: string | null;
+            /** Required */
+            required: boolean;
+            /** Status */
+            status: string;
+        };
+        /** AgentActionProposalResponse */
+        AgentActionProposalResponse: {
+            approval: components["schemas"]["AgentActionProposalApprovalResponse"];
+            /** Confidence */
+            confidence: number | null;
+            /** Context */
+            context: {
+                [key: string]: unknown;
+            } | null;
+            /** Evidence */
+            evidence: {
+                [key: string]: unknown;
+            } | null;
+            /** Headline */
+            headline: string;
+            /** Phase */
+            phase: string | null;
+            /** Steps */
+            steps: components["schemas"]["AgentActionProposalStepResponse"][];
+            /** Summary */
+            summary: string | null;
+            /** Surface */
+            surface: string;
+        };
+        /** AgentActionProposalStepResponse */
+        AgentActionProposalStepResponse: {
+            /** Description */
+            description: string;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Required */
+            required?: boolean | null;
+            /** Status */
+            status: string;
+        };
+        /** AgentActionResponse */
+        AgentActionResponse: {
+            /** Action Type */
+            action_type: string;
+            /** Auto Approved */
+            auto_approved: boolean;
+            /** Conversation Id */
+            conversation_id: string | null;
+            /** Created At */
+            created_at: string;
+            /** Evidence Json */
+            evidence_json: {
+                [key: string]: unknown;
+            } | null;
+            /** Execution Json */
+            execution_json: {
+                [key: string]: unknown;
+            } | null;
+            /** Grow Cycle Id */
+            grow_cycle_id: string | null;
+            /** Id */
+            id: string;
+            /** Metadata Json */
+            metadata_json: {
+                [key: string]: unknown;
+            } | null;
+            pending_approval: components["schemas"]["PendingApprovalResponse"] | null;
+            proposal: components["schemas"]["AgentActionProposalResponse"];
+            /** Requires Approval */
+            requires_approval: boolean;
+            /** Risk Level */
+            risk_level: string;
+            /** Source */
+            source: string;
+            /** Status */
+            status: string;
+            /** Summary */
+            summary: string | null;
+            /** Title */
+            title: string;
+            /** Updated At */
+            updated_at: string;
+            /** Verification Json */
+            verification_json: {
+                [key: string]: unknown;
+            } | null;
+        };
         /** AlertResponse */
         AlertResponse: {
             /** Acknowledged */
@@ -6136,6 +6380,30 @@ export interface components {
              * @default read
              */
             scopes: string;
+        };
+        /** ApprovalDecisionBody */
+        ApprovalDecisionBody: {
+            /** Reason */
+            reason?: string | null;
+        };
+        /** ApprovalResponse */
+        ApprovalResponse: {
+            /** Created At */
+            created_at: string;
+            /** Expires At */
+            expires_at: string | null;
+            /** Id */
+            id: string;
+            /** Reason */
+            reason: string | null;
+            /** Requested By User Id */
+            requested_by_user_id: string | null;
+            /** Reviewed At */
+            reviewed_at: string | null;
+            /** Reviewed By User Id */
+            reviewed_by_user_id: string | null;
+            /** Status */
+            status: string;
         };
         /** ArticleCreate */
         ArticleCreate: {
@@ -8552,6 +8820,30 @@ export interface components {
             /** Wind Speed Mph */
             wind_speed_mph?: number | null;
         };
+        /** NotificationLogResponse */
+        NotificationLogResponse: {
+            /** Body */
+            body: string | null;
+            /** Channel Type */
+            channel_type: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Error */
+            error: string | null;
+            /** Event Type */
+            event_type: string;
+            /** Id */
+            id: string;
+            /** Severity */
+            severity: string;
+            /** Status */
+            status: string;
+            /** Subject */
+            subject: string;
+        };
         /** NutrientCreate */
         NutrientCreate: {
             /** Base Nutrients */
@@ -8625,6 +8917,17 @@ export interface components {
             override_json: {
                 [key: string]: unknown;
             };
+        };
+        /** PaginatedResponse[AgentActionResponse] */
+        PaginatedResponse_AgentActionResponse_: {
+            /** Items */
+            items: components["schemas"]["AgentActionResponse"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Total */
+            total: number;
         };
         /** PaginatedResponse[AlertResponse] */
         PaginatedResponse_AlertResponse_: {
@@ -8784,6 +9087,17 @@ export interface components {
         PaginatedResponse_JournalResponse_: {
             /** Items */
             items: components["schemas"]["JournalResponse"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Total */
+            total: number;
+        };
+        /** PaginatedResponse[NotificationLogResponse] */
+        PaginatedResponse_NotificationLogResponse_: {
+            /** Items */
+            items: components["schemas"]["NotificationLogResponse"][];
             /** Page */
             page: number;
             /** Page Size */
@@ -8988,6 +9302,19 @@ export interface components {
             page_size: number;
             /** Total */
             total: number;
+        };
+        /** PendingApprovalResponse */
+        PendingApprovalResponse: {
+            /** Created At */
+            created_at: string;
+            /** Expires At */
+            expires_at: string | null;
+            /** Id */
+            id: string;
+            /** Reason */
+            reason: string | null;
+            /** Requested By User Id */
+            requested_by_user_id: string | null;
         };
         /** PestScoutCreate */
         PestScoutCreate: {
@@ -12631,6 +12958,143 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserSummary"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_agent_actions_v1_ai_actions_get: {
+        parameters: {
+            query?: {
+                grow_cycle_id?: string | null;
+                status?: string | null;
+                /** @description Page number */
+                page?: number;
+                /** @description Items per page */
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponse_AgentActionResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_agent_action_v1_ai_actions__action_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                action_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentActionDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    approve_agent_action_v1_ai_actions__action_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                action_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApprovalDecisionBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentActionDetailResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reject_agent_action_v1_ai_actions__action_id__reject_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                action_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApprovalDecisionBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentActionDetailResponse"];
                 };
             };
             /** @description Validation Error */
@@ -19185,6 +19649,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_notification_logs_v1_notifications_logs_get: {
+        parameters: {
+            query?: {
+                event_type?: string | null;
+                channel_type?: string | null;
+                status?: string | null;
+                /** @description Page number */
+                page?: number;
+                /** @description Items per page */
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponse_NotificationLogResponse_"];
                 };
             };
             /** @description Validation Error */

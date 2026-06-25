@@ -30,7 +30,7 @@ vi.mock("@/components/confirm-dialog", () => ({
 vi.mock("@/components/ui/sidebar", async () =>
   (await import("./helpers/sidebar-mock")).sidebarModuleMock());
 
-const { mockChannels } = vi.hoisted(() => {
+const { mockChannels, mockLogs } = vi.hoisted(() => {
   const mockChannels = [
     {
       id: "ch1",
@@ -40,7 +40,20 @@ const { mockChannels } = vi.hoisted(() => {
       enabled: true,
     },
   ];
-  return { mockChannels };
+  const mockLogs = [
+    {
+      id: "log-1",
+      channel_type: "in_app",
+      event_type: "ai_action_lifecycle",
+      severity: "warning",
+      subject: "Approval needed",
+      body: "Review a pending integration action.",
+      status: "sent",
+      error: null,
+      created_at: "2026-06-25T10:30:00Z",
+    },
+  ];
+  return { mockChannels, mockLogs };
 });
 
 vi.mock("@/lib/api", () => ({
@@ -52,6 +65,7 @@ vi.mock("@/lib/api", () => ({
   pushSubscribe: vi.fn().mockResolvedValue({ status: "subscribed" }),
   pushUnsubscribe: vi.fn().mockResolvedValue(undefined),
   listNotificationPreferences: vi.fn().mockResolvedValue([]),
+  listNotificationLogs: vi.fn().mockResolvedValue(mockLogs),
   createNotificationPreference: vi.fn().mockResolvedValue({}),
   deleteNotificationPreference: vi.fn().mockResolvedValue(undefined),
 }));
@@ -81,6 +95,14 @@ describe("NotificationsPage", () => {
     render(<NotificationsPage />);
     await waitFor(() => {
       expect(screen.getByText("Push Notifications")).toBeDefined();
+    });
+  });
+
+  it("renders ai lifecycle feed", async () => {
+    render(<NotificationsPage />);
+    await waitFor(() => {
+      expect(screen.getByText("AI Lifecycle Feed")).toBeDefined();
+      expect(screen.getByText("Approval needed")).toBeDefined();
     });
   });
 

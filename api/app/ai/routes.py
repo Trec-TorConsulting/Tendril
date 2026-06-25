@@ -6,7 +6,8 @@ import asyncio
 import base64
 import json
 import logging
-from datetime import UTC
+from contextlib import suppress
+from datetime import UTC, datetime
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -24,6 +25,7 @@ from app.ai.context import (
     build_insight_prompt,
 )
 from app.ai.gather import gather_grow_data
+from app.ai.integration_policy import IntegrationActionPolicyDecision, evaluate_integration_action_policy
 from app.ai.ollama import chat_completion, chat_completion_stream, chat_with_tools
 from app.ai.tools import CHAT_TOOLS, execute_tool
 from app.auth.jwt import decode_token
@@ -35,6 +37,176 @@ logger = logging.getLogger("tendril.ai")
 router = APIRouter()
 
 MAX_TOOL_ROUNDS = 5
+KEEPALIVE_INTERVAL_SECONDS = 20
+
+
+def _build_keepalive_event() -> dict[str, str]:
+    """Build the websocket keepalive payload sent during long AI work."""
+    return {
+        "type": "ping",
+        "ts": datetime.now(UTC).isoformat(),
+    }
+
+
+def _build_chat_action_event(
+    *,
+    phase: str,
+    tool: str,
+    message: str,
+    action_id: str | None = None,
+    correlation_id: str | None = None,
+    result: Any | None = None,
+    error: str | None = None,
+    policy: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build a structured chat action lifecycle event for websocket clients."""
+    payload: dict[str, Any] = {
+        "type": "action_event",
+        "phase": phase,
+        "tool": tool,
+        "message": message,
+        "refresh_actions": True,
+        "ts": datetime.now(UTC).isoformat(),
+    }
+    if action_id is not None:
+        payload["action_id"] = action_id
+    if correlation_id is not None:
+        payload["correlation_id"] = correlation_id
+    if result is not None:
+        payload["result"] = result
+    if error is not None:
+        payload["error"] = error
+    if policy is not None:
+        payload["policy"] = policy
+    return payload
+
+
+def _extract_integration_type_from_tool_arguments(tool_arguments: Any) -> str | None:
+    """Extract connector type from tool arguments for policy evaluation."""
+    if not isinstance(tool_arguments, dict):
+        return None
+
+    for key in ("integration_type", "connector_type", "connector"):
+        value = tool_arguments.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _resolve_integration_policy_for_tool_call(
+    *,
+    tool_name: str,
+    tool_arguments: Any,
+) -> IntegrationActionPolicyDecision | None:
+    """Resolve policy decision for integration-prefixed tool calls."""
+    if not tool_name.startswith("integration_"):
+        return None
+
+    integration_type = _extract_integration_type_from_tool_arguments(tool_arguments)
+    if integration_type is None:
+        return None
+
+    operation = tool_name.removeprefix("integration_")
+    if operation == "control_command":
+        operation = "outbound_control"
+    return evaluate_integration_action_policy(
+        integration_type=integration_type,
+        operation=operation,
+    )
+
+
+def _build_policy_payload(decision: IntegrationActionPolicyDecision) -> dict[str, Any]:
+    """Serialize a policy decision for websocket lifecycle events."""
+    return {
+        "integration_type": decision.integration_type,
+        "operation": decision.operation,
+        "supported": decision.supported,
+        "allowed": decision.allowed,
+        "risk_level": decision.risk_level,
+        "requires_approval": decision.requires_approval,
+        "requires_simulation": decision.requires_simulation,
+        "reason": decision.reason,
+    }
+
+
+def _extract_action_id_from_tool_result(tool_result: Any) -> str | None:
+    """Extract a persisted agent action ID from tool output when available."""
+    if not isinstance(tool_result, dict):
+        return None
+
+    for key in ("action_id", "agent_action_id"):
+        value = tool_result.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _extract_policy_payload_from_tool_result(tool_result: Any) -> dict[str, Any] | None:
+    """Extract a policy payload from tool output when available."""
+    if not isinstance(tool_result, dict):
+        return None
+    policy = tool_result.get("policy")
+    if isinstance(policy, dict):
+        return policy
+    return None
+
+
+def _resolve_action_event_phase(tool_result: Any) -> str:
+    """Resolve websocket lifecycle phase from tool output for additive protocol upgrades."""
+    if isinstance(tool_result, dict):
+        phase = tool_result.get("phase")
+        if phase in {"pending_approval", "blocked", "failed", "completed"}:
+            return str(phase)
+    return "completed"
+
+
+def _extract_tool_result_error(tool_result: Any) -> str | None:
+    """Extract error text from tool output when available."""
+    if not isinstance(tool_result, dict):
+        return None
+    error = tool_result.get("error")
+    if isinstance(error, str) and error.strip():
+        return error.strip()
+    return None
+
+
+def _extract_action_id_from_tool_arguments(tool_arguments: Any) -> str | None:
+    """Extract a persisted agent action ID from tool arguments when available."""
+    if not isinstance(tool_arguments, dict):
+        return None
+
+    for key in ("action_id", "agent_action_id"):
+        value = tool_arguments.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _resolve_action_event_ids(
+    *,
+    tool_call_id: str | None,
+    tool_arguments: Any,
+    tool_result: Any | None = None,
+) -> tuple[str | None, str | None]:
+    """Resolve normalized action_id and correlation_id for websocket lifecycle events."""
+    correlation_id = tool_call_id.strip() if isinstance(tool_call_id, str) and tool_call_id.strip() else None
+    action_from_args = _extract_action_id_from_tool_arguments(tool_arguments)
+    action_from_result = _extract_action_id_from_tool_result(tool_result) if tool_result is not None else None
+    action_id = action_from_result or action_from_args or correlation_id
+    return action_id, correlation_id
+
+
+async def _send_keepalive_pings(ws: WebSocket, stop_event: asyncio.Event) -> None:
+    """Send periodic keepalive pings while the websocket is open."""
+    while not stop_event.is_set():
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=KEEPALIVE_INTERVAL_SECONDS)
+            break
+        except TimeoutError:
+            try:
+                await ws.send_json(_build_keepalive_event())
+            except Exception:
+                break
 
 
 # ---------- WebSocket Chat (4.1) — with tool support ----------
@@ -67,6 +239,9 @@ async def websocket_chat(ws: WebSocket):
         await ws.send_json({"type": "error", "message": "Authentication failed"})
         await ws.close()
         return
+
+    keepalive_stop = asyncio.Event()
+    keepalive_task = asyncio.create_task(_send_keepalive_pings(ws, keepalive_stop))
 
     # Load full grow context
     system_context = "You are Tendril, an AI grow assistant."
@@ -150,6 +325,9 @@ async def websocket_chat(ws: WebSocket):
     try:
         while True:
             data = await ws.receive_json()
+            if data.get("type") == "pong":
+                continue
+
             user_msg = data.get("message", "")
             if not user_msg:
                 continue
@@ -189,6 +367,66 @@ async def websocket_chat(ws: WebSocket):
                         fn = tc.get("function", {})
                         fn_name = fn.get("name", "")
                         fn_args = fn.get("arguments", {})
+                        tool_call_id = tc.get("id") if isinstance(tc.get("id"), str) else None
+                        event_action_id, event_correlation_id = _resolve_action_event_ids(
+                            tool_call_id=tool_call_id,
+                            tool_arguments=fn_args,
+                        )
+                        policy_decision = _resolve_integration_policy_for_tool_call(
+                            tool_name=fn_name,
+                            tool_arguments=fn_args,
+                        )
+                        policy_payload = _build_policy_payload(policy_decision) if policy_decision is not None else None
+
+                        if policy_decision is not None and not policy_decision.allowed:
+                            blocked_reason = policy_decision.reason or "Blocked by integration action policy"
+                            blocked_result: dict[str, Any] = {
+                                "error": blocked_reason,
+                                "policy": policy_payload,
+                            }
+                            await ws.send_json(
+                                _build_chat_action_event(
+                                    phase="blocked",
+                                    tool=fn_name,
+                                    message=f"Tool blocked by policy: {fn_name.replace('_', ' ')}",
+                                    action_id=event_action_id,
+                                    correlation_id=event_correlation_id,
+                                    error=blocked_reason,
+                                    result=blocked_result,
+                                    policy=policy_payload,
+                                )
+                            )
+
+                            messages.append({"role": "tool", "content": blocked_result})
+                            await ws.send_json(
+                                {
+                                    "type": "action",
+                                    "tool": fn_name,
+                                    "result": blocked_result,
+                                }
+                            )
+                            continue
+
+                        await ws.send_json(
+                            _build_chat_action_event(
+                                phase="proposed",
+                                tool=fn_name,
+                                message=f"Planned tool call: {fn_name.replace('_', ' ')}",
+                                action_id=event_action_id,
+                                correlation_id=event_correlation_id,
+                                policy=policy_payload,
+                            )
+                        )
+                        await ws.send_json(
+                            _build_chat_action_event(
+                                phase="executing",
+                                tool=fn_name,
+                                message=f"Running tool: {fn_name.replace('_', ' ')}",
+                                action_id=event_action_id,
+                                correlation_id=event_correlation_id,
+                                policy=policy_payload,
+                            )
+                        )
 
                         try:
                             from app.database import async_session_factory, set_rls_tenant
@@ -205,6 +443,48 @@ async def websocket_chat(ws: WebSocket):
                         except Exception as e:
                             logger.exception("Tool execution error")
                             tool_result = {"error": f"Error: {e}"}  # type: ignore[assignment]
+                            await ws.send_json(
+                                _build_chat_action_event(
+                                    phase="failed",
+                                    tool=fn_name,
+                                    message=f"Tool failed: {fn_name.replace('_', ' ')}",
+                                    action_id=event_action_id,
+                                    correlation_id=event_correlation_id,
+                                    error=str(e),
+                                    policy=policy_payload,
+                                )
+                            )
+                        else:
+                            completed_action_id, completed_correlation_id = _resolve_action_event_ids(
+                                tool_call_id=tool_call_id,
+                                tool_arguments=fn_args,
+                                tool_result=tool_result,
+                            )
+                            result_policy = _extract_policy_payload_from_tool_result(tool_result)
+                            event_policy = result_policy if result_policy is not None else policy_payload
+                            event_phase = _resolve_action_event_phase(tool_result)
+                            event_error = _extract_tool_result_error(tool_result)
+                            event_message = (
+                                f"Tool blocked by policy: {fn_name.replace('_', ' ')}"
+                                if event_phase == "blocked"
+                                else (
+                                    f"Tool queued for approval: {fn_name.replace('_', ' ')}"
+                                    if event_phase == "pending_approval"
+                                    else f"Tool completed: {fn_name.replace('_', ' ')}"
+                                )
+                            )
+                            await ws.send_json(
+                                _build_chat_action_event(
+                                    phase=event_phase,
+                                    tool=fn_name,
+                                    message=event_message,
+                                    action_id=completed_action_id,
+                                    correlation_id=completed_correlation_id,
+                                    result=tool_result,
+                                    error=event_error,
+                                    policy=event_policy,
+                                )
+                            )
 
                         messages.append({"role": "tool", "content": tool_result})
                         await ws.send_json(
@@ -260,6 +540,11 @@ async def websocket_chat(ws: WebSocket):
 
     except WebSocketDisconnect:
         logger.debug("Chat WebSocket disconnected")
+    finally:
+        keepalive_stop.set()
+        keepalive_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await keepalive_task
 
 
 # ---------- Health Check (4.2) — powered by Gemini with camera + full data ----------
@@ -471,14 +756,36 @@ async def run_health_check(
     await session.commit()
     await session.refresh(health_eval)
 
+    created_task_count = 0
+    task_error: str | None = None
+    safe_actions, _approval_actions = service.split_health_check_actions_by_safety(actions)
+
     # Generate fresh tasks from health check actions (cancels old ones first)
-    if actions:
+    if safe_actions:
         from app.scheduler.task_generator import create_tasks_from_health_eval
 
         try:
-            await create_tasks_from_health_eval(session, grow, score, issues, actions)
-        except Exception:
+            created_task_count = await create_tasks_from_health_eval(session, grow, score, issues, safe_actions)
+        except Exception as exc:
+            task_error = str(exc)
             logger.exception("Failed to create tasks from manual health check for grow %s", grow.id)
+
+    if actions:
+        try:
+            await service.record_health_check_task_actions(
+                session,
+                tenant_id=grow.tenant_id,
+                grow_cycle_id=grow.id,
+                requested_by_user_id=user.user_id,
+                health_eval_id=health_eval.id,
+                score=score,
+                issues=issues,
+                actions=actions,
+                created_task_count=created_task_count,
+                task_error=task_error,
+            )
+        except Exception:
+            logger.exception("Failed to record agent action lifecycle for manual health check %s", health_eval.id)
 
     await record_usage(session, user.tenant_id, "ai_analyses")
     await session.commit()

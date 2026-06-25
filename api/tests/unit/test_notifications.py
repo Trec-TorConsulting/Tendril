@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
 import pytest_asyncio
+from sqlalchemy import select
 
+from app.notifications.models import NotificationChannel, NotificationLog, NotificationPreference
+from app.notifications.service import dispatch_alert
 from tests.conftest import TenantFactory
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
@@ -86,6 +90,154 @@ class TestNotificationChannels:
     async def test_no_auth(self, client):
         resp = await client.get("/v1/notifications/channels")
         assert resp.status_code in (401, 403)
+
+
+class TestNotificationDispatchPreferences:
+    async def test_dispatch_alert_defaults_to_enabled_channels_without_preferences(self, db_session, tenant):
+        channel = NotificationChannel(
+            tenant_id=tenant["tenant"].id,
+            channel_type="email",
+            name="Email",
+            config={"email": "grower@example.com"},
+            enabled=True,
+        )
+        db_session.add(channel)
+        await db_session.commit()
+
+        with patch("app.notifications.service._send_email", new_callable=AsyncMock) as send_email, patch(
+            "app.notifications.service._send_web_push", new_callable=AsyncMock
+        ) as send_web_push:
+            await dispatch_alert(
+                db_session,
+                tenant["tenant"].id,
+                "warning",
+                "AI approval needed",
+                "Review required",
+                event_type="ai_action_lifecycle",
+            )
+
+        send_email.assert_awaited_once()
+        send_web_push.assert_awaited_once()
+
+    async def test_dispatch_alert_respects_event_type_preferences(self, db_session, tenant):
+        channel = NotificationChannel(
+            tenant_id=tenant["tenant"].id,
+            channel_type="email",
+            name="Email",
+            config={"email": "grower@example.com"},
+            enabled=True,
+        )
+        db_session.add(channel)
+        await db_session.flush()
+
+        pref = NotificationPreference(
+            tenant_id=tenant["tenant"].id,
+            user_id=tenant["user"].id,
+            channel_id=channel.id,
+            severity_filter="warning,critical",
+            event_types="billing",
+            enabled=True,
+        )
+        db_session.add(pref)
+        await db_session.commit()
+
+        with patch("app.notifications.service._send_email", new_callable=AsyncMock) as send_email, patch(
+            "app.notifications.service._send_web_push", new_callable=AsyncMock
+        ) as send_web_push:
+            await dispatch_alert(
+                db_session,
+                tenant["tenant"].id,
+                "warning",
+                "AI approval needed",
+                "Review required",
+                event_type="ai_action_lifecycle",
+            )
+
+        send_email.assert_not_awaited()
+        send_web_push.assert_awaited_once()
+        logs = (await db_session.execute(select(NotificationLog))).scalars().all()
+        assert len(logs) == 1
+        assert logs[0].channel_type == "in_app"
+        assert logs[0].event_type == "ai_action_lifecycle"
+        assert logs[0].status == "skipped"
+
+    async def test_dispatch_alert_sends_when_preference_allows_ai_lifecycle_event(self, db_session, tenant):
+        channel = NotificationChannel(
+            tenant_id=tenant["tenant"].id,
+            channel_type="email",
+            name="Email",
+            config={"email": "grower@example.com"},
+            enabled=True,
+        )
+        db_session.add(channel)
+        await db_session.flush()
+
+        pref = NotificationPreference(
+            tenant_id=tenant["tenant"].id,
+            user_id=tenant["user"].id,
+            channel_id=channel.id,
+            severity_filter="warning,critical",
+            event_types="ai_action_lifecycle",
+            enabled=True,
+        )
+        db_session.add(pref)
+        await db_session.commit()
+
+        with patch("app.notifications.service._send_email", new_callable=AsyncMock) as send_email, patch(
+            "app.notifications.service._send_web_push", new_callable=AsyncMock
+        ) as send_web_push:
+            await dispatch_alert(
+                db_session,
+                tenant["tenant"].id,
+                "warning",
+                "AI approval needed",
+                "Review required",
+                event_type="ai_action_lifecycle",
+            )
+
+        send_email.assert_awaited_once()
+        send_web_push.assert_awaited_once()
+        logs = (await db_session.execute(select(NotificationLog).order_by(NotificationLog.created_at.asc()))).scalars().all()
+        assert [log.channel_type for log in logs] == ["in_app", "email"]
+        assert all(log.event_type == "ai_action_lifecycle" for log in logs)
+
+
+class TestNotificationLogs:
+    async def test_list_notification_logs_filters_ai_lifecycle_in_app_entries(self, client, db_session, tenant):
+        db_session.add_all(
+            [
+                NotificationLog(
+                    tenant_id=tenant["tenant"].id,
+                    channel_type="in_app",
+                    event_type="ai_action_lifecycle",
+                    severity="warning",
+                    subject="Approval needed",
+                    body="Review a pending action.",
+                    status="sent",
+                ),
+                NotificationLog(
+                    tenant_id=tenant["tenant"].id,
+                    channel_type="email",
+                    event_type="billing",
+                    severity="info",
+                    subject="Invoice ready",
+                    body="A new invoice is available.",
+                    status="sent",
+                ),
+            ]
+        )
+        await db_session.commit()
+
+        resp = await client.get(
+            "/v1/notifications/logs?event_type=ai_action_lifecycle&channel_type=in_app",
+            headers=tenant["headers"],
+        )
+
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["total"] == 1
+        assert payload["items"][0]["subject"] == "Approval needed"
+        assert payload["items"][0]["event_type"] == "ai_action_lifecycle"
 
 
 # ---------- Push Subscriptions ----------

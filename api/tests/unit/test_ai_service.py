@@ -4,27 +4,53 @@ from __future__ import annotations
 
 import base64
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 from uuid import UUID, uuid4
 
 import pytest
 
 from app.ai.service import (
+    AGENT_ACTION_STATUS_APPROVED,
+    AGENT_ACTION_STATUS_BLOCKED,
+    AGENT_ACTION_STATUS_COMPLETED,
+    AGENT_ACTION_STATUS_EXECUTING,
+    AGENT_ACTION_STATUS_FAILED,
+    AGENT_ACTION_STATUS_PENDING_APPROVAL,
+    AGENT_ACTION_STATUS_PROPOSED,
+    AGENT_ACTION_STATUS_VERIFIED,
+    AGENT_APPROVAL_STATUS_APPROVED,
+    AGENT_APPROVAL_STATUS_PENDING,
+    AGENT_APPROVAL_STATUS_REJECTED,
     DEFAULT_DIAGNOSIS_OVERALL_SCORE,
     DEFAULT_DIAGNOSIS_OVERALL_SEVERITY,
     DIAGNOSIS_SYSTEM_PROMPT,
     HEALTH_HISTORY_MAX_LIMIT,
     MAX_DIAGNOSE_IMAGE_BYTES,
+    AgentAction,
+    AgentActionApproval,
+    AgentActionApprovalPreconditionError,
     Conversation,
     DiagnoseImageError,
+    InvalidAgentActionTransitionError,
+    InvalidAgentApprovalTransitionError,
+    action_requires_simulation_before_approval,
+    approve_agent_action,
+    build_agent_action_idempotency_key,
+    build_agent_action_lifecycle_steps,
+    build_agent_action_proposal,
     build_diagnosis_prompt,
     build_photo_url_base,
+    can_transition_agent_action,
+    classify_health_check_action,
+    create_agent_action,
+    create_agent_action_approval,
     create_conversation,
     decode_diagnose_image,
     delete_conversation,
     get_conversation,
     get_conversation_with_messages,
     get_health_eval,
+    get_latest_approval,
     get_treatment,
     list_health_evals_query,
     list_treatments_query,
@@ -37,7 +63,10 @@ from app.ai.service import (
     parse_health_check_json,
     parse_optional_uuid,
     photo_url_for_key,
+    record_agent_action_approval_decision,
     search_treatments_query,
+    split_health_check_actions_by_safety,
+    transition_agent_action,
     update_conversation_title,
 )
 
@@ -241,6 +270,32 @@ class TestNormalizeHealthAction:
         assert "random" in out
 
 
+class TestHealthCheckActionClassification:
+    def test_classify_safe_health_check_action(self):
+        action_type, requires_approval, auto_approved, risk_level = classify_health_check_action("Adjust pH down")
+        assert action_type == "create_task"
+        assert requires_approval is False
+        assert auto_approved is True
+        assert risk_level == "low"
+
+    def test_classify_control_action_requires_approval(self):
+        action_type, requires_approval, auto_approved, risk_level = classify_health_check_action(
+            "Turn on exhaust fan now"
+        )
+        assert action_type == "control_equipment"
+        assert requires_approval is True
+        assert auto_approved is False
+        assert risk_level == "high"
+
+    def test_split_health_check_actions_by_safety(self):
+        safe, approval = split_health_check_actions_by_safety([
+            "Adjust pH down",
+            "Turn on exhaust fan now",
+        ])
+        assert safe == ["Adjust pH down"]
+        assert approval == ["Turn on exhaust fan now"]
+
+
 class TestNormalizeHealthHistoryHelpers:
     """History-listing variants do NOT add the [category] prefix —
     pin that difference."""
@@ -403,7 +458,474 @@ class TestConversationServiceMethods:
         session.get.assert_awaited_once_with(PlantHealthTreatment, "nitrogen_deficiency")
 
 
+@pytest.mark.asyncio(loop_scope="session")
+class TestAgentActionServiceMethods:
+    async def test_create_agent_action_persists_and_returns_model(self):
+        session = AsyncMock()
+        session.add = Mock()
+        tenant_id = uuid4()
+        conversation_id = uuid4()
+        grow_cycle_id = uuid4()
+        user_id = uuid4()
+        key = build_agent_action_idempotency_key(
+            tenant_id=tenant_id,
+            source="health_check",
+            action_type="create_task",
+            grow_cycle_id=grow_cycle_id,
+            conversation_id=conversation_id,
+        )
+
+        action = await create_agent_action(
+            session,
+            tenant_id=tenant_id,
+            source="health_check",
+            action_type="create_task",
+            title="Create a flush task",
+            idempotency_key=key,
+            conversation_id=conversation_id,
+            grow_cycle_id=grow_cycle_id,
+            created_by_user_id=user_id,
+            requires_approval=True,
+        )
+
+        assert isinstance(action, AgentAction)
+        assert action.tenant_id == tenant_id
+        assert action.status == AGENT_ACTION_STATUS_PROPOSED
+        assert action.idempotency_key == key
+        session.add.assert_called_once_with(action)
+        session.commit.assert_awaited_once()
+        session.refresh.assert_awaited_once_with(action)
+
+    async def test_create_agent_action_logs_structured_lifecycle_event(self):
+        session = AsyncMock()
+        session.add = Mock()
+
+        with patch("app.ai.service.ai_metrics.record_action_proposed") as record_action_proposed, patch(
+            "app.ai.service.logger.info"
+        ) as log_info:
+            action = await create_agent_action(
+                session,
+                tenant_id=uuid4(),
+                source="chat",
+                action_type="integration_trigger_sync",
+                title="Trigger sync",
+                idempotency_key="a" * 64,
+                conversation_id=uuid4(),
+                grow_cycle_id=uuid4(),
+                created_by_user_id=uuid4(),
+            )
+
+        record_action_proposed.assert_called_once_with(
+            action_type="integration_trigger_sync",
+            source="chat",
+        )
+        log_info.assert_called_once()
+        assert log_info.call_args.args[0] == "AI action lifecycle"
+        assert log_info.call_args.kwargs["extra"]["event_type"] == "action_created"
+        assert log_info.call_args.kwargs["extra"]["ai_action_id"] == str(action.id)
+        assert log_info.call_args.kwargs["extra"]["action_status"] == AGENT_ACTION_STATUS_PROPOSED
+
+    async def test_create_agent_action_approval_persists_pending_record(self):
+        session = AsyncMock()
+        session.add = Mock()
+        tenant_id = uuid4()
+        action_id = uuid4()
+        requester = uuid4()
+
+        approval = await create_agent_action_approval(
+            session,
+            tenant_id=tenant_id,
+            action_id=action_id,
+            requested_by_user_id=requester,
+        )
+
+        assert isinstance(approval, AgentActionApproval)
+        assert approval.status == AGENT_APPROVAL_STATUS_PENDING
+        assert approval.action_id == action_id
+        session.add.assert_called_once_with(approval)
+        session.commit.assert_awaited_once()
+        session.refresh.assert_awaited_once_with(approval)
+
+    async def test_transition_agent_action_updates_status_and_timestamps(self):
+        session = AsyncMock()
+        action = AgentAction(
+            tenant_id=uuid4(),
+            source="health_check",
+            action_type="create_task",
+            title="Task",
+            status=AGENT_ACTION_STATUS_PENDING_APPROVAL,
+            risk_level="low",
+            idempotency_key="k" * 64,
+        )
+
+        with patch("app.notifications.service.dispatch_alert", new_callable=AsyncMock):
+            approved = await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_APPROVED)
+            assert approved.status == AGENT_ACTION_STATUS_APPROVED
+            assert approved.approved_at is not None
+
+            executing = await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_EXECUTING)
+            assert executing.status == AGENT_ACTION_STATUS_EXECUTING
+            assert executing.executed_at is not None
+
+            completed = await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_COMPLETED)
+            assert completed.status == AGENT_ACTION_STATUS_COMPLETED
+
+            verified = await transition_agent_action(
+                session,
+                action,
+                next_status=AGENT_ACTION_STATUS_VERIFIED,
+                verification_json={"result": "ok"},
+            )
+        assert verified.status == AGENT_ACTION_STATUS_VERIFIED
+        assert verified.verified_at is not None
+        assert verified.verification_json == {"result": "ok"}
+        assert session.commit.await_count == 4
+        assert session.refresh.await_count == 4
+
+    async def test_transition_agent_action_logs_previous_and_next_status(self):
+        session = AsyncMock()
+        action = AgentAction(
+            tenant_id=uuid4(),
+            source="health_check",
+            action_type="create_task",
+            title="Task",
+            status=AGENT_ACTION_STATUS_PENDING_APPROVAL,
+            risk_level="low",
+            idempotency_key="k" * 64,
+        )
+
+        with patch("app.ai.service.ai_metrics.record_execution_outcome") as record_execution_outcome, patch(
+            "app.ai.service.ai_metrics.record_policy_block"
+        ) as record_policy_block, patch("app.ai.service.logger.info") as log_info:
+            await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_APPROVED)
+
+        record_execution_outcome.assert_not_called()
+        record_policy_block.assert_not_called()
+        log_info.assert_called_once()
+        assert log_info.call_args.args[0] == "AI action lifecycle"
+        assert log_info.call_args.kwargs["extra"]["event_type"] == "action_transitioned"
+        assert log_info.call_args.kwargs["extra"]["previous_status"] == AGENT_ACTION_STATUS_PENDING_APPROVAL
+        assert log_info.call_args.kwargs["extra"]["outcome"] == AGENT_ACTION_STATUS_APPROVED
+
+    async def test_transition_agent_action_records_success_metric_on_verified(self):
+        session = AsyncMock()
+        action = AgentAction(
+            tenant_id=uuid4(),
+            source="chat",
+            action_type="integration_trigger_sync",
+            title="Task",
+            status=AGENT_ACTION_STATUS_COMPLETED,
+            risk_level="low",
+            idempotency_key="k" * 64,
+        )
+
+        with patch("app.ai.service.ai_metrics.record_execution_outcome") as record_execution_outcome, patch(
+            "app.notifications.service.dispatch_alert", new_callable=AsyncMock
+        ):
+            await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_VERIFIED)
+
+        record_execution_outcome.assert_called_once_with(outcome="success", action_type="integration_trigger_sync")
+
+    async def test_transition_agent_action_records_failure_metric_on_failed(self):
+        session = AsyncMock()
+        action = AgentAction(
+            tenant_id=uuid4(),
+            source="chat",
+            action_type="integration_trigger_sync",
+            title="Task",
+            status=AGENT_ACTION_STATUS_EXECUTING,
+            risk_level="low",
+            idempotency_key="k" * 64,
+        )
+
+        with patch("app.ai.service.ai_metrics.record_execution_outcome") as record_execution_outcome, patch(
+            "app.notifications.service.dispatch_alert", new_callable=AsyncMock
+        ):
+            await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_FAILED)
+
+        record_execution_outcome.assert_called_once_with(outcome="failure", action_type="integration_trigger_sync")
+
+    async def test_transition_agent_action_records_policy_block_metric(self):
+        session = AsyncMock()
+        action = AgentAction(
+            tenant_id=uuid4(),
+            source="chat",
+            action_type="integration_control_command",
+            title="Task",
+            status=AGENT_ACTION_STATUS_EXECUTING,
+            risk_level="high",
+            idempotency_key="k" * 64,
+            metadata_json={
+                "integration_type": "pulse",
+                "operation": "outbound_control",
+                "policy": {"requires_simulation": True},
+            },
+        )
+
+        with patch("app.ai.service.ai_metrics.record_policy_block") as record_policy_block, patch(
+            "app.notifications.service.dispatch_alert", new_callable=AsyncMock
+        ):
+            await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_BLOCKED)
+
+        record_policy_block.assert_called_once_with(
+            action_type="integration_control_command",
+            integration_type="pulse",
+            operation="outbound_control",
+        )
+
+    async def test_transition_agent_action_dispatches_notification_for_pending_approval(self):
+        session = AsyncMock()
+        action = AgentAction(
+            tenant_id=uuid4(),
+            source="chat",
+            action_type="integration_control_command",
+            title="Control command for Pulse",
+            status=AGENT_ACTION_STATUS_PROPOSED,
+            risk_level="high",
+            idempotency_key="n" * 64,
+        )
+
+        with patch("app.notifications.service.dispatch_alert", new_callable=AsyncMock) as dispatch_alert:
+            await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_PENDING_APPROVAL)
+
+        dispatch_alert.assert_awaited_once_with(
+            session,
+            action.tenant_id,
+            "warning",
+            "AI approval needed: Control command for Pulse",
+            "An AI action is waiting for review in the side panel before it can continue.",
+            event_type="ai_action_lifecycle",
+        )
+
+    async def test_transition_agent_action_dispatches_notification_for_failed(self):
+        session = AsyncMock()
+        action = AgentAction(
+            tenant_id=uuid4(),
+            source="chat",
+            action_type="integration_trigger_sync",
+            title="Trigger sync for Pulse",
+            status=AGENT_ACTION_STATUS_EXECUTING,
+            risk_level="low",
+            idempotency_key="n" * 64,
+        )
+
+        with patch("app.notifications.service.dispatch_alert", new_callable=AsyncMock) as dispatch_alert:
+            await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_FAILED)
+
+        dispatch_alert.assert_awaited_once()
+        assert dispatch_alert.await_args.args[2] == "critical"
+
+    async def test_transition_agent_action_dispatches_notification_for_verified(self):
+        session = AsyncMock()
+        action = AgentAction(
+            tenant_id=uuid4(),
+            source="chat",
+            action_type="create_journal_entry",
+            title="Create journal entry: note",
+            status=AGENT_ACTION_STATUS_COMPLETED,
+            risk_level="low",
+            idempotency_key="n" * 64,
+        )
+
+        with patch("app.notifications.service.dispatch_alert", new_callable=AsyncMock) as dispatch_alert:
+            await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_VERIFIED)
+
+        dispatch_alert.assert_awaited_once()
+        assert dispatch_alert.await_args.args[2] == "info"
+
+    async def test_transition_agent_action_skips_notification_for_approved(self):
+        session = AsyncMock()
+        action = AgentAction(
+            tenant_id=uuid4(),
+            source="chat",
+            action_type="create_task",
+            title="Create task",
+            status=AGENT_ACTION_STATUS_PENDING_APPROVAL,
+            risk_level="low",
+            idempotency_key="n" * 64,
+        )
+
+        with patch("app.notifications.service.dispatch_alert", new_callable=AsyncMock) as dispatch_alert:
+            await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_APPROVED)
+
+        dispatch_alert.assert_not_awaited()
+
+    async def test_transition_agent_action_rejects_invalid_transition(self):
+        session = AsyncMock()
+        action = AgentAction(
+            tenant_id=uuid4(),
+            source="health_check",
+            action_type="create_task",
+            title="Task",
+            status=AGENT_ACTION_STATUS_PROPOSED,
+            risk_level="low",
+            idempotency_key="k" * 64,
+        )
+
+        with pytest.raises(InvalidAgentActionTransitionError, match="proposed -> verified"):
+            await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_VERIFIED)
+
+    async def test_record_agent_action_approval_decision_updates_review_fields(self):
+        session = AsyncMock()
+        reviewer = uuid4()
+        approval = AgentActionApproval(
+            tenant_id=uuid4(),
+            action_id=uuid4(),
+            status=AGENT_APPROVAL_STATUS_PENDING,
+        )
+
+        updated = await record_agent_action_approval_decision(
+            session,
+            approval,
+            decision_status=AGENT_APPROVAL_STATUS_APPROVED,
+            reviewed_by_user_id=reviewer,
+            reason="Safe action",
+        )
+
+        assert updated.status == AGENT_APPROVAL_STATUS_APPROVED
+        assert updated.reviewed_by_user_id == reviewer
+        assert updated.reviewed_at is not None
+        assert updated.reason == "Safe action"
+        session.commit.assert_awaited_once()
+        session.refresh.assert_awaited_once_with(approval)
+
+    async def test_record_agent_action_approval_decision_logs_structured_review_event(self):
+        session = AsyncMock()
+        reviewer = uuid4()
+        action = AgentAction(
+            tenant_id=uuid4(),
+            source="chat",
+            action_type="integration_control_command",
+            title="Task",
+            status=AGENT_ACTION_STATUS_PENDING_APPROVAL,
+            risk_level="high",
+            idempotency_key="k" * 64,
+        )
+        approval = AgentActionApproval(
+            tenant_id=action.tenant_id,
+            action_id=uuid4(),
+            status=AGENT_APPROVAL_STATUS_PENDING,
+        )
+        approval.action = action
+
+        with patch("app.ai.service.ai_metrics.record_approval_decision") as record_approval_decision, patch(
+            "app.ai.service.logger.info"
+        ) as log_info:
+            await record_agent_action_approval_decision(
+                session,
+                approval,
+                decision_status=AGENT_APPROVAL_STATUS_APPROVED,
+                reviewed_by_user_id=reviewer,
+                reason="Safe action",
+            )
+
+        record_approval_decision.assert_called_once_with(
+            decision=AGENT_APPROVAL_STATUS_APPROVED,
+            action_type="integration_control_command",
+        )
+        log_info.assert_called_once()
+        assert log_info.call_args.args[0] == "AI action approval"
+        assert log_info.call_args.kwargs["extra"]["event_type"] == "approval_reviewed"
+        assert log_info.call_args.kwargs["extra"]["approval_status"] == AGENT_APPROVAL_STATUS_APPROVED
+        assert log_info.call_args.kwargs["extra"]["actor_user_id"] == str(reviewer)
+
+    async def test_record_agent_action_approval_decision_rejects_non_pending(self):
+        session = AsyncMock()
+        approval = AgentActionApproval(
+            tenant_id=uuid4(),
+            action_id=uuid4(),
+            status=AGENT_APPROVAL_STATUS_REJECTED,
+        )
+
+        with pytest.raises(InvalidAgentApprovalTransitionError, match="rejected -> approved"):
+            await record_agent_action_approval_decision(
+                session,
+                approval,
+                decision_status=AGENT_APPROVAL_STATUS_APPROVED,
+                reviewed_by_user_id=uuid4(),
+            )
+
+    async def test_approve_agent_action_rejects_simulation_required_integration_control(self):
+        session = AsyncMock()
+        action = AgentAction(
+            tenant_id=uuid4(),
+            source="chat",
+            action_type="integration_control_command",
+            title="Control command for Pulse",
+            status=AGENT_ACTION_STATUS_PENDING_APPROVAL,
+            risk_level="high",
+            idempotency_key="c" * 64,
+            requires_approval=True,
+            metadata_json={
+                "policy": {
+                    "requires_simulation": True,
+                }
+            },
+        )
+        approval = AgentActionApproval(
+            tenant_id=action.tenant_id,
+            action_id=uuid4(),
+            status=AGENT_APPROVAL_STATUS_PENDING,
+        )
+        action.approvals = [approval]
+
+        assert action_requires_simulation_before_approval(action) is True
+
+        with pytest.raises(
+            AgentActionApprovalPreconditionError,
+            match="requires simulation/execution support before it can be approved",
+        ):
+            await approve_agent_action(
+                session,
+                action,
+                reviewed_by_user_id=uuid4(),
+                reason="Ship it",
+            )
+
+        session.commit.assert_not_awaited()
+
+
 class TestAiServiceQueries:
+    def test_build_agent_action_idempotency_key_is_deterministic(self):
+        tenant_id = uuid4()
+        grow_id = uuid4()
+        conversation_id = uuid4()
+
+        a = build_agent_action_idempotency_key(
+            tenant_id=tenant_id,
+            source="health_check",
+            action_type="create_task",
+            grow_cycle_id=grow_id,
+            conversation_id=conversation_id,
+            dedupe_token="flush",
+        )
+        b = build_agent_action_idempotency_key(
+            tenant_id=tenant_id,
+            source="health_check",
+            action_type="create_task",
+            grow_cycle_id=grow_id,
+            conversation_id=conversation_id,
+            dedupe_token="flush",
+        )
+        c = build_agent_action_idempotency_key(
+            tenant_id=tenant_id,
+            source="health_check",
+            action_type="create_task",
+            grow_cycle_id=grow_id,
+            conversation_id=conversation_id,
+            dedupe_token="different",
+        )
+
+        assert a == b
+        assert a != c
+        assert len(a) == 64
+
+    def test_can_transition_agent_action_allows_and_blocks_expected_paths(self):
+        assert can_transition_agent_action(AGENT_ACTION_STATUS_PROPOSED, AGENT_ACTION_STATUS_PENDING_APPROVAL)
+        assert can_transition_agent_action(AGENT_ACTION_STATUS_PENDING_APPROVAL, AGENT_ACTION_STATUS_APPROVED)
+        assert can_transition_agent_action(AGENT_ACTION_STATUS_COMPLETED, AGENT_ACTION_STATUS_VERIFIED)
+        assert not can_transition_agent_action(AGENT_ACTION_STATUS_PROPOSED, AGENT_ACTION_STATUS_VERIFIED)
+
     def test_list_user_conversations_query_filters_by_tenant_user_and_optional_grow(self):
         tenant_id = uuid4()
         user_id = uuid4()
@@ -451,6 +973,165 @@ class TestAiServiceQueries:
         q = search_treatments_query(query_text="Yellow")
         params = q.compile().params
         assert "%yellow%" in params.values()
+
+    def test_build_agent_action_lifecycle_steps_for_pending_approval(self):
+        action = AgentAction(
+            tenant_id=uuid4(),
+            source="health_check",
+            action_type="control_equipment",
+            title="Turn on exhaust fan now",
+            status=AGENT_ACTION_STATUS_PENDING_APPROVAL,
+            risk_level="high",
+            idempotency_key="k" * 64,
+            requires_approval=True,
+        )
+
+        steps = build_agent_action_lifecycle_steps(action)
+
+        assert [step["key"] for step in steps] == ["observe", "plan", "approve", "execute", "verify"]
+        assert steps[2]["status"] == "current"
+        assert steps[3]["status"] == "pending"
+        assert steps[4]["status"] == "pending"
+
+    def test_build_agent_action_proposal_uses_pending_approval_and_health_context(self):
+        requester = uuid4()
+        action = AgentAction(
+            tenant_id=uuid4(),
+            source="health_check",
+            action_type="control_equipment",
+            title="Turn on exhaust fan now",
+            status=AGENT_ACTION_STATUS_PENDING_APPROVAL,
+            risk_level="high",
+            idempotency_key="k" * 64,
+            requires_approval=True,
+            auto_approved=False,
+            summary="Turn on exhaust fan now",
+            metadata_json={
+                "phase": "health_check",
+                "health_eval_id": "eval-123",
+                "health_score": 70,
+                "issues": ["High humidity"],
+                "safe_action": False,
+            },
+            evidence_json={
+                "recommended_action": "Turn on exhaust fan now",
+                "issue_count": 1,
+            },
+        )
+        pending = AgentActionApproval(
+            tenant_id=action.tenant_id,
+            action_id=uuid4(),
+            requested_by_user_id=requester,
+            status=AGENT_APPROVAL_STATUS_PENDING,
+            reason="Needs approval before sending a control command",
+        )
+        action.approvals = [pending]
+
+        proposal = build_agent_action_proposal(action)
+
+        assert proposal["headline"] == "Turn on exhaust fan now"
+        assert proposal["surface"] == "ai_side_panel"
+        assert proposal["context"] == {
+            "phase": "health_check",
+            "health_eval_id": "eval-123",
+            "health_score": 70,
+            "issues": ["High humidity"],
+            "safe_action": False,
+        }
+        assert proposal["evidence"] == {
+            "recommended_action": "Turn on exhaust fan now",
+            "issue_count": 1,
+        }
+        assert proposal["approval"] == {
+            "required": True,
+            "status": AGENT_APPROVAL_STATUS_PENDING,
+            "reason": "Needs approval before sending a control command",
+            "expires_at": None,
+        }
+        assert proposal["steps"][2]["status"] == "current"
+
+    def test_build_agent_action_proposal_includes_integration_context_and_command(self):
+        action = AgentAction(
+            tenant_id=uuid4(),
+            source="chat",
+            action_type="integration_control_command",
+            title="Control command for Pulse test",
+            status=AGENT_ACTION_STATUS_PENDING_APPROVAL,
+            risk_level="high",
+            idempotency_key="i" * 64,
+            requires_approval=True,
+            auto_approved=False,
+            summary="turn_on_pump",
+            metadata_json={
+                "integration_id": "cfg-123",
+                "integration_name": "Pulse test",
+                "integration_type": "pulse",
+                "operation": "outbound_control",
+                "command": "turn_on_pump",
+                "policy": {
+                    "risk_level": "high",
+                    "requires_simulation": True,
+                },
+            },
+            evidence_json={
+                "integration_id": "cfg-123",
+                "integration_type": "pulse",
+                "operation": "outbound_control",
+                "command": "turn_on_pump",
+            },
+        )
+        action.approvals = [
+            AgentActionApproval(
+                tenant_id=action.tenant_id,
+                action_id=uuid4(),
+                status=AGENT_APPROVAL_STATUS_PENDING,
+                reason="High-risk integration control command requires approval and simulation before execution",
+            )
+        ]
+
+        proposal = build_agent_action_proposal(action)
+
+        assert proposal["context"] == {
+            "integration_id": "cfg-123",
+            "integration_name": "Pulse test",
+            "integration_type": "pulse",
+            "operation": "outbound_control",
+            "command": "turn_on_pump",
+            "policy_risk_level": "high",
+            "requires_simulation": True,
+        }
+        assert proposal["evidence"] == {
+            "recommended_action": "turn_on_pump",
+            "integration_id": "cfg-123",
+            "integration_type": "pulse",
+            "operation": "outbound_control",
+            "command": "turn_on_pump",
+        }
+
+    def test_get_latest_approval_returns_last_row(self):
+        action = AgentAction(
+            tenant_id=uuid4(),
+            source="health_check",
+            action_type="control_equipment",
+            title="Turn on exhaust fan now",
+            status=AGENT_ACTION_STATUS_APPROVED,
+            risk_level="high",
+            idempotency_key="k" * 64,
+            requires_approval=True,
+        )
+        first = AgentActionApproval(
+            tenant_id=action.tenant_id,
+            action_id=uuid4(),
+            status=AGENT_APPROVAL_STATUS_PENDING,
+        )
+        second = AgentActionApproval(
+            tenant_id=action.tenant_id,
+            action_id=uuid4(),
+            status=AGENT_APPROVAL_STATUS_APPROVED,
+        )
+        action.approvals = [first, second]
+
+        assert get_latest_approval(action) is second
 
 
 class TestAiServicePhotoUrls:

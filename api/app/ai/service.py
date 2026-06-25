@@ -19,17 +19,833 @@ Conventions match the project standard (PR #192 / #208-#220):
 
 from __future__ import annotations
 
+import hashlib
+import logging
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import Select, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.ai.models import Conversation, ConversationMessage
+from app.ai import metrics as ai_metrics
+from app.ai.models import AgentAction, AgentActionApproval, Conversation, ConversationMessage
+
+logger = logging.getLogger("tendril.ai.service")
+
+AGENT_ACTION_STATUS_PROPOSED = "proposed"
+AGENT_ACTION_STATUS_PENDING_APPROVAL = "pending_approval"
+AGENT_ACTION_STATUS_APPROVED = "approved"
+AGENT_ACTION_STATUS_EXECUTING = "executing"
+AGENT_ACTION_STATUS_COMPLETED = "completed"
+AGENT_ACTION_STATUS_VERIFIED = "verified"
+AGENT_ACTION_STATUS_BLOCKED = "blocked"
+AGENT_ACTION_STATUS_REJECTED = "rejected"
+AGENT_ACTION_STATUS_EXPIRED = "expired"
+AGENT_ACTION_STATUS_FAILED = "failed"
+AGENT_ACTION_STATUS_CANCELLED = "cancelled"
+
+AGENT_APPROVAL_STATUS_PENDING = "pending"
+AGENT_APPROVAL_STATUS_APPROVED = "approved"
+AGENT_APPROVAL_STATUS_REJECTED = "rejected"
+AGENT_APPROVAL_STATUS_EXPIRED = "expired"
+
+TERMINAL_AGENT_ACTION_STATUSES = frozenset(
+    {
+        AGENT_ACTION_STATUS_VERIFIED,
+        AGENT_ACTION_STATUS_BLOCKED,
+        AGENT_ACTION_STATUS_REJECTED,
+        AGENT_ACTION_STATUS_EXPIRED,
+        AGENT_ACTION_STATUS_FAILED,
+        AGENT_ACTION_STATUS_CANCELLED,
+    }
+)
+
+ALLOWED_AGENT_ACTION_TRANSITIONS: dict[str, frozenset[str]] = {
+    AGENT_ACTION_STATUS_PROPOSED: frozenset(
+        {
+            AGENT_ACTION_STATUS_PENDING_APPROVAL,
+            AGENT_ACTION_STATUS_APPROVED,
+            AGENT_ACTION_STATUS_BLOCKED,
+            AGENT_ACTION_STATUS_CANCELLED,
+        }
+    ),
+    AGENT_ACTION_STATUS_PENDING_APPROVAL: frozenset(
+        {
+            AGENT_ACTION_STATUS_APPROVED,
+            AGENT_ACTION_STATUS_REJECTED,
+            AGENT_ACTION_STATUS_EXPIRED,
+            AGENT_ACTION_STATUS_CANCELLED,
+        }
+    ),
+    AGENT_ACTION_STATUS_APPROVED: frozenset(
+        {
+            AGENT_ACTION_STATUS_EXECUTING,
+            AGENT_ACTION_STATUS_CANCELLED,
+        }
+    ),
+    AGENT_ACTION_STATUS_EXECUTING: frozenset(
+        {
+            AGENT_ACTION_STATUS_COMPLETED,
+            AGENT_ACTION_STATUS_FAILED,
+            AGENT_ACTION_STATUS_BLOCKED,
+        }
+    ),
+    AGENT_ACTION_STATUS_COMPLETED: frozenset(
+        {
+            AGENT_ACTION_STATUS_VERIFIED,
+            AGENT_ACTION_STATUS_FAILED,
+        }
+    ),
+}
+
+
+class InvalidAgentActionTransitionError(Exception):
+    """Raised when an agent action attempts an invalid lifecycle transition."""
+
+
+class InvalidAgentApprovalTransitionError(Exception):
+    """Raised when an approval record attempts an invalid lifecycle transition."""
+
+
+class AgentActionApprovalMissingError(Exception):
+    """Raised when an action approval decision is requested without a pending approval."""
+
+
+class AgentActionApprovalPreconditionError(Exception):
+    """Raised when an action cannot be approved until an extra prerequisite is satisfied."""
+
+
+def _serialize_uuid(value: UUID | None) -> str | None:
+    return str(value) if value is not None else None
+
+
+def _log_agent_action_lifecycle(
+    action: AgentAction,
+    *,
+    event_type: str,
+    outcome: str,
+    previous_status: str | None = None,
+) -> None:
+    logger.info(
+        "AI action lifecycle",
+        extra={
+            "action": "ai_action_lifecycle",
+            "event": "ai_action_lifecycle",
+            "event_type": event_type,
+            "outcome": outcome,
+            "ai_action_id": str(action.id),
+            "action_type": action.action_type,
+            "action_status": action.status,
+            "previous_status": previous_status,
+            "conversation_id": _serialize_uuid(action.conversation_id),
+            "grow_cycle_id": _serialize_uuid(action.grow_cycle_id),
+            "actor_user_id": _serialize_uuid(action.created_by_user_id),
+            "risk_level": action.risk_level,
+        },
+    )
+
+
+def _log_agent_action_approval(
+    approval: AgentActionApproval,
+    *,
+    event_type: str,
+    outcome: str,
+) -> None:
+    logger.info(
+        "AI action approval",
+        extra={
+            "action": "ai_action_approval",
+            "event": "ai_action_approval",
+            "event_type": event_type,
+            "outcome": outcome,
+            "approval_id": str(approval.id),
+            "ai_action_id": str(approval.action_id),
+            "approval_status": approval.status,
+            "actor_user_id": _serialize_uuid(approval.reviewed_by_user_id or approval.requested_by_user_id),
+        },
+    )
+
+
+def _build_action_notification(action: AgentAction, *, next_status: str) -> tuple[str, str, str] | None:
+    title = action.title or action.action_type.replace("_", " ")
+    if next_status == AGENT_ACTION_STATUS_PENDING_APPROVAL:
+        return (
+            "warning",
+            f"AI approval needed: {title}",
+            "An AI action is waiting for review in the side panel before it can continue.",
+        )
+    if next_status == AGENT_ACTION_STATUS_BLOCKED:
+        return (
+            "warning",
+            f"AI action blocked: {title}",
+            "An AI action was blocked by policy or safety checks.",
+        )
+    if next_status == AGENT_ACTION_STATUS_FAILED:
+        return (
+            "critical",
+            f"AI action failed: {title}",
+            "An AI action executed but did not succeed. Review execution details before retrying.",
+        )
+    if next_status == AGENT_ACTION_STATUS_VERIFIED:
+        return (
+            "info",
+            f"AI action verified: {title}",
+            "An AI action completed successfully and its result was verified.",
+        )
+    return None
+
+
+async def _dispatch_action_notification(session: AsyncSession, action: AgentAction, *, next_status: str) -> None:
+    notification = _build_action_notification(action, next_status=next_status)
+    if notification is None:
+        return
+
+    from app.notifications.service import dispatch_alert
+
+    severity, subject, body = notification
+    await dispatch_alert(
+        session,
+        action.tenant_id,
+        severity,
+        subject,
+        body,
+        event_type="ai_action_lifecycle",
+    )
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Conversations
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+def build_agent_action_idempotency_key(
+    *,
+    tenant_id: UUID,
+    source: str,
+    action_type: str,
+    grow_cycle_id: UUID | None,
+    conversation_id: UUID | None,
+    dedupe_token: str | None = None,
+) -> str:
+    """Build a deterministic idempotency key for one logical action."""
+    raw = "|".join(
+        [
+            str(tenant_id),
+            source,
+            action_type,
+            str(grow_cycle_id or ""),
+            str(conversation_id or ""),
+            dedupe_token or "",
+        ]
+    )
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def classify_health_check_action(action_text: str) -> tuple[str, bool, bool, str]:
+    """Classify a health-check recommendation into a lifecycle action policy.
+
+    Returns `(action_type, requires_approval, auto_approved, risk_level)`.
+    Phase 1 treats direct equipment/control-style commands as approval-gated.
+    """
+    normalized = action_text.strip().lower()
+    control_markers = (
+        "turn on",
+        "turn off",
+        "set ",
+        "increase fan",
+        "decrease fan",
+        "raise fan",
+        "lower fan",
+        "start pump",
+        "stop pump",
+        "toggle",
+        "enable",
+        "disable",
+        "dim light",
+        "raise light",
+        "lower light",
+        "increase light",
+        "decrease light",
+    )
+    if any(marker in normalized for marker in control_markers):
+        return ("control_equipment", True, False, "high")
+    return ("create_task", False, True, "low")
+
+
+async def create_agent_action(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    source: str,
+    action_type: str,
+    title: str,
+    idempotency_key: str,
+    conversation_id: UUID | None = None,
+    grow_cycle_id: UUID | None = None,
+    created_by_user_id: UUID | None = None,
+    risk_level: str = "low",
+    requires_approval: bool = False,
+    auto_approved: bool = False,
+    summary: str | None = None,
+    metadata_json: dict | None = None,
+    evidence_json: dict | None = None,
+) -> AgentAction:
+    """Create and persist an agent action lifecycle record."""
+    action = AgentAction(
+        tenant_id=tenant_id,
+        conversation_id=conversation_id,
+        grow_cycle_id=grow_cycle_id,
+        created_by_user_id=created_by_user_id,
+        source=source,
+        action_type=action_type,
+        title=title,
+        status=AGENT_ACTION_STATUS_PROPOSED,
+        idempotency_key=idempotency_key,
+        risk_level=risk_level,
+        requires_approval=requires_approval,
+        auto_approved=auto_approved,
+        summary=summary,
+        metadata_json=metadata_json or {},
+        evidence_json=evidence_json or {},
+    )
+    session.add(action)
+    await session.commit()
+    await session.refresh(action)
+    ai_metrics.record_action_proposed(action_type=action.action_type, source=action.source)
+    _log_agent_action_lifecycle(action, event_type="action_created", outcome=action.status)
+    return action
+
+
+async def create_agent_action_approval(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    action_id: UUID,
+    requested_by_user_id: UUID | None,
+    expires_at: datetime | None = None,
+    reason: str | None = None,
+) -> AgentActionApproval:
+    """Create a pending approval record for an agent action."""
+    approval = AgentActionApproval(
+        tenant_id=tenant_id,
+        action_id=action_id,
+        requested_by_user_id=requested_by_user_id,
+        status=AGENT_APPROVAL_STATUS_PENDING,
+        expires_at=expires_at,
+        reason=reason,
+    )
+    session.add(approval)
+    await session.commit()
+    await session.refresh(approval)
+    _log_agent_action_approval(approval, event_type="approval_requested", outcome=approval.status)
+    return approval
+
+
+def can_transition_agent_action(current_status: str, next_status: str) -> bool:
+    """Return whether an action status change is valid."""
+    if current_status == next_status:
+        return True
+    return next_status in ALLOWED_AGENT_ACTION_TRANSITIONS.get(current_status, frozenset())
+
+
+async def transition_agent_action(
+    session: AsyncSession,
+    action: AgentAction,
+    *,
+    next_status: str,
+    execution_json: dict | None = None,
+    verification_json: dict | None = None,
+    metadata_json: dict | None = None,
+) -> AgentAction:
+    """Persist one valid action lifecycle transition."""
+    previous_status = action.status
+    if not can_transition_agent_action(action.status, next_status):
+        raise InvalidAgentActionTransitionError(f"Invalid action transition: {action.status} -> {next_status}")
+
+    now = datetime.now(UTC)
+    action.status = next_status
+    if metadata_json is not None:
+        action.metadata_json = metadata_json
+    if execution_json is not None:
+        action.execution_json = execution_json
+    if verification_json is not None:
+        action.verification_json = verification_json
+
+    if next_status == AGENT_ACTION_STATUS_APPROVED:
+        action.approved_at = now
+    elif next_status == AGENT_ACTION_STATUS_EXECUTING:
+        action.executed_at = now
+    elif next_status == AGENT_ACTION_STATUS_VERIFIED:
+        action.verified_at = now
+
+    await session.commit()
+    await session.refresh(action)
+    if next_status == AGENT_ACTION_STATUS_VERIFIED:
+        ai_metrics.record_execution_outcome(outcome="success", action_type=action.action_type)
+    elif next_status == AGENT_ACTION_STATUS_FAILED:
+        ai_metrics.record_execution_outcome(outcome="failure", action_type=action.action_type)
+    elif next_status == AGENT_ACTION_STATUS_BLOCKED:
+        metadata = action.metadata_json or {}
+        policy = metadata.get("policy")
+        if isinstance(policy, dict):
+            ai_metrics.record_policy_block(
+                action_type=action.action_type,
+                integration_type=str(metadata.get("integration_type") or "unknown"),
+                operation=str(metadata.get("operation") or "unknown"),
+            )
+    _log_agent_action_lifecycle(
+        action,
+        event_type="action_transitioned",
+        outcome=next_status,
+        previous_status=previous_status,
+    )
+    await _dispatch_action_notification(session, action, next_status=next_status)
+    return action
+
+
+async def record_agent_action_approval_decision(
+    session: AsyncSession,
+    approval: AgentActionApproval,
+    *,
+    decision_status: str,
+    reviewed_by_user_id: UUID | None,
+    reason: str | None = None,
+) -> AgentActionApproval:
+    """Persist an approval decision from pending to a terminal state."""
+    if approval.status != AGENT_APPROVAL_STATUS_PENDING:
+        raise InvalidAgentApprovalTransitionError(
+            f"Invalid approval transition: {approval.status} -> {decision_status}"
+        )
+    if decision_status not in {
+        AGENT_APPROVAL_STATUS_APPROVED,
+        AGENT_APPROVAL_STATUS_REJECTED,
+        AGENT_APPROVAL_STATUS_EXPIRED,
+    }:
+        raise InvalidAgentApprovalTransitionError(
+            f"Invalid approval transition: {approval.status} -> {decision_status}"
+        )
+
+    approval.status = decision_status
+    approval.reviewed_by_user_id = reviewed_by_user_id
+    approval.reviewed_at = datetime.now(UTC)
+    if reason is not None:
+        approval.reason = reason
+    await session.commit()
+    await session.refresh(approval)
+    action = approval.action
+    action_type = action.action_type if action is not None else "unknown"
+    ai_metrics.record_approval_decision(decision=approval.status, action_type=action_type)
+    _log_agent_action_approval(approval, event_type="approval_reviewed", outcome=approval.status)
+    return approval
+
+
+async def record_health_check_task_actions(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    grow_cycle_id: UUID,
+    requested_by_user_id: UUID | None,
+    health_eval_id: UUID,
+    score: int | None,
+    issues: list[str],
+    actions: list[str],
+    created_task_count: int,
+    task_error: str | None = None,
+) -> list[AgentAction]:
+    """Record lifecycle-tracked agent actions for health-check task creation.
+
+    Phase 1 treats health-check task creation as a safe auto-approved action.
+    One lifecycle record is created per recommended action string.
+    """
+    recorded: list[AgentAction] = []
+    tasks_created_remaining = created_task_count
+
+    for index, action_text in enumerate(actions):
+        action_type, requires_approval, auto_approved, risk_level = classify_health_check_action(action_text)
+        action = await create_agent_action(
+            session,
+            tenant_id=tenant_id,
+            source="health_check",
+            action_type=action_type,
+            title=action_text[:255],
+            idempotency_key=build_agent_action_idempotency_key(
+                tenant_id=tenant_id,
+                source="health_check",
+                action_type=action_type,
+                grow_cycle_id=grow_cycle_id,
+                conversation_id=None,
+                dedupe_token=f"{health_eval_id}:{index}:{action_text}",
+            ),
+            grow_cycle_id=grow_cycle_id,
+            created_by_user_id=requested_by_user_id,
+            risk_level=risk_level,
+            requires_approval=requires_approval,
+            auto_approved=auto_approved,
+            summary=action_text,
+            metadata_json={
+                "health_eval_id": str(health_eval_id),
+                "health_score": score,
+                "issues": issues,
+                "phase": "health_check",
+                "safe_action": auto_approved,
+            },
+            evidence_json={
+                "recommended_action": action_text,
+                "issue_count": len(issues),
+            },
+        )
+
+        if requires_approval:
+            await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_PENDING_APPROVAL)
+            await create_agent_action_approval(
+                session,
+                tenant_id=tenant_id,
+                action_id=action.id,
+                requested_by_user_id=requested_by_user_id,
+                reason="Health-check action requires approval before execution",
+            )
+            recorded.append(action)
+            continue
+
+        await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_APPROVED)
+        await transition_agent_action(
+            session,
+            action,
+            next_status=AGENT_ACTION_STATUS_EXECUTING,
+            execution_json={"target": "task", "health_eval_id": str(health_eval_id)},
+        )
+
+        if task_error is not None or tasks_created_remaining <= 0:
+            await transition_agent_action(
+                session,
+                action,
+                next_status=AGENT_ACTION_STATUS_FAILED,
+                execution_json={
+                    "target": "task",
+                    "health_eval_id": str(health_eval_id),
+                    "error": task_error or "No task was created for this health-check action",
+                },
+            )
+        else:
+            await transition_agent_action(
+                session,
+                action,
+                next_status=AGENT_ACTION_STATUS_COMPLETED,
+                execution_json={
+                    "target": "task",
+                    "health_eval_id": str(health_eval_id),
+                    "tasks_created": 1,
+                },
+            )
+            await transition_agent_action(
+                session,
+                action,
+                next_status=AGENT_ACTION_STATUS_VERIFIED,
+                verification_json={
+                    "result": "task_created",
+                    "health_eval_id": str(health_eval_id),
+                },
+            )
+            tasks_created_remaining -= 1
+
+        recorded.append(action)
+
+    return recorded
+
+
+def split_health_check_actions_by_safety(actions: list[str]) -> tuple[list[str], list[str]]:
+    """Split health-check actions into safe-task and approval-required groups."""
+    safe_actions: list[str] = []
+    approval_actions: list[str] = []
+    for action_text in actions:
+        action_type, requires_approval, _auto_approved, _risk_level = classify_health_check_action(action_text)
+        if action_type == "create_task" and not requires_approval:
+            safe_actions.append(action_text)
+        else:
+            approval_actions.append(action_text)
+    return safe_actions, approval_actions
+
+
+def build_agent_action_lifecycle_steps(action: AgentAction) -> list[dict[str, object]]:
+    """Build a UI-oriented lifecycle plan for one agent action."""
+
+    def approval_step_status() -> str:
+        if not action.requires_approval:
+            return "skipped"
+        if action.status == AGENT_ACTION_STATUS_PENDING_APPROVAL:
+            return "current"
+        if action.status in {
+            AGENT_ACTION_STATUS_APPROVED,
+            AGENT_ACTION_STATUS_EXECUTING,
+            AGENT_ACTION_STATUS_COMPLETED,
+            AGENT_ACTION_STATUS_VERIFIED,
+            AGENT_ACTION_STATUS_FAILED,
+            AGENT_ACTION_STATUS_BLOCKED,
+        }:
+            return "completed"
+        if action.status in {
+            AGENT_ACTION_STATUS_REJECTED,
+            AGENT_ACTION_STATUS_EXPIRED,
+            AGENT_ACTION_STATUS_CANCELLED,
+        }:
+            return "blocked"
+        return "pending"
+
+    def execution_step_status() -> str:
+        if action.status == AGENT_ACTION_STATUS_EXECUTING:
+            return "current"
+        if action.status in {
+            AGENT_ACTION_STATUS_COMPLETED,
+            AGENT_ACTION_STATUS_VERIFIED,
+        }:
+            return "completed"
+        if action.status == AGENT_ACTION_STATUS_FAILED:
+            return "failed"
+        if action.status in {
+            AGENT_ACTION_STATUS_BLOCKED,
+            AGENT_ACTION_STATUS_REJECTED,
+            AGENT_ACTION_STATUS_EXPIRED,
+            AGENT_ACTION_STATUS_CANCELLED,
+        }:
+            return "blocked"
+        return "pending"
+
+    def verification_step_status() -> str:
+        if action.status == AGENT_ACTION_STATUS_VERIFIED:
+            return "completed"
+        if action.status == AGENT_ACTION_STATUS_COMPLETED:
+            return "current"
+        if action.status in {
+            AGENT_ACTION_STATUS_FAILED,
+            AGENT_ACTION_STATUS_BLOCKED,
+            AGENT_ACTION_STATUS_REJECTED,
+            AGENT_ACTION_STATUS_EXPIRED,
+            AGENT_ACTION_STATUS_CANCELLED,
+        }:
+            return "blocked"
+        return "pending"
+
+    return [
+        {
+            "key": "observe",
+            "label": "Observe",
+            "status": "completed",
+            "description": "Collect grow signals and evidence for this recommendation.",
+        },
+        {
+            "key": "plan",
+            "label": "Plan",
+            "status": "completed",
+            "description": "Convert the recommendation into a lifecycle-tracked action proposal.",
+        },
+        {
+            "key": "approve",
+            "label": "Approve",
+            "status": approval_step_status(),
+            "description": "Wait for an authorized approver when the action is not in the safe auto-approve set.",
+            "required": action.requires_approval,
+        },
+        {
+            "key": "execute",
+            "label": "Execute",
+            "status": execution_step_status(),
+            "description": "Run the approved action and capture execution evidence.",
+        },
+        {
+            "key": "verify",
+            "label": "Verify",
+            "status": verification_step_status(),
+            "description": "Confirm the expected postcondition and store the result.",
+        },
+    ]
+
+
+def list_agent_actions_query(
+    *,
+    tenant_id: UUID,
+    grow_cycle_id: UUID | None = None,
+    status: str | None = None,
+) -> Select:
+    """Build the listing query for tenant-scoped AI agent actions."""
+    query = (
+        select(AgentAction)
+        .options(selectinload(AgentAction.approvals))
+        .where(AgentAction.tenant_id == tenant_id)
+        .order_by(desc(AgentAction.created_at))
+    )
+    if grow_cycle_id is not None:
+        query = query.where(AgentAction.grow_cycle_id == grow_cycle_id)
+    if status is not None:
+        query = query.where(AgentAction.status == status)
+    return query
+
+
+async def get_agent_action(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    action_id: UUID,
+) -> AgentAction | None:
+    """Fetch one tenant-scoped AI agent action."""
+    action = await session.get(AgentAction, action_id)
+    if action is None or action.tenant_id != tenant_id:
+        return None
+    return action
+
+
+async def get_agent_action_with_approvals(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    action_id: UUID,
+) -> AgentAction | None:
+    """Fetch one tenant-scoped AI agent action with approvals eager-loaded."""
+    result = await session.execute(
+        select(AgentAction)
+        .options(selectinload(AgentAction.approvals))
+        .where(AgentAction.id == action_id, AgentAction.tenant_id == tenant_id)
+    )
+    return result.scalar_one_or_none()
+
+
+def get_pending_approval(action: AgentAction) -> AgentActionApproval | None:
+    """Return the pending approval row for an action, if present."""
+    for approval in action.approvals:
+        if approval.status == AGENT_APPROVAL_STATUS_PENDING:
+            return approval
+    return None
+
+
+def get_latest_approval(action: AgentAction) -> AgentActionApproval | None:
+    """Return the latest approval row for an action, if present."""
+    if not action.approvals:
+        return None
+    return action.approvals[-1]
+
+
+def build_agent_action_proposal(action: AgentAction) -> dict[str, object]:
+    """Build a normalized proposal payload for UI consumers."""
+    metadata = action.metadata_json or {}
+    evidence_json = action.evidence_json or {}
+    approval = get_pending_approval(action) or get_latest_approval(action)
+
+    evidence: dict[str, object] = {
+        "recommended_action": evidence_json.get("recommended_action") or action.summary or action.title,
+    }
+    if evidence_json.get("issue_count") is not None:
+        evidence["issue_count"] = evidence_json["issue_count"]
+    if evidence_json.get("integration_id") is not None:
+        evidence["integration_id"] = evidence_json["integration_id"]
+    if evidence_json.get("integration_type") is not None:
+        evidence["integration_type"] = evidence_json["integration_type"]
+    if evidence_json.get("operation") is not None:
+        evidence["operation"] = evidence_json["operation"]
+    if evidence_json.get("command") is not None:
+        evidence["command"] = evidence_json["command"]
+
+    context: dict[str, object] = {}
+    if metadata.get("phase") is not None:
+        context["phase"] = metadata["phase"]
+    if metadata.get("health_eval_id") is not None:
+        context["health_eval_id"] = metadata["health_eval_id"]
+    if metadata.get("health_score") is not None:
+        context["health_score"] = metadata["health_score"]
+    if metadata.get("issues") is not None:
+        context["issues"] = metadata["issues"]
+    if metadata.get("safe_action") is not None:
+        context["safe_action"] = metadata["safe_action"]
+    if metadata.get("integration_id") is not None:
+        context["integration_id"] = metadata["integration_id"]
+    if metadata.get("integration_name") is not None:
+        context["integration_name"] = metadata["integration_name"]
+    if metadata.get("integration_type") is not None:
+        context["integration_type"] = metadata["integration_type"]
+    if metadata.get("operation") is not None:
+        context["operation"] = metadata["operation"]
+    if metadata.get("command") is not None:
+        context["command"] = metadata["command"]
+    policy = metadata.get("policy")
+    if isinstance(policy, dict):
+        if policy.get("risk_level") is not None:
+            context["policy_risk_level"] = policy["risk_level"]
+        if policy.get("requires_simulation") is not None:
+            context["requires_simulation"] = policy["requires_simulation"]
+
+    return {
+        "headline": action.title,
+        "summary": action.summary,
+        "confidence": metadata.get("planner_confidence"),
+        "phase": metadata.get("phase"),
+        "surface": "ai_side_panel",
+        "steps": build_agent_action_lifecycle_steps(action),
+        "evidence": evidence,
+        "context": context or None,
+        "approval": {
+            "required": action.requires_approval,
+            "status": approval.status if approval is not None else "not_required",
+            "reason": approval.reason if approval is not None else None,
+            "expires_at": approval.expires_at.isoformat() if approval and approval.expires_at else None,
+        },
+    }
+
+
+def action_requires_simulation_before_approval(action: AgentAction) -> bool:
+    """Return whether this action is gated on simulation support before approval."""
+    metadata = action.metadata_json or {}
+    policy = metadata.get("policy")
+    return (
+        action.action_type == "integration_control_command"
+        and isinstance(policy, dict)
+        and policy.get("requires_simulation") is True
+    )
+
+
+async def approve_agent_action(
+    session: AsyncSession,
+    action: AgentAction,
+    *,
+    reviewed_by_user_id: UUID,
+    reason: str | None = None,
+) -> AgentAction:
+    """Approve an action currently waiting on approval."""
+    approval = get_pending_approval(action)
+    if approval is None:
+        raise AgentActionApprovalMissingError("Action has no pending approval")
+    if action_requires_simulation_before_approval(action):
+        raise AgentActionApprovalPreconditionError(
+            "Action requires simulation/execution support before it can be approved"
+        )
+
+    await record_agent_action_approval_decision(
+        session,
+        approval,
+        decision_status=AGENT_APPROVAL_STATUS_APPROVED,
+        reviewed_by_user_id=reviewed_by_user_id,
+        reason=reason,
+    )
+    return await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_APPROVED)
+
+
+async def reject_agent_action(
+    session: AsyncSession,
+    action: AgentAction,
+    *,
+    reviewed_by_user_id: UUID,
+    reason: str | None = None,
+) -> AgentAction:
+    """Reject an action currently waiting on approval."""
+    approval = get_pending_approval(action)
+    if approval is None:
+        raise AgentActionApprovalMissingError("Action has no pending approval")
+
+    await record_agent_action_approval_decision(
+        session,
+        approval,
+        decision_status=AGENT_APPROVAL_STATUS_REJECTED,
+        reviewed_by_user_id=reviewed_by_user_id,
+        reason=reason,
+    )
+    return await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_REJECTED)
 
 
 async def create_conversation(
@@ -141,14 +957,54 @@ def parse_optional_uuid(value: str | None) -> UUID | None:
 # ``service.Conversation`` available to callers that want a single
 # import surface for the AI domain.
 __all__ = [
+    "AGENT_ACTION_STATUS_APPROVED",
+    "AGENT_ACTION_STATUS_BLOCKED",
+    "AGENT_ACTION_STATUS_CANCELLED",
+    "AGENT_ACTION_STATUS_COMPLETED",
+    "AGENT_ACTION_STATUS_EXECUTING",
+    "AGENT_ACTION_STATUS_EXPIRED",
+    "AGENT_ACTION_STATUS_FAILED",
+    "AGENT_ACTION_STATUS_PENDING_APPROVAL",
+    "AGENT_ACTION_STATUS_PROPOSED",
+    "AGENT_ACTION_STATUS_REJECTED",
+    "AGENT_ACTION_STATUS_VERIFIED",
+    "AGENT_APPROVAL_STATUS_APPROVED",
+    "AGENT_APPROVAL_STATUS_EXPIRED",
+    "AGENT_APPROVAL_STATUS_PENDING",
+    "AGENT_APPROVAL_STATUS_REJECTED",
+    "AgentAction",
+    "AgentActionApproval",
+    "AgentActionApprovalMissingError",
+    "AgentActionApprovalPreconditionError",
     "Conversation",
     "ConversationMessage",
+    "InvalidAgentActionTransitionError",
+    "InvalidAgentApprovalTransitionError",
+    "action_requires_simulation_before_approval",
+    "approve_agent_action",
+    "build_agent_action_idempotency_key",
+    "build_agent_action_lifecycle_steps",
+    "build_agent_action_proposal",
+    "can_transition_agent_action",
+    "classify_health_check_action",
+    "create_agent_action",
+    "create_agent_action_approval",
     "create_conversation",
     "delete_conversation",
+    "get_agent_action",
+    "get_agent_action_with_approvals",
     "get_conversation",
     "get_conversation_with_messages",
+    "get_latest_approval",
+    "get_pending_approval",
+    "list_agent_actions_query",
     "list_user_conversations_query",
     "parse_optional_uuid",
+    "record_agent_action_approval_decision",
+    "record_health_check_task_actions",
+    "reject_agent_action",
+    "split_health_check_actions_by_safety",
+    "transition_agent_action",
     "update_conversation_title",
 ]
 

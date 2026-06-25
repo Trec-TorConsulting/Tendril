@@ -19,6 +19,7 @@ os.environ["INTEGRATION_ENCRYPTION_KEY"] = "m8eWk-kF4nPTdc7Y0wccVuqqEYTUvrAWdVcF
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def _setup_db():
     """One-time DB schema setup. Creates all tables at session start, drops at end."""
+    from app.ai.models import AgentAction, AgentActionApproval, Conversation, ConversationMessage  # noqa: F401
     from app.automation.models import AlertHistory, AutomationRule, EnvironmentSchedule  # noqa: F401
     from app.billing.models import (  # noqa: F401
         BillingOverageRate,

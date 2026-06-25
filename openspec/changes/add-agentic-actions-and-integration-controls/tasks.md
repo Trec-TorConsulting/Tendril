@@ -1,29 +1,29 @@
 ## 1. Implementation
-- [ ] 1.1 Add agent action lifecycle models and persistence (proposal, approval, execution, verification states) for health-check action flows first.
-- [ ] 1.2 Add API and websocket events for action lifecycle updates.
-- [ ] 1.3 Add policy-gate checks before any mutating AI tool execution.
-- [ ] 1.4 Add approval-gate workflow with role-aware approver identity (tenant admin + permissioned member) and expiration.
-- [ ] 1.5 Add idempotent executor with bounded retries and deterministic action IDs.
-- [ ] 1.6 Add post-execution verification hooks and result recording.
-- [ ] 1.7 Add websocket keepalive support and conversation-thread binding in chat flow.
-- [ ] 1.8 Add web chat UI support for pending approvals, action timeline, and execution status in the existing AI side panel.
-- [ ] 1.9 Add integration control policy models and enforcement checks for outbound operations across Pulse, OpenWeather, and Ecowitt (extensible to all connectors).
-- [ ] 1.10 Add dry-run/simulation requirement for high-risk operations (outbound device control commands).
-- [ ] 1.11 Implement safe auto-approval path for create task, create journal entry, and checklist generation only.
-- [ ] 1.12 Add notification fanout for approval and lifecycle events: in-app, web push, email.
+- [x] 1.1 Add agent action lifecycle models and persistence (proposal, approval, execution, verification states) for health-check action flows first.
+- [x] 1.2 Add API and websocket events for action lifecycle updates.
+- [x] 1.3 Add policy-gate checks before any mutating AI tool execution.
+- [x] 1.4 Add approval-gate workflow with role-aware approver identity (tenant admin + permissioned member) and expiration.
+- [x] 1.5 Add idempotent executor with bounded retries and deterministic action IDs.
+- [x] 1.6 Add post-execution verification hooks and result recording.
+- [x] 1.7 Add websocket keepalive support and conversation-thread binding in chat flow.
+- [x] 1.8 Add web chat UI support for pending approvals, action timeline, and execution status in the existing AI side panel.
+- [x] 1.9 Add integration control policy models and enforcement checks for outbound operations across Pulse, OpenWeather, and Ecowitt (extensible to all connectors).
+- [x] 1.10 Add dry-run/simulation requirement for high-risk operations (outbound device control commands).
+- [x] 1.11 Implement safe auto-approval path for create task, create journal entry, and checklist generation only.
+- [x] 1.12 Add notification fanout for approval and lifecycle events: in-app, web push, email.
 
 ## 2. Testing
-- [ ] 2.1 Add unit tests for lifecycle state transitions and invalid transitions.
-- [ ] 2.2 Add policy and approval gate tests for allowed/blocked action cases.
-- [ ] 2.3 Add integration control tests across connectors and risk tiers.
-- [ ] 2.4 Add websocket tests for keepalive, reconnect, and conversation-thread resume.
-- [ ] 2.5 Add end-to-end tests for propose -> approve -> execute -> verify flows.
+- [x] 2.1 Add unit tests for lifecycle state transitions and invalid transitions.
+- [x] 2.2 Add policy and approval gate tests for allowed/blocked action cases.
+- [x] 2.3 Add integration control tests across connectors and risk tiers.
+- [x] 2.4 Add websocket tests for keepalive, reconnect, and conversation-thread resume.
+- [x] 2.5 Add end-to-end tests for propose -> approve -> execute -> verify flows.
 
 ## 3. Observability and Rollout
-- [ ] 3.1 Emit metrics for proposal volume, approvals, execution success/failure, and policy blocks.
-- [ ] 3.2 Add structured logs for action lifecycle with tenant and conversation correlation IDs.
-- [ ] 3.3 Add platform-wide rollout checklist, migration safety checks, and backout procedure.
-- [ ] 3.4 Add operator documentation for approvals, controls, and troubleshooting.
+- [x] 3.1 Emit metrics for proposal volume, approvals, execution success/failure, and policy blocks.
+- [x] 3.2 Add structured logs for action lifecycle with tenant and conversation correlation IDs.
+- [x] 3.3 Add platform-wide rollout checklist, migration safety checks, and backout procedure.
+- [x] 3.4 Add operator documentation for approvals, controls, and troubleshooting.
 
 ## 4. PR Slicing Plan (Small, Verifiable Increments)
 
@@ -120,4 +120,4 @@
 - [ ] 5.2 Keep each PR independently deployable with no hidden coupling.
 - [ ] 5.3 No PR may change more than one primary surface area without explicit note (API, Web, Integrations).
 - [ ] 5.4 After each PR: run strict OpenSpec validation and map completed checklist items.
-- [ ] 5.5 Preserve backward compatibility for existing chat consumers until PR3 lands.
+- [x] 5.5 Preserve backward compatibility for existing chat consumers until PR3 lands.

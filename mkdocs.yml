@@ -58,6 +58,7 @@ nav:
       - Configuration: configuration.md
   - Guides:
       - Cannabis Quality Philosophy: cannabis-quality-philosophy.md
+      - AI Operations: ai-operations.md
       - ESP32 Hardware: esp32-hardware.md
       - Atlas Scientific Sensors: atlas-scientific/README.md
       - Atlas Calibration: atlas-scientific/calibration.md
