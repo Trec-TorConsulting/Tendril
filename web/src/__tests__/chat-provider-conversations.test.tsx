@@ -255,4 +255,50 @@ describe("ChatProvider conversation resume", () => {
     expect(screen.getByText("Running tool: update grow stage (tool-call-1)")).toBeInTheDocument();
     expect(screen.queryByText("legacy completion")).not.toBeInTheDocument();
   });
+
+  it("keeps only the latest live queue event for a correlated action id", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ChatProvider>
+        <ChatHarness />
+      </ChatProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Open chat" }));
+
+    await waitFor(() => {
+      expect(MockWebSocket.instances).toHaveLength(1);
+    });
+
+    await act(async () => {
+      MockWebSocket.instances[0].onopen?.(new Event("open"));
+      MockWebSocket.instances[0].onmessage?.(
+        {
+          data: JSON.stringify({
+            type: "action_event",
+            phase: "executing",
+            tool: "update_grow_stage",
+            message: "Execution started",
+            action_id: "tool-call-2",
+          }),
+        } as MessageEvent,
+      );
+      MockWebSocket.instances[0].onmessage?.(
+        {
+          data: JSON.stringify({
+            type: "action_event",
+            phase: "completed",
+            tool: "update_grow_stage",
+            message: "Execution completed",
+            action_id: "tool-call-2",
+          }),
+        } as MessageEvent,
+      );
+    });
+
+    expect(screen.getByText("Live event count: 1")).toBeInTheDocument();
+    expect(screen.getByText("Execution completed (tool-call-2)")).toBeInTheDocument();
+    expect(screen.queryByText("Execution started (tool-call-2)")).not.toBeInTheDocument();
+  });
 });

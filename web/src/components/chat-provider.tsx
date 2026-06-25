@@ -84,6 +84,18 @@ function buildActionLifecycleEvent(data: Record<string, unknown>): ActionLifecyc
   };
 }
 
+function mergeLifecycleEvent(
+  current: ActionLifecycleEvent[],
+  incoming: ActionLifecycleEvent,
+  maxEvents = 8,
+): ActionLifecycleEvent[] {
+  if (incoming.actionId) {
+    const withoutSameAction = current.filter((event) => event.actionId !== incoming.actionId);
+    return [incoming, ...withoutSameAction].slice(0, maxEvents);
+  }
+  return [incoming, ...current].slice(0, maxEvents);
+}
+
 const CONVERSATION_SCOPE_GLOBAL = "global";
 const CONVERSATION_STORAGE_KEY = "tendril.ai.drawer.conversations";
 const NEW_CONVERSATION_SENTINEL = "__new__";
@@ -430,7 +442,7 @@ function ChatDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
         }
 
         if (data.type === "action_event") {
-          setLiveActionEvents((current) => [buildActionLifecycleEvent(data), ...current].slice(0, 8));
+          setLiveActionEvents((current) => mergeLifecycleEvent(current, buildActionLifecycleEvent(data)));
           void mutateActions();
           setMessages((prev) => [
             ...prev,
