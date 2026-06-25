@@ -108,6 +108,27 @@ function formatEvidence(action: AgentActionResponse) {
   return typeof recommended === "string" && recommended.trim() ? recommended : action.title;
 }
 
+function readProposalString(record: Record<string, unknown> | null | undefined, key: string) {
+  const value = record?.[key];
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function buildIntegrationSummary(action: AgentActionResponse) {
+  const context = action.proposal.context;
+  const integrationName = readProposalString(context, "integration_name");
+  const integrationType = readProposalString(context, "integration_type");
+  const operation = readProposalString(context, "operation");
+  const command = readProposalString(context, "command");
+  const parts = [integrationName ?? integrationType, operation?.replace(/_/g, " "), command].filter(
+    (value): value is string => Boolean(value),
+  );
+
+  if (parts.length === 0) {
+    return null;
+  }
+  return parts;
+}
+
 function readRecordString(record: Record<string, unknown> | null | undefined, key: string) {
   const value = record?.[key];
   return typeof value === "string" && value.trim() ? value : null;
@@ -152,6 +173,11 @@ function buildRecentActivityDetails(action: AgentActionResponse) {
 
   if (details.length === 0 && action.summary) {
     details.push({ label: "Summary", value: action.summary });
+  }
+
+  const integrationSummary = buildIntegrationSummary(action);
+  if (integrationSummary) {
+    details.unshift({ label: "Integration", value: integrationSummary.join(" • ") });
   }
 
   return details.slice(0, 3);
@@ -280,6 +306,7 @@ export function AiActionQueue({
                 </div>
                 {pendingActions.map((action) => {
                   const issues = formatContextIssues(action);
+                  const integrationSummary = buildIntegrationSummary(action);
                   const isBusy = decisionActionId === action.id;
 
                   return (
@@ -304,6 +331,13 @@ export function AiActionQueue({
                           <div className="rounded-lg bg-background/80 px-3 py-2 text-xs text-muted-foreground">
                             <p className="font-medium text-foreground">Observed issues</p>
                             <p className="mt-1">{issues.join(" • ")}</p>
+                          </div>
+                        ) : null}
+
+                        {integrationSummary ? (
+                          <div className="rounded-lg bg-background/80 px-3 py-2 text-xs text-muted-foreground">
+                            <p className="font-medium text-foreground">Integration command</p>
+                            <p className="mt-1">{integrationSummary.join(" • ")}</p>
                           </div>
                         ) : null}
 

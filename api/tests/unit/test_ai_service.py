@@ -768,6 +768,64 @@ class TestAiServiceQueries:
         }
         assert proposal["steps"][2]["status"] == "current"
 
+    def test_build_agent_action_proposal_includes_integration_context_and_command(self):
+        action = AgentAction(
+            tenant_id=uuid4(),
+            source="chat",
+            action_type="integration_control_command",
+            title="Control command for Pulse test",
+            status=AGENT_ACTION_STATUS_PENDING_APPROVAL,
+            risk_level="high",
+            idempotency_key="i" * 64,
+            requires_approval=True,
+            auto_approved=False,
+            summary="turn_on_pump",
+            metadata_json={
+                "integration_id": "cfg-123",
+                "integration_name": "Pulse test",
+                "integration_type": "pulse",
+                "operation": "outbound_control",
+                "command": "turn_on_pump",
+                "policy": {
+                    "risk_level": "high",
+                    "requires_simulation": True,
+                },
+            },
+            evidence_json={
+                "integration_id": "cfg-123",
+                "integration_type": "pulse",
+                "operation": "outbound_control",
+                "command": "turn_on_pump",
+            },
+        )
+        action.approvals = [
+            AgentActionApproval(
+                tenant_id=action.tenant_id,
+                action_id=uuid4(),
+                status=AGENT_APPROVAL_STATUS_PENDING,
+                reason="High-risk integration control command requires approval and simulation before execution",
+            )
+        ]
+
+        proposal = build_agent_action_proposal(action)
+
+        assert proposal["context"] == {
+            "integration_id": "cfg-123",
+            "integration_name": "Pulse test",
+            "integration_type": "pulse",
+            "operation": "outbound_control",
+            "command": "turn_on_pump",
+            "policy_risk_level": "high",
+            "requires_simulation": True,
+        }
+        assert proposal["evidence"] == {
+            "recommended_action": "turn_on_pump",
+            "integration_id": "cfg-123",
+            "integration_type": "pulse",
+            "operation": "outbound_control",
+            "command": "turn_on_pump",
+        }
+
     def test_get_latest_approval_returns_last_row(self):
         action = AgentAction(
             tenant_id=uuid4(),
