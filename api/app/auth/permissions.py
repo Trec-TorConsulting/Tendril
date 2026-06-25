@@ -65,6 +65,9 @@ TASK_CREATE = "task:create"
 TASK_UPDATE = "task:update"
 TASK_DELETE = "task:delete"
 
+# AI action domain
+AI_APPROVE = "ai:approve"
+
 # Tenant management
 TENANT_READ = "tenant:read"
 TENANT_MANAGE = "tenant:manage"
@@ -121,6 +124,7 @@ _MEMBER_PERMISSIONS: frozenset[str] = _VIEWER_PERMISSIONS | frozenset(
         OUTDOOR_UPDATE,
         TASK_CREATE,
         TASK_UPDATE,
+        AI_APPROVE,
     }
 )
 
