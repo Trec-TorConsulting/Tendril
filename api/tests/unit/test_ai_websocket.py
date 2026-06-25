@@ -9,7 +9,9 @@ from app.ai.routes import (
     _build_keepalive_event,
     _extract_action_id_from_tool_arguments,
     _extract_action_id_from_tool_result,
+    _extract_integration_type_from_tool_arguments,
     _resolve_action_event_ids,
+    _resolve_integration_policy_for_tool_call,
 )
 
 
@@ -54,6 +56,17 @@ class TestAiWebsocketEventHelpers:
         assert "correlation_id" not in event
         assert "result" not in event
         assert "error" not in event
+        assert "policy" not in event
+
+    def test_build_chat_action_event_includes_optional_policy_payload(self):
+        event = _build_chat_action_event(
+            phase="blocked",
+            tool="integration_trigger_sync",
+            message="Tool blocked by policy",
+            policy={"integration_type": "tuya", "allowed": False},
+        )
+
+        assert event["policy"] == {"integration_type": "tuya", "allowed": False}
 
     def test_extract_action_id_from_tool_result_prefers_action_id(self):
         assert _extract_action_id_from_tool_result({"action_id": "action-123", "agent_action_id": "legacy-1"}) == "action-123"
@@ -72,6 +85,34 @@ class TestAiWebsocketEventHelpers:
 
     def test_extract_action_id_from_tool_arguments_ignores_non_dict(self):
         assert _extract_action_id_from_tool_arguments("ok") is None
+
+    def test_extract_integration_type_from_tool_arguments_prefers_integration_type(self):
+        assert _extract_integration_type_from_tool_arguments({"integration_type": "Pulse"}) == "Pulse"
+
+    def test_extract_integration_type_from_tool_arguments_falls_back_to_connector(self):
+        assert _extract_integration_type_from_tool_arguments({"connector": "ecowitt"}) == "ecowitt"
+
+    def test_extract_integration_type_from_tool_arguments_ignores_non_dict(self):
+        assert _extract_integration_type_from_tool_arguments("nope") is None
+
+    def test_resolve_integration_policy_for_tool_call_unsupported_connector_blocked(self):
+        decision = _resolve_integration_policy_for_tool_call(
+            tool_name="integration_trigger_sync",
+            tool_arguments={"integration_type": "tuya"},
+        )
+
+        assert decision is not None
+        assert decision.allowed is False
+        assert decision.supported is False
+        assert decision.reason == "Unsupported integration connector: tuya"
+
+    def test_resolve_integration_policy_for_tool_call_non_integration_tool_returns_none(self):
+        decision = _resolve_integration_policy_for_tool_call(
+            tool_name="update_grow_stage",
+            tool_arguments={"integration_type": "pulse"},
+        )
+
+        assert decision is None
 
     def test_resolve_action_event_ids_prefers_result_then_args_then_correlation(self):
         action_id, correlation_id = _resolve_action_event_ids(
