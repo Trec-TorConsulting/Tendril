@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import base64
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 from uuid import UUID, uuid4
 
 import pytest
@@ -494,6 +494,29 @@ class TestAgentActionServiceMethods:
         session.commit.assert_awaited_once()
         session.refresh.assert_awaited_once_with(action)
 
+    async def test_create_agent_action_logs_structured_lifecycle_event(self):
+        session = AsyncMock()
+        session.add = Mock()
+
+        with patch("app.ai.service.logger.info") as log_info:
+            action = await create_agent_action(
+                session,
+                tenant_id=uuid4(),
+                source="chat",
+                action_type="integration_trigger_sync",
+                title="Trigger sync",
+                idempotency_key="a" * 64,
+                conversation_id=uuid4(),
+                grow_cycle_id=uuid4(),
+                created_by_user_id=uuid4(),
+            )
+
+        log_info.assert_called_once()
+        assert log_info.call_args.args[0] == "AI action lifecycle"
+        assert log_info.call_args.kwargs["extra"]["event_type"] == "action_created"
+        assert log_info.call_args.kwargs["extra"]["ai_action_id"] == str(action.id)
+        assert log_info.call_args.kwargs["extra"]["action_status"] == AGENT_ACTION_STATUS_PROPOSED
+
     async def test_create_agent_action_approval_persists_pending_record(self):
         session = AsyncMock()
         session.add = Mock()
@@ -550,6 +573,27 @@ class TestAgentActionServiceMethods:
         assert session.commit.await_count == 4
         assert session.refresh.await_count == 4
 
+    async def test_transition_agent_action_logs_previous_and_next_status(self):
+        session = AsyncMock()
+        action = AgentAction(
+            tenant_id=uuid4(),
+            source="health_check",
+            action_type="create_task",
+            title="Task",
+            status=AGENT_ACTION_STATUS_PENDING_APPROVAL,
+            risk_level="low",
+            idempotency_key="k" * 64,
+        )
+
+        with patch("app.ai.service.logger.info") as log_info:
+            await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_APPROVED)
+
+        log_info.assert_called_once()
+        assert log_info.call_args.args[0] == "AI action lifecycle"
+        assert log_info.call_args.kwargs["extra"]["event_type"] == "action_transitioned"
+        assert log_info.call_args.kwargs["extra"]["previous_status"] == AGENT_ACTION_STATUS_PENDING_APPROVAL
+        assert log_info.call_args.kwargs["extra"]["outcome"] == AGENT_ACTION_STATUS_APPROVED
+
     async def test_transition_agent_action_rejects_invalid_transition(self):
         session = AsyncMock()
         action = AgentAction(
@@ -588,6 +632,30 @@ class TestAgentActionServiceMethods:
         assert updated.reason == "Safe action"
         session.commit.assert_awaited_once()
         session.refresh.assert_awaited_once_with(approval)
+
+    async def test_record_agent_action_approval_decision_logs_structured_review_event(self):
+        session = AsyncMock()
+        reviewer = uuid4()
+        approval = AgentActionApproval(
+            tenant_id=uuid4(),
+            action_id=uuid4(),
+            status=AGENT_APPROVAL_STATUS_PENDING,
+        )
+
+        with patch("app.ai.service.logger.info") as log_info:
+            await record_agent_action_approval_decision(
+                session,
+                approval,
+                decision_status=AGENT_APPROVAL_STATUS_APPROVED,
+                reviewed_by_user_id=reviewer,
+                reason="Safe action",
+            )
+
+        log_info.assert_called_once()
+        assert log_info.call_args.args[0] == "AI action approval"
+        assert log_info.call_args.kwargs["extra"]["event_type"] == "approval_reviewed"
+        assert log_info.call_args.kwargs["extra"]["approval_status"] == AGENT_APPROVAL_STATUS_APPROVED
+        assert log_info.call_args.kwargs["extra"]["actor_user_id"] == str(reviewer)
 
     async def test_record_agent_action_approval_decision_rejects_non_pending(self):
         session = AsyncMock()

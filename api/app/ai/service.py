@@ -20,6 +20,7 @@ Conventions match the project standard (PR #192 / #208-#220):
 from __future__ import annotations
 
 import hashlib
+import logging
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -28,6 +29,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.ai.models import AgentAction, AgentActionApproval, Conversation, ConversationMessage
+
+logger = logging.getLogger("tendril.ai.service")
 
 AGENT_ACTION_STATUS_PROPOSED = "proposed"
 AGENT_ACTION_STATUS_PENDING_APPROVAL = "pending_approval"
@@ -110,6 +113,57 @@ class AgentActionApprovalMissingError(Exception):
 
 class AgentActionApprovalPreconditionError(Exception):
     """Raised when an action cannot be approved until an extra prerequisite is satisfied."""
+
+
+def _serialize_uuid(value: UUID | None) -> str | None:
+    return str(value) if value is not None else None
+
+
+def _log_agent_action_lifecycle(
+    action: AgentAction,
+    *,
+    event_type: str,
+    outcome: str,
+    previous_status: str | None = None,
+) -> None:
+    logger.info(
+        "AI action lifecycle",
+        extra={
+            "action": "ai_action_lifecycle",
+            "event": "ai_action_lifecycle",
+            "event_type": event_type,
+            "outcome": outcome,
+            "ai_action_id": str(action.id),
+            "action_type": action.action_type,
+            "action_status": action.status,
+            "previous_status": previous_status,
+            "conversation_id": _serialize_uuid(action.conversation_id),
+            "grow_cycle_id": _serialize_uuid(action.grow_cycle_id),
+            "actor_user_id": _serialize_uuid(action.created_by_user_id),
+            "risk_level": action.risk_level,
+        },
+    )
+
+
+def _log_agent_action_approval(
+    approval: AgentActionApproval,
+    *,
+    event_type: str,
+    outcome: str,
+) -> None:
+    logger.info(
+        "AI action approval",
+        extra={
+            "action": "ai_action_approval",
+            "event": "ai_action_approval",
+            "event_type": event_type,
+            "outcome": outcome,
+            "approval_id": str(approval.id),
+            "ai_action_id": str(approval.action_id),
+            "approval_status": approval.status,
+            "actor_user_id": _serialize_uuid(approval.reviewed_by_user_id or approval.requested_by_user_id),
+        },
+    )
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Conversations
@@ -209,6 +263,7 @@ async def create_agent_action(
     session.add(action)
     await session.commit()
     await session.refresh(action)
+    _log_agent_action_lifecycle(action, event_type="action_created", outcome=action.status)
     return action
 
 
@@ -233,6 +288,7 @@ async def create_agent_action_approval(
     session.add(approval)
     await session.commit()
     await session.refresh(approval)
+    _log_agent_action_approval(approval, event_type="approval_requested", outcome=approval.status)
     return approval
 
 
@@ -253,6 +309,7 @@ async def transition_agent_action(
     metadata_json: dict | None = None,
 ) -> AgentAction:
     """Persist one valid action lifecycle transition."""
+    previous_status = action.status
     if not can_transition_agent_action(action.status, next_status):
         raise InvalidAgentActionTransitionError(f"Invalid action transition: {action.status} -> {next_status}")
 
@@ -274,6 +331,12 @@ async def transition_agent_action(
 
     await session.commit()
     await session.refresh(action)
+    _log_agent_action_lifecycle(
+        action,
+        event_type="action_transitioned",
+        outcome=next_status,
+        previous_status=previous_status,
+    )
     return action
 
 
@@ -306,6 +369,7 @@ async def record_agent_action_approval_decision(
         approval.reason = reason
     await session.commit()
     await session.refresh(approval)
+    _log_agent_action_approval(approval, event_type="approval_reviewed", outcome=approval.status)
     return approval
 
 
