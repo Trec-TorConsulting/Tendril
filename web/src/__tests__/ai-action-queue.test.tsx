@@ -341,4 +341,49 @@ describe("AiActionQueue", () => {
     expect(screen.getAllByText("Pulse test • outbound control • turn_on_pump")).toHaveLength(2);
     expect(screen.getByText("Integration:")).toBeInTheDocument();
   });
+
+  it("disables approval when integration control command still requires simulation support", () => {
+    render(
+      <AiActionQueue
+        actions={[
+          buildAction({
+            action_type: "integration_control_command",
+            title: "Control command for Pulse test",
+            summary: "turn_on_pump",
+            proposal: {
+              ...buildAction().proposal,
+              headline: "Control command for Pulse test",
+              summary: "turn_on_pump",
+              context: {
+                integration_name: "Pulse test",
+                integration_type: "pulse",
+                operation: "outbound_control",
+                command: "turn_on_pump",
+                policy_risk_level: "high",
+                requires_simulation: true,
+              },
+              evidence: {
+                recommended_action: "turn_on_pump",
+                integration_id: "cfg-123",
+                integration_type: "pulse",
+                operation: "outbound_control",
+                command: "turn_on_pump",
+              },
+            },
+          }),
+        ]}
+        liveEvents={[]}
+        growName="Veg Tent"
+        isLoading={false}
+        isRefreshing={false}
+        decisionActionId={null}
+        onApprove={vi.fn()}
+        onReject={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Simulation support is required before this command can be approved.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
+  });
 });
