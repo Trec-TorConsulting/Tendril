@@ -1,3 +1,5 @@
+import type { components } from "@/lib/api-types";
+
 import { getCsrfToken, setCsrfToken, clearAuth } from "@/lib/auth";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/v1";
@@ -1152,6 +1154,10 @@ export function getAiChatWsUrl() {
   return `${base}/ai/chat`;
 }
 
+export type AgentActionResponse = components["schemas"]["AgentActionResponse"];
+export type AgentActionDetailResponse = components["schemas"]["AgentActionDetailResponse"];
+export type PaginatedAgentActionResponse = components["schemas"]["PaginatedResponse_AgentActionResponse_"];
+
 export interface HealthCheckResult {
   id: string | null;
   score: number | null;
@@ -1179,6 +1185,41 @@ export function getHealthCheckHistory(token: string, growId: string, limit = 10)
 
 export function deleteHealthCheck(token: string, evalId: string) {
   return apiFetch<void>(`/ai/health-check/${evalId}`, { method: "DELETE", token });
+}
+
+export function listAiActions(
+  token: string,
+  params: {
+    growCycleId?: string;
+    status?: string;
+    page?: number;
+    pageSize?: number;
+  } = {},
+) {
+  const search = new URLSearchParams();
+  if (params.growCycleId) search.set("grow_cycle_id", params.growCycleId);
+  if (params.status) search.set("status", params.status);
+  if (params.page) search.set("page", String(params.page));
+  if (params.pageSize) search.set("page_size", String(params.pageSize));
+
+  const qs = search.toString();
+  return apiFetch<PaginatedAgentActionResponse>(`/ai/actions${qs ? `?${qs}` : ""}`, { token });
+}
+
+export function approveAiAction(token: string, actionId: string, reason?: string) {
+  return apiFetch<AgentActionDetailResponse>(`/ai/actions/${actionId}/approve`, {
+    method: "POST",
+    body: JSON.stringify({ reason: reason || null }),
+    token,
+  });
+}
+
+export function rejectAiAction(token: string, actionId: string, reason?: string) {
+  return apiFetch<AgentActionDetailResponse>(`/ai/actions/${actionId}/reject`, {
+    method: "POST",
+    body: JSON.stringify({ reason: reason || null }),
+    token,
+  });
 }
 
 // ─── Conversations ─────────────────────────────────────────────────────────────

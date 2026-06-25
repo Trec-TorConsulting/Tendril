@@ -5,16 +5,20 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
 } from "react";
 import { getAccessToken } from "@/lib/auth";
-import { getAiChatWsUrl } from "@/lib/api";
+import { approveAiAction, getAiChatWsUrl, listAiActions, rejectAiAction } from "@/lib/api";
+import { AiActionQueue } from "@/components/ai-action-queue";
 import { useGrow } from "@/hooks/use-grow";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useApiSWR } from "@/lib/swr";
 import {
   Send,
   Bot,
@@ -23,8 +27,10 @@ import {
   MessageSquare,
   X,
   Trash2,
+  TriangleAlert,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 // ── Types ──────────────────────────────────────────────────
@@ -76,6 +82,7 @@ function ChatDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [input, setInput] = useState("");
   const [connected, setConnected] = useState(false);
   const [streaming, setStreaming] = useState(false);
+  const [decisionActionId, setDecisionActionId] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -84,6 +91,25 @@ function ChatDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const retryCount = useRef(0);
   const intentionalClose = useRef(false);
   const authFailed = useRef(false);
+
+  const actionKey = useMemo(
+    () => (open ? (["ai-actions", selectedGrow?.id ?? "all"] as const) : null),
+    [open, selectedGrow?.id],
+  );
+  const {
+    data: actionData,
+    error: actionError,
+    isLoading: actionLoading,
+    isValidating: actionRefreshing,
+    mutate: mutateActions,
+  } = useApiSWR(
+    actionKey,
+    (token) => listAiActions(token, { growCycleId: selectedGrow?.id, pageSize: 12 }),
+    {
+      refreshInterval: open ? 15_000 : 0,
+    },
+  );
+  const actions = actionData?.items ?? [];
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -109,7 +135,6 @@ function ChatDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
         wsRef.current.close();
         wsRef.current = null;
       }
-      setConnected(false);
       return;
     }
 
@@ -161,9 +186,14 @@ function ChatDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
         }
 
         if (data.type === "action") {
+          void mutateActions();
           setMessages((prev) => [
             ...prev,
-            { role: "action", content: data.result, tool: data.tool },
+            {
+              role: "action",
+              content: typeof data.result === "string" ? data.result : `${data.tool} updated`,
+              tool: data.tool,
+            },
           ]);
           return;
         }
@@ -228,6 +258,50 @@ function ChatDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
     setMessages([]);
   };
 
+  const handleApproveAction = useCallback(
+    async (actionId: string) => {
+      const token = getAccessToken();
+      if (!token) {
+        toast.error("You need to sign in again to approve actions.");
+        return;
+      }
+
+      setDecisionActionId(actionId);
+      try {
+        await approveAiAction(token, actionId, "Approved from AI side panel");
+        toast.success("Action approved");
+        await mutateActions();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to approve action");
+      } finally {
+        setDecisionActionId(null);
+      }
+    },
+    [mutateActions],
+  );
+
+  const handleRejectAction = useCallback(
+    async (actionId: string) => {
+      const token = getAccessToken();
+      if (!token) {
+        toast.error("You need to sign in again to reject actions.");
+        return;
+      }
+
+      setDecisionActionId(actionId);
+      try {
+        await rejectAiAction(token, actionId, "Rejected from AI side panel");
+        toast.success("Action rejected");
+        await mutateActions();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Failed to reject action");
+      } finally {
+        setDecisionActionId(null);
+      }
+    },
+    [mutateActions],
+  );
+
   return (
     <>
       {/* Backdrop (mobile) */}
@@ -270,6 +344,33 @@ function ChatDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
             </Button>
           </div>
         </div>
+
+        {selectedGrow ? (
+          <AiActionQueue
+            actions={actions}
+            growName={selectedGrow.name}
+            isLoading={actionLoading}
+            isRefreshing={actionRefreshing}
+            decisionActionId={decisionActionId}
+            onApprove={handleApproveAction}
+            onReject={handleRejectAction}
+            onRefresh={() => {
+              void mutateActions();
+            }}
+          />
+        ) : null}
+
+        {actionError ? (
+          <div className="border-b px-4 py-3">
+            <Alert variant="destructive">
+              <TriangleAlert className="size-4" />
+              <AlertTitle>Action queue unavailable</AlertTitle>
+              <AlertDescription>
+                {actionError instanceof Error ? actionError.message : "Failed to load AI action proposals."}
+              </AlertDescription>
+            </Alert>
+          </div>
+        ) : null}
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-4 py-3">
