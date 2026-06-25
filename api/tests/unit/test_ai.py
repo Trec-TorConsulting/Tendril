@@ -6,7 +6,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 import pytest_asyncio
+from sqlalchemy import select
 
+from app.ai.models import AgentAction
 from tests.conftest import TenantFactory
 
 pytestmark = pytest.mark.asyncio(loop_scope="session")
@@ -55,7 +57,7 @@ async def grow_with_data(client, tenant):
 class TestHealthCheck:
     @patch("app.ai.gemini.is_configured", return_value=True)
     @patch("app.ai.gemini.chat_completion", new_callable=AsyncMock)
-    async def test_health_check_success(self, mock_ai, mock_configured, client, grow_with_data):
+    async def test_health_check_success(self, mock_ai, mock_configured, client, grow_with_data, db_session):
         mock_ai.return_value = '{"score": 85, "issues": ["Slight pH drift"], "actions": ["Adjust pH down"]}'
 
         resp = await client.post(
@@ -71,6 +73,20 @@ class TestHealthCheck:
         assert data["score"] == 85
         assert len(data["issues"]) >= 1
         assert len(data["actions"]) >= 1
+
+        action_rows = (
+            await db_session.execute(
+                select(AgentAction)
+                .where(AgentAction.grow_cycle_id == grow_with_data["grow_id"])
+                .order_by(AgentAction.created_at)
+            )
+        ).scalars().all()
+        assert len(action_rows) == 1
+        assert action_rows[0].source == "health_check"
+        assert action_rows[0].action_type == "create_task"
+        assert action_rows[0].auto_approved is True
+        assert action_rows[0].status == "verified"
+        assert action_rows[0].metadata_json["safe_action"] is True
 
     async def test_health_check_invalid_grow(self, client, tenant):
         resp = await client.post(

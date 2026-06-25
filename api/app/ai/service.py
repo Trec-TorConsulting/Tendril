@@ -270,6 +270,106 @@ async def record_agent_action_approval_decision(
     return approval
 
 
+async def record_health_check_task_actions(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    grow_cycle_id: UUID,
+    requested_by_user_id: UUID | None,
+    health_eval_id: UUID,
+    score: int | None,
+    issues: list[str],
+    actions: list[str],
+    created_task_count: int,
+    task_error: str | None = None,
+) -> list[AgentAction]:
+    """Record lifecycle-tracked agent actions for health-check task creation.
+
+    Phase 1 treats health-check task creation as a safe auto-approved action.
+    One lifecycle record is created per recommended action string.
+    """
+    recorded: list[AgentAction] = []
+    tasks_created_remaining = created_task_count
+
+    for index, action_text in enumerate(actions):
+        action = await create_agent_action(
+            session,
+            tenant_id=tenant_id,
+            source="health_check",
+            action_type="create_task",
+            title=action_text[:255],
+            idempotency_key=build_agent_action_idempotency_key(
+                tenant_id=tenant_id,
+                source="health_check",
+                action_type="create_task",
+                grow_cycle_id=grow_cycle_id,
+                conversation_id=None,
+                dedupe_token=f"{health_eval_id}:{index}:{action_text}",
+            ),
+            grow_cycle_id=grow_cycle_id,
+            created_by_user_id=requested_by_user_id,
+            requires_approval=False,
+            auto_approved=True,
+            summary=action_text,
+            metadata_json={
+                "health_eval_id": str(health_eval_id),
+                "health_score": score,
+                "issues": issues,
+                "phase": "health_check",
+                "safe_action": True,
+            },
+            evidence_json={
+                "recommended_action": action_text,
+                "issue_count": len(issues),
+            },
+        )
+
+        await transition_agent_action(session, action, next_status=AGENT_ACTION_STATUS_APPROVED)
+        await transition_agent_action(
+            session,
+            action,
+            next_status=AGENT_ACTION_STATUS_EXECUTING,
+            execution_json={"target": "task", "health_eval_id": str(health_eval_id)},
+        )
+
+        if task_error is not None or tasks_created_remaining <= 0:
+            await transition_agent_action(
+                session,
+                action,
+                next_status=AGENT_ACTION_STATUS_FAILED,
+                execution_json={
+                    "target": "task",
+                    "health_eval_id": str(health_eval_id),
+                    "error": task_error or "No task was created for this health-check action",
+                },
+            )
+        else:
+            await transition_agent_action(
+                session,
+                action,
+                next_status=AGENT_ACTION_STATUS_COMPLETED,
+                execution_json={
+                    "target": "task",
+                    "health_eval_id": str(health_eval_id),
+                    "tasks_created": 1,
+                },
+            )
+            await transition_agent_action(
+                session,
+                action,
+                next_status=AGENT_ACTION_STATUS_VERIFIED,
+                verification_json={
+                    "result": "task_created",
+                    "health_eval_id": str(health_eval_id),
+                },
+            )
+            tasks_created_remaining -= 1
+
+        recorded.append(action)
+
+    return recorded
+
+
 async def create_conversation(
     session: AsyncSession,
     *,
@@ -411,6 +511,7 @@ __all__ = [
     "list_user_conversations_query",
     "parse_optional_uuid",
     "record_agent_action_approval_decision",
+    "record_health_check_task_actions",
     "transition_agent_action",
     "update_conversation_title",
 ]
