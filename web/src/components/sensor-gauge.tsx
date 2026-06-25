@@ -11,6 +11,7 @@ interface SensorGaugeProps {
   max: number;
   zones: readonly { start: number; end: number; color: string }[];
   className?: string;
+  systemType?: "live_beneficial" | "sterilized";  // For ORP gauge variants
 }
 
 export function SensorGauge({ label, value, unit, min, max, zones, className }: SensorGaugeProps) {
@@ -196,11 +197,38 @@ export const GAUGE_PRESETS = {
     min: 0,
     max: 600,
     zones: [
+      // Default (sterilized system H2O2) — zones defined dynamically by getOrpZones()
       { start: 0, end: 200, color: "#ef4444" },     // red — anaerobic / root rot risk
       { start: 200, end: 300, color: "#f59e0b" },   // amber — low oxidation
-      { start: 300, end: 450, color: "#22c55e" },   // green — optimal
+      { start: 300, end: 450, color: "#22c55e" },   // green — optimal (sterilized)
       { start: 450, end: 500, color: "#f59e0b" },   // amber — high (H2O2 excess)
       { start: 500, end: 600, color: "#ef4444" },   // red — too oxidizing
     ],
   },
 } as const;
+
+/**
+ * Get ORP gauge zones based on system type (Live/Beneficial vs Sterilized).
+ * Call this when rendering an ORP gauge to get the correct zones for the system type.
+ */
+export function getOrpZones(systemType: "live_beneficial" | "sterilized" = "sterilized") {
+  if (systemType === "live_beneficial") {
+    // Live system with Hydroguard/beneficial bacteria: lower ORP range 150-250
+    return [
+      { start: 0, end: 100, color: "#ef4444" },      // red — too anaerobic / too low
+      { start: 100, end: 150, color: "#f59e0b" },    // amber — slightly low
+      { start: 150, end: 250, color: "#22c55e" },    // green — optimal (beneficial system)
+      { start: 250, end: 350, color: "#f59e0b" },    // amber — slightly high
+      { start: 350, end: 600, color: "#ef4444" },    // red — too oxidizing for beneficial
+    ] as const;
+  } else {
+    // Sterilized system with H2O2: higher ORP range 300-450
+    return [
+      { start: 0, end: 200, color: "#ef4444" },      // red — anaerobic / root rot risk
+      { start: 200, end: 300, color: "#f59e0b" },    // amber — low oxidation
+      { start: 300, end: 450, color: "#22c55e" },    // green — optimal (sterilized)
+      { start: 450, end: 500, color: "#f59e0b" },    // amber — high (H2O2 excess)
+      { start: 500, end: 600, color: "#ef4444" },    // red — too oxidizing
+    ] as const;
+  }
+}

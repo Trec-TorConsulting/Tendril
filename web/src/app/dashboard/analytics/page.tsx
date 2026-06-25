@@ -24,7 +24,7 @@ import { usePreferences } from "@/hooks/use-preferences";
 import { formatTemp, tempUnitLabel } from "@/lib/units";
 import { PageHeader } from "@/components/page-header";
 import { HeatMapCalendar } from "@/components/heat-map-calendar";
-import { SensorGauge, GAUGE_PRESETS } from "@/components/sensor-gauge";
+import { SensorGauge, GAUGE_PRESETS, getOrpZones } from "@/components/sensor-gauge";
 import { GrowStageIndicator } from "@/components/grow-stage-indicator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -764,7 +764,11 @@ export default function AnalyticsPage() {
                   <SensorGauge value={envSnapshots[0].water_temp_f} {...GAUGE_PRESETS.waterTemp} />
                 )}
                 {envSnapshots.length > 0 && envSnapshots[0].orp != null && (
-                  <SensorGauge value={envSnapshots[0].orp} {...GAUGE_PRESETS.orp} />
+                  <SensorGauge 
+                    value={envSnapshots[0].orp} 
+                    {...GAUGE_PRESETS.orp}
+                    zones={getOrpZones((activeGrow?.settings?.system_type) as "live_beneficial" | "sterilized" | undefined || "sterilized")}
+                  />
                 )}
               </div>
             </CardContent>
