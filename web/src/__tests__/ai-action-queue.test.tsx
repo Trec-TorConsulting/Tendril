@@ -196,11 +196,17 @@ describe("AiActionQueue", () => {
           {
             id: "evt-2",
             correlationId: "corr-22",
-            phase: "failed",
-            tool: "update_grow_stage",
-            message: "Tool failed: update grow stage",
+            phase: "blocked",
+            tool: "integration_trigger_sync",
+            message: "Tool blocked by policy: integration trigger sync",
             ts: "2026-06-24T00:13:00Z",
             isError: true,
+            policy: {
+              integration_type: "tuya",
+              risk_level: "high",
+              requires_simulation: true,
+              reason: "Unsupported integration connector: tuya",
+            },
           },
         ]}
         growName="Veg Tent"
@@ -215,11 +221,15 @@ describe("AiActionQueue", () => {
 
     expect(screen.getByText("Live lifecycle")).toBeInTheDocument();
     expect(screen.getByText("Running tool: update grow stage")).toBeInTheDocument();
-    expect(screen.getByText("Tool failed: update grow stage")).toBeInTheDocument();
+    expect(screen.getByText("Tool blocked by policy: integration trigger sync")).toBeInTheDocument();
     expect(screen.getByText("Action action-1")).toBeInTheDocument();
     expect(screen.getByText("Action linked")).toBeInTheDocument();
     expect(screen.getByText("Correlation only")).toBeInTheDocument();
     expect(screen.getByText("Correlation corr-22")).toBeInTheDocument();
+    expect(screen.getByText("tuya")).toBeInTheDocument();
+    expect(screen.getByText("high risk")).toBeInTheDocument();
+    expect(screen.getByText("Simulation required")).toBeInTheDocument();
+    expect(screen.getByText("Policy: Unsupported integration connector: tuya")).toBeInTheDocument();
   });
 
   it("highlights recent activity when live event matches action id", () => {

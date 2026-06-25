@@ -22,6 +22,16 @@ export interface ActionLifecycleEvent {
   message: string;
   ts: string;
   isError?: boolean;
+  policy?: {
+    integration_type?: string;
+    operation?: string;
+    supported?: boolean;
+    allowed?: boolean;
+    risk_level?: string;
+    requires_approval?: boolean;
+    requires_simulation?: boolean;
+    reason?: string | null;
+  };
 }
 
 interface AiActionQueueProps {
@@ -352,6 +362,24 @@ export function AiActionQueue({
                       {event.tool ? `${event.tool.replace(/_/g, " ")} • ` : ""}
                       {formatTime(event.ts)}
                     </p>
+                    {event.policy ? (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+                        {event.policy.integration_type ? (
+                          <Badge variant="outline">{event.policy.integration_type}</Badge>
+                        ) : null}
+                        {event.policy.risk_level ? (
+                          <Badge variant={event.policy.risk_level === "high" ? "destructive" : "outline"}>
+                            {event.policy.risk_level} risk
+                          </Badge>
+                        ) : null}
+                        {event.policy.requires_simulation ? (
+                          <Badge variant="secondary">Simulation required</Badge>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    {event.policy?.reason ? (
+                      <p className="mt-1 text-[11px] text-muted-foreground">Policy: {event.policy.reason}</p>
+                    ) : null}
                     {event.actionId ? (
                       <p className="mt-1 text-[11px] text-muted-foreground">Action {event.actionId}</p>
                     ) : null}
