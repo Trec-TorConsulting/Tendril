@@ -17,7 +17,7 @@ jobs:
     name: Lint
     runs-on: arc-runner-arm64
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
@@ -31,7 +31,7 @@ jobs:
     name: mypy (baseline, non-blocking)
     runs-on: arc-runner-arm64
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
@@ -50,7 +50,7 @@ jobs:
     name: mypy (strict subset)
     runs-on: arc-runner-arm64
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
@@ -78,8 +78,8 @@ jobs:
     name: Lint (web)
     runs-on: arc-runner-arm64
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: npm
@@ -93,11 +93,11 @@ jobs:
     name: Verify API Types
     runs-on: arc-runner-arm64
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: npm
@@ -131,7 +131,7 @@ jobs:
             platform: linux/amd64
             arch: amd64
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
         with:
           driver-opts: network=host
@@ -182,7 +182,7 @@ jobs:
       name: production
       url: https://tendrilgrow.com
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - run: |
           curl -LO "https://dl.k8s.io/release/$(curl -Ls https://dl.k8s.io/release/stable.txt)/bin/linux/arm64/kubectl"
           chmod +x kubectl
@@ -290,7 +290,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
@@ -309,7 +309,7 @@ jobs:
       run:
         working-directory: web
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
@@ -341,7 +341,7 @@ jobs:
   #         --health-timeout 5s
   #         --health-retries 5
   #   steps:
-  #     - uses: actions/checkout@v6
+  #     - uses: actions/checkout@v7
   #     - uses: actions/setup-python@v6
   #       with:
   #         python-version: "3.14"
@@ -359,7 +359,7 @@ jobs:
   #     run:
   #       working-directory: web
   #   steps:
-  #     - uses: actions/checkout@v6
+  #     - uses: actions/checkout@v7
   #     - uses: actions/setup-node@v6
   #       with:
   #         node-version: "22"
@@ -374,7 +374,7 @@ jobs:
   #   name: Pre-commit Checks
   #   runs-on: arc-runner-arm64
   #   steps:
-  #     - uses: actions/checkout@v6
+  #     - uses: actions/checkout@v7
   #     - uses: actions/setup-python@v6
   #       with:
   #         python-version: "3.14"
