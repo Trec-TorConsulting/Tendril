@@ -28,6 +28,8 @@ spec:
         args:
         - "--appendonly"
         - "yes"
+        - "--dir"
+        - "/data"
         - "--appendfsync"
         - "everysec"
         - "--maxmemory"
