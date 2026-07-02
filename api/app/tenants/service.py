@@ -26,6 +26,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.tenants.models import PlatformRole, Tenant, TenantMembership, TenantRole, User
 
+DEFAULT_COACHING_SETTINGS = {
+    "enabled": True,
+    "cadence_hours": 24,
+    "minimum_severity": "info",
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Role mapping
 # ─────────────────────────────────────────────────────────────────────────────
@@ -84,6 +90,51 @@ async def update_tenant(
     await session.commit()
     await session.refresh(tenant)
     return tenant
+
+
+def get_tenant_coaching_settings(tenant: Tenant) -> dict[str, bool | int | str]:
+    """Return normalized tenant coaching settings with defaults."""
+    raw = tenant.coaching_settings if isinstance(tenant.coaching_settings, dict) else {}
+    cadence = raw.get("cadence_hours", DEFAULT_COACHING_SETTINGS["cadence_hours"])
+    minimum = raw.get("minimum_severity", DEFAULT_COACHING_SETTINGS["minimum_severity"])
+    enabled = raw.get("enabled", DEFAULT_COACHING_SETTINGS["enabled"])
+
+    cadence_hours = cadence if isinstance(cadence, int) and 1 <= cadence <= 168 else 24
+    minimum_severity = minimum if minimum in {"info", "warning", "critical"} else "info"
+    is_enabled = bool(enabled)
+
+    return {
+        "enabled": is_enabled,
+        "cadence_hours": cadence_hours,
+        "minimum_severity": minimum_severity,
+    }
+
+
+async def update_tenant_coaching_settings(
+    session: AsyncSession,
+    tenant: Tenant,
+    *,
+    enabled: bool | None = None,
+    cadence_hours: int | None = None,
+    minimum_severity: str | None = None,
+) -> dict[str, bool | int | str]:
+    """Apply partial updates to tenant coaching settings and persist."""
+    current = get_tenant_coaching_settings(tenant)
+    if enabled is not None:
+        current["enabled"] = enabled
+    if cadence_hours is not None:
+        current["cadence_hours"] = cadence_hours
+    if minimum_severity is not None:
+        current["minimum_severity"] = minimum_severity
+
+    tenant.coaching_settings = {
+        "enabled": bool(current["enabled"]),
+        "cadence_hours": int(current["cadence_hours"]),
+        "minimum_severity": str(current["minimum_severity"]),
+    }
+    await session.commit()
+    await session.refresh(tenant)
+    return get_tenant_coaching_settings(tenant)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -9,8 +9,10 @@ import uuid
 import pytest
 
 from app.automation.critical_alerts_defaults import CRITICAL_ALERTS, DEFAULTS_VERSION
+from app.automation.engine import evaluate_critical_alerts
 from app.automation.models import AutomationRule
 from app.automation.service import seed_system_alert_rules
+from app.grows.models import Bucket, BucketSensorReading, GrowCycle, Tent
 from app.tenants.models import Tenant
 
 
@@ -187,5 +189,134 @@ class TestDeleteSystemRuleForbidden:
         assert "system-default" in resp.json()["detail"].lower()
 
     # Note: PATCH-based disable is exercised by the generic
-    # ``test_update_rule`` in ``tests/unit/test_automation.py`` \u2014 the
+    # ``test_update_rule`` in ``tests/unit/test_automation.py`` — the
     # ``is_system_default`` flag has no special semantics for updates.
+
+
+@pytest.mark.asyncio
+class TestStageAwareCriticalAlertEvaluation:
+    async def test_stage_defaults_can_trigger_below_persisted_threshold(self, tenant_factory):
+        tenant = await tenant_factory.create()
+        session = tenant_factory.session
+
+        tent = Tent(tenant_id=tenant["tenant"].id, name="stage-aware-test")
+        session.add(tent)
+        await session.flush()
+
+        grow = GrowCycle(
+            tenant_id=tenant["tenant"].id,
+            tent_id=tent.id,
+            name="flower-grow",
+            grow_type="dwc",
+            stage="flowering",
+            status="active",
+        )
+        session.add(grow)
+        await session.flush()
+
+        bucket = Bucket(
+            tenant_id=tenant["tenant"].id,
+            grow_cycle_id=grow.id,
+            position=1,
+            growth_stage="flowering",
+        )
+        session.add(bucket)
+        await session.flush()
+
+        reading = BucketSensorReading(
+            tenant_id=tenant["tenant"].id,
+            bucket_id=bucket.id,
+            ec=2.3,
+        )
+        session.add(reading)
+
+        # Persisted threshold is 2.5, but stage-aware default for flowering EC
+        # is lower (2.2), so this should still trigger.
+        rule = AutomationRule(
+            tenant_id=tenant["tenant"].id,
+            grow_cycle_id=grow.id,
+            grow_type="dwc",
+            is_system_default=True,
+            name="DWC EC high",
+            sensor="ec",
+            condition="gt",
+            threshold=2.5,
+            action="alert",
+            severity="warning",
+        )
+        session.add(rule)
+        await session.commit()
+
+        alerts = await evaluate_critical_alerts(
+            session,
+            grow.grow_type,
+            tenant["tenant"].id,
+            grow.id,
+            reading,
+        )
+
+        assert len(alerts) == 1
+        assert alerts[0].sensor_value == 2.3
+        assert "stage 'flowering'" in alerts[0].message
+
+    async def test_rule_stage_threshold_override_takes_precedence(self, tenant_factory):
+        tenant = await tenant_factory.create()
+        session = tenant_factory.session
+
+        tent = Tent(tenant_id=tenant["tenant"].id, name="override-test")
+        session.add(tent)
+        await session.flush()
+
+        grow = GrowCycle(
+            tenant_id=tenant["tenant"].id,
+            tent_id=tent.id,
+            name="veg-grow",
+            grow_type="dwc",
+            stage="vegetative",
+            status="active",
+        )
+        session.add(grow)
+        await session.flush()
+
+        bucket = Bucket(
+            tenant_id=tenant["tenant"].id,
+            grow_cycle_id=grow.id,
+            position=1,
+            growth_stage="vegetative",
+        )
+        session.add(bucket)
+        await session.flush()
+
+        reading = BucketSensorReading(
+            tenant_id=tenant["tenant"].id,
+            bucket_id=bucket.id,
+            ec=1.2,
+        )
+        session.add(reading)
+
+        rule = AutomationRule(
+            tenant_id=tenant["tenant"].id,
+            grow_cycle_id=grow.id,
+            grow_type="dwc",
+            is_system_default=True,
+            name="DWC EC tuned",
+            sensor="ec",
+            condition="gt",
+            threshold=2.5,
+            action="alert",
+            severity="warning",
+            action_params={"stage_thresholds": {"vegetative": {"gt": 1.0}}},
+        )
+        session.add(rule)
+        await session.commit()
+
+        alerts = await evaluate_critical_alerts(
+            session,
+            grow.grow_type,
+            tenant["tenant"].id,
+            grow.id,
+            reading,
+        )
+
+        assert len(alerts) == 1
+        assert "gt 1.0" in alerts[0].message

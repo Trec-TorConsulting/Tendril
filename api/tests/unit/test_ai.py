@@ -75,12 +75,16 @@ class TestHealthCheck:
         assert len(data["actions"]) >= 1
 
         action_rows = (
-            await db_session.execute(
-                select(AgentAction)
-                .where(AgentAction.grow_cycle_id == grow_with_data["grow_id"])
-                .order_by(AgentAction.created_at)
+            (
+                await db_session.execute(
+                    select(AgentAction)
+                    .where(AgentAction.grow_cycle_id == grow_with_data["grow_id"])
+                    .order_by(AgentAction.created_at)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(action_rows) == 1
         assert action_rows[0].source == "health_check"
         assert action_rows[0].action_type == "create_task"
@@ -99,8 +103,7 @@ class TestHealthCheck:
         db_session,
     ):
         mock_ai.return_value = (
-            '{"score": 70, "issues": ["High humidity"], '
-            '"actions": ["Adjust pH down", "Turn on exhaust fan now"]}'
+            '{"score": 70, "issues": ["High humidity"], "actions": ["Adjust pH down", "Turn on exhaust fan now"]}'
         )
 
         resp = await client.post(
@@ -114,12 +117,16 @@ class TestHealthCheck:
         assert resp.status_code == 200
 
         action_rows = (
-            await db_session.execute(
-                select(AgentAction)
-                .where(AgentAction.grow_cycle_id == grow_with_data["grow_id"])
-                .order_by(AgentAction.created_at)
+            (
+                await db_session.execute(
+                    select(AgentAction)
+                    .where(AgentAction.grow_cycle_id == grow_with_data["grow_id"])
+                    .order_by(AgentAction.created_at)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(action_rows) == 2
 
         safe_action = next(item for item in action_rows if item.action_type == "create_task")
@@ -168,6 +175,39 @@ class TestCoachTip:
         data = resp.json()
         assert "tip" in data
         assert len(data["tip"]) > 0
+        assert data["cached"] is False
+        assert data["generated_at"]
+
+    @patch("app.ai.routes.chat_completion", new_callable=AsyncMock)
+    async def test_coach_tip_cache_and_force_refresh(self, mock_ai, client, grow_with_data):
+        mock_ai.return_value = "Keep pH stable."
+
+        first = await client.post(
+            "/v1/ai/coach-tip",
+            json={"grow_id": grow_with_data["grow_id"]},
+            headers=grow_with_data["tenant"]["headers"],
+        )
+        assert first.status_code == 200
+        assert first.json()["cached"] is False
+        assert mock_ai.await_count == 1
+
+        second = await client.post(
+            "/v1/ai/coach-tip",
+            json={"grow_id": grow_with_data["grow_id"]},
+            headers=grow_with_data["tenant"]["headers"],
+        )
+        assert second.status_code == 200
+        assert second.json()["cached"] is True
+        assert mock_ai.await_count == 1
+
+        third = await client.post(
+            "/v1/ai/coach-tip",
+            json={"grow_id": grow_with_data["grow_id"], "force_refresh": True},
+            headers=grow_with_data["tenant"]["headers"],
+        )
+        assert third.status_code == 200
+        assert third.json()["cached"] is False
+        assert mock_ai.await_count == 2
 
 
 class TestInsights:
@@ -186,6 +226,49 @@ class TestInsights:
         assert resp.status_code == 200
         data = resp.json()
         assert data["insight_type"] == "harvest_predict"
+        assert data["cached"] is False
+        assert data["generated_at"]
+
+    @patch("app.ai.routes.chat_completion", new_callable=AsyncMock)
+    async def test_insights_cache_and_force_refresh(self, mock_ai, client, grow_with_data):
+        mock_ai.return_value = '{"summary": "Stable trend"}'
+
+        first = await client.post(
+            "/v1/ai/insights",
+            json={
+                "grow_id": grow_with_data["grow_id"],
+                "insight_type": "anomaly_scan",
+            },
+            headers=grow_with_data["tenant"]["headers"],
+        )
+        assert first.status_code == 200
+        assert first.json()["cached"] is False
+        assert mock_ai.await_count == 1
+
+        second = await client.post(
+            "/v1/ai/insights",
+            json={
+                "grow_id": grow_with_data["grow_id"],
+                "insight_type": "anomaly_scan",
+            },
+            headers=grow_with_data["tenant"]["headers"],
+        )
+        assert second.status_code == 200
+        assert second.json()["cached"] is True
+        assert mock_ai.await_count == 1
+
+        third = await client.post(
+            "/v1/ai/insights",
+            json={
+                "grow_id": grow_with_data["grow_id"],
+                "insight_type": "anomaly_scan",
+                "force_refresh": True,
+            },
+            headers=grow_with_data["tenant"]["headers"],
+        )
+        assert third.status_code == 200
+        assert third.json()["cached"] is False
+        assert mock_ai.await_count == 2
 
     async def test_invalid_insight_type(self, client, grow_with_data):
         resp = await client.post(

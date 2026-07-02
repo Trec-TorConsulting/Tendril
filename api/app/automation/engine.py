@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import operator
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -212,6 +213,80 @@ WEATHER_RULES = [
     },
 ]
 
+# Stage-aware threshold defaults used at evaluation time when no explicit
+# per-rule stage mapping exists. This preserves current rule thresholds as the
+# fallback and only tunes high-variance metrics by stage.
+_STAGE_THRESHOLD_DEFAULTS: dict[str, dict[str, dict[str, float]]] = {
+    "ec": {
+        "seedling": {"gt": 1.4},
+        "vegetative": {"gt": 1.6},
+        "flowering": {"gt": 2.2},
+        "ripening": {"gt": 1.6},
+    },
+    "runoff_ec": {
+        "seedling": {"gt": 2.8},
+        "vegetative": {"gt": 3.0},
+        "flowering": {"gt": 3.8},
+        "ripening": {"gt": 3.2},
+    },
+    "water_temp_f": {
+        "seedling": {"gt": 72},
+        "vegetative": {"gt": 72},
+        "flowering": {"gt": 74},
+        "ripening": {"gt": 72},
+    },
+    "soil_moisture": {
+        "seedling": {"lt": 30},
+        "vegetative": {"lt": 25},
+        "flowering": {"lt": 20},
+        "ripening": {"lt": 18},
+    },
+}
+
+
+def _resolve_stage_threshold(rule: AutomationRule, stage: str | None) -> float:
+    """Resolve an effective threshold using optional per-rule stage mapping.
+
+    Resolution order:
+    1) rule.action_params.stage_thresholds[stage][condition or 'threshold']
+    2) built-in stage defaults for selected sensors
+    3) persisted rule.threshold (current behavior fallback)
+    """
+    if stage:
+        params = rule.action_params if isinstance(rule.action_params, dict) else {}
+        stage_thresholds = params.get("stage_thresholds")
+        if isinstance(stage_thresholds, dict):
+            stage_entry = stage_thresholds.get(stage)
+            if isinstance(stage_entry, int | float):
+                return float(stage_entry)
+            if isinstance(stage_entry, dict):
+                by_condition = stage_entry.get(rule.condition)
+                if isinstance(by_condition, int | float):
+                    return float(by_condition)
+                generic = stage_entry.get("threshold")
+                if isinstance(generic, int | float):
+                    return float(generic)
+
+        sensor_defaults = _STAGE_THRESHOLD_DEFAULTS.get(rule.sensor, {})
+        stage_defaults = sensor_defaults.get(stage, {})
+        threshold = stage_defaults.get(rule.condition)
+        if isinstance(threshold, int | float):
+            return float(threshold)
+
+    return rule.threshold
+
+
+def _format_stage_alert_message(
+    *,
+    rule: AutomationRule,
+    value: Any,
+    threshold: float,
+    stage: str | None,
+) -> str:
+    """Build a contextual alert message that includes stage-aware thresholding."""
+    stage_label = stage or "unknown"
+    return f"{rule.name} — {rule.sensor} is {value} ({rule.condition} {threshold}) for stage '{stage_label}'."
+
 
 async def evaluate_rules(session: AsyncSession) -> list[AlertHistory]:
     """Evaluate all enabled automation rules against latest sensor readings.
@@ -392,6 +467,13 @@ async def evaluate_critical_alerts(
     rules = (await session.execute(list_critical_rules_query(tenant_id=tenant_id, grow_type=grow_type))).scalars().all()
     triggered: list[AlertHistory] = []
 
+    grow_stage: str | None = None
+    if grow_cycle_id is not None:
+        from app.grows.models import GrowCycle
+
+        grow = await session.get(GrowCycle, grow_cycle_id)
+        grow_stage = grow.stage if grow is not None else None
+
     for rule in rules:
         value = getattr(reading, rule.sensor, None)
         if value is None:
@@ -401,11 +483,12 @@ async def evaluate_critical_alerts(
         if not op_fn:
             continue
 
-        if op_fn(value, rule.threshold):
+        threshold = _resolve_stage_threshold(rule, grow_stage)
+        if op_fn(value, threshold):
             # Per-(rule, bucket) suppression — avoids spamming when multiple
             # readings on the same bucket cross the threshold in quick
             # succession, and lets distinct buckets fire independently.
-            alert_type = f"critical_{rule.sensor}_{rule.condition}_{rule.threshold}"
+            alert_type = f"critical_{rule.sensor}_{rule.condition}_{threshold}"
             if await is_suppressed(tenant_id, alert_type, reading.bucket_id):
                 continue
 
@@ -415,7 +498,12 @@ async def evaluate_critical_alerts(
                 grow_cycle_id=grow_cycle_id,
                 alert_type=alert_type,
                 severity=rule.severity,
-                message=rule.name,
+                message=_format_stage_alert_message(
+                    rule=rule,
+                    value=value,
+                    threshold=threshold,
+                    stage=grow_stage,
+                ),
                 sensor_value=value,
             )
             session.add(alert)

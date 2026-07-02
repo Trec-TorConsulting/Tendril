@@ -68,6 +68,16 @@ class RuleResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class StageThresholdsUpdate(BaseModel):
+    thresholds: dict[str, float]
+
+
+class StageThresholdsResponse(BaseModel):
+    rule_id: UUID
+    condition: str
+    thresholds: dict[str, float]
+
+
 @router.post(
     "/rules",
     response_model=RuleResponse,
@@ -152,6 +162,63 @@ async def delete_rule(
             detail="System-default rules cannot be deleted; disable instead",
         )
     await service.delete_rule(session, rule)
+
+
+@router.get("/rules/{rule_id}/stage-thresholds", response_model=StageThresholdsResponse)
+async def get_rule_stage_thresholds(
+    rule_id: UUID,
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Get stage-threshold overrides for a rule.
+
+    Values are returned as ``{stage: threshold}`` for the rule condition.
+    """
+    rule = await service.get_rule(session, rule_id)
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    return StageThresholdsResponse(
+        rule_id=rule.id,
+        condition=rule.condition,
+        thresholds=service.get_stage_thresholds(rule),
+    )
+
+
+@router.put("/rules/{rule_id}/stage-thresholds", response_model=StageThresholdsResponse)
+async def set_rule_stage_thresholds(
+    rule_id: UUID,
+    body: StageThresholdsUpdate,
+    user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Set stage-threshold overrides for a rule."""
+    rule = await service.get_rule(session, rule_id)
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    rule = await service.set_stage_thresholds(session, rule, thresholds=body.thresholds)
+    return StageThresholdsResponse(
+        rule_id=rule.id,
+        condition=rule.condition,
+        thresholds=service.get_stage_thresholds(rule),
+    )
+
+
+@router.delete("/rules/{rule_id}/stage-thresholds", response_model=StageThresholdsResponse)
+async def clear_rule_stage_thresholds(
+    rule_id: UUID,
+    user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Clear stage-threshold overrides for a rule."""
+    rule = await service.get_rule(session, rule_id)
+    if not rule:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    rule = await service.clear_stage_thresholds(session, rule)
+    return StageThresholdsResponse(
+        rule_id=rule.id,
+        condition=rule.condition,
+        thresholds=service.get_stage_thresholds(rule),
+    )
 
 
 # ---------- Alert History ----------

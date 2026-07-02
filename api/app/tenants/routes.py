@@ -10,7 +10,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import record_audit
@@ -28,6 +28,18 @@ class TenantResponse(BaseModel):
     name: str
     slug: str
     plan: str
+
+
+class CoachingSettingsResponse(BaseModel):
+    enabled: bool
+    cadence_hours: int
+    minimum_severity: str
+
+
+class UpdateCoachingSettingsRequest(BaseModel):
+    enabled: bool | None = None
+    cadence_hours: int | None = Field(default=None, ge=1, le=168)
+    minimum_severity: str | None = Field(default=None, pattern="^(info|warning|critical)$")
 
 
 class TenantMemberResponse(BaseModel):
@@ -80,6 +92,40 @@ async def update_my_tenant(
         raise HTTPException(status_code=404, detail="Tenant not found")
     tenant = await service.update_tenant(db, tenant, name=body.name)
     return TenantResponse(id=tenant.id, name=tenant.name, slug=tenant.slug, plan=tenant.plan)
+
+
+@router.get("/me/coaching-settings", response_model=CoachingSettingsResponse)
+async def get_my_tenant_coaching_settings(
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Get tenant-level proactive coaching settings."""
+    assert user.tenant_id is not None
+    tenant = await service.get_tenant(db, user.tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    return CoachingSettingsResponse(**service.get_tenant_coaching_settings(tenant))
+
+
+@router.patch("/me/coaching-settings", response_model=CoachingSettingsResponse)
+async def update_my_tenant_coaching_settings(
+    body: UpdateCoachingSettingsRequest,
+    user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Update tenant-level proactive coaching settings."""
+    assert user.tenant_id is not None
+    tenant = await service.get_tenant(db, user.tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=404, detail="Tenant not found")
+    settings = await service.update_tenant_coaching_settings(
+        db,
+        tenant,
+        enabled=body.enabled,
+        cadence_hours=body.cadence_hours,
+        minimum_severity=body.minimum_severity,
+    )
+    return CoachingSettingsResponse(**settings)
 
 
 @router.get("/members", response_model=PaginatedResponse[TenantMemberResponse])

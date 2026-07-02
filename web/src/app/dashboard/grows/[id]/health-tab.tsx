@@ -157,41 +157,33 @@ export function HealthTab({ grow, onRefresh }: HealthTabProps) {
 
   // AI Coach
   const [coachTip, setCoachTip] = useState<string | null>(null);
+  const [coachGeneratedAt, setCoachGeneratedAt] = useState<string | null>(null);
+  const [coachCached, setCoachCached] = useState<boolean>(false);
   const [coachLoading, setCoachLoading] = useState(false);
 
-  const COACH_CACHE_KEY = `tendril_coach_tip_${grow.id}`;
   const COACH_TTL = 60 * 60 * 1000; // 1 hour
 
-  const fetchAndCacheCoachTip = useCallback(async () => {
+  const fetchAndCacheCoachTip = useCallback(async (forceRefresh = false) => {
     const token = getAccessToken();
     if (!token) return;
     setCoachLoading(true);
     try {
-      const res = await getCoachTip(token, grow.id);
+      const res = await getCoachTip(token, grow.id, forceRefresh);
       const tip = typeof res.tip === "string" ? res.tip : String(res.tip ?? "");
       setCoachTip(tip);
-      localStorage.setItem(COACH_CACHE_KEY, JSON.stringify({ tip, ts: Date.now() }));
+      setCoachGeneratedAt(res.generated_at ?? null);
+      setCoachCached(!!res.cached);
     } catch (e) {
       setCoachTip(`⚠️ ${e instanceof Error ? e.message : "Unable to get tip. Try again."}`);
+      setCoachGeneratedAt(null);
+      setCoachCached(false);
     } finally { setCoachLoading(false); }
-  }, [grow.id, COACH_CACHE_KEY]);
+  }, [grow.id]);
 
-  // Load cached tip on mount or fetch if stale/missing
+  // Load coach tip on mount and when grow changes
   useEffect(() => {
-    const cached = localStorage.getItem(COACH_CACHE_KEY);
-    if (cached) {
-      try {
-        const { tip, ts } = JSON.parse(cached);
-        if (typeof tip === "string" && Date.now() - ts < COACH_TTL) {
-          setCoachTip(tip);
-          return;
-        }
-      } catch { /* invalid cache, refetch */ }
-      // Clear corrupt/stale cache
-      localStorage.removeItem(COACH_CACHE_KEY);
-    }
     fetchAndCacheCoachTip();
-  }, [grow.id, COACH_CACHE_KEY, COACH_TTL, fetchAndCacheCoachTip]);
+  }, [grow.id, fetchAndCacheCoachTip]);
 
   // Auto-refresh every hour
   useEffect(() => {
@@ -278,7 +270,7 @@ export function HealthTab({ grow, onRefresh }: HealthTabProps) {
     }
   };
 
-  const loadCoachTip = () => { fetchAndCacheCoachTip(); };
+  const loadCoachTip = () => { fetchAndCacheCoachTip(true); };
 
 
 
@@ -323,7 +315,14 @@ export function HealthTab({ grow, onRefresh }: HealthTabProps) {
           {coachLoading ? (
             <p className="text-sm text-muted-foreground">Getting tip...</p>
           ) : coachTip ? (
-            <p className="text-sm">{coachTip}</p>
+            <div className="space-y-1.5">
+              <p className="text-sm">{coachTip}</p>
+              {coachGeneratedAt ? (
+                <p className="text-xs text-muted-foreground">
+                  Updated {formatDateTime(coachGeneratedAt)} {coachCached ? "(cached)" : "(fresh)"}
+                </p>
+              ) : null}
+            </div>
           ) : (
             <p className="text-sm text-muted-foreground">Loading your personalized growing tip...</p>
           )}
