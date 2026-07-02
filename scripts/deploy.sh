@@ -16,8 +16,10 @@ kubectl apply -f "$MANIFEST_DIR/db-migration-job.yaml"
 kubectl wait --for=condition=complete job/tendril-db-migrate -n "$NAMESPACE" --timeout=120s
 
 # Deploy Redis (middleware state) — StatefulSet with persistent storage
+kubectl delete deployment tendril-redis -n "$NAMESPACE" --ignore-not-found
 kubectl apply -f "$MANIFEST_DIR/redis-statefulset.yaml"
 kubectl apply -f "$MANIFEST_DIR/redis-service.yaml"
+kubectl rollout status statefulset/tendril-redis -n "$NAMESPACE" --timeout=120s
 
 # Deploy pods
 kubectl apply -f "$MANIFEST_DIR/api-deployment.yaml"

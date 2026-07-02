@@ -11,6 +11,34 @@ from app.scheduler.health import record_task_error, record_task_run
 
 logger = logging.getLogger("tendril.scheduler.tasks")
 
+_COACHING_DEFAULTS = {
+    "enabled": True,
+    "cadence_hours": 24,
+    "minimum_severity": "info",
+}
+_SEVERITY_RANK = {"info": 1, "warning": 2, "critical": 3}
+
+
+def _normalize_coaching_settings(raw: dict | None) -> dict[str, bool | int | str]:
+    data = raw if isinstance(raw, dict) else {}
+    enabled = bool(data.get("enabled", _COACHING_DEFAULTS["enabled"]))
+    cadence = data.get("cadence_hours", _COACHING_DEFAULTS["cadence_hours"])
+    minimum = data.get("minimum_severity", _COACHING_DEFAULTS["minimum_severity"])
+
+    cadence_hours = cadence if isinstance(cadence, int) and 1 <= cadence <= 168 else 24
+    minimum_severity = minimum if minimum in _SEVERITY_RANK else "info"
+
+    return {
+        "enabled": enabled,
+        "cadence_hours": cadence_hours,
+        "minimum_severity": minimum_severity,
+    }
+
+
+def _severity_allowed(alert_severity: str, minimum_severity: str) -> bool:
+    return _SEVERITY_RANK.get(alert_severity, 0) >= _SEVERITY_RANK.get(minimum_severity, 1)
+
+
 # Task intervals in seconds
 HEALTH_CHECK_INTERVAL = 12 * 3600  # 12 hours
 WEATHER_POLL_INTERVAL = 30 * 60  # 30 minutes
@@ -20,6 +48,7 @@ RETENTION_INTERVAL = 24 * 3600  # Daily
 DAILY_REPORT_INTERVAL = 24 * 3600  # Daily
 HARVEST_CHECK_INTERVAL = 4 * 3600  # 4 hours
 TASK_GENERATION_INTERVAL = 6 * 3600  # 6 hours
+PROACTIVE_COACHING_INTERVAL = 6 * 3600  # 6 hours
 INTEGRATION_POLL_INTERVAL = 60  # 1 minute (checks due integrations)
 DUNNING_CHECK_INTERVAL = 3600  # Hourly
 ACCOUNT_PURGE_INTERVAL = 24 * 3600  # Daily
@@ -44,6 +73,14 @@ class TaskRunner:
             ),
             asyncio.create_task(
                 self._loop(shutdown_event, "task_generation", TASK_GENERATION_INTERVAL, self._generate_tasks)
+            ),
+            asyncio.create_task(
+                self._loop(
+                    shutdown_event,
+                    "proactive_coaching",
+                    PROACTIVE_COACHING_INTERVAL,
+                    self._proactive_coaching,
+                )
             ),
             asyncio.create_task(
                 self._loop(shutdown_event, "integration_poll", INTEGRATION_POLL_INTERVAL, self._integration_poll)
@@ -621,6 +658,119 @@ class TaskRunner:
                     logger.debug("Task generation: no new tasks needed")
         except Exception:
             logger.exception("Task generation failed")
+
+    async def _proactive_coaching(self) -> None:
+        """Emit low-noise proactive coaching nudges with per-grow cooldown."""
+        from datetime import datetime, timedelta
+
+        from sqlalchemy import desc, select
+
+        from app.automation.models import AlertHistory
+        from app.database import async_session_factory
+        from app.grows.models import GrowCycle, HealthEval
+        from app.notifications.service import dispatch_alert
+        from app.tenants.models import Tenant
+
+        try:
+            async with async_session_factory() as session:
+                grows = (await session.execute(select(GrowCycle).where(GrowCycle.status == "active"))).scalars().all()
+                if not grows:
+                    logger.debug("Proactive coaching: no active grows")
+                    return
+
+                tenant_ids = {g.tenant_id for g in grows}
+                settings_rows = (
+                    await session.execute(select(Tenant.id, Tenant.coaching_settings).where(Tenant.id.in_(tenant_ids)))
+                ).all()
+                coaching_by_tenant = {tenant_id: _normalize_coaching_settings(raw) for tenant_id, raw in settings_rows}
+
+                now = datetime.now(UTC)
+
+                for grow in grows:
+                    settings = coaching_by_tenant.get(grow.tenant_id, _COACHING_DEFAULTS)
+                    if not bool(settings["enabled"]):
+                        continue
+                    cadence_hours = int(settings["cadence_hours"])
+                    minimum_severity = str(settings["minimum_severity"])
+                    cutoff = now - timedelta(hours=cadence_hours)
+
+                    latest_eval = (
+                        await session.execute(
+                            select(HealthEval)
+                            .where(HealthEval.grow_cycle_id == grow.id)
+                            .order_by(desc(HealthEval.created_at))
+                            .limit(1)
+                        )
+                    ).scalar_one_or_none()
+
+                    alert_type: str | None = None
+                    severity = "info"
+                    title: str | None = None
+                    message: str | None = None
+
+                    if latest_eval is None or latest_eval.created_at < cutoff:
+                        alert_type = f"coaching_healthcheck_{grow.id}"
+                        title = "Quick Health Check Recommended"
+                        message = (
+                            f"No recent AI health check was found for '{grow.name}'. "
+                            "Run a check now to refresh recommendations and catch issues early."
+                        )
+                    elif latest_eval.score is not None and latest_eval.score <= 60:
+                        alert_type = f"coaching_low_health_{grow.id}"
+                        severity = "warning"
+                        title = "Low Health Score Follow-Up"
+                        message = (
+                            f"'{grow.name}' recently scored {latest_eval.score}/100. "
+                            "Focus on pending critical tasks and re-check key sensors after adjustments."
+                        )
+                    elif grow.stage in {"flowering", "ripening", "harvesting"}:
+                        alert_type = f"coaching_stage_focus_{grow.id}"
+                        title = "Flowering Stage Focus"
+                        message = (
+                            f"'{grow.name}' is in {grow.stage}. "
+                            "Prioritize stable EC/pH trends and begin harvest-readiness checks this week."
+                        )
+
+                    if not (alert_type and title and message):
+                        continue
+                    if not _severity_allowed(severity, minimum_severity):
+                        continue
+
+                    existing = (
+                        await session.execute(
+                            select(AlertHistory).where(
+                                AlertHistory.tenant_id == grow.tenant_id,
+                                AlertHistory.grow_cycle_id == grow.id,
+                                AlertHistory.alert_type == alert_type,
+                                AlertHistory.created_at > cutoff,
+                            )
+                        )
+                    ).scalar_one_or_none()
+                    if existing:
+                        continue
+
+                    session.add(
+                        AlertHistory(
+                            tenant_id=grow.tenant_id,
+                            grow_cycle_id=grow.id,
+                            alert_type=alert_type,
+                            severity=severity,
+                            message=message,
+                        )
+                    )
+                    await dispatch_alert(
+                        session,
+                        grow.tenant_id,
+                        severity,
+                        title,
+                        message,
+                        event_type="ai_coaching",
+                    )
+                    logger.info("Proactive coaching alert sent for grow %s (%s)", grow.id, alert_type)
+
+                await session.commit()
+        except Exception:
+            logger.exception("Proactive coaching task failed")
 
     async def _integration_poll(self) -> None:
         """Poll integrations that are due for sync based on poll_interval_s."""

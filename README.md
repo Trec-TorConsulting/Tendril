@@ -4,7 +4,7 @@
 
 **Open-source grow monitoring & automation platform**
 
-ESP32 IoT sensors · FastAPI backend · Next.js PWA · AI grow assistant
+ESP32 IoT sensors · FastAPI backend · Next.js Dynamic PWA · AI grow assistant
 
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![Firmware: MIT](https://img.shields.io/badge/Firmware-MIT-green.svg)](esp32/LICENSE)

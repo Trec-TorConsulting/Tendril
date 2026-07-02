@@ -16,12 +16,20 @@ spec:
       labels:
         app: tendril-redis
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+        fsGroupChangePolicy: OnRootMismatch
       containers:
       - name: redis
         image: redis:7-alpine
         args:
         - "--appendonly"
         - "yes"
+        - "--dir"
+        - "/data"
         - "--appendfsync"
         - "everysec"
         - "--maxmemory"
@@ -32,8 +40,6 @@ spec:
         - containerPort: 6379
           name: redis
         securityContext:
-          runAsNonRoot: true
-          runAsUser: 999
           readOnlyRootFilesystem: true
           allowPrivilegeEscalation: false
           capabilities:

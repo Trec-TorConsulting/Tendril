@@ -169,7 +169,7 @@ export default function LandingPage() {
           <span className="text-green-500">AI-Powered</span> Cultivation
         </h1>
         <p className="mx-auto mb-8 max-w-2xl text-lg text-neutral-400">
-          Tendril is the intelligent grow assistant that combines IoT sensors, automation rules,
+          Tendril is the dynamic grow assistant that combines IoT sensors, automation rules,
           and AI insights to help you achieve better harvests — from hobby to commercial scale.
         </p>
         <div className="flex justify-center gap-4">

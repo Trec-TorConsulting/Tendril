@@ -64,6 +64,11 @@ const { mockRules, mockAlerts } = vi.hoisted(() => {
 vi.mock("@/lib/api", () => ({
   listAutomationRules: vi.fn().mockResolvedValue(mockRules),
   listAlerts: vi.fn().mockResolvedValue(mockAlerts),
+  getTenantCoachingSettings: vi.fn().mockResolvedValue({ enabled: true, cadence_hours: 24, minimum_severity: "info" }),
+  updateTenantCoachingSettings: vi.fn().mockResolvedValue({ enabled: true, cadence_hours: 24, minimum_severity: "info" }),
+  getRuleStageThresholds: vi.fn().mockResolvedValue({ rule_id: "r1", condition: ">", thresholds: {} }),
+  setRuleStageThresholds: vi.fn().mockResolvedValue({ rule_id: "r1", condition: ">", thresholds: { flowering: 2.2 } }),
+  clearRuleStageThresholds: vi.fn().mockResolvedValue({ rule_id: "r1", condition: ">", thresholds: {} }),
   createAutomationRule: vi.fn().mockResolvedValue({ ...mockRules[0], id: "r2", name: "New" }),
   updateAutomationRule: vi.fn().mockResolvedValue({ ...mockRules[0], enabled: false }),
   deleteAutomationRule: vi.fn().mockResolvedValue(undefined),
@@ -88,6 +93,7 @@ describe("AutomationPage", () => {
     render(<AutomationPage />);
     await waitFor(() => {
       expect(screen.getByText("High pH Alert")).toBeDefined();
+      expect(screen.getByText("Proactive Coaching")).toBeDefined();
     });
   });
 

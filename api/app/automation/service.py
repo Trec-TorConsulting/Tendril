@@ -88,6 +88,64 @@ async def delete_rule(session: AsyncSession, rule: AutomationRule) -> None:
     await session.commit()
 
 
+def get_stage_thresholds(rule: AutomationRule) -> dict[str, float]:
+    """Return condition-specific stage thresholds from ``rule.action_params``.
+
+    Stored shape:
+      {"stage_thresholds": {"vegetative": {"gt": 1.4}, ...}}
+
+    Route responses flatten to ``{stage: threshold}`` for the rule's current
+    condition (``rule.condition``).
+    """
+    params = rule.action_params if isinstance(rule.action_params, dict) else {}
+    raw = params.get("stage_thresholds")
+    if not isinstance(raw, dict):
+        return {}
+
+    flattened: dict[str, float] = {}
+    for stage, value in raw.items():
+        if isinstance(value, int | float):
+            flattened[stage] = float(value)
+            continue
+        if isinstance(value, dict):
+            cond_value = value.get(rule.condition)
+            if isinstance(cond_value, int | float):
+                flattened[stage] = float(cond_value)
+            else:
+                fallback = value.get("threshold")
+                if isinstance(fallback, int | float):
+                    flattened[stage] = float(fallback)
+    return flattened
+
+
+async def set_stage_thresholds(
+    session: AsyncSession,
+    rule: AutomationRule,
+    *,
+    thresholds: dict[str, float],
+) -> AutomationRule:
+    """Set stage thresholds under ``action_params.stage_thresholds``."""
+    params = dict(rule.action_params or {})
+    params["stage_thresholds"] = {stage: {rule.condition: threshold} for stage, threshold in thresholds.items()}
+    rule.action_params = params
+    await session.commit()
+    await session.refresh(rule)
+    return rule
+
+
+async def clear_stage_thresholds(
+    session: AsyncSession,
+    rule: AutomationRule,
+) -> AutomationRule:
+    """Remove stage-threshold overrides for a rule."""
+    params = dict(rule.action_params or {})
+    params.pop("stage_thresholds", None)
+    rule.action_params = params or None
+    await session.commit()
+    await session.refresh(rule)
+    return rule
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # System-default alert rules (seeding)
 # ─────────────────────────────────────────────────────────────────────────────

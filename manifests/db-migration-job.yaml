@@ -3,8 +3,13 @@ kind: Job
 metadata:
   name: tendril-db-migrate
   namespace: tendril
+  labels:
+    app: tendril-api
 spec:
   template:
+    metadata:
+      labels:
+        app: tendril-api
     spec:
       affinity:
         nodeAffinity:

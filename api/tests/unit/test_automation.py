@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 import pytest_asyncio
 
@@ -14,6 +16,42 @@ pytestmark = pytest.mark.asyncio(loop_scope="session")
 async def tenant(db_session):
     factory = TenantFactory(db_session)
     return await factory.create()
+
+
+@pytest_asyncio.fixture
+async def viewer_tenant(db_session):
+    """Tenant with a viewer-role user for RBAC testing."""
+    import bcrypt
+
+    from app.auth.jwt import create_access_token
+    from app.tenants.models import PlatformRole, TenantMembership, TenantRole, User
+
+    factory = TenantFactory(db_session)
+    data = await factory.create(name="Viewer Org")
+    viewer = User(
+        email=f"viewer-{uuid4().hex[:8]}@test.com",
+        password_hash=bcrypt.hashpw(b"viewerpass", bcrypt.gensalt()).decode(),
+        display_name="Viewer User",
+        platform_role=PlatformRole.user,
+    )
+    db_session.add(viewer)
+    await db_session.flush()
+    membership = TenantMembership(
+        tenant_id=data["tenant"].id,
+        user_id=viewer.id,
+        role=TenantRole.viewer,
+    )
+    db_session.add(membership)
+    await db_session.commit()
+
+    token = create_access_token(
+        viewer.id,
+        platform_role="user",
+        tenant_id=data["tenant"].id,
+        tenant_role="viewer",
+    )
+    data["viewer_headers"] = {"Authorization": f"Bearer {token}", "X-CSRF-Token": "test-csrf-token"}
+    return data
 
 
 @pytest_asyncio.fixture
@@ -96,6 +134,91 @@ class TestAutomationRules:
     async def test_rules_no_auth(self, client):
         resp = await client.get("/v1/automation/rules")
         assert resp.status_code in (401, 403)
+
+    async def test_stage_thresholds_crud(self, client, tenant):
+        create = await client.post(
+            "/v1/automation/rules",
+            json={"name": "Stage EC", "sensor": "ec", "condition": "gt", "threshold": 2.5, "action": "alert"},
+            headers=tenant["headers"],
+        )
+        assert create.status_code == 201
+        rule_id = create.json()["id"]
+
+        set_resp = await client.put(
+            f"/v1/automation/rules/{rule_id}/stage-thresholds",
+            json={"thresholds": {"vegetative": 1.6, "flowering": 2.2}},
+            headers=tenant["headers"],
+        )
+        assert set_resp.status_code == 200
+        set_data = set_resp.json()
+        assert set_data["condition"] == "gt"
+        assert set_data["thresholds"]["vegetative"] == 1.6
+        assert set_data["thresholds"]["flowering"] == 2.2
+
+        get_resp = await client.get(
+            f"/v1/automation/rules/{rule_id}/stage-thresholds",
+            headers=tenant["headers"],
+        )
+        assert get_resp.status_code == 200
+        get_data = get_resp.json()
+        assert get_data["thresholds"]["vegetative"] == 1.6
+
+        clear_resp = await client.delete(
+            f"/v1/automation/rules/{rule_id}/stage-thresholds",
+            headers=tenant["headers"],
+        )
+        assert clear_resp.status_code == 200
+        assert clear_resp.json()["thresholds"] == {}
+
+    async def test_stage_thresholds_not_found(self, client, tenant):
+        missing_id = uuid4()
+
+        get_resp = await client.get(
+            f"/v1/automation/rules/{missing_id}/stage-thresholds",
+            headers=tenant["headers"],
+        )
+        assert get_resp.status_code == 404
+
+        put_resp = await client.put(
+            f"/v1/automation/rules/{missing_id}/stage-thresholds",
+            json={"thresholds": {"flowering": 2.1}},
+            headers=tenant["headers"],
+        )
+        assert put_resp.status_code == 404
+
+        delete_resp = await client.delete(
+            f"/v1/automation/rules/{missing_id}/stage-thresholds",
+            headers=tenant["headers"],
+        )
+        assert delete_resp.status_code == 404
+
+    async def test_stage_thresholds_viewer_permissions(self, client, viewer_tenant):
+        create = await client.post(
+            "/v1/automation/rules",
+            json={"name": "Stage pH", "sensor": "ph", "condition": "gt", "threshold": 6.5, "action": "alert"},
+            headers=viewer_tenant["headers"],
+        )
+        assert create.status_code == 201
+        rule_id = create.json()["id"]
+
+        get_resp = await client.get(
+            f"/v1/automation/rules/{rule_id}/stage-thresholds",
+            headers=viewer_tenant["viewer_headers"],
+        )
+        assert get_resp.status_code == 200
+
+        put_resp = await client.put(
+            f"/v1/automation/rules/{rule_id}/stage-thresholds",
+            json={"thresholds": {"flowering": 2.1}},
+            headers=viewer_tenant["viewer_headers"],
+        )
+        assert put_resp.status_code == 403
+
+        delete_resp = await client.delete(
+            f"/v1/automation/rules/{rule_id}/stage-thresholds",
+            headers=viewer_tenant["viewer_headers"],
+        )
+        assert delete_resp.status_code == 403
 
 
 # ---------- Alert History ----------

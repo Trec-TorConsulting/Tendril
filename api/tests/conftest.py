@@ -78,6 +78,7 @@ async def _setup_db():
         NotificationPreference,
         PushSubscription,
     )
+    from app.support.models import ChatMessage, ChatSession, SupportTicket  # noqa: F401
 
     # Import ALL models so metadata.create_all picks them up
     from app.tenants.models import (  # noqa: F401
