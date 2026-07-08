@@ -8,7 +8,7 @@ import hashlib
 import json
 import logging
 from contextlib import suppress
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -45,6 +45,8 @@ INSIGHT_TTL_SECONDS: dict[str, int] = {
     "nutrient_advice": 6 * 60 * 60,
     "anomaly_scan": 60 * 60,
 }
+_AI_CACHE_MAX_ENTRIES = 2048
+_AI_CACHE_SWEEP_TTL_SECONDS = max(COACH_TIP_TTL_SECONDS, *INSIGHT_TTL_SECONDS.values())
 
 _AI_CACHE: dict[str, tuple[datetime, Any]] = {}
 _AI_CACHE_LOCK = asyncio.Lock()
@@ -74,7 +76,22 @@ async def _cache_set(key: str, value: Any) -> datetime:
     """Store a value in in-process cache and return generation timestamp."""
     generated_at = datetime.now(UTC)
     async with _AI_CACHE_LOCK:
+        # Opportunistically sweep stale entries to avoid unbounded growth.
+        oldest_allowed = generated_at - timedelta(seconds=_AI_CACHE_SWEEP_TTL_SECONDS)
+        stale_keys = [cache_key for cache_key, (ts, _) in _AI_CACHE.items() if ts < oldest_allowed]
+        for cache_key in stale_keys:
+            _AI_CACHE.pop(cache_key, None)
+
         _AI_CACHE[key] = (generated_at, value)
+
+        overflow = len(_AI_CACHE) - _AI_CACHE_MAX_ENTRIES
+        if overflow > 0:
+            oldest_keys = sorted(_AI_CACHE, key=lambda cache_key: _AI_CACHE[cache_key][0])[:overflow]
+            for cache_key in oldest_keys:
+                _AI_CACHE.pop(cache_key, None)
+            # Keep the newest value we just computed.
+            _AI_CACHE[key] = (generated_at, value)
+
     return generated_at
 
 
