@@ -1,8 +1,8 @@
 # Development & testing dependencies
-pytest>=9.0.3,<10
+pytest>=9.1.1,<10
 pytest-asyncio>=1.4.0,<2
-pytest-cov>=7.0.0,<8
+pytest-cov>=7.1.0,<8
 httpx>=0.28.1,<1
-ruff>=0.15.16,<1
-mypy>=1.18.0,<2
-sqlalchemy[mypy]>=2.0.0,<3
+ruff>=0.15.20,<1
+mypy>=2.1.0,<3
+sqlalchemy[mypy]>=2.0.51,<3
