@@ -85,6 +85,41 @@ class TestTenantMe:
         resp = await client.get("/v1/tenants/me")
         assert resp.status_code in (401, 403)
 
+    async def test_get_coaching_settings_defaults(self, client, tenant):
+        resp = await client.get("/v1/tenants/me/coaching-settings", headers=tenant["headers"])
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["enabled"] is True
+        assert data["cadence_hours"] == 24
+        assert data["minimum_severity"] == "info"
+
+    async def test_update_coaching_settings(self, client, tenant):
+        resp = await client.patch(
+            "/v1/tenants/me/coaching-settings",
+            json={"enabled": True, "cadence_hours": 12, "minimum_severity": "warning"},
+            headers=tenant["headers"],
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["cadence_hours"] == 12
+        assert data["minimum_severity"] == "warning"
+
+    async def test_update_coaching_settings_rejects_invalid_cadence(self, client, tenant):
+        resp = await client.patch(
+            "/v1/tenants/me/coaching-settings",
+            json={"cadence_hours": 0},
+            headers=tenant["headers"],
+        )
+        assert resp.status_code == 422
+
+    async def test_update_coaching_settings_requires_member_or_owner(self, client, viewer_tenant):
+        resp = await client.patch(
+            "/v1/tenants/me/coaching-settings",
+            json={"cadence_hours": 10},
+            headers=viewer_tenant["viewer_headers"],
+        )
+        assert resp.status_code == 403
+
 
 class TestTenantMembers:
     async def test_list_members(self, client, tenant):

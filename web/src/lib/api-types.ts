@@ -1305,6 +1305,36 @@ export interface paths {
         patch: operations["update_rule_v1_automation_rules__rule_id__patch"];
         trace?: never;
     };
+    "/v1/automation/rules/{rule_id}/stage-thresholds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Rule Stage Thresholds
+         * @description Get stage-threshold overrides for a rule.
+         *
+         *     Values are returned as ``{stage: threshold}`` for the rule condition.
+         */
+        get: operations["get_rule_stage_thresholds_v1_automation_rules__rule_id__stage_thresholds_get"];
+        /**
+         * Set Rule Stage Thresholds
+         * @description Set stage-threshold overrides for a rule.
+         */
+        put: operations["set_rule_stage_thresholds_v1_automation_rules__rule_id__stage_thresholds_put"];
+        post?: never;
+        /**
+         * Clear Rule Stage Thresholds
+         * @description Clear stage-threshold overrides for a rule.
+         */
+        delete: operations["clear_rule_stage_thresholds_v1_automation_rules__rule_id__stage_thresholds_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/automation/schedules": {
         parameters: {
             query?: never;
@@ -5699,6 +5729,30 @@ export interface paths {
         patch: operations["update_my_tenant_v1_tenants_me_patch"];
         trace?: never;
     };
+    "/v1/tenants/me/coaching-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get My Tenant Coaching Settings
+         * @description Get tenant-level proactive coaching settings.
+         */
+        get: operations["get_my_tenant_coaching_settings_v1_tenants_me_coaching_settings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update My Tenant Coaching Settings
+         * @description Update tenant-level proactive coaching settings.
+         */
+        patch: operations["update_my_tenant_coaching_settings_v1_tenants_me_coaching_settings_patch"];
+        trace?: never;
+    };
     "/v1/tenants/members": {
         parameters: {
             query?: never;
@@ -6847,13 +6901,34 @@ export interface components {
         };
         /** CoachTipRequest */
         CoachTipRequest: {
+            /**
+             * Force Refresh
+             * @default false
+             */
+            force_refresh: boolean;
             /** Grow Id */
             grow_id: string;
         };
         /** CoachTipResponse */
         CoachTipResponse: {
+            /** Cached */
+            cached: boolean;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
             /** Tip */
             tip: string;
+        };
+        /** CoachingSettingsResponse */
+        CoachingSettingsResponse: {
+            /** Cadence Hours */
+            cadence_hours: number;
+            /** Enabled */
+            enabled: boolean;
+            /** Minimum Severity */
+            minimum_severity: string;
         };
         /** CommandAck */
         CommandAck: {
@@ -8509,6 +8584,11 @@ export interface components {
         };
         /** InsightRequest */
         InsightRequest: {
+            /**
+             * Force Refresh
+             * @default false
+             */
+            force_refresh: boolean;
             /** Grow Id */
             grow_id: string;
             /** Insight Type */
@@ -8516,6 +8596,13 @@ export interface components {
         };
         /** InsightResponse */
         InsightResponse: {
+            /** Cached */
+            cached: boolean;
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
             /** Insight Type */
             insight_type: string;
             /** Result */
@@ -10478,6 +10565,27 @@ export interface components {
             /** Tips */
             tips?: string | null;
         };
+        /** StageThresholdsResponse */
+        StageThresholdsResponse: {
+            /** Condition */
+            condition: string;
+            /**
+             * Rule Id
+             * Format: uuid
+             */
+            rule_id: string;
+            /** Thresholds */
+            thresholds: {
+                [key: string]: number;
+            };
+        };
+        /** StageThresholdsUpdate */
+        StageThresholdsUpdate: {
+            /** Thresholds */
+            thresholds: {
+                [key: string]: number;
+            };
+        };
         /** StageUpdate */
         StageUpdate: {
             /** Description */
@@ -11222,6 +11330,15 @@ export interface components {
             name: string;
             /** Summary */
             summary: string;
+        };
+        /** UpdateCoachingSettingsRequest */
+        UpdateCoachingSettingsRequest: {
+            /** Cadence Hours */
+            cadence_hours?: number | null;
+            /** Enabled */
+            enabled?: boolean | null;
+            /** Minimum Severity */
+            minimum_severity?: string | null;
         };
         /** UpdateMemberRoleRequest */
         UpdateMemberRoleRequest: {
@@ -14311,6 +14428,103 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RuleResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_rule_stage_thresholds_v1_automation_rules__rule_id__stage_thresholds_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StageThresholdsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_rule_stage_thresholds_v1_automation_rules__rule_id__stage_thresholds_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StageThresholdsUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StageThresholdsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    clear_rule_stage_thresholds_v1_automation_rules__rule_id__stage_thresholds_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rule_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StageThresholdsResponse"];
                 };
             };
             /** @description Validation Error */
@@ -23500,6 +23714,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TenantResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_my_tenant_coaching_settings_v1_tenants_me_coaching_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoachingSettingsResponse"];
+                };
+            };
+        };
+    };
+    update_my_tenant_coaching_settings_v1_tenants_me_coaching_settings_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateCoachingSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CoachingSettingsResponse"];
                 };
             };
             /** @description Validation Error */

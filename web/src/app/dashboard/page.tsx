@@ -7,6 +7,7 @@ import { getAccessToken } from "@/lib/auth";
 import { toast } from "sonner";
 import { useGrow } from "@/hooks/use-grow";
 import { useLayoutMode } from "@/hooks/use-layout-mode";
+import { useDashboardPriority } from "@/hooks/use-dashboard-priority";
 import {
   listDevices,
   listTasks,
@@ -32,6 +33,8 @@ import { isActiveHydro } from "@/lib/terminology";
 import { CameraGrid } from "@/components/camera-grid";
 import { Sparkline, SensorSparkline } from "@/components/sparkline";
 import { MultiMetricCard } from "@/components/multi-metric-card";
+import { DashboardAiInsights } from "@/components/dashboard-ai-insights";
+import { NextBestAction } from "@/components/next-best-action";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -296,6 +299,8 @@ export default function DashboardPage() {
       : "unknown";
   const updatedAgo = lastReadingAt ? timeAgo(lastReadingAt) : null;
   const isHydro = isActiveHydro(selectedGrow?.grow_type);
+  const hasSensorData = sensorTrends.ph.length > 0 || sensorTrends.ec.length > 0 || sensorTrends.ppm.length > 0;
+  const { topSectionOrder } = useDashboardPriority({ tasks, growStage: selectedGrow?.stage });
 
   // Build plant cards from selected grow's buckets
   const maxCards = mode === "pro" || mode === "commercial" ? 16 : mode === "beginner" ? 4 : 8;
@@ -351,23 +356,54 @@ export default function DashboardPage() {
       <PageHeader title={selectedGrow ? `Dashboard — ${selectedGrow.name}` : "Dashboard"} />
       <PullToRefresh onRefresh={refresh}>
         <div className="flex flex-1 flex-col gap-6 p-4 lg:p-6">
+          {selectedGrow && (
+            <div className="flex flex-col gap-4">
+              {topSectionOrder.map((section) => {
+                if (section === "next") {
+                  return (
+                    <motion.section key="next-best-action" {...fadeUp} transition={{ duration: 0.35 }}>
+                      <NextBestAction
+                        growId={selectedGrow.id}
+                        growStage={selectedGrow.stage}
+                        tasks={tasks}
+                        healthScore={healthScore}
+                      />
+                    </motion.section>
+                  );
+                }
+
+                if (section === "health") {
+                  if (healthScore == null) return null;
+                  return (
+                    <motion.section key="health-status" {...fadeUp} transition={{ duration: 0.35 }}>
+                      <div className="flex items-center gap-2 rounded-lg border bg-card px-4 py-2.5">
+                        <Heart className={cn("size-4", healthScore >= 80 ? "text-emerald-500" : healthScore >= 50 ? "text-yellow-500" : "text-destructive")} />
+                        <span className="text-sm font-medium">Health</span>
+                        <Badge variant={healthScore >= 80 ? "default" : healthScore >= 50 ? "secondary" : "destructive"} className="text-xs">
+                          {healthScore >= 80 ? "Healthy" : healthScore >= 50 ? "Needs Attention" : "Critical"} — {healthScore}/100
+                        </Badge>
+                      </div>
+                    </motion.section>
+                  );
+                }
+
+                return (
+                  <motion.section key="ai-guidance" {...fadeUp} transition={{ duration: 0.35 }}>
+                    <DashboardAiInsights
+                      growId={selectedGrow.id}
+                      growStage={selectedGrow.stage}
+                      hasSensorData={hasSensorData}
+                    />
+                  </motion.section>
+                );
+              })}
+            </div>
+          )}
+
           {/* ─── Camera Feeds ──────────────────────────────────── */}
           {selectedGrow && (
             <motion.section {...fadeUp} transition={{ duration: 0.4 }}>
               <CameraGrid key={selectedGrow.tent_id} tentId={selectedGrow.tent_id} hideEmpty />
-            </motion.section>
-          )}
-
-          {/* ─── Health Status ─────────────────────────────────── */}
-          {healthScore != null && (
-            <motion.section {...fadeUp} transition={{ duration: 0.4 }}>
-              <div className="flex items-center gap-2 rounded-lg border bg-card px-4 py-2.5">
-                <Heart className={cn("size-4", healthScore >= 80 ? "text-emerald-500" : healthScore >= 50 ? "text-yellow-500" : "text-destructive")} />
-                <span className="text-sm font-medium">Health</span>
-                <Badge variant={healthScore >= 80 ? "default" : healthScore >= 50 ? "secondary" : "destructive"} className="text-xs">
-                  {healthScore >= 80 ? "Healthy" : healthScore >= 50 ? "Needs Attention" : "Critical"} — {healthScore}/100
-                </Badge>
-              </div>
             </motion.section>
           )}
 

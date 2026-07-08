@@ -225,6 +225,27 @@ export function updateMyTenant(token: string, data: { name?: string }) {
   );
 }
 
+export interface TenantCoachingSettingsResponse {
+  enabled: boolean;
+  cadence_hours: number;
+  minimum_severity: "info" | "warning" | "critical";
+}
+
+export function getTenantCoachingSettings(token: string) {
+  return apiFetch<TenantCoachingSettingsResponse>("/tenants/me/coaching-settings", { token });
+}
+
+export function updateTenantCoachingSettings(
+  token: string,
+  data: Partial<TenantCoachingSettingsResponse>,
+) {
+  return apiFetch<TenantCoachingSettingsResponse>("/tenants/me/coaching-settings", {
+    method: "PATCH",
+    body: JSON.stringify(data),
+    token,
+  });
+}
+
 // Tenant Members (Owner user management)
 export interface TenantMember {
   id: string;
@@ -1397,20 +1418,22 @@ export function getTreatmentDetail(token: string, treatmentId: string, growType?
   );
 }
 
-export function getCoachTip(token: string, growId: string) {
-  return apiFetch<{ tip: string }>("/ai/coach-tip", {
+export function getCoachTip(token: string, growId: string, forceRefresh = false) {
+  return apiFetch<{ tip: string; cached: boolean; generated_at: string }>("/ai/coach-tip", {
     method: "POST",
-    body: JSON.stringify({ grow_id: growId }),
+    body: JSON.stringify({ grow_id: growId, force_refresh: forceRefresh }),
     token,
     timeout: 180_000,
     retries: 2,
   });
 }
 
-export function getAiInsight(token: string, growId: string, insightType: string) {
-  return apiFetch<{ insight_type: string; result: unknown }>("/ai/insights", {
+export type InsightType = "harvest_predict" | "nutrient_advice" | "anomaly_scan";
+
+export function getAiInsight(token: string, growId: string, insightType: InsightType, forceRefresh = false) {
+  return apiFetch<{ insight_type: string; result: unknown; cached: boolean; generated_at: string }>("/ai/insights", {
     method: "POST",
-    body: JSON.stringify({ grow_id: growId, insight_type: insightType }),
+    body: JSON.stringify({ grow_id: growId, insight_type: insightType, force_refresh: forceRefresh }),
     token,
     timeout: 180_000,
     retries: 2,
@@ -1436,6 +1459,12 @@ export interface AutomationRuleResponse {
   last_triggered: string | null;
 }
 
+export interface StageThresholdsResponse {
+  rule_id: string;
+  condition: string;
+  thresholds: Record<string, number>;
+}
+
 export async function listAutomationRules(token: string, growCycleId?: string) {
   const q = growCycleId ? `?grow_cycle_id=${growCycleId}` : "";
   const res = await apiFetch<PaginatedResponse<AutomationRuleResponse>>(`/automation/rules${q}`, { token });
@@ -1452,6 +1481,25 @@ export function updateAutomationRule(token: string, id: string, data: Partial<{ 
 
 export function deleteAutomationRule(token: string, id: string) {
   return apiFetch<void>(`/automation/rules/${id}`, { method: "DELETE", token });
+}
+
+export function getRuleStageThresholds(token: string, id: string) {
+  return apiFetch<StageThresholdsResponse>(`/automation/rules/${id}/stage-thresholds`, { token });
+}
+
+export function setRuleStageThresholds(token: string, id: string, thresholds: Record<string, number>) {
+  return apiFetch<StageThresholdsResponse>(`/automation/rules/${id}/stage-thresholds`, {
+    method: "PUT",
+    body: JSON.stringify({ thresholds }),
+    token,
+  });
+}
+
+export function clearRuleStageThresholds(token: string, id: string) {
+  return apiFetch<StageThresholdsResponse>(`/automation/rules/${id}/stage-thresholds`, {
+    method: "DELETE",
+    token,
+  });
 }
 
 export interface AlertResponse {

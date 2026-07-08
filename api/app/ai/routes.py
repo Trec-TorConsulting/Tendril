@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import json
 import logging
 from contextlib import suppress
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 from uuid import UUID
 
@@ -38,6 +39,60 @@ router = APIRouter()
 
 MAX_TOOL_ROUNDS = 5
 KEEPALIVE_INTERVAL_SECONDS = 20
+COACH_TIP_TTL_SECONDS = 60 * 60
+INSIGHT_TTL_SECONDS: dict[str, int] = {
+    "harvest_predict": 24 * 60 * 60,
+    "nutrient_advice": 6 * 60 * 60,
+    "anomaly_scan": 60 * 60,
+}
+_AI_CACHE_MAX_ENTRIES = 2048
+_AI_CACHE_SWEEP_TTL_SECONDS = max(COACH_TIP_TTL_SECONDS, *INSIGHT_TTL_SECONDS.values())
+
+_AI_CACHE: dict[str, tuple[datetime, Any]] = {}
+_AI_CACHE_LOCK = asyncio.Lock()
+
+
+def _stable_cache_hash(payload: Any) -> str:
+    """Build a stable cache hash for structured payloads."""
+    raw = json.dumps(payload, sort_keys=True, default=str)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+async def _cache_get(key: str, ttl_seconds: int) -> tuple[datetime, Any] | None:
+    """Fetch a non-expired in-process cache entry."""
+    now = datetime.now(UTC)
+    async with _AI_CACHE_LOCK:
+        cached = _AI_CACHE.get(key)
+        if cached is None:
+            return None
+        generated_at, value = cached
+        if (now - generated_at).total_seconds() > ttl_seconds:
+            _AI_CACHE.pop(key, None)
+            return None
+        return generated_at, value
+
+
+async def _cache_set(key: str, value: Any) -> datetime:
+    """Store a value in in-process cache and return generation timestamp."""
+    generated_at = datetime.now(UTC)
+    async with _AI_CACHE_LOCK:
+        # Opportunistically sweep stale entries to avoid unbounded growth.
+        oldest_allowed = generated_at - timedelta(seconds=_AI_CACHE_SWEEP_TTL_SECONDS)
+        stale_keys = [cache_key for cache_key, (ts, _) in _AI_CACHE.items() if ts < oldest_allowed]
+        for cache_key in stale_keys:
+            _AI_CACHE.pop(cache_key, None)
+
+        _AI_CACHE[key] = (generated_at, value)
+
+        overflow = len(_AI_CACHE) - _AI_CACHE_MAX_ENTRIES
+        if overflow > 0:
+            oldest_keys = sorted(_AI_CACHE, key=lambda cache_key: _AI_CACHE[cache_key][0])[:overflow]
+            for cache_key in oldest_keys:
+                _AI_CACHE.pop(cache_key, None)
+            # Keep the newest value we just computed.
+            _AI_CACHE[key] = (generated_at, value)
+
+    return generated_at
 
 
 def _build_keepalive_event() -> dict[str, str]:
@@ -853,10 +908,13 @@ async def delete_health_eval(
 
 class CoachTipRequest(BaseModel):
     grow_id: str
+    force_refresh: bool = False
 
 
 class CoachTipResponse(BaseModel):
     tip: str
+    cached: bool
+    generated_at: datetime
 
 
 @router.post(
@@ -890,6 +948,16 @@ async def get_coach_tip(
         if reading:
             sensors = {"ph": reading.ph, "ec": reading.ec, "water_temp_f": reading.water_temp_f}
 
+    cache_key = (
+        f"coach-tip:{user.tenant_id}:{grow.id}:"
+        f"{_stable_cache_hash({'grow_type': grow.grow_type, 'stage': grow.stage, 'sensors': sensors})}"
+    )
+    if not body.force_refresh:
+        cached = await _cache_get(cache_key, COACH_TIP_TTL_SECONDS)
+        if cached is not None:
+            generated_at, tip = cached
+            return CoachTipResponse(tip=str(tip).strip(), cached=True, generated_at=generated_at)
+
     messages = await build_coach_tip_prompt(grow.grow_type, grow.stage, sensors, session=session)
 
     try:
@@ -903,10 +971,12 @@ async def get_coach_tip(
         except Exception:
             raise HTTPException(status_code=503, detail="AI service unavailable") from None
 
+    generated_at = await _cache_set(cache_key, tip.strip())
+
     await record_usage(session, user.tenant_id, "ai_analyses")
     await session.commit()
 
-    return CoachTipResponse(tip=tip.strip())
+    return CoachTipResponse(tip=tip.strip(), cached=False, generated_at=generated_at)
 
 
 # ---------- AI Insights (4.13) ----------
@@ -915,11 +985,14 @@ async def get_coach_tip(
 class InsightRequest(BaseModel):
     grow_id: str
     insight_type: str  # harvest_predict | nutrient_advice | anomaly_scan
+    force_refresh: bool = False
 
 
 class InsightResponse(BaseModel):
     insight_type: str
     result: dict | str
+    cached: bool
+    generated_at: datetime
 
 
 @router.post(
@@ -975,6 +1048,25 @@ async def get_insight(
                 data["ec_range"] = f"{min(ec_vals)}-{max(ec_vals)}"
             data["reading_count"] = len(readings)
 
+    cache_payload = {
+        "insight_type": body.insight_type,
+        "grow_type": grow.grow_type,
+        "stage": grow.stage,
+        "data": data,
+    }
+    cache_key = f"insight:{user.tenant_id}:{grow.id}:{_stable_cache_hash(cache_payload)}"
+    insight_ttl = INSIGHT_TTL_SECONDS.get(body.insight_type, 60 * 60)
+    if not body.force_refresh:
+        cached = await _cache_get(cache_key, insight_ttl)
+        if cached is not None:
+            generated_at, cached_result = cached
+            return InsightResponse(
+                insight_type=body.insight_type,
+                result=cached_result,
+                cached=True,
+                generated_at=generated_at,
+            )
+
     messages = await build_insight_prompt(body.insight_type, grow.grow_type, data, session=session)
 
     try:
@@ -1006,10 +1098,17 @@ async def get_insight(
         else:
             result = raw
 
+    generated_at = await _cache_set(cache_key, result)
+
     await record_usage(session, user.tenant_id, "ai_analyses")
     await session.commit()
 
-    return InsightResponse(insight_type=body.insight_type, result=result)
+    return InsightResponse(
+        insight_type=body.insight_type,
+        result=result,
+        cached=False,
+        generated_at=generated_at,
+    )
 
 
 # ---------- Feeding Advice (AI-powered) ----------

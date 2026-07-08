@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { getAccessToken } from "@/lib/auth";
 import { useApiSWR } from "@/lib/swr";
 import {
@@ -8,10 +8,16 @@ import {
   createAutomationRule,
   updateAutomationRule,
   deleteAutomationRule,
+  getRuleStageThresholds,
+  setRuleStageThresholds,
+  clearRuleStageThresholds,
   listAlerts,
   acknowledgeAlert,
+  getTenantCoachingSettings,
+  updateTenantCoachingSettings,
   type AutomationRuleResponse,
   type AlertResponse,
+  type TenantCoachingSettingsResponse,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -54,25 +60,33 @@ import {
   Zap,
   AlertTriangle,
   Loader2,
+  SlidersHorizontal,
 } from "lucide-react";
+
+const STAGES = ["seedling", "vegetative", "flowering", "ripening", "harvesting"] as const;
 
 export default function AutomationPage() {
   const confirm = useConfirm();
   const [showCreate, setShowCreate] = useState(false);
+  const [editingRule, setEditingRule] = useState<AutomationRuleResponse | null>(null);
+  const [coachingDraft, setCoachingDraft] = useState<TenantCoachingSettingsResponse | null>(null);
+  const [savingCoaching, setSavingCoaching] = useState(false);
 
   const { data, isLoading: loading, mutate } = useApiSWR(
     ["automation"],
     async (token) => {
-      const [r, a] = await Promise.all([
+      const [r, a, c] = await Promise.all([
         listAutomationRules(token),
         listAlerts(token, 50),
+        getTenantCoachingSettings(token),
       ]);
-      return { rules: r, alerts: a };
+      return { rules: r, alerts: a, coaching: c };
     },
   );
 
   const rules = data?.rules ?? [];
   const alerts = data?.alerts ?? [];
+  const coaching = coachingDraft ?? data?.coaching ?? null;
   const refresh = mutate;
 
   const handleToggle = async (rule: AutomationRuleResponse) => {
@@ -107,6 +121,22 @@ export default function AutomationPage() {
     } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to acknowledge alert"); }
   };
 
+  const saveCoachingSettings = async () => {
+    const token = getAccessToken();
+    if (!token || !coaching) return;
+    setSavingCoaching(true);
+    try {
+      await updateTenantCoachingSettings(token, coaching);
+      toast.success("Coaching settings updated");
+      setCoachingDraft(null);
+      refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update coaching settings");
+    } finally {
+      setSavingCoaching(false);
+    }
+  };
+
   const severityVariant = (severity: string) => {
     if (severity === "critical") return "destructive" as const;
     if (severity === "warning") return "outline" as const;
@@ -138,6 +168,84 @@ export default function AutomationPage() {
 
           <TabsContent value="rules">
             <div className="mt-4 space-y-3">
+              {coaching && (
+                <Card className="p-4">
+                  <div className="mb-3 flex items-center gap-2">
+                    <SlidersHorizontal className="size-4" />
+                    <h3 className="font-medium">Proactive Coaching</h3>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Tune tenant-wide coaching cadence and severity floor for scheduler nudges.
+                  </p>
+                  <div className="mt-3 grid gap-3 md:grid-cols-3">
+                    <div className="space-y-2">
+                      <Label>Enabled</Label>
+                      <Select
+                        value={coaching.enabled ? "enabled" : "disabled"}
+                        onValueChange={(v) =>
+                          setCoachingDraft({ ...coaching, enabled: v === "enabled" })
+                        }
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="enabled">Enabled</SelectItem>
+                          <SelectItem value="disabled">Disabled</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Cadence</Label>
+                      <Select
+                        value={String(coaching.cadence_hours)}
+                        onValueChange={(v) =>
+                          setCoachingDraft({ ...coaching, cadence_hours: Number(v ?? "24") })
+                        }
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="6">Every 6 hours</SelectItem>
+                          <SelectItem value="12">Every 12 hours</SelectItem>
+                          <SelectItem value="24">Daily</SelectItem>
+                          <SelectItem value="48">Every 2 days</SelectItem>
+                          <SelectItem value="72">Every 3 days</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Minimum Severity</Label>
+                      <Select
+                        value={coaching.minimum_severity}
+                        onValueChange={(v) =>
+                          setCoachingDraft({
+                            ...coaching,
+                            minimum_severity: (v as TenantCoachingSettingsResponse["minimum_severity"]) ?? "info",
+                          })
+                        }
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="info">Info and above</SelectItem>
+                          <SelectItem value="warning">Warning and above</SelectItem>
+                          <SelectItem value="critical">Critical only</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="mt-3">
+                    <Button size="sm" onClick={saveCoachingSettings} disabled={savingCoaching}>
+                      {savingCoaching && <Loader2 className="mr-1 size-4 animate-spin" />}
+                      Save Coaching Settings
+                    </Button>
+                  </div>
+                </Card>
+              )}
+
               {rules.length === 0 ? (
                 <Card className="flex flex-col items-center justify-center py-16">
                   <Zap className="size-12 text-muted-foreground/50" />
@@ -183,6 +291,10 @@ export default function AutomationPage() {
                           )}
                           {rule.enabled ? "Disable" : "Enable"}
                         </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setEditingRule(rule)}>
+                          <SlidersHorizontal className="mr-2 size-4" />
+                          Stage Thresholds
+                        </DropdownMenuItem>
                         <DropdownMenuItem
                           variant="destructive"
                           onClick={() => handleDelete(rule.id)}
@@ -211,6 +323,15 @@ export default function AutomationPage() {
           setShowCreate(false);
           refresh();
         }}
+      />
+      <StageThresholdDialog
+        key={editingRule?.id ?? "no-rule"}
+        rule={editingRule}
+        open={!!editingRule}
+        onOpenChange={(open) => {
+          if (!open) setEditingRule(null);
+        }}
+        onSaved={refresh}
       />
     </>
   );
@@ -474,6 +595,119 @@ function CreateRuleDialog({
             </Button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function StageThresholdDialog({
+  rule,
+  open,
+  onOpenChange,
+  onSaved,
+}: {
+  rule: AutomationRuleResponse | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSaved: () => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [thresholdEdits, setThresholdEdits] = useState<Record<string, string>>({});
+
+  const { data: stageThresholdData, isLoading: loading } = useApiSWR(
+    open && rule ? ["rule-stage-thresholds", rule.id] : null,
+    async (token) => {
+      if (!rule) return { rule_id: "", condition: "", thresholds: {} };
+      return getRuleStageThresholds(token, rule.id);
+    },
+  );
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const token = getAccessToken();
+    if (!token || !rule) return;
+    const payload: Record<string, number> = {};
+    for (const stage of STAGES) {
+      const fallback = stageThresholdData?.thresholds?.[stage];
+      const raw = (thresholdEdits[stage] ?? (fallback == null ? "" : String(fallback))).trim();
+      if (!raw) continue;
+      const parsed = Number(raw);
+      if (Number.isNaN(parsed)) {
+        toast.error(`Invalid threshold for ${stage}`);
+        return;
+      }
+      payload[stage] = parsed;
+    }
+
+    setSaving(true);
+    try {
+      await setRuleStageThresholds(token, rule.id, payload);
+      toast.success("Stage thresholds saved");
+      onSaved();
+      onOpenChange(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to save stage thresholds");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleClear = async () => {
+    const token = getAccessToken();
+    if (!token || !rule) return;
+    setSaving(true);
+    try {
+      await clearRuleStageThresholds(token, rule.id);
+      toast.success("Stage thresholds cleared");
+      onSaved();
+      onOpenChange(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to clear stage thresholds");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Stage Thresholds{rule ? ` · ${rule.name}` : ""}</DialogTitle>
+        </DialogHeader>
+        {loading ? (
+          <div className="py-8 text-center text-sm text-muted-foreground">Loading stage overrides...</div>
+        ) : (
+          <form onSubmit={handleSave} className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Override {rule?.sensor} {rule?.condition} thresholds by stage. Leave fields blank to use defaults.
+            </p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {STAGES.map((stage) => (
+                <div key={stage} className="space-y-2">
+                  <Label className="capitalize">{stage}</Label>
+                  <Input
+                    type="number"
+                    step="any"
+                    value={thresholdEdits[stage] ?? (stageThresholdData?.thresholds?.[stage] == null ? "" : String(stageThresholdData.thresholds[stage]))}
+                    onChange={(e) => setThresholdEdits((prev) => ({ ...prev, [stage]: e.target.value }))}
+                  />
+                </div>
+              ))}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" type="button" onClick={handleClear} disabled={saving}>
+                Clear Overrides
+              </Button>
+              <Button variant="outline" type="button" onClick={() => onOpenChange(false)} disabled={saving}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={saving}>
+                {saving && <Loader2 className="mr-1 size-4 animate-spin" />}
+                Save
+              </Button>
+            </DialogFooter>
+          </form>
+        )}
       </DialogContent>
     </Dialog>
   );

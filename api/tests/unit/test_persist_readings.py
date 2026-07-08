@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -298,3 +299,86 @@ class TestSchedulerPersistence:
         # Sync log should still be written with error captured
         mock_connector.write_sync_log.assert_awaited_once()
         assert "Reading persistence failed" in poll_result.errors
+
+
+class TestSchedulerProactiveCoaching:
+    async def test_proactive_coaching_sends_low_health_alert(self):
+        """Low recent health score should trigger one coaching notification."""
+        from app.scheduler.tasks import TaskRunner
+
+        grow = MagicMock()
+        grow.id = uuid4()
+        grow.tenant_id = uuid4()
+        grow.name = "Room A"
+        grow.stage = "vegetative"
+
+        latest_eval = MagicMock()
+        latest_eval.score = 55
+        latest_eval.created_at = datetime.now(UTC)
+
+        mock_session = MagicMock()
+        grows_result = MagicMock()
+        grows_result.scalars.return_value.all.return_value = [grow]
+        settings_result = MagicMock()
+        settings_result.all.return_value = [
+            (grow.tenant_id, {"enabled": True, "cadence_hours": 24, "minimum_severity": "info"})
+        ]
+        eval_result = MagicMock()
+        eval_result.scalar_one_or_none.return_value = latest_eval
+        cooldown_result = MagicMock()
+        cooldown_result.scalar_one_or_none.return_value = None
+        mock_session.execute = AsyncMock(side_effect=[grows_result, settings_result, eval_result, cooldown_result])
+        mock_session.commit = AsyncMock()
+
+        with (
+            patch("app.database.async_session_factory", _mock_session_factory(mock_session)),
+            patch("app.notifications.service.dispatch_alert", new_callable=AsyncMock) as mock_dispatch,
+        ):
+            runner = TaskRunner(settings=MagicMock())
+            await runner._proactive_coaching()
+
+        mock_dispatch.assert_awaited_once()
+        call_args = mock_dispatch.await_args
+        assert call_args.kwargs["event_type"] == "ai_coaching"
+        assert "Low Health Score Follow-Up" in call_args.args[3]
+        mock_session.add.assert_called_once()
+
+    async def test_proactive_coaching_respects_cooldown(self):
+        """Recent matching coaching alert should suppress duplicates."""
+        from app.scheduler.tasks import TaskRunner
+
+        grow = MagicMock()
+        grow.id = uuid4()
+        grow.tenant_id = uuid4()
+        grow.name = "Room A"
+        grow.stage = "flowering"
+
+        latest_eval = MagicMock()
+        latest_eval.score = 80
+        latest_eval.created_at = datetime.now(UTC)
+
+        existing_alert = MagicMock()
+
+        mock_session = MagicMock()
+        grows_result = MagicMock()
+        grows_result.scalars.return_value.all.return_value = [grow]
+        settings_result = MagicMock()
+        settings_result.all.return_value = [
+            (grow.tenant_id, {"enabled": True, "cadence_hours": 24, "minimum_severity": "info"})
+        ]
+        eval_result = MagicMock()
+        eval_result.scalar_one_or_none.return_value = latest_eval
+        cooldown_result = MagicMock()
+        cooldown_result.scalar_one_or_none.return_value = existing_alert
+        mock_session.execute = AsyncMock(side_effect=[grows_result, settings_result, eval_result, cooldown_result])
+        mock_session.commit = AsyncMock()
+
+        with (
+            patch("app.database.async_session_factory", _mock_session_factory(mock_session)),
+            patch("app.notifications.service.dispatch_alert", new_callable=AsyncMock) as mock_dispatch,
+        ):
+            runner = TaskRunner(settings=MagicMock())
+            await runner._proactive_coaching()
+
+        mock_dispatch.assert_not_awaited()
+        mock_session.add.assert_not_called()

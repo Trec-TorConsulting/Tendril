@@ -104,6 +104,7 @@ class Tenant(Base):
     system_alert_rules_seeded_version: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
+    coaching_settings: Mapped[dict] = mapped_column(JSON, default=dict, server_default="{}", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
     # Account deletion (GDPR) — used when tenant has no associated Account

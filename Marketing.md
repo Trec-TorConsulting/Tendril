@@ -1,7 +1,7 @@
 # Marketing Plan — Tendril
 
 > Open-source grow monitoring & automation platform.
-> ESP32 IoT sensors · FastAPI backend · Next.js PWA · AI grow assistant.
+> ESP32 IoT sensors · FastAPI backend · Next.js Dynamic PWA · AI grow assistant.
 
 ---
 
