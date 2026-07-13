@@ -8,7 +8,7 @@ services:
   # ─── PostgreSQL ──────────────────────────────────────
   postgres:
     image: postgres:16-alpine
-    restart: unless-stopped
+    restart: "no"
     environment:
       POSTGRES_USER: tendril
       POSTGRES_PASSWORD: tendril
@@ -26,7 +26,7 @@ services:
   # ─── EMQX MQTT Broker ───────────────────────────────
   emqx:
     image: emqx/emqx:latest
-    restart: unless-stopped
+    restart: "no"
     ports:
       - "1883:1883"     # MQTT
       - "8083:8083"     # MQTT WebSocket
@@ -46,7 +46,7 @@ services:
   # ─── MinIO (S3-compatible object storage) ────────────
   minio:
     image: minio/minio:latest
-    restart: unless-stopped
+    restart: "no"
     command: server /data --console-address ":9001"
     ports:
       - "9002:9000"     # S3 API (remapped from 9000 — SSH tunnel conflict)
@@ -65,7 +65,7 @@ services:
   # ─── Redis (middleware state: rate limiting, brute-force) ─
   redis:
     image: redis:7-alpine
-    restart: unless-stopped
+    restart: "no"
     ports:
       - "6379:6379"
     volumes:
@@ -81,7 +81,7 @@ services:
     build:
       context: ./api
       dockerfile: Dockerfile
-    restart: unless-stopped
+    restart: "no"
     ports:
       - "8000:8000"
     environment:
@@ -144,7 +144,7 @@ services:
       context: ./api
       dockerfile: Dockerfile
     command: ["python", "-m", "app.mqtt.worker"]
-    restart: unless-stopped
+    restart: "no"
     environment:
       DATABASE_URL: "postgresql+asyncpg://tendril:tendril@postgres:5432/tendril"
       JWT_SECRET: "dev-secret-change-me-in-production"
@@ -163,7 +163,7 @@ services:
       context: ./api
       dockerfile: Dockerfile
     command: ["python", "-m", "app.scheduler.main"]
-    restart: unless-stopped
+    restart: "no"
     environment:
       DATABASE_URL: "postgresql+asyncpg://tendril:tendril@postgres:5432/tendril"
       JWT_SECRET: "dev-secret-change-me-in-production"
@@ -186,7 +186,7 @@ services:
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_URL: "http://localhost:8000/v1"
-    restart: unless-stopped
+    restart: "no"
     ports:
       - "3000:3000"
     depends_on:
