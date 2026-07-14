@@ -10,6 +10,7 @@ import { updateProfile } from "@/lib/api";
 import { useUser } from "@/hooks/use-user";
 import type { LayoutMode } from "@/lib/layout-config";
 import { LAYOUT_CONFIGS } from "@/lib/layout-config";
+import { GuidedTentSetupDialog } from "@/components/guided-tent-setup-dialog";
 import { Sprout, Sun, Home, Warehouse, ArrowRight, Check } from "lucide-react";
 
 interface OnboardingWizardProps {
@@ -38,6 +39,7 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
   const [growCount, setGrowCount] = useState<GrowCount | null>(null);
   const [experience, setExperience] = useState<Experience | null>(null);
   const [saving, setSaving] = useState(false);
+  const [showGuidedSetup, setShowGuidedSetup] = useState(false);
 
   const handleComplete = useCallback(async () => {
     if (!growCount || !experience) return;
@@ -186,6 +188,9 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
               </p>
               <div className="flex gap-3 mt-6">
                 <Button variant="outline" className="flex-1" onClick={() => setStep(2)}>Back</Button>
+                <Button variant="outline" className="flex-1" onClick={() => setShowGuidedSetup(true)}>
+                  Guided Setup
+                </Button>
                 <Button className="flex-1" disabled={saving} onClick={handleComplete}>
                   {saving ? "Saving..." : "Get Started"}
                 </Button>
@@ -193,6 +198,15 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
             </WizardStep>
           )}
         </AnimatePresence>
+
+        <GuidedTentSetupDialog
+          open={showGuidedSetup}
+          onOpenChange={setShowGuidedSetup}
+          source="onboarding"
+          onCompleted={() => {
+            // No-op for onboarding; user can continue onboarding flow.
+          }}
+        />
       </div>
     </div>
   );

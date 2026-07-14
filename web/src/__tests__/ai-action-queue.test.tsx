@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -97,14 +97,18 @@ describe("AiActionQueue", () => {
     expect(screen.getByText("High humidity")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Approve" }));
-    expect(screen.getByRole("heading", { name: "Approve action" })).toBeInTheDocument();
-    await user.type(screen.getByLabelText("Approval note"), "Operator checked the fan plan.");
+    expect(await screen.findByRole("heading", { name: "Approve action" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Approval note"), {
+      target: { value: "Operator checked the fan plan." },
+    });
     await user.click(screen.getByRole("button", { name: "Approve action" }));
 
     await user.click(screen.getByRole("button", { name: "Reject" }));
-    expect(screen.getByRole("heading", { name: "Reject action" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Reject action" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reject action" })).toBeDisabled();
-    await user.type(screen.getByLabelText("Reason for rejection"), "Needs a safer airflow target.");
+    fireEvent.change(screen.getByLabelText("Reason for rejection"), {
+      target: { value: "Needs a safer airflow target." },
+    });
     await user.click(screen.getByRole("button", { name: "Reject action" }));
 
     expect(onApprove).toHaveBeenCalledWith("action-1", "Operator checked the fan plan.");
