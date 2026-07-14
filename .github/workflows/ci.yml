@@ -192,11 +192,40 @@ jobs:
           kubectl rollout restart deployment/tendril-web -n tendril
           kubectl rollout restart deployment/tendril-mqtt-worker -n tendril
           kubectl rollout restart deployment/tendril-scheduler -n tendril
-      - run: |
-          kubectl rollout status deployment/tendril-api -n tendril --timeout=300s
-          kubectl rollout status deployment/tendril-web -n tendril --timeout=300s
-          kubectl rollout status deployment/tendril-mqtt-worker -n tendril --timeout=300s
-          kubectl rollout status deployment/tendril-scheduler -n tendril --timeout=300s
+      - name: Wait for rollout (with retry + diagnostics)
+        run: |
+          set -euo pipefail
+
+          check_rollout() {
+            local deploy="$1"
+            local namespace="tendril"
+            local attempt
+
+            for attempt in 1 2; do
+              echo "Checking rollout for ${deploy} (attempt ${attempt}/2)"
+              if kubectl rollout status "deployment/${deploy}" -n "${namespace}" --timeout=420s; then
+                echo "Rollout healthy for ${deploy}"
+                return 0
+              fi
+
+              if [ "$attempt" -lt 2 ]; then
+                echo "First rollout check failed for ${deploy}; collecting diagnostics before retry."
+                kubectl get deployment "${deploy}" -n "${namespace}" -o wide || true
+                kubectl describe deployment "${deploy}" -n "${namespace}" || true
+                kubectl get pods -n "${namespace}" -l "app=${deploy}" -o wide || true
+                kubectl get events -n "${namespace}" --sort-by=.lastTimestamp | tail -n 40 || true
+                sleep 20
+              fi
+            done
+
+            echo "::error::Rollout failed for ${deploy} after retry"
+            return 1
+          }
+
+          check_rollout tendril-api
+          check_rollout tendril-web
+          check_rollout tendril-mqtt-worker
+          check_rollout tendril-scheduler
 
       # ── Post-deploy smoke test ──────────────────────────────
       # Verifies the rolled-out pods are actually serving HTTP traffic via
