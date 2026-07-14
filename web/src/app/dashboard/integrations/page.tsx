@@ -6,6 +6,7 @@ import { useApiSWR } from "@/lib/swr";
 import { formatDateTime } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
 import { PageSkeleton } from "@/components/page-skeleton";
+import { GuidedTentSetupDialog } from "@/components/guided-tent-setup-dialog";
 import { useConfirm } from "@/components/confirm-dialog";
 import {
   listIntegrations,
@@ -173,8 +174,10 @@ export default function IntegrationsPage() {
   const buckets = rawData?.buckets ?? [];
   const refresh = mutate;
   const [showCreate, setShowCreate] = useState(false);
+  const [showGuidedSetup, setShowGuidedSetup] = useState(false);
   const [editIntegration, setEditIntegration] = useState<IntegrationResponse | null>(null);
   const [selectedIntegration, setSelectedIntegration] = useState<IntegrationResponse | null>(null);
+  const [activeDetailTab, setActiveDetailTab] = useState<"devices" | "logs" | "discovered">("devices");
   const [deviceMaps, setDeviceMaps] = useState<DeviceMapResponse[]>([]);
   const [syncLogs, setSyncLogs] = useState<SyncLogResponse[]>([]);
   const [discovered, setDiscovered] = useState<DiscoveredDeviceResponse[]>([]);
@@ -188,10 +191,11 @@ export default function IntegrationsPage() {
   const [deviceDebugLoading, setDeviceDebugLoading] = useState(false);
   const confirm = useConfirm();
 
-  const loadDetail = async (integration: IntegrationResponse) => {
+  const loadDetail = async (integration: IntegrationResponse, tab: "devices" | "logs" | "discovered" = "devices") => {
     const token = getAccessToken();
     if (!token) return;
     setSelectedIntegration(integration);
+    setActiveDetailTab(tab);
     try {
       const [maps, logs] = await Promise.all([
         listDeviceMaps(token, integration.id),
@@ -287,6 +291,16 @@ export default function IntegrationsPage() {
     }
   };
 
+  const handleGuidedSetupCompleted = async (result?: { integrationId?: string; openTab?: "devices" | "logs" }) => {
+    await refresh();
+    if (!result?.integrationId) return;
+    const updated = await mutate();
+    const integration = updated?.integrations?.find((row: IntegrationResponse) => row.id === result.integrationId);
+    if (integration) {
+      await loadDetail(integration, result.openTab ?? "devices");
+    }
+  };
+
   if (loading) return <PageSkeleton rows={3} cards />;
 
   return (
@@ -295,9 +309,14 @@ export default function IntegrationsPage() {
         title="Integrations"
         breadcrumbs={[{ label: "Dashboard", href: "/dashboard" }, { label: "Integrations" }]}
         actions={
-          <Button onClick={() => setShowCreate(true)} size="sm">
-            <Plus className="mr-1 size-4" /> Add Integration
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setShowGuidedSetup(true)}>
+              Guided Setup
+            </Button>
+            <Button onClick={() => setShowCreate(true)} size="sm">
+              <Plus className="mr-1 size-4" /> Add Integration
+            </Button>
+          </div>
         }
       />
       <div className="flex flex-1 flex-col gap-6 p-4 lg:p-6">
@@ -310,6 +329,9 @@ export default function IntegrationsPage() {
             </p>
             <Button className="mt-4" size="sm" onClick={() => setShowCreate(true)}>
               <Plus className="mr-1 size-4" /> Add Integration
+            </Button>
+            <Button className="mt-2" size="sm" variant="outline" onClick={() => setShowGuidedSetup(true)}>
+              Guided Setup
             </Button>
           </Card>
         ) : (
@@ -381,7 +403,12 @@ export default function IntegrationsPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <Tabs defaultValue="devices">
+                  <Tabs
+                    value={activeDetailTab}
+                    onValueChange={(value) =>
+                      setActiveDetailTab((value as "devices" | "logs" | "discovered") ?? "devices")
+                    }
+                  >
                     <TabsList>
                       <TabsTrigger value="devices">Device Mappings ({deviceMaps.length})</TabsTrigger>
                       <TabsTrigger value="logs">Sync Logs ({syncLogs.length})</TabsTrigger>
@@ -539,6 +566,13 @@ export default function IntegrationsPage() {
 
       {/* Create Integration Dialog */}
       <CreateIntegrationDialog open={showCreate} onOpenChange={setShowCreate} onCreated={refresh} />
+
+      <GuidedTentSetupDialog
+        open={showGuidedSetup}
+        onOpenChange={setShowGuidedSetup}
+        source="integrations"
+        onCompleted={handleGuidedSetupCompleted}
+      />
 
       {/* Edit Integration Dialog */}
       {editIntegration && (
