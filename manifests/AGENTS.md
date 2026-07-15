@@ -9,6 +9,7 @@ Plain YAML manifests applied via `kubectl apply`. No Helm, no Kustomize. Cluster
 ```
 manifests/
   namespace.yaml                       # tendril namespace
+  actions-runner-diagnostics-rbac.yaml # read-only pod/event access for CI deploy diagnostics
   secrets.yaml                         # GITIGNORED — real values
   secrets.yaml.example                 # template, checked in
   sealed-secrets-controller.yaml       # SealedSecrets CRD controller
@@ -35,6 +36,7 @@ manifests/
 - Everything lives in the `tendril` namespace.
 - Workload name: `tendril-<component>` (e.g. `tendril-api`, `tendril-mqtt-worker`).
 - Selectors use **only** `app: tendril-<component>`. Don't add labels the Service/HPA selectors don't match.
+- CI runners in `actions-runner-system` may be granted **read-only** namespace access when deploy diagnostics need to inspect Tendril pods or events. Keep that scoped to specific resources.
 
 ### Image registry
 - Internal registry: `192.168.4.10:30500/tendril-<component>:latest`.
