@@ -9,6 +9,7 @@ echo "=== Deploying Tendril to namespace $NAMESPACE ==="
 
 kubectl apply -f "$MANIFEST_DIR/namespace.yaml"
 kubectl apply -f "$MANIFEST_DIR/secrets.yaml"
+kubectl apply -f "$MANIFEST_DIR/actions-runner-diagnostics-rbac.yaml"
 
 # Run DB migration
 kubectl delete job tendril-db-migrate -n "$NAMESPACE" --ignore-not-found

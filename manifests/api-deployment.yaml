@@ -122,18 +122,21 @@ spec:
             path: /health/ready
             port: 8000
           initialDelaySeconds: 5
+          timeoutSeconds: 5
           periodSeconds: 10
         livenessProbe:
           httpGet:
             path: /health
             port: 8000
           initialDelaySeconds: 10
+          timeoutSeconds: 5
           periodSeconds: 30
         startupProbe:
           httpGet:
             path: /health
             port: 8000
           initialDelaySeconds: 5
+          timeoutSeconds: 5
           periodSeconds: 5
           failureThreshold: 12
       volumes:
