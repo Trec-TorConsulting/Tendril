@@ -25,6 +25,15 @@ from app.grows.models import (
 
 logger = logging.getLogger("tendril.ai.gather")
 
+_BUCKET_SENSOR_SKIP_FIELDS = {"id", "tenant_id", "bucket_id", "device_id", "recorded_at"}
+_BUCKET_SENSOR_FIELDS = tuple(
+    sorted(c.name for c in BucketSensorReading.__table__.columns if c.name not in _BUCKET_SENSOR_SKIP_FIELDS)
+)
+_TENT_SENSOR_SKIP_FIELDS = {"id", "tenant_id", "tent_id", "device_id", "recorded_at"}
+_TENT_SENSOR_FIELDS = tuple(
+    sorted(c.name for c in TentSensorReading.__table__.columns if c.name not in _TENT_SENSOR_SKIP_FIELDS)
+)
+
 
 async def gather_grow_data(
     session: AsyncSession,
@@ -98,20 +107,7 @@ async def gather_grow_data(
         if reading:
             bucket_sensors[b.position] = {
                 k: getattr(reading, k)
-                for k in (
-                    "ph",
-                    "ec",
-                    "ppm",
-                    "water_temp_f",
-                    "dissolved_oxygen",
-                    "water_level_pct",
-                    "soil_moisture",
-                    "soil_temp",
-                    "runoff_ph",
-                    "runoff_ec",
-                    "flow_rate",
-                    "mist_pressure",
-                )
+                for k in _BUCKET_SENSOR_FIELDS
                 if getattr(reading, k) is not None
             }
             bucket_sensors[b.position]["recorded_at"] = reading.recorded_at.isoformat()
@@ -141,11 +137,11 @@ async def gather_grow_data(
         )
     ).scalar_one_or_none()
     if tent_ambient_reading:
-        tent_ambient = {}
-        if tent_ambient_reading.ambient_temp_f is not None:
-            tent_ambient["ambient_temp_f"] = tent_ambient_reading.ambient_temp_f
-        if tent_ambient_reading.ambient_humidity is not None:
-            tent_ambient["ambient_humidity"] = tent_ambient_reading.ambient_humidity
+        tent_ambient = {
+            key: getattr(tent_ambient_reading, key)
+            for key in _TENT_SENSOR_FIELDS
+            if getattr(tent_ambient_reading, key) is not None
+        }
         if tent_ambient:
             tent_ambient["recorded_at"] = tent_ambient_reading.recorded_at.isoformat()
             age_h = (now - tent_ambient_reading.recorded_at).total_seconds() / 3600
@@ -171,20 +167,7 @@ async def gather_grow_data(
         )
         if len(trends) > 1:
             trend_data: dict = {"reading_count": len(trends), "period_hours": sensor_history_hours}
-            for field in (
-                "ph",
-                "ec",
-                "ppm",
-                "water_temp_f",
-                "dissolved_oxygen",
-                "water_level_pct",
-                "soil_moisture",
-                "soil_temp",
-                "runoff_ph",
-                "runoff_ec",
-                "flow_rate",
-                "mist_pressure",
-            ):
+            for field in _BUCKET_SENSOR_FIELDS:
                 vals = [getattr(r, field) for r in trends if getattr(r, field) is not None]
                 if vals:
                     trend_data[f"{field}_min"] = round(min(vals), 2)
@@ -214,7 +197,7 @@ async def gather_grow_data(
     )
     if len(tent_trends_rows) > 1:
         ambient_trend: dict = {"reading_count": len(tent_trends_rows), "period_hours": sensor_history_hours}
-        for field in ("ambient_temp_f", "ambient_humidity"):
+        for field in _TENT_SENSOR_FIELDS:
             vals = [getattr(r, field) for r in tent_trends_rows if getattr(r, field) is not None]
             if vals:
                 ambient_trend[f"{field}_min"] = round(min(vals), 2)

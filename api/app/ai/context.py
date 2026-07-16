@@ -135,20 +135,8 @@ def _fmt_journal(entries: list[dict]) -> str:
 
 def _fmt_trends(trends: dict) -> str:
     lines = [f"  Period: {trends.get('period_hours', 24)}h ({trends.get('reading_count', 0)} readings)"]
-    for field in (
-        "ph",
-        "ec",
-        "ppm",
-        "water_temp_f",
-        "dissolved_oxygen",
-        "water_level_pct",
-        "soil_moisture",
-        "soil_temp",
-        "runoff_ph",
-        "runoff_ec",
-        "flow_rate",
-        "mist_pressure",
-    ):
+    trend_fields = sorted(key[: -len("_avg")] for key in trends if key.endswith("_avg"))
+    for field in trend_fields:
         avg = trends.get(f"{field}_avg")
         if avg is not None:
             label = field.replace("_", " ").title()
@@ -506,10 +494,11 @@ async def build_chat_context(
     tent_ambient = grow_data.get("tent_ambient")
     if tent_ambient:
         ambient_lines = []
-        if tent_ambient.get("ambient_temp_f") is not None:
-            ambient_lines.append(f"  Ambient Temp: {tent_ambient['ambient_temp_f']}°F")
-        if tent_ambient.get("ambient_humidity") is not None:
-            ambient_lines.append(f"  Ambient Humidity: {tent_ambient['ambient_humidity']}%")
+        for key, value in tent_ambient.items():
+            if key in {"recorded_at", "hours_old"} or value is None:
+                continue
+            label = key.replace("_", " ").title()
+            ambient_lines.append(f"  {label}: {value}")
         if tent_ambient.get("recorded_at"):
             ambient_lines.append(f"  Recorded: {tent_ambient['recorded_at']}")
         if tent_ambient.get("hours_old") and tent_ambient["hours_old"] > 6:
@@ -528,7 +517,8 @@ async def build_chat_context(
         ambient_trend_lines = [
             f"  Period: {ambient_trends.get('period_hours', 24)}h ({ambient_trends.get('reading_count', 0)} readings)"
         ]
-        for field in ("ambient_temp_f", "ambient_humidity"):
+        ambient_fields = sorted(key[: -len("_avg")] for key in ambient_trends if key.endswith("_avg"))
+        for field in ambient_fields:
             avg = ambient_trends.get(f"{field}_avg")
             if avg is not None:
                 label = field.replace("_", " ").title()
@@ -776,6 +766,9 @@ async def build_health_check_prompt(
         "   b) DATA/PROCESS gaps — missing logs, incomplete journal entries, unmeasured metrics, pending tasks. "
         "These are recommendations for better tracking but do NOT indicate the plant is unhealthy. "
         "Clearly label which category each issue belongs to.\n"
+        "   If dissolved oxygen (DO) is unmeasured but water_temp and ORP telemetry exist, classify it as an "
+        "'unmeasured DO' monitoring gap (medium priority), not an immediate critical failure by itself. "
+        "Use water_temp + ORP trends as supporting proxy signals while still recommending direct DO monitoring when feasible.\n"
         "Be specific about what's wrong and why — cite exact readings, visual symptoms, and the cannabis-specific diagnosis. "
         "Differentiate between deficiency, toxicity, environmental stress, pests, and pathogens.\n"
         "3. **Recommended Actions**: These become TASKS the grower will check off. "
@@ -792,6 +785,8 @@ async def build_health_check_prompt(
         "- You MUST be 100% accurate. This grower's harvest depends on correct information.\n"
         "- Only report issues you can confirm from the provided data. Do not invent problems.\n"
         "- If sensor data is missing or stale, say so explicitly — do not assume values.\n"
+        "- If DO is missing, do not invent a DO value. Treat it as unknown and base urgency on corroborating evidence "
+        "(water temp, ORP trend, root symptoms, odor, stagnation signs).\n"
         "- If you cannot determine something from the available data, state that clearly.\n"
         "- When citing readings, use the EXACT numbers provided. Do not round or approximate.\n"
         "- 'I don't have enough data to assess this' is always a valid statement.\n"
@@ -892,10 +887,11 @@ async def build_health_check_prompt(
     tent_ambient = grow_data.get("tent_ambient")
     if tent_ambient:
         amb_lines = []
-        if tent_ambient.get("ambient_temp_f") is not None:
-            amb_lines.append(f"  Ambient Temp: {tent_ambient['ambient_temp_f']}°F")
-        if tent_ambient.get("ambient_humidity") is not None:
-            amb_lines.append(f"  Ambient Humidity: {tent_ambient['ambient_humidity']}%")
+        for key, value in tent_ambient.items():
+            if key in {"recorded_at", "hours_old"} or value is None:
+                continue
+            label = key.replace("_", " ").title()
+            amb_lines.append(f"  {label}: {value}")
         if tent_ambient.get("recorded_at"):
             amb_lines.append(f"  Recorded: {tent_ambient['recorded_at']}")
         if tent_ambient.get("hours_old") and tent_ambient["hours_old"] > 6:
@@ -915,11 +911,12 @@ async def build_health_check_prompt(
         amb_trend_lines = [
             f"  Period: {ambient_trends.get('period_hours', 24)}h ({ambient_trends.get('reading_count', 0)} readings)"
         ]
-        for field in ("ambient_temp_f", "ambient_humidity"):
+        ambient_fields = sorted(key[: -len("_avg")] for key in ambient_trends if key.endswith("_avg"))
+        for field in ambient_fields:
             avg = ambient_trends.get(f"{field}_avg")
             if avg is not None:
-                label = "Temp" if "temp" in field else "Humidity"
-                unit = "°F" if "temp" in field else "%"
+                label = field.replace("_", " ").title()
+                unit = ""
                 lo = ambient_trends.get(f"{field}_min")
                 hi = ambient_trends.get(f"{field}_max")
                 amb_trend_lines.append(f"  {label}: avg {avg}{unit} (range {lo}-{hi}{unit})")

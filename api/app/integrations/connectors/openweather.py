@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.grows.models import WeatherReading
-from app.integrations.connectors.base import BaseConnector, ConnectorResult, register_connector
+from app.integrations.connectors.base import BaseConnector, ConnectorResult, filter_model_fields, register_connector
 from app.integrations.connectors.retry import retry_request
 from app.integrations.models import IntegrationDeviceMap
 
@@ -334,18 +334,12 @@ async def write_openweather_readings(
         row = WeatherReading(
             tenant_id=tenant_id,
             tent_id=tent_id,
-            temperature_c=reading.get("temperature_c"),
-            humidity_pct=reading.get("humidity_pct"),
-            precipitation_mm=reading.get("precipitation_mm"),
-            wind_speed_kmh=reading.get("wind_speed_kmh"),
-            uv_index=reading.get("uv_index"),
-            weather_code=reading.get("weather_code"),
-            dew_point_c=reading.get("dew_point_c"),
-            pressure_hpa=reading.get("pressure_hpa"),
-            soil_temp_c=reading.get("soil_temp_c"),
-            forecast=forecast,
-            source="openweather",
             recorded_at=now,
+            **filter_model_fields(
+                WeatherReading,
+                {**reading, "forecast": forecast, "source": "openweather"},
+                exclude={"id", "tenant_id", "tent_id", "recorded_at"},
+            ),
         )
         session.add(row)
         count += 1

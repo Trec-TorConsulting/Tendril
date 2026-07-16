@@ -37,6 +37,7 @@ from app.grows.models import BucketSensorReading, TentSensorReading, WeatherRead
 from app.integrations.connectors.base import (
     BaseConnector,
     ConnectorResult,
+    filter_model_fields,
     propagate_header_bucket_readings,
     register_connector,
 )
@@ -648,19 +649,17 @@ async def write_ecowitt_readings(
             tent_id = reading.pop("tent_id", None)
             if not tent_id or not tenant_id:
                 continue
+            weather_values = dict(reading)
+            weather_values["source"] = "ecowitt"
             row = WeatherReading(
                 tenant_id=tenant_id,
                 tent_id=tent_id,
-                temperature_c=reading.get("temperature_c"),
-                humidity_pct=reading.get("humidity_pct"),
-                precipitation_mm=reading.get("precipitation_mm"),
-                wind_speed_kmh=reading.get("wind_speed_kmh"),
-                uv_index=reading.get("uv_index"),
-                dew_point_c=reading.get("dew_point_c"),
-                pressure_hpa=reading.get("pressure_hpa"),
-                soil_temp_c=reading.get("soil_temp_c"),
-                source="ecowitt",
                 recorded_at=now,
+                **filter_model_fields(
+                    WeatherReading,
+                    weather_values,
+                    exclude={"id", "tenant_id", "tent_id", "recorded_at"},
+                ),
             )
             session.add(row)
             count += 1
@@ -674,7 +673,11 @@ async def write_ecowitt_readings(
                 tent_id=tent_id,
                 device_id=f"ecowitt:{external_id}",
                 recorded_at=now,
-                **{k: v for k, v in reading.items() if k in {"ambient_temp_f", "ambient_humidity"}},
+                **filter_model_fields(
+                    TentSensorReading,
+                    reading,
+                    exclude={"id", "tenant_id", "tent_id", "device_id", "recorded_at"},
+                ),
             )
             session.add(row)
             count += 1
@@ -683,13 +686,16 @@ async def write_ecowitt_readings(
             bucket_id = reading.pop("bucket_id", None)
             if not bucket_id or not tenant_id:
                 continue
-            allowed = {"soil_moisture", "soil_temp", "ec"}
             row = BucketSensorReading(  # type: ignore[assignment]
                 tenant_id=tenant_id,
                 bucket_id=bucket_id,
                 device_id=f"ecowitt:{external_id}",
                 recorded_at=now,
-                **{k: v for k, v in reading.items() if k in allowed},
+                **filter_model_fields(
+                    BucketSensorReading,
+                    reading,
+                    exclude={"id", "tenant_id", "bucket_id", "device_id", "recorded_at"},
+                ),
             )
             session.add(row)
             count += 1
