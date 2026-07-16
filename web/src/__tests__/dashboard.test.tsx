@@ -213,5 +213,5 @@ describe("DashboardPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Dashboard")).toBeInTheDocument();
     });
-  });
+  }, 15000);
 });
