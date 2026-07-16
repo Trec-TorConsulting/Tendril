@@ -394,10 +394,22 @@ class TestSchedulerVisionAutoScan:
         grow = MagicMock()
         grow.id = uuid4()
         grow.tenant_id = uuid4()
+        grow.settings = None
+        grow.tent_id = uuid4()
 
         tent = MagicMock()
         tent.id = uuid4()
         tent.camera_url = "http://camera/snapshot.jpg"
+
+        tenant = MagicMock()
+        tenant.coaching_settings = {
+            "vision_auto_scan": {
+                "enabled": True,
+                "cadence_minutes": 60,
+                "confidence_task_threshold": 0.9,
+                "task_cooldown_hours": 12,
+            }
+        }
 
         camera = MagicMock()
         camera.url = "http://camera/snapshot.jpg"
@@ -420,10 +432,14 @@ class TestSchedulerVisionAutoScan:
 
         mock_session = MagicMock()
         grows_result = MagicMock()
-        grows_result.all.return_value = [(grow, tent)]
+        grows_result.all.return_value = [(grow, tent, tenant)]
         camera_result = MagicMock()
         camera_result.scalar_one_or_none.return_value = camera
-        mock_session.execute = AsyncMock(side_effect=[grows_result, camera_result])
+        owner_result = MagicMock()
+        owner_result.scalar_one_or_none.return_value = uuid4()
+        existing_task_result = MagicMock()
+        existing_task_result.scalar_one_or_none.return_value = None
+        mock_session.execute = AsyncMock(side_effect=[grows_result, camera_result, owner_result, existing_task_result])
         mock_session.commit = AsyncMock()
 
         with (

@@ -34,12 +34,17 @@ class CoachingSettingsResponse(BaseModel):
     enabled: bool
     cadence_hours: int
     minimum_severity: str
+    vision_auto_scan: dict
 
 
 class UpdateCoachingSettingsRequest(BaseModel):
     enabled: bool | None = None
     cadence_hours: int | None = Field(default=None, ge=1, le=168)
     minimum_severity: str | None = Field(default=None, pattern="^(info|warning|critical)$")
+    vision_enabled: bool | None = None
+    vision_cadence_minutes: int | None = Field(default=None, ge=15, le=1440)
+    vision_confidence_task_threshold: float | None = Field(default=None, ge=0.5, le=1.0)
+    vision_task_cooldown_hours: int | None = Field(default=None, ge=1, le=168)
 
 
 class TenantMemberResponse(BaseModel):
@@ -124,6 +129,10 @@ async def update_my_tenant_coaching_settings(
         enabled=body.enabled,
         cadence_hours=body.cadence_hours,
         minimum_severity=body.minimum_severity,
+        vision_enabled=body.vision_enabled,
+        vision_cadence_minutes=body.vision_cadence_minutes,
+        vision_confidence_task_threshold=body.vision_confidence_task_threshold,
+        vision_task_cooldown_hours=body.vision_task_cooldown_hours,
     )
     return CoachingSettingsResponse(**settings)
 

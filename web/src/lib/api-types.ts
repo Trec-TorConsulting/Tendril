@@ -7048,6 +7048,10 @@ export interface components {
             enabled: boolean;
             /** Minimum Severity */
             minimum_severity: string;
+            /** Vision Auto Scan */
+            vision_auto_scan: {
+                [key: string]: unknown;
+            };
         };
         /** CommandAck */
         CommandAck: {
@@ -11469,6 +11473,14 @@ export interface components {
             enabled?: boolean | null;
             /** Minimum Severity */
             minimum_severity?: string | null;
+            /** Vision Cadence Minutes */
+            vision_cadence_minutes?: number | null;
+            /** Vision Confidence Task Threshold */
+            vision_confidence_task_threshold?: number | null;
+            /** Vision Enabled */
+            vision_enabled?: boolean | null;
+            /** Vision Task Cooldown Hours */
+            vision_task_cooldown_hours?: number | null;
         };
         /** UpdateMemberRoleRequest */
         UpdateMemberRoleRequest: {
