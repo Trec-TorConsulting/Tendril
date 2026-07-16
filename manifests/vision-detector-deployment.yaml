@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tendril-vision-detector
+  namespace: tendril
+  labels:
+    app: tendril-vision-detector
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: tendril-vision-detector
+  template:
+    metadata:
+      labels:
+        app: tendril-vision-detector
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: node06
+      containers:
+      - name: vision-detector
+        image: 192.168.4.10:30500/tendril-vision-detector:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+        env:
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: VISION_MODEL_VERSION
+          value: ""
+        - name: VISION_CORAL_ENABLED
+          value: "true"
+        - name: VISION_GPU_ENABLED
+          value: "true"
+        - name: VISION_CPU_ENABLED
+          value: "true"
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 5
+          timeoutSeconds: 3
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8080
+          initialDelaySeconds: 10
+          timeoutSeconds: 3
+          periodSeconds: 30
+      volumes:
+      - name: tmp
+        emptyDir: {}

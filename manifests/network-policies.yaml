@@ -207,6 +207,28 @@ spec:
       port: 8000
 
 ---
+# Allow API → Vision Detector (port 8080)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-api-to-vision-detector
+  namespace: tendril
+spec:
+  podSelector:
+    matchLabels:
+      app: tendril-vision-detector
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: tendril-api
+    ports:
+    - protocol: TCP
+      port: 8080
+
+---
 # Egress: Scheduler/API → external AI services (Gemini, Ollama)
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -230,6 +252,14 @@ spec:
     ports:
     - protocol: TCP
       port: 11434
+  # Vision detector (internal)
+  - to:
+    - podSelector:
+        matchLabels:
+          app: tendril-vision-detector
+    ports:
+    - protocol: TCP
+      port: 8080
   # Gemini API (external HTTPS)
   - to:
     - ipBlock:

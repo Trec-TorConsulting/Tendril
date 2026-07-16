@@ -97,7 +97,7 @@ class Settings:
     vision_detector_base_url: str = field(
         default_factory=lambda: os.environ.get(
             "VISION_DETECTOR_BASE_URL",
-            "http://vision-detector.vision-detector.svc.cluster.local:8080",
+            "http://tendril-vision-detector.tendril.svc.cluster.local:8080",
         )
     )
     vision_detector_timeout_seconds: float = field(

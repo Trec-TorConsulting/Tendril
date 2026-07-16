@@ -30,18 +30,23 @@ kubectl apply -f "$MANIFEST_DIR/mqtt-worker-service.yaml"
 kubectl apply -f "$MANIFEST_DIR/scheduler-deployment.yaml"
 kubectl apply -f "$MANIFEST_DIR/web-deployment.yaml"
 kubectl apply -f "$MANIFEST_DIR/web-service.yaml"
+kubectl apply -f "$MANIFEST_DIR/vision-detector-deployment.yaml"
+kubectl apply -f "$MANIFEST_DIR/vision-detector-service.yaml"
 kubectl apply -f "$MANIFEST_DIR/ingress.yaml"
 kubectl apply -f "$MANIFEST_DIR/hpa-api.yaml"
+kubectl apply -f "$MANIFEST_DIR/network-policies.yaml"
 
 # Restart deployments to pick up latest images
 kubectl rollout restart deployment tendril-api -n "$NAMESPACE"
 kubectl rollout restart deployment tendril-mqtt-worker -n "$NAMESPACE"
 kubectl rollout restart deployment tendril-scheduler -n "$NAMESPACE"
 kubectl rollout restart deployment tendril-web -n "$NAMESPACE"
+kubectl rollout restart deployment tendril-vision-detector -n "$NAMESPACE"
 
 echo "=== Waiting for rollouts ==="
 kubectl rollout status deployment tendril-api -n "$NAMESPACE" --timeout=120s
 kubectl rollout status deployment tendril-web -n "$NAMESPACE" --timeout=120s
+kubectl rollout status deployment tendril-vision-detector -n "$NAMESPACE" --timeout=120s
 
 echo "=== Tendril deployed ==="
 kubectl get pods -n "$NAMESPACE"

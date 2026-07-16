@@ -1,34 +1,34 @@
 # Implementation Tasks — Add Edge Vision Detection
 
 ## 1. Vision-Detector Service (new microservice)
-- [ ] 1.1 Scaffold `vision-detector/` service (Python) with `POST /detect`, `GET /healthz`
+- [x] 1.1 Scaffold `vision-detector/` service (Python) with `POST /detect`, `GET /healthz`
 - [ ] 1.2 Implement model loader that reads the active model version from the registry
 - [ ] 1.3 Implement Coral Edge TPU inference path (`pycoral`/`libedgetpu`, int8 tflite)
 - [ ] 1.4 Implement GPU inference path (ONNX/torch, non-quantized variant)
 - [ ] 1.5 Implement CPU inference path and the tiered fallback selection logic
 - [ ] 1.6 Return detections with class, confidence, normalized bbox, model version, tier
-- [ ] 1.7 Add graceful "no active model" and "unavailable" responses
-- [ ] 1.8 Write `vision-detector/Dockerfile` (arm64, non-root, read-only rootfs friendly)
+- [x] 1.7 Add graceful "no active model" and "unavailable" responses
+- [x] 1.8 Write `vision-detector/Dockerfile` (arm64, non-root, read-only rootfs friendly)
 - [ ] 1.9 Unit tests for fallback selection, response schema, and no-model handling
 
 ## 2. Kubernetes Deployment
-- [ ] 2.1 `manifests/vision-detector-deployment.yaml` pinned to `node06` (nodeSelector/affinity)
+- [x] 2.1 `manifests/vision-detector-deployment.yaml` pinned to `node06` (nodeSelector/affinity)
 - [ ] 2.2 Expose the Coral device to the pod; least-privilege securityContext
-- [ ] 2.3 `manifests/vision-detector-service.yaml` (internal ClusterIP only)
+- [x] 2.3 `manifests/vision-detector-service.yaml` (internal ClusterIP only)
 - [ ] 2.4 GPU-tier scheduling config referencing `node05` for fallback
-- [ ] 2.5 NetworkPolicy: only the API may reach the vision-detector
+- [x] 2.5 NetworkPolicy: only the API may reach the vision-detector
 - [ ] 2.6 Liveness/readiness probes wired to `/healthz`
 
 ## 3. API — Vision Domain
 - [ ] 3.1 Add `vision_detections` and `vision_model_registry` models + Alembic migration
 - [ ] 3.2 Enable RLS policies on the new tenant-scoped tables
-- [ ] 3.3 Async client for the vision-detector with timeouts and graceful degradation
+- [x] 3.3 Async client for the vision-detector with timeouts and graceful degradation
 - [ ] 3.4 `POST /v1/vision/scan/tent/{tent_id}` (reuse snapshot pipeline)
 - [ ] 3.5 `POST /v1/vision/scan/photo/{photo_id}` (fetch from MinIO)
 - [ ] 3.6 `GET /v1/vision/detections` (tenant-scoped, paginated)
 - [ ] 3.7 Model registry endpoints: list versions, activate version
 - [ ] 3.8 Permission guards (`require_permission()`) on all new routes
-- [ ] 3.9 Input validation (Pydantic) and OpenAPI docs
+- [x] 3.9 Input validation (Pydantic) and OpenAPI docs
 
 ## 4. Detection → Drafts → Approval
 - [ ] 4.1 Map detected classes to quality-first severity + draft `PestScoutEntry`
