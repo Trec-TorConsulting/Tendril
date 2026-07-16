@@ -728,3 +728,50 @@ class RunoffReading(Base):
     runoff_ec: Mapped[float | None] = mapped_column(Float)
     runoff_pct: Mapped[float | None] = mapped_column(Float)
     notes: Mapped[str | None] = mapped_column(Text)
+
+
+# ---------- Vision Detections ----------
+
+
+class VisionDetection(Base):
+    __tablename__ = "vision_detections"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    grow_cycle_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("grow_cycles.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    source: Mapped[str] = mapped_column(String(30), nullable=False, default="manual", index=True)
+    source_ref: Mapped[str | None] = mapped_column(String(255))
+    image_storage_key: Mapped[str | None] = mapped_column(String(1024))
+    class_name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    bbox: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    model_version: Mapped[str] = mapped_column(String(120), nullable=False)
+    accelerator_tier: Mapped[str] = mapped_column(String(20), nullable=False, default="unavailable")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True)
+
+
+# ---------- Vision Model Registry ----------
+
+
+class VisionModelRegistry(Base):
+    __tablename__ = "vision_model_registry"
+    __table_args__ = (UniqueConstraint("tenant_id", "version", name="uq_vision_model_registry_tenant_version"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    version: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    edge_tpu_storage_key: Mapped[str | None] = mapped_column(String(1024))
+    fallback_storage_key: Mapped[str | None] = mapped_column(String(1024))
+    class_map: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    input_width: Mapped[int] = mapped_column(Integer, nullable=False, default=640)
+    input_height: Mapped[int] = mapped_column(Integer, nullable=False, default=640)
+    metrics: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
