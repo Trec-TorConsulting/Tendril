@@ -105,10 +105,11 @@ def load_detector_config() -> DetectorConfig:
 
 
 @lru_cache(maxsize=1)
-def get_session() -> ort.InferenceSession:
-    cfg = load_detector_config()
-    runtime_cfg = load_runtime_config()
-    accelerator = choose_accelerator(runtime_cfg)
+def _get_session_cached(model_path: str, providers: tuple[str, ...]) -> ort.InferenceSession:
+    return ort.InferenceSession(model_path, providers=list(providers))
+
+
+def _select_providers(accelerator: AcceleratorTier) -> list[str]:
     available = set(ort.get_available_providers())
 
     providers: list[str] = []
@@ -120,8 +121,16 @@ def get_session() -> ort.InferenceSession:
         providers.append("CPUExecutionProvider")
     if not providers:
         providers = ["CPUExecutionProvider"]
+    return providers
 
-    return ort.InferenceSession(cfg.model_path, providers=providers)
+
+def get_session() -> ort.InferenceSession:
+    cfg = load_detector_config()
+    runtime_cfg = load_runtime_config()
+    accelerator = choose_accelerator(runtime_cfg)
+    providers = _select_providers(accelerator)
+
+    return _get_session_cached(cfg.model_path, tuple(providers))
 
 
 def _decode_image(image_b64: str) -> Image.Image:
