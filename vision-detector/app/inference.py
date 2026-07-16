@@ -12,6 +12,8 @@ import numpy as np
 import onnxruntime as ort
 from PIL import Image
 
+from app.artifacts import ArtifactError, resolve_model_path
+
 
 @dataclass(frozen=True, slots=True)
 class DetectorConfig:
@@ -78,8 +80,17 @@ def _load_class_map() -> dict[int, str]:
 
 def load_detector_config() -> DetectorConfig:
     model_path = os.environ.get("VISION_MODEL_PATH", "").strip()
+    model_storage_key = os.environ.get("VISION_MODEL_STORAGE_KEY", "").strip()
+    model_local_path = os.environ.get("VISION_MODEL_LOCAL_PATH", "/tmp/vision/model.onnx").strip()
+
+    if not model_path and model_storage_key:
+        try:
+            model_path = resolve_model_path(storage_key=model_storage_key, local_path=model_local_path)
+        except ArtifactError as exc:
+            raise DetectorError(str(exc)) from exc
+
     if not model_path:
-        raise DetectorError("VISION_MODEL_PATH is required for inference")
+        raise DetectorError("VISION_MODEL_PATH or VISION_MODEL_STORAGE_KEY is required for inference")
 
     return DetectorConfig(
         model_path=model_path,

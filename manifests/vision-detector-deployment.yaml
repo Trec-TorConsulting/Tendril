@@ -44,6 +44,10 @@ spec:
           value: ""
         - name: VISION_MODEL_PATH
           value: ""
+        - name: VISION_MODEL_STORAGE_KEY
+          value: ""
+        - name: VISION_MODEL_LOCAL_PATH
+          value: "/tmp/vision/model.onnx"
         - name: VISION_INPUT_WIDTH
           value: "640"
         - name: VISION_INPUT_HEIGHT
@@ -56,6 +60,26 @@ spec:
           value: "50"
         - name: VISION_CLASS_MAP
           value: '{"0":"cannabis"}'
+        - name: S3_ENDPOINT
+          valueFrom:
+            secretKeyRef:
+              name: tendril-secrets
+              key: S3_ENDPOINT
+        - name: S3_ACCESS_KEY
+          valueFrom:
+            secretKeyRef:
+              name: tendril-secrets
+              key: S3_ACCESS_KEY
+        - name: S3_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: tendril-secrets
+              key: S3_SECRET_KEY
+        - name: S3_BUCKET
+          valueFrom:
+            secretKeyRef:
+              name: tendril-secrets
+              key: S3_BUCKET
         - name: VISION_CORAL_ENABLED
           value: "true"
         - name: VISION_GPU_ENABLED
