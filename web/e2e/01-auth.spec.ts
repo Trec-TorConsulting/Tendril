@@ -6,7 +6,7 @@
  * - Session persistence
  * - Error states
  */
-import { test, expect, login, TEST_USERS, qaScreenshot, setupConsoleErrorTracking } from "./helpers";
+import { test, expect, login, TEST_USERS } from "./helpers";
 
 test.describe("Authentication - Login", () => {
   test("displays login form with all expected fields", async ({ page }) => {
