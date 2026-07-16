@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import abc
 import uuid
+from functools import lru_cache
 from typing import Any
 
 from sqlalchemy import select
@@ -116,6 +117,24 @@ class BaseConnector(abc.ABC):
         return log
 
 
+@lru_cache(maxsize=16)
+def model_column_names(model_cls: type[Any]) -> set[str]:
+    """Return a cached set of SQLAlchemy column names for a model class."""
+    return {column.name for column in model_cls.__table__.columns}
+
+
+def filter_model_fields(
+    model_cls: type[Any],
+    values: dict[str, Any],
+    *,
+    exclude: set[str] | None = None,
+) -> dict[str, Any]:
+    """Keep only non-null keys that exist as columns on ``model_cls``."""
+    excluded = exclude or set()
+    allowed = model_column_names(model_cls)
+    return {k: v for k, v in values.items() if k in allowed and k not in excluded and v is not None}
+
+
 # ---- Connector registry ----
 
 _registry: dict[str, type[BaseConnector]] = {}
@@ -166,23 +185,22 @@ async def propagate_header_bucket_readings(
     if not site_buckets:
         return 0
 
+    propagated_values = {
+        key: getattr(reading_row, key)
+        for key in model_column_names(BucketSensorReading)
+        if key not in {"id", "bucket_id"} and hasattr(reading_row, key)
+    }
+    payload = filter_model_fields(
+        BucketSensorReading,
+        propagated_values,
+        exclude={"id", "bucket_id"},
+    )
+
     count = 0
     for site in site_buckets:
         row = BucketSensorReading(
-            tenant_id=reading_row.tenant_id,
             bucket_id=site.id,
-            device_id=reading_row.device_id,
-            water_temp_f=reading_row.water_temp_f,
-            ph=reading_row.ph,
-            ec=reading_row.ec,
-            ppm=reading_row.ppm,
-            water_level_pct=reading_row.water_level_pct,
-            dissolved_oxygen=reading_row.dissolved_oxygen,
-            orp=reading_row.orp,
-            salinity=reading_row.salinity,
-            specific_gravity=reading_row.specific_gravity,
-            flow_rate=reading_row.flow_rate,
-            recorded_at=reading_row.recorded_at,
+            **payload,
         )
         session.add(row)
         count += 1

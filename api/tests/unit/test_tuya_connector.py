@@ -75,6 +75,27 @@ def test_map_statuses_water_temp_uses_shadow_scale_metadata():
     assert reading["water_temp_c"] == 19.6
 
 
+def test_map_statuses_derives_ec_from_tds_when_ec_missing():
+    connector = _make_connector()
+    dm = _device_map(connector)
+
+    statuses = [{"code": "tds", "value": 600}]
+    reading = connector._map_statuses(statuses, dm)
+
+    assert reading["ppm"] == 600
+    assert reading["ec"] == 1.2
+
+
+def test_map_statuses_maps_humiity_typo_dp_for_water_monitors():
+    connector = _make_connector()
+    dm = _device_map(connector)
+
+    statuses = [{"code": "humiity", "value": 58}]
+    reading = connector._map_statuses(statuses, dm)
+
+    assert reading["ambient_humidity"] == 58.0
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_debug_latest_prefers_shadow_when_available(monkeypatch):
     connector = _make_connector()

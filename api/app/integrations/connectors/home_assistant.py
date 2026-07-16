@@ -24,7 +24,13 @@ import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.grows.models import BucketSensorReading, TentSensorReading
-from app.integrations.connectors.base import BaseConnector, ConnectorResult, register_connector
+from app.integrations.connectors.base import (
+    BaseConnector,
+    ConnectorResult,
+    filter_model_fields,
+    propagate_header_bucket_readings,
+    register_connector,
+)
 from app.integrations.connectors.retry import retry_request
 
 logger = logging.getLogger(__name__)
@@ -145,15 +151,12 @@ class HomeAssistantConnector(BaseConnector):
                     tenant_id=tenant_id,
                     tent_id=tent_id,
                     device_id=f"ha:{external_id}",
-                    ambient_temp_f=reading.get("ambient_temp_f"),
-                    ambient_humidity=reading.get("ambient_humidity"),
-                    vpd=reading.get("vpd"),
-                    co2=reading.get("co2"),
-                    lux=reading.get("lux"),
-                    par_ppfd=reading.get("par_ppfd"),
-                    air_pressure=reading.get("air_pressure"),
-                    voc=reading.get("voc"),
                     recorded_at=now,
+                    **filter_model_fields(
+                        TentSensorReading,
+                        reading,
+                        exclude={"id", "tenant_id", "tent_id", "device_id", "recorded_at"},
+                    ),
                 )
                 session.add(row)
                 count += 1
@@ -167,14 +170,18 @@ class HomeAssistantConnector(BaseConnector):
                     tenant_id=tenant_id,
                     bucket_id=bucket_id,
                     device_id=f"ha:{external_id}",
-                    ph=reading.get("ph"),
-                    ec=reading.get("ec"),
-                    water_temp_f=reading.get("water_temp_f"),
-                    water_level_pct=reading.get("water_level_pct"),
                     recorded_at=now,
+                    **filter_model_fields(
+                        BucketSensorReading,
+                        reading,
+                        exclude={"id", "tenant_id", "bucket_id", "device_id", "recorded_at"},
+                    ),
                 )
                 session.add(row)
                 count += 1
+
+                # RDWC: propagate header bucket readings to all site buckets.
+                count += await propagate_header_bucket_readings(session, bucket_id, row)
 
         return count
 

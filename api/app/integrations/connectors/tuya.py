@@ -31,10 +31,12 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.grows.models import BucketSensorReading, TentSensorReading
-from app.integrations.connectors.base import BaseConnector, ConnectorResult, register_connector
+from app.integrations.connectors.base import BaseConnector, ConnectorResult, filter_model_fields, register_connector
 from app.integrations.connectors.retry import retry_request
 
 logger = logging.getLogger(__name__)
+
+EC_PPM_FACTOR = 500.0  # PPM (500 scale) = EC (mS/cm) * 500
 
 
 # ---------------------------------------------------------------------------
@@ -47,6 +49,8 @@ _WATER_DP_MAP: dict[str, str] = {
     "tds_out": "ppm",
     "tds_value": "ppm",
     "tds": "ppm",
+    "ppm": "ppm",
+    "ppm_value": "ppm",
     # pH (various Tuya water monitor brands: Yinmik, Tuya generic, etc.)
     "ph_value": "ph",
     "ph": "ph",
@@ -64,6 +68,11 @@ _WATER_DP_MAP: dict[str, str] = {
     "water_temp": "water_temp_c",
     "temp_value": "water_temp_c",
     "temp_current": "water_temp_c",
+    # Ambient temp/humidity reported by some water-quality probes
+    "air_temp": "ambient_temp_c",
+    "ambient_temp": "ambient_temp_c",
+    "humidity": "ambient_humidity",
+    "humiity": "ambient_humidity",  # common vendor typo
     # Water level percentage
     "water_level": "water_level_pct",
     "level_percent": "water_level_pct",
@@ -72,6 +81,8 @@ _WATER_DP_MAP: dict[str, str] = {
     "water_flow": "flow_rate",
     # Dissolved oxygen
     "dissolved_oxygen": "dissolved_oxygen",
+    "do": "dissolved_oxygen",
+    "do_value": "dissolved_oxygen",
     # ORP (Oxidation Reduction Potential, mV)
     "orp_value": "orp",
     "orp": "orp",
@@ -87,6 +98,16 @@ _WATER_DP_MAP: dict[str, str] = {
     "battery_percentage": "battery_pct",
     "battery_state": "battery_pct",
 }
+
+
+def _derive_ec_ppm(reading: dict[str, Any]) -> None:
+    """Auto-derive missing EC/PPM pair values in mapped connector readings."""
+    ec = reading.get("ec")
+    ppm = reading.get("ppm")
+    if ec is not None and ppm is None:
+        reading["ppm"] = round(ec * EC_PPM_FACTOR, 1)
+    elif ppm is not None and ec is None:
+        reading["ec"] = round(ppm / EC_PPM_FACTOR, 3)
 
 
 # ---------------------------------------------------------------------------
@@ -379,7 +400,7 @@ class TuyaConnector(BaseConnector):
                     scaled_numeric = None
                 # Tuya water temp: /status sends deg C x10 (e.g. 196=19.6);
                 # logs API may send actual value (e.g. 19.6)
-                if tendril_key == "water_temp_c":
+                if tendril_key in {"water_temp_c", "ambient_temp_c"}:
                     if scaled_numeric is not None:
                         reading[tendril_key] = scaled_numeric
                     else:
@@ -399,6 +420,8 @@ class TuyaConnector(BaseConnector):
                         reading[tendril_key] = numeric / 100 if numeric > 14 else numeric
                 else:
                     reading[tendril_key] = numeric
+
+        _derive_ec_ppm(reading)
 
         logger.info(
             "Tuya mapped reading for %s: %s",
@@ -454,6 +477,8 @@ class TuyaConnector(BaseConnector):
                 # Convert water_temp_c → water_temp_f for storage
                 water_temp_c = reading.get("water_temp_c")
                 water_temp_f = (water_temp_c * 9 / 5 + 32) if water_temp_c is not None else None
+                ambient_temp_c = reading.get("ambient_temp_c")
+                ambient_temp_f = (ambient_temp_c * 9 / 5 + 32) if ambient_temp_c is not None else None
 
                 # Carry forward pH from most recent reading if current poll has none.
                 # pH sensors report infrequently but the value is still valid —
@@ -477,22 +502,21 @@ class TuyaConnector(BaseConnector):
                     if last_row is not None:
                         ph_value = last_row
 
+                bucket_values = dict(reading)
+                bucket_values["water_temp_f"] = water_temp_f
+                bucket_values["ambient_temp_f"] = ambient_temp_f
+                bucket_values["ph"] = ph_value
+
                 row = BucketSensorReading(
                     tenant_id=tenant_id,
                     bucket_id=bucket_id,
                     device_id=f"tuya:{external_id}",
-                    water_temp_f=water_temp_f,
-                    ph=ph_value,
-                    ec=reading.get("ec"),
-                    ppm=reading.get("ppm"),
-                    water_level_pct=reading.get("water_level_pct"),
-                    flow_rate=reading.get("flow_rate"),
-                    dissolved_oxygen=reading.get("dissolved_oxygen"),
-                    orp=reading.get("orp"),
-                    salinity=reading.get("salinity"),
-                    specific_gravity=reading.get("specific_gravity"),
-                    battery_pct=reading.get("battery_pct"),
                     recorded_at=now,
+                    **filter_model_fields(
+                        BucketSensorReading,
+                        bucket_values,
+                        exclude={"id", "tenant_id", "bucket_id", "device_id", "recorded_at"},
+                    ),
                 )
                 session.add(row)
                 count += 1
@@ -509,13 +533,19 @@ class TuyaConnector(BaseConnector):
                 temp_c = reading.get("temperature_c")
                 ambient_temp_f = (temp_c * 9 / 5 + 32) if temp_c is not None else None
 
+                tent_values = dict(reading)
+                tent_values["ambient_temp_f"] = ambient_temp_f
+
                 row = TentSensorReading(  # type: ignore[assignment]
                     tenant_id=tenant_id,
                     tent_id=tent_id,
                     device_id=f"tuya:{external_id}",
-                    ambient_temp_f=ambient_temp_f,
-                    ambient_humidity=reading.get("humidity_pct"),
                     recorded_at=now,
+                    **filter_model_fields(
+                        TentSensorReading,
+                        tent_values,
+                        exclude={"id", "tenant_id", "tent_id", "device_id", "recorded_at"},
+                    ),
                 )
                 session.add(row)
                 count += 1
