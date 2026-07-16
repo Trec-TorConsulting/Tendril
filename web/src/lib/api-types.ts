@@ -6029,6 +6029,23 @@ export interface paths {
         patch: operations["update_camera_v1_tents__tent_id__cameras__camera_id__patch"];
         trace?: never;
     };
+    "/v1/vision/detections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Detections */
+        get: operations["list_detections_v1_vision_detections_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/vision/healthz": {
         parameters: {
             query?: never;
@@ -6040,6 +6057,40 @@ export interface paths {
         get: operations["vision_healthz_v1_vision_healthz_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/vision/models": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Models */
+        get: operations["list_models_v1_vision_models_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/vision/models/activate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate Model */
+        post: operations["activate_model_v1_vision_models_activate_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -9447,6 +9498,17 @@ export interface components {
             /** Total */
             total: number;
         };
+        /** PaginatedResponse[VisionDetectionResponse] */
+        PaginatedResponse_VisionDetectionResponse_: {
+            /** Items */
+            items: components["schemas"]["VisionDetectionResponse"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /** Total */
+            total: number;
+        };
         /** PaginatedResponse[YieldResponse] */
         PaginatedResponse_YieldResponse_: {
             /** Items */
@@ -11581,6 +11643,80 @@ export interface components {
             class_name: string;
             /** Confidence */
             confidence: number;
+        };
+        /** VisionDetectionResponse */
+        VisionDetectionResponse: {
+            /** Accelerator Tier */
+            accelerator_tier: string;
+            /** Bbox */
+            bbox: number[];
+            /** Class Name */
+            class_name: string;
+            /** Confidence */
+            confidence: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Grow Cycle Id */
+            grow_cycle_id: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Image Storage Key */
+            image_storage_key: string | null;
+            /** Model Version */
+            model_version: string;
+            /** Source */
+            source: string;
+            /** Source Ref */
+            source_ref: string | null;
+        };
+        /** VisionModelActivateRequest */
+        VisionModelActivateRequest: {
+            /** Version */
+            version: string;
+        };
+        /** VisionModelRegistryResponse */
+        VisionModelRegistryResponse: {
+            /** Class Map */
+            class_map: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Edge Tpu Storage Key */
+            edge_tpu_storage_key: string | null;
+            /** Fallback Storage Key */
+            fallback_storage_key: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Input Height */
+            input_height: number;
+            /** Input Width */
+            input_width: number;
+            /** Is Active */
+            is_active: boolean;
+            /** Metrics */
+            metrics: {
+                [key: string]: unknown;
+            };
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Version */
+            version: string;
         };
         /**
          * VisionProfile
@@ -24575,6 +24711,42 @@ export interface operations {
             };
         };
     };
+    list_detections_v1_vision_detections_get: {
+        parameters: {
+            query?: {
+                grow_cycle_id?: string | null;
+                source?: string | null;
+                /** @description Page number */
+                page?: number;
+                /** @description Items per page */
+                page_size?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PaginatedResponse_VisionDetectionResponse_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     vision_healthz_v1_vision_healthz_get: {
         parameters: {
             query?: never;
@@ -24593,6 +24765,59 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    list_models_v1_vision_models_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisionModelRegistryResponse"][];
+                };
+            };
+        };
+    };
+    activate_model_v1_vision_models_activate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VisionModelActivateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisionModelRegistryResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -9,7 +9,7 @@ os.environ.setdefault("JWT_SECRET", "test-secret")
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.auth.middleware import CurrentUser, get_current_user
+from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session
 from app.tenants.models import TenantRole
 from app.vision.contracts import AcceleratorTier, BoundingBox, VisionDetection
 from app.vision.routes import get_vision_detector_client, router
@@ -28,6 +28,14 @@ class FakeClient:
         return {"status": "ok"}
 
 
+class FakeSession:
+    def add_all(self, _rows: object) -> None:
+        return None
+
+    async def commit(self) -> None:
+        return None
+
+
 def _build_app() -> FastAPI:
     app = FastAPI()
     app.include_router(router, prefix="/v1/vision")
@@ -37,6 +45,7 @@ def _build_app() -> FastAPI:
         tenant_role=TenantRole.viewer,
     )
     app.dependency_overrides[get_vision_detector_client] = lambda: FakeClient()
+    app.dependency_overrides[get_tenant_session] = lambda: FakeSession()
     return app
 
 

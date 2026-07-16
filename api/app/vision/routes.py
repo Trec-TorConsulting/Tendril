@@ -2,19 +2,21 @@ from __future__ import annotations
 
 import asyncio
 import base64
+from datetime import UTC, datetime
 from typing import Annotated, Any
 from uuid import UUID
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_tenant_session, require_permission
-from app.auth.permissions import GROW_READ, PHOTO_READ
-from app.grows.models import GrowPhoto, Tent, TentCamera
+from app.auth.permissions import GROW_READ, GROW_UPDATE, PHOTO_READ
+from app.grows.models import GrowCycle, GrowPhoto, Tent, TentCamera, VisionDetection, VisionModelRegistry
 from app.grows.tent_routes import _fetch_camera_image
+from app.pagination import PaginatedResponse, PaginationParams, paginate
 from app.storage import get_photo as s3_get
 from app.vision.client import VisionDetectorClient
 from app.vision.contracts import VisionProfile
@@ -42,6 +44,42 @@ class VisionScanResponse(BaseModel):
     message: str | None = None
 
 
+class VisionDetectionResponse(BaseModel):
+    id: UUID
+    grow_cycle_id: UUID | None
+    source: str
+    source_ref: str | None
+    image_storage_key: str | None
+    class_name: str
+    confidence: float
+    bbox: list[float]
+    model_version: str
+    accelerator_tier: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class VisionModelRegistryResponse(BaseModel):
+    id: UUID
+    version: str
+    edge_tpu_storage_key: str | None
+    fallback_storage_key: str | None
+    class_map: dict
+    input_width: int
+    input_height: int
+    metrics: dict
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class VisionModelActivateRequest(BaseModel):
+    version: str
+
+
 def get_vision_detector_client() -> VisionDetectorClient:
     return VisionDetectorClient.from_settings()
 
@@ -62,10 +100,53 @@ def _to_scan_response(model_response: Any) -> VisionScanResponse:
     )
 
 
+async def _resolve_tent_grow_cycle_id(session: AsyncSession, tent_id: UUID) -> UUID | None:
+    result = await session.execute(
+        select(GrowCycle.id)
+        .where(GrowCycle.tent_id == tent_id, GrowCycle.deleted_at.is_(None))
+        .order_by(desc(GrowCycle.started_at))
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def _persist_detections(
+    session: AsyncSession,
+    *,
+    tenant_id: UUID,
+    grow_cycle_id: UUID | None,
+    source: str,
+    source_ref: str,
+    image_storage_key: str | None,
+    model_response: Any,
+) -> None:
+    if model_response.model_version is None:
+        return
+    rows = [
+        VisionDetection(
+            tenant_id=tenant_id,
+            grow_cycle_id=grow_cycle_id,
+            source=source,
+            source_ref=source_ref,
+            image_storage_key=image_storage_key,
+            class_name=item.class_name,
+            confidence=item.confidence,
+            bbox=item.bbox.as_list(),
+            model_version=model_response.model_version,
+            accelerator_tier=model_response.accelerator_tier.value,
+        )
+        for item in model_response.detections
+    ]
+    if rows:
+        session.add_all(rows)
+        await session.commit()
+
+
 @router.post("/scan", response_model=VisionScanResponse)
 async def scan_image(
     payload: VisionScanRequest,
-    _user: Annotated[CurrentUser, Depends(require_permission(PHOTO_READ))],
+    user: Annotated[CurrentUser, Depends(require_permission(PHOTO_READ))],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
     client: Annotated[VisionDetectorClient, Depends(get_vision_detector_client)],
 ) -> VisionScanResponse:
     model_response = await client.scan_image(
@@ -73,6 +154,15 @@ async def scan_image(
         profile=payload.profile,
         source=payload.source,
         source_ref=payload.source_ref,
+    )
+    await _persist_detections(
+        session,
+        tenant_id=user.tenant_id,
+        grow_cycle_id=None,
+        source=payload.source,
+        source_ref=payload.source_ref,
+        image_storage_key=None,
+        model_response=model_response,
     )
     return _to_scan_response(model_response)
 
@@ -111,6 +201,16 @@ async def scan_tent_snapshot(
         source="tent",
         source_ref=str(tent_id),
     )
+    grow_cycle_id = await _resolve_tent_grow_cycle_id(session, tent_id)
+    await _persist_detections(
+        session,
+        tenant_id=tent.tenant_id,
+        grow_cycle_id=grow_cycle_id,
+        source="tent",
+        source_ref=str(tent_id),
+        image_storage_key=None,
+        model_response=model_response,
+    )
     return _to_scan_response(model_response)
 
 
@@ -139,7 +239,65 @@ async def scan_grow_photo(
         source="photo",
         source_ref=str(photo_id),
     )
+    await _persist_detections(
+        session,
+        tenant_id=photo.tenant_id,
+        grow_cycle_id=photo.grow_cycle_id,
+        source="photo",
+        source_ref=str(photo_id),
+        image_storage_key=photo.storage_key,
+        model_response=model_response,
+    )
     return _to_scan_response(model_response)
+
+
+@router.get("/detections", response_model=PaginatedResponse[VisionDetectionResponse])
+async def list_detections(
+    _user: Annotated[CurrentUser, Depends(require_permission(PHOTO_READ))],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    pagination: Annotated[PaginationParams, Depends()],
+    grow_cycle_id: UUID | None = None,
+    source: str | None = None,
+):
+    query = select(VisionDetection).order_by(desc(VisionDetection.created_at))
+    if grow_cycle_id is not None:
+        query = query.where(VisionDetection.grow_cycle_id == grow_cycle_id)
+    if source:
+        query = query.where(VisionDetection.source == source)
+    items, total = await paginate(session, query, pagination)
+    return PaginatedResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
+
+
+@router.get("/models", response_model=list[VisionModelRegistryResponse])
+async def list_models(
+    _user: Annotated[CurrentUser, Depends(require_permission(PHOTO_READ))],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    result = await session.execute(select(VisionModelRegistry).order_by(desc(VisionModelRegistry.created_at)))
+    return result.scalars().all()
+
+
+@router.post("/models/activate", response_model=VisionModelRegistryResponse)
+async def activate_model(
+    body: VisionModelActivateRequest,
+    user: Annotated[CurrentUser, Depends(require_permission(GROW_UPDATE))],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    result = await session.execute(
+        select(VisionModelRegistry).where(VisionModelRegistry.version == body.version).limit(1)
+    )
+    target = result.scalar_one_or_none()
+    if target is None:
+        raise HTTPException(status_code=404, detail="Model version not found")
+    existing = await session.execute(select(VisionModelRegistry).where(VisionModelRegistry.is_active.is_(True)))
+    for row in existing.scalars().all():
+        row.is_active = False
+    target.is_active = True
+    target.updated_at = datetime.now(UTC)
+    session.add(target)
+    await session.commit()
+    await session.refresh(target)
+    return target
 
 
 @router.get("/healthz")
