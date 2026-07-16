@@ -382,3 +382,74 @@ class TestSchedulerProactiveCoaching:
 
         mock_dispatch.assert_not_awaited()
         mock_session.add.assert_not_called()
+
+
+class TestSchedulerVisionAutoScan:
+    async def test_vision_auto_scan_persists_detections(self):
+        """Scheduled vision scans persist detections for active grows."""
+        from app.scheduler.tasks import TaskRunner
+        from app.vision.contracts import AcceleratorTier, BoundingBox, VisionDetection
+        from app.vision.service import DetectionResponse
+
+        grow = MagicMock()
+        grow.id = uuid4()
+        grow.tenant_id = uuid4()
+        grow.settings = None
+        grow.tent_id = uuid4()
+
+        tent = MagicMock()
+        tent.id = uuid4()
+        tent.camera_url = "http://camera/snapshot.jpg"
+
+        tenant = MagicMock()
+        tenant.coaching_settings = {
+            "vision_auto_scan": {
+                "enabled": True,
+                "cadence_minutes": 60,
+                "confidence_task_threshold": 0.9,
+                "task_cooldown_hours": 12,
+            }
+        }
+
+        camera = MagicMock()
+        camera.url = "http://camera/snapshot.jpg"
+        camera.camera_type = "http_snapshot"
+
+        detection = VisionDetection(
+            class_name="cannabis",
+            confidence=0.99,
+            bbox=BoundingBox(x=1.0, y=2.0, width=3.0, height=4.0),
+        )
+        model_response = DetectionResponse(
+            model_version="v-test",
+            accelerator_tier=AcceleratorTier.CORAL,
+            detections=(detection,),
+            message=None,
+        )
+
+        mock_client = AsyncMock()
+        mock_client.scan_image = AsyncMock(return_value=model_response)
+
+        mock_session = MagicMock()
+        grows_result = MagicMock()
+        grows_result.all.return_value = [(grow, tent, tenant)]
+        camera_result = MagicMock()
+        camera_result.scalar_one_or_none.return_value = camera
+        owner_result = MagicMock()
+        owner_result.scalar_one_or_none.return_value = uuid4()
+        existing_task_result = MagicMock()
+        existing_task_result.scalar_one_or_none.return_value = None
+        mock_session.execute = AsyncMock(side_effect=[grows_result, camera_result, owner_result, existing_task_result])
+        mock_session.commit = AsyncMock()
+
+        with (
+            patch("app.database.async_session_factory", _mock_session_factory(mock_session)),
+            patch("app.vision.client.VisionDetectorClient.from_settings", return_value=mock_client),
+            patch("app.grows.tent_routes._fetch_camera_image", new_callable=AsyncMock, return_value=b"img"),
+        ):
+            runner = TaskRunner(settings=MagicMock())
+            await runner._vision_auto_scan()
+
+        mock_client.scan_image.assert_awaited_once()
+        mock_session.add_all.assert_called_once()
+        mock_session.commit.assert_awaited_once()

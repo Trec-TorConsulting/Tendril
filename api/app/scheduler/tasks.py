@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
-from datetime import UTC
+from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 from app.config import Settings
-from app.scheduler.health import record_task_error, record_task_run
+from app.scheduler.health import record_task_error, record_task_run, record_vision_auto_scan_stats
 
 logger = logging.getLogger("tendril.scheduler.tasks")
 
@@ -15,6 +17,12 @@ _COACHING_DEFAULTS = {
     "enabled": True,
     "cadence_hours": 24,
     "minimum_severity": "info",
+}
+_VISION_SCAN_DEFAULTS = {
+    "enabled": True,
+    "cadence_minutes": 60,
+    "confidence_task_threshold": 0.9,
+    "task_cooldown_hours": 12,
 }
 _SEVERITY_RANK = {"info": 1, "warning": 2, "critical": 3}
 
@@ -39,6 +47,49 @@ def _severity_allowed(alert_severity: str, minimum_severity: str) -> bool:
     return _SEVERITY_RANK.get(alert_severity, 0) >= _SEVERITY_RANK.get(minimum_severity, 1)
 
 
+def _normalize_vision_scan_settings(raw: dict | None) -> dict[str, bool | int | float]:
+    data = raw if isinstance(raw, dict) else {}
+    enabled = bool(data.get("enabled", _VISION_SCAN_DEFAULTS["enabled"]))
+
+    cadence = data.get("cadence_minutes", _VISION_SCAN_DEFAULTS["cadence_minutes"])
+    cadence_minutes = cadence if isinstance(cadence, int) and 15 <= cadence <= 1440 else 60
+
+    threshold = data.get("confidence_task_threshold", _VISION_SCAN_DEFAULTS["confidence_task_threshold"])
+    if isinstance(threshold, int | float) and 0.5 <= float(threshold) <= 1.0:
+        confidence_task_threshold = float(threshold)
+    else:
+        confidence_task_threshold = 0.9
+
+    cooldown = data.get("task_cooldown_hours", _VISION_SCAN_DEFAULTS["task_cooldown_hours"])
+    task_cooldown_hours = cooldown if isinstance(cooldown, int) and 1 <= cooldown <= 168 else 12
+
+    return {
+        "enabled": enabled,
+        "cadence_minutes": cadence_minutes,
+        "confidence_task_threshold": confidence_task_threshold,
+        "task_cooldown_hours": task_cooldown_hours,
+    }
+
+
+def _merge_vision_scan_settings(
+    *,
+    tenant_settings: dict | None,
+    grow_settings: dict | None,
+) -> dict[str, bool | int | float]:
+    merged = _normalize_vision_scan_settings(tenant_settings)
+    if isinstance(grow_settings, dict):
+        for key in (
+            "enabled",
+            "cadence_minutes",
+            "confidence_task_threshold",
+            "task_cooldown_hours",
+        ):
+            if key in grow_settings:
+                validated = _normalize_vision_scan_settings({key: grow_settings[key]})
+                merged[key] = validated[key]
+    return merged
+
+
 # Task intervals in seconds
 HEALTH_CHECK_INTERVAL = 12 * 3600  # 12 hours
 WEATHER_POLL_INTERVAL = 30 * 60  # 30 minutes
@@ -53,11 +104,13 @@ INTEGRATION_POLL_INTERVAL = 60  # 1 minute (checks due integrations)
 DUNNING_CHECK_INTERVAL = 3600  # Hourly
 ACCOUNT_PURGE_INTERVAL = 24 * 3600  # Daily
 PLAN_RECONCILE_INTERVAL = 6 * 3600  # Every 6 hours
+VISION_SCAN_LOOP_INTERVAL = 5 * 60  # Evaluate cadence every 5 minutes
 
 
 class TaskRunner:
     def __init__(self, settings: Settings):
         self.settings = settings
+        self._vision_last_scan_at: dict[UUID, datetime] = {}
 
     async def run(self, shutdown_event: asyncio.Event) -> None:
         """Run all scheduled tasks until shutdown."""
@@ -94,10 +147,211 @@ class TaskRunner:
             asyncio.create_task(
                 self._loop(shutdown_event, "plan_reconcile", PLAN_RECONCILE_INTERVAL, self._plan_reconcile)
             ),
+            asyncio.create_task(
+                self._loop(shutdown_event, "vision_auto_scan", VISION_SCAN_LOOP_INTERVAL, self._vision_auto_scan)
+            ),
         ]
         await shutdown_event.wait()
         for t in tasks:
             t.cancel()
+
+    async def _vision_auto_scan(self) -> None:
+        """Run scheduled vision scans for active grows that have a camera configured."""
+        from sqlalchemy import and_, select
+
+        from app.commercial.models import Task
+        from app.database import async_session_factory
+        from app.grows.models import GrowCycle, Tent, TentCamera, VisionDetection
+        from app.grows.tent_routes import _fetch_camera_image
+        from app.tenants.models import Tenant, TenantMembership, TenantRole
+        from app.vision.client import VisionDetectorClient
+        from app.vision.contracts import VisionProfile
+
+        client = VisionDetectorClient.from_settings()
+        now = datetime.now(UTC)
+
+        try:
+            async with async_session_factory() as session:
+                result = await session.execute(
+                    select(GrowCycle, Tent, Tenant)
+                    .join(Tent, GrowCycle.tent_id == Tent.id)
+                    .join(Tenant, GrowCycle.tenant_id == Tenant.id)
+                    .where(
+                        and_(
+                            GrowCycle.status == "active",
+                            GrowCycle.deleted_at.is_(None),
+                            Tent.deleted_at.is_(None),
+                        )
+                    )
+                )
+                rows = result.all()
+
+                if not rows:
+                    logger.debug("No active grows for scheduled vision scan")
+                    return
+
+                saved_detections = 0
+                scanned_grows = 0
+                skipped_grows = 0
+                failed_grows = 0
+                tasks_created = 0
+                owner_cache: dict[UUID, UUID] = {}
+
+                for grow, tent, tenant in rows:
+                    tenant_cfg_raw = tenant.coaching_settings if isinstance(tenant.coaching_settings, dict) else {}
+                    tenant_scan_cfg = tenant_cfg_raw.get("vision_auto_scan") if isinstance(tenant_cfg_raw, dict) else {}
+
+                    grow_cfg_raw = grow.settings if isinstance(grow.settings, dict) else {}
+                    grow_scan_cfg = grow_cfg_raw.get("vision_auto_scan") if isinstance(grow_cfg_raw, dict) else {}
+
+                    scan_cfg = _merge_vision_scan_settings(
+                        tenant_settings=tenant_scan_cfg,
+                        grow_settings=grow_scan_cfg,
+                    )
+                    if not bool(scan_cfg["enabled"]):
+                        skipped_grows += 1
+                        continue
+
+                    last_scan = self._vision_last_scan_at.get(grow.id)
+                    cadence_minutes = int(scan_cfg["cadence_minutes"])
+                    if last_scan and (now - last_scan) < timedelta(minutes=cadence_minutes):
+                        skipped_grows += 1
+                        continue
+
+                    try:
+                        camera_result = await session.execute(
+                            select(TentCamera)
+                            .where(TentCamera.tent_id == tent.id, TentCamera.is_primary.is_(True))
+                            .limit(1)
+                        )
+                        camera = camera_result.scalar_one_or_none()
+
+                        camera_url = camera.url if camera else tent.camera_url
+                        camera_type = camera.camera_type if camera else "http_snapshot"
+                        if not camera_url:
+                            skipped_grows += 1
+                            continue
+
+                        image_bytes = await _fetch_camera_image(camera_url, camera_type)
+                        image_b64 = base64.b64encode(image_bytes).decode("ascii")
+
+                        model_response = await client.scan_image(
+                            image_base64=image_b64,
+                            profile=VisionProfile.CONTINUOUS_SCAN,
+                            source="scheduled",
+                            source_ref=str(tent.id),
+                        )
+                        scanned_grows += 1
+                        self._vision_last_scan_at[grow.id] = now
+
+                        if model_response.model_version is None:
+                            continue
+
+                        detections = [
+                            VisionDetection(
+                                tenant_id=grow.tenant_id,
+                                grow_cycle_id=grow.id,
+                                source="scheduled",
+                                source_ref=str(tent.id),
+                                image_storage_key=None,
+                                class_name=item.class_name,
+                                confidence=item.confidence,
+                                bbox=item.bbox.as_list(),
+                                model_version=model_response.model_version,
+                                accelerator_tier=model_response.accelerator_tier.value,
+                            )
+                            for item in model_response.detections
+                        ]
+
+                        if detections:
+                            session.add_all(detections)
+                            saved_detections += len(detections)
+
+                            threshold = float(scan_cfg["confidence_task_threshold"])
+                            high_conf = [d for d in detections if float(d.confidence) >= threshold]
+                            if high_conf:
+                                owner_id = owner_cache.get(grow.tenant_id)
+                                if owner_id is None:
+                                    owner_result = await session.execute(
+                                        select(TenantMembership.user_id)
+                                        .where(
+                                            TenantMembership.tenant_id == grow.tenant_id,
+                                            TenantMembership.role == TenantRole.admin,
+                                        )
+                                        .limit(1)
+                                    )
+                                    owner_id = owner_result.scalar_one_or_none()
+                                    if owner_id is not None:
+                                        owner_cache[grow.tenant_id] = owner_id
+
+                                if owner_id is not None:
+                                    cooldown_hours = int(scan_cfg["task_cooldown_hours"])
+                                    cutoff = now - timedelta(hours=cooldown_hours)
+                                    existing_task_result = await session.execute(
+                                        select(Task.id)
+                                        .where(
+                                            Task.tenant_id == grow.tenant_id,
+                                            Task.grow_cycle_id == grow.id,
+                                            Task.category == "vision_alert",
+                                            Task.status.in_(["pending", "in_progress"]),
+                                            Task.created_at >= cutoff,
+                                        )
+                                        .limit(1)
+                                    )
+                                    if existing_task_result.scalar_one_or_none() is None:
+                                        max_conf = max(float(d.confidence) for d in high_conf)
+                                        priority = "high" if max_conf >= 0.95 else "medium"
+                                        classes = sorted({d.class_name for d in high_conf})
+                                        summary = ", ".join(classes[:4])
+                                        if len(classes) > 4:
+                                            summary = f"{summary}, +{len(classes) - 4} more"
+
+                                        task = Task(
+                                            tenant_id=grow.tenant_id,
+                                            title="Review automatic TPU vision detections",
+                                            description=(
+                                                f"Scheduled scan detected: {summary}. Top confidence: {max_conf:.2f}."
+                                            ),
+                                            status="pending",
+                                            priority=priority,
+                                            category="vision_alert",
+                                            source="auto",
+                                            created_by=owner_id,
+                                            grow_cycle_id=grow.id,
+                                            tent_id=grow.tent_id,
+                                            due_date=now,
+                                            routine="on_demand",
+                                            estimated_minutes=10,
+                                        )
+                                        session.add(task)
+                                        tasks_created += 1
+
+                            await session.commit()
+                    except Exception:
+                        failed_grows += 1
+                        logger.exception("Scheduled vision scan failed for grow %s", grow.id)
+
+                record_vision_auto_scan_stats(
+                    scanned=scanned_grows,
+                    skipped=skipped_grows,
+                    failed=failed_grows,
+                    detections=saved_detections,
+                    tasks_created=tasks_created,
+                )
+
+                logger.info(
+                    (
+                        "Scheduled vision scans complete: scanned=%d skipped=%d "
+                        "failed=%d saved_detections=%d tasks_created=%d"
+                    ),
+                    scanned_grows,
+                    skipped_grows,
+                    failed_grows,
+                    saved_detections,
+                    tasks_created,
+                )
+        except Exception:
+            logger.exception("Vision auto-scan task failed")
 
     async def _loop(
         self,

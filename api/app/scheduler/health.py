@@ -12,7 +12,7 @@ import logging
 from datetime import UTC, datetime
 
 from aiohttp import web
-from prometheus_client import Counter, Gauge, generate_latest
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Gauge, generate_latest
 
 logger = logging.getLogger("tendril.scheduler.health")
 
@@ -25,6 +25,19 @@ TASK_ERRORS = Counter(
     "tendril_scheduler_task_errors_total",
     "Total task execution errors",
     ["task"],
+)
+VISION_AUTO_SCAN_RUNS = Counter(
+    "tendril_scheduler_vision_auto_scan_runs_total",
+    "Total automatic vision scan grow evaluations by outcome",
+    ["outcome"],
+)
+VISION_AUTO_SCAN_DETECTIONS = Counter(
+    "tendril_scheduler_vision_auto_scan_detections_total",
+    "Total detections persisted by automatic vision scans",
+)
+VISION_AUTO_SCAN_TASKS_CREATED = Counter(
+    "tendril_scheduler_vision_auto_scan_tasks_created_total",
+    "Total tasks created from high-confidence automatic vision detections",
 )
 LEADER_STATUS = Gauge(
     "tendril_scheduler_is_leader",
@@ -53,6 +66,26 @@ def record_task_error(task_name: str) -> None:
     TASK_ERRORS.labels(task=task_name).inc()
 
 
+def record_vision_auto_scan_stats(
+    *,
+    scanned: int,
+    skipped: int,
+    failed: int,
+    detections: int,
+    tasks_created: int,
+) -> None:
+    if scanned:
+        VISION_AUTO_SCAN_RUNS.labels(outcome="scanned").inc(scanned)
+    if skipped:
+        VISION_AUTO_SCAN_RUNS.labels(outcome="skipped").inc(skipped)
+    if failed:
+        VISION_AUTO_SCAN_RUNS.labels(outcome="failed").inc(failed)
+    if detections:
+        VISION_AUTO_SCAN_DETECTIONS.inc(detections)
+    if tasks_created:
+        VISION_AUTO_SCAN_TASKS_CREATED.inc(tasks_created)
+
+
 async def _healthz(request: web.Request) -> web.Response:
     """Liveness probe — returns 200 if process is alive."""
     return web.json_response({"status": "ok", "service": "scheduler"})
@@ -70,25 +103,16 @@ async def _readyz(request: web.Request) -> web.Response:
             "status": "ready",
             "is_leader": True,
             "last_task_run": (
-                _state["last_task_run"].isoformat()
-                if isinstance(_state["last_task_run"], datetime)
-                else None
+                _state["last_task_run"].isoformat() if isinstance(_state["last_task_run"], datetime) else None
             ),
-            "started_at": (
-                _state["started_at"].isoformat()
-                if isinstance(_state["started_at"], datetime)
-                else None
-            ),
+            "started_at": (_state["started_at"].isoformat() if isinstance(_state["started_at"], datetime) else None),
         }
     )
 
 
 async def _metrics(request: web.Request) -> web.Response:
     """Prometheus metrics endpoint."""
-    return web.Response(
-        body=generate_latest(),
-        content_type="text/plain; version=0.0.4; charset=utf-8",
-    )
+    return web.Response(body=generate_latest(), headers={"Content-Type": CONTENT_TYPE_LATEST})
 
 
 async def start_health_server() -> None:

@@ -131,6 +131,53 @@ If rollout causes regressions, use this sequence.
 
 ## 5. Operator Guide
 
+### Configure tenant vision auto-scan
+
+Use the tenant coaching settings endpoint to tune automatic TPU scans and task creation behavior per tenant.
+
+#### Read current settings
+
+```bash
+curl -sS -H "Authorization: Bearer $TOKEN" \
+  "$API_BASE/v1/tenants/me/coaching-settings" | jq
+```
+
+Expected vision block shape:
+
+```json
+{
+  "vision_auto_scan": {
+    "enabled": true,
+    "cadence_minutes": 60,
+    "confidence_task_threshold": 0.9,
+    "task_cooldown_hours": 12
+  }
+}
+```
+
+#### Update vision auto-scan settings
+
+```bash
+curl -sS -X PATCH \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  "$API_BASE/v1/tenants/me/coaching-settings" \
+  -d '{
+    "vision_enabled": true,
+    "vision_cadence_minutes": 30,
+    "vision_confidence_task_threshold": 0.85,
+    "vision_task_cooldown_hours": 6
+  }' | jq
+```
+
+Field ranges:
+
+- `vision_cadence_minutes`: 15 to 1440
+- `vision_confidence_task_threshold`: 0.5 to 1.0
+- `vision_task_cooldown_hours`: 1 to 168
+
+When a scheduled detection confidence meets or exceeds `vision_confidence_task_threshold`, Tendril creates a `vision_alert` task (unless another pending/in-progress `vision_alert` for the same grow is still inside the cooldown window).
+
 ### Reviewing approvals
 
 Use the AI side panel to review pending actions.
