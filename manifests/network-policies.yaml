@@ -264,6 +264,14 @@ spec:
     ports:
     - protocol: TCP
       port: 8080
+  # TPU detector (internal)
+  - to:
+    - podSelector:
+        matchLabels:
+          app: tpu-detector
+    ports:
+    - protocol: TCP
+      port: 8000
   # Gemini API (external HTTPS)
   - to:
     - ipBlock:
