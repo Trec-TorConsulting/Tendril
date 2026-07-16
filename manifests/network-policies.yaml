@@ -266,12 +266,15 @@ spec:
       port: 8080
   # TPU detector (internal)
   - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: tpu-detector
     - podSelector:
         matchLabels:
           app: tpu-detector
     ports:
     - protocol: TCP
-      port: 8000
+      port: 8080
   # Gemini API (external HTTPS)
   - to:
     - ipBlock:
