@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
 from datetime import UTC
 
@@ -53,6 +54,7 @@ INTEGRATION_POLL_INTERVAL = 60  # 1 minute (checks due integrations)
 DUNNING_CHECK_INTERVAL = 3600  # Hourly
 ACCOUNT_PURGE_INTERVAL = 24 * 3600  # Daily
 PLAN_RECONCILE_INTERVAL = 6 * 3600  # Every 6 hours
+VISION_SCAN_INTERVAL = 60 * 60  # Hourly
 
 
 class TaskRunner:
@@ -94,10 +96,104 @@ class TaskRunner:
             asyncio.create_task(
                 self._loop(shutdown_event, "plan_reconcile", PLAN_RECONCILE_INTERVAL, self._plan_reconcile)
             ),
+            asyncio.create_task(
+                self._loop(shutdown_event, "vision_auto_scan", VISION_SCAN_INTERVAL, self._vision_auto_scan)
+            ),
         ]
         await shutdown_event.wait()
         for t in tasks:
             t.cancel()
+
+    async def _vision_auto_scan(self) -> None:
+        """Run scheduled vision scans for active grows that have a camera configured."""
+        from sqlalchemy import and_, select
+
+        from app.database import async_session_factory
+        from app.grows.models import GrowCycle, Tent, TentCamera, VisionDetection
+        from app.grows.tent_routes import _fetch_camera_image
+        from app.vision.client import VisionDetectorClient
+        from app.vision.contracts import VisionProfile
+
+        client = VisionDetectorClient.from_settings()
+
+        try:
+            async with async_session_factory() as session:
+                result = await session.execute(
+                    select(GrowCycle, Tent).join(Tent, GrowCycle.tent_id == Tent.id).where(
+                        and_(
+                            GrowCycle.status == "active",
+                            GrowCycle.deleted_at.is_(None),
+                            Tent.deleted_at.is_(None),
+                        )
+                    )
+                )
+                rows = result.all()
+
+                if not rows:
+                    logger.debug("No active grows for scheduled vision scan")
+                    return
+
+                saved_detections = 0
+                scanned_grows = 0
+
+                for grow, tent in rows:
+                    try:
+                        camera_result = await session.execute(
+                            select(TentCamera)
+                            .where(TentCamera.tent_id == tent.id, TentCamera.is_primary.is_(True))
+                            .limit(1)
+                        )
+                        camera = camera_result.scalar_one_or_none()
+
+                        camera_url = camera.url if camera else tent.camera_url
+                        camera_type = camera.camera_type if camera else "http_snapshot"
+                        if not camera_url:
+                            continue
+
+                        image_bytes = await _fetch_camera_image(camera_url, camera_type)
+                        image_b64 = base64.b64encode(image_bytes).decode("ascii")
+
+                        model_response = await client.scan_image(
+                            image_base64=image_b64,
+                            profile=VisionProfile.CONTINUOUS_SCAN,
+                            source="scheduled",
+                            source_ref=str(tent.id),
+                        )
+                        scanned_grows += 1
+
+                        if model_response.model_version is None:
+                            continue
+
+                        detections = [
+                            VisionDetection(
+                                tenant_id=grow.tenant_id,
+                                grow_cycle_id=grow.id,
+                                source="scheduled",
+                                source_ref=str(tent.id),
+                                image_storage_key=None,
+                                class_name=item.class_name,
+                                confidence=item.confidence,
+                                bbox=item.bbox.as_list(),
+                                model_version=model_response.model_version,
+                                accelerator_tier=model_response.accelerator_tier.value,
+                            )
+                            for item in model_response.detections
+                        ]
+
+                        if detections:
+                            session.add_all(detections)
+                            await session.commit()
+                            saved_detections += len(detections)
+                    except Exception:
+                        logger.exception("Scheduled vision scan failed for grow %s", grow.id)
+
+                logger.info(
+                    "Scheduled vision scans complete: scanned_grows=%d saved_detections=%d",
+                    scanned_grows,
+                    saved_detections,
+                )
+        except Exception:
+            logger.exception("Vision auto-scan task failed")
 
     async def _loop(
         self,
