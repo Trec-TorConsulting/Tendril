@@ -1,7 +1,7 @@
 """Add vision detection persistence tables
 
 Revision ID: 0052
-Revises: 0051
+Revises: 0051_tenant_coaching_settings
 Create Date: 2026-07-16
 """
 
@@ -10,7 +10,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 revision = "0052"
-down_revision = "0051"
+down_revision = "0051_tenant_coaching_settings"
 branch_labels = None
 depends_on = None
 
