@@ -9,7 +9,7 @@
  * - Camera management
  * - Settings forms
  */
-import { test, expect, login, TEST_USERS, navigateTo } from "./helpers";
+import { test, expect, login, TEST_USERS } from "./helpers";
 
 test.describe("Forms - Grow Space (Tent) Creation", () => {
   test.beforeEach(async ({ page }) => {
@@ -236,8 +236,8 @@ test.describe("Forms - Harvest Logging", () => {
         // Should show harvest logging UI
         const harvestBtn = page.getByRole("button", { name: /log|add|harvest/i }).first();
         const harvestForm = page.locator('input[name*="weight"], [placeholder*="weight"]').first();
-        const hasHarvestUI = (await harvestBtn.isVisible().catch(() => false)) ||
-          (await harvestForm.isVisible().catch(() => false));
+        await harvestBtn.isVisible().catch(() => false);
+        await harvestForm.isVisible().catch(() => false);
         // Page should at minimum not be errored
         await expect(page.locator("body")).not.toBeEmpty();
       }

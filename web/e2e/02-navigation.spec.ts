@@ -6,7 +6,7 @@
  * - No broken links
  * - No console errors
  */
-import { test, expect, login, TEST_USERS, isMobileLayout, setupConsoleErrorTracking, checkLinksOnPage } from "./helpers";
+import { test, expect, login, TEST_USERS, setupConsoleErrorTracking, checkLinksOnPage } from "./helpers";
 
 /** Escape all regex special characters in a string */
 function escapeRegExp(s: string) {
