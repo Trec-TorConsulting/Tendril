@@ -6063,6 +6063,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/vision/scan/photo/{photo_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Scan Grow Photo */
+        post: operations["scan_grow_photo_v1_vision_scan_photo__photo_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/vision/scan/tent/{tent_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Scan Tent Snapshot */
+        post: operations["scan_tent_snapshot_v1_vision_scan_tent__tent_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/weather/{tent_id}/current": {
         parameters: {
             query?: never;
@@ -24575,6 +24609,72 @@ export interface operations {
                 "application/json": components["schemas"]["VisionScanRequest"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisionScanResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    scan_grow_photo_v1_vision_scan_photo__photo_id__post: {
+        parameters: {
+            query?: {
+                profile?: components["schemas"]["VisionProfile"];
+            };
+            header?: never;
+            path: {
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisionScanResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    scan_tent_snapshot_v1_vision_scan_tent__tent_id__post: {
+        parameters: {
+            query?: {
+                profile?: components["schemas"]["VisionProfile"];
+            };
+            header?: never;
+            path: {
+                tent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {
