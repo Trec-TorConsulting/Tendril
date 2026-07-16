@@ -13,6 +13,7 @@ import onnxruntime as ort
 from PIL import Image
 
 from app.artifacts import ArtifactError, resolve_model_path
+from app.runtime import AcceleratorTier, choose_accelerator, load_runtime_config
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,7 +107,20 @@ def load_detector_config() -> DetectorConfig:
 @lru_cache(maxsize=1)
 def get_session() -> ort.InferenceSession:
     cfg = load_detector_config()
-    providers = ["CPUExecutionProvider"]
+    runtime_cfg = load_runtime_config()
+    accelerator = choose_accelerator(runtime_cfg)
+    available = set(ort.get_available_providers())
+
+    providers: list[str] = []
+    if accelerator == AcceleratorTier.GPU:
+        for provider in ("TensorrtExecutionProvider", "CUDAExecutionProvider"):
+            if provider in available:
+                providers.append(provider)
+    if "CPUExecutionProvider" in available:
+        providers.append("CPUExecutionProvider")
+    if not providers:
+        providers = ["CPUExecutionProvider"]
+
     return ort.InferenceSession(cfg.model_path, providers=providers)
 
 
