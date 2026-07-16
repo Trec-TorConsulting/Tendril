@@ -163,7 +163,21 @@ async def update_tenant_coaching_settings(
 
     vision_settings = current.get("vision_auto_scan")
     if not isinstance(vision_settings, dict):
-        vision_settings = dict(DEFAULT_COACHING_SETTINGS["vision_auto_scan"])
+        default_vision = DEFAULT_COACHING_SETTINGS["vision_auto_scan"]
+        if isinstance(default_vision, dict):
+            vision_settings = {
+                "enabled": bool(default_vision.get("enabled", True)),
+                "cadence_minutes": int(default_vision.get("cadence_minutes", 60)),
+                "confidence_task_threshold": float(default_vision.get("confidence_task_threshold", 0.9)),
+                "task_cooldown_hours": int(default_vision.get("task_cooldown_hours", 12)),
+            }
+        else:
+            vision_settings = {
+                "enabled": True,
+                "cadence_minutes": 60,
+                "confidence_task_threshold": 0.9,
+                "task_cooldown_hours": 12,
+            }
     else:
         vision_settings = {
             "enabled": bool(vision_settings.get("enabled", True)),
@@ -181,10 +195,16 @@ async def update_tenant_coaching_settings(
     if vision_task_cooldown_hours is not None:
         vision_settings["task_cooldown_hours"] = vision_task_cooldown_hours
 
+    cadence_value = current.get("cadence_hours", DEFAULT_COACHING_SETTINGS["cadence_hours"])
+    normalized_cadence_hours = cadence_value if isinstance(cadence_value, int) else 24
+
+    minimum_value = current.get("minimum_severity", DEFAULT_COACHING_SETTINGS["minimum_severity"])
+    normalized_minimum_severity = str(minimum_value)
+
     tenant.coaching_settings = {
         "enabled": bool(current["enabled"]),
-        "cadence_hours": int(current["cadence_hours"]),
-        "minimum_severity": str(current["minimum_severity"]),
+        "cadence_hours": normalized_cadence_hours,
+        "minimum_severity": normalized_minimum_severity,
         "vision_auto_scan": vision_settings,
     }
     await session.commit()
