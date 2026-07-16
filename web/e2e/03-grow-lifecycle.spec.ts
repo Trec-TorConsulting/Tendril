@@ -7,7 +7,7 @@
  * - Tabs render correctly per type
  * - Outdoor-specific tabs for outdoor grows
  */
-import { test, expect, login, TEST_USERS, GROW_TYPES, GROW_STAGES } from "./helpers";
+import { test, expect, login, TEST_USERS, GROW_TYPES } from "./helpers";
 
 // Terminology mapping per grow type
 const TERMINOLOGY: Record<string, { container: RegExp; plural: RegExp }> = {
@@ -75,8 +75,6 @@ test.describe("Grow Lifecycle - Grow Detail Tabs", () => {
   test.beforeEach(async ({ page }) => {
     await login(page, TEST_USERS.standard.email, TEST_USERS.standard.password);
   });
-
-  const CORE_TABS = ["overview", "buckets", "activity", "tasks", "nutrition", "health-photos"];
 
   test("indoor grow shows core tabs", async ({ page }) => {
     await page.goto("/dashboard/grows");
@@ -210,8 +208,8 @@ test.describe("Grow Lifecycle - Stage Transitions", () => {
       // Or a stage selector/stepper
       const stageStepper = page.locator('[data-testid="stage-stepper"], [class*="stepper"], [role="progressbar"]').first();
 
-      const hasTransitionUI = (await transitionBtn.isVisible().catch(() => false)) ||
-        (await stageStepper.isVisible().catch(() => false));
+      await transitionBtn.isVisible().catch(() => false);
+      await stageStepper.isVisible().catch(() => false);
 
       // It's okay if not visible (might require specific conditions)
       // Just ensure page didn't error
