@@ -23,11 +23,11 @@
 - [ ] 3.1 Add `vision_detections` and `vision_model_registry` models + Alembic migration
 - [ ] 3.2 Enable RLS policies on the new tenant-scoped tables
 - [x] 3.3 Async client for the vision-detector with timeouts and graceful degradation
-- [ ] 3.4 `POST /v1/vision/scan/tent/{tent_id}` (reuse snapshot pipeline)
-- [ ] 3.5 `POST /v1/vision/scan/photo/{photo_id}` (fetch from MinIO)
+- [x] 3.4 `POST /v1/vision/scan/tent/{tent_id}` (reuse snapshot pipeline)
+- [x] 3.5 `POST /v1/vision/scan/photo/{photo_id}` (fetch from MinIO)
 - [ ] 3.6 `GET /v1/vision/detections` (tenant-scoped, paginated)
 - [ ] 3.7 Model registry endpoints: list versions, activate version
-- [ ] 3.8 Permission guards (`require_permission()`) on all new routes
+- [x] 3.8 Permission guards (`require_permission()`) on all new routes
 - [x] 3.9 Input validation (Pydantic) and OpenAPI docs
 
 ## 4. Detection → Drafts → Approval
