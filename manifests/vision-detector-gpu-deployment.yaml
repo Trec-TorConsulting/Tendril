@@ -42,6 +42,20 @@ spec:
           value: "INFO"
         - name: VISION_MODEL_VERSION
           value: ""
+        - name: VISION_MODEL_PATH
+          value: ""
+        - name: VISION_INPUT_WIDTH
+          value: "640"
+        - name: VISION_INPUT_HEIGHT
+          value: "640"
+        - name: VISION_CONFIDENCE_THRESHOLD
+          value: "0.25"
+        - name: VISION_IOU_THRESHOLD
+          value: "0.45"
+        - name: VISION_MAX_DETECTIONS
+          value: "50"
+        - name: VISION_CLASS_MAP
+          value: '{"0":"cannabis"}'
         - name: VISION_CORAL_ENABLED
           value: "false"
         - name: VISION_GPU_ENABLED

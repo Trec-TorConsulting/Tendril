@@ -6,6 +6,7 @@ from typing import Any
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
+from app.inference import DetectorError, run_detection
 from app.runtime import AcceleratorTier, build_runtime_state, load_runtime_config
 
 logger = logging.getLogger("tendril.vision.detector")
@@ -57,9 +58,8 @@ async def detect(payload: DetectRequest) -> DetectResponse:
             message="detection unavailable",
         )
 
-    # The runtime is intentionally scaffolded; model loading/inference is added in follow-up slices.
     logger.info(
-        "Received detection request: profile=%s source=%s source_ref=%s bytes=%d tier=%s",
+        "Running detection: profile=%s source=%s source_ref=%s bytes=%d tier=%s",
         payload.profile,
         payload.source,
         payload.source_ref,
@@ -67,9 +67,31 @@ async def detect(payload: DetectRequest) -> DetectResponse:
         state.accelerator_tier.value,
     )
 
+    try:
+        detections = run_detection(payload.image_base64)
+    except DetectorError as exc:
+        logger.warning("Detector error: %s", exc)
+        return DetectResponse(
+            model_version=state.model_version,
+            accelerator_tier=state.accelerator_tier.value,
+            detections=[],
+            message=str(exc),
+        )
+    except Exception:
+        logger.exception("Unexpected detector failure")
+        return DetectResponse(
+            model_version=state.model_version,
+            accelerator_tier=state.accelerator_tier.value,
+            detections=[],
+            message="detector execution failed",
+        )
+
     return DetectResponse(
         model_version=state.model_version,
         accelerator_tier=state.accelerator_tier.value,
-        detections=[],
+        detections=[
+            DetectionBox(class_name=item.class_name, confidence=item.confidence, bbox=item.bbox)
+            for item in detections
+        ],
         message=None,
     )

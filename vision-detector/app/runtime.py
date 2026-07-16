@@ -16,6 +16,7 @@ class AcceleratorTier(StrEnum):
 @dataclass(frozen=True, slots=True)
 class RuntimeConfig:
     model_version: str
+    model_path: str
     coral_enabled: bool
     gpu_enabled: bool
     cpu_enabled: bool
@@ -35,6 +36,7 @@ def _env_flag(name: str, default: bool) -> bool:
 def load_runtime_config() -> RuntimeConfig:
     return RuntimeConfig(
         model_version=os.environ.get("VISION_MODEL_VERSION", "").strip(),
+        model_path=os.environ.get("VISION_MODEL_PATH", "").strip(),
         coral_enabled=_env_flag("VISION_CORAL_ENABLED", True),
         gpu_enabled=_env_flag("VISION_GPU_ENABLED", True),
         cpu_enabled=_env_flag("VISION_CPU_ENABLED", True),
@@ -65,6 +67,6 @@ def choose_accelerator(config: RuntimeConfig) -> AcceleratorTier:
 
 
 def build_runtime_state(config: RuntimeConfig) -> RuntimeState:
-    if not config.model_version:
+    if not config.model_version or not config.model_path:
         return RuntimeState(model_version=None, accelerator_tier=AcceleratorTier.UNAVAILABLE)
     return RuntimeState(model_version=config.model_version, accelerator_tier=choose_accelerator(config))
