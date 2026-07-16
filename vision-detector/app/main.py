@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from time import perf_counter
 from typing import Any
 
 from fastapi import FastAPI
@@ -8,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from app.inference import DetectorError, run_detection
 from app.runtime import AcceleratorTier, build_runtime_state, load_runtime_config
+from app.telemetry import telemetry
 
 logger = logging.getLogger("tendril.vision.detector")
 
@@ -38,19 +40,35 @@ class DetectResponse(BaseModel):
 async def healthz() -> dict[str, Any]:
     config = load_runtime_config()
     state = build_runtime_state(config)
+    model_source = "none"
+    if config.model_path:
+        model_source = "path"
+    elif config.model_storage_key:
+        model_source = "storage_key"
+
     return {
         "status": "ok",
         "model_version": state.model_version,
         "accelerator_tier": state.accelerator_tier.value,
+        "model_source": model_source,
+        "model_path_configured": bool(config.model_path),
+        "model_storage_key_configured": bool(config.model_storage_key),
     }
+
+
+@app.get("/metrics")
+async def metrics() -> dict[str, Any]:
+    return telemetry.snapshot()
 
 
 @app.post("/detect", response_model=DetectResponse)
 async def detect(payload: DetectRequest) -> DetectResponse:
+    started = perf_counter()
     config = load_runtime_config()
     state = build_runtime_state(config)
 
     if state.model_version is None:
+        telemetry.record_unavailable(latency_ms=(perf_counter() - started) * 1000.0)
         return DetectResponse(
             model_version=None,
             accelerator_tier=AcceleratorTier.UNAVAILABLE.value,
@@ -71,6 +89,10 @@ async def detect(payload: DetectRequest) -> DetectResponse:
         detections = run_detection(payload.image_base64)
     except DetectorError as exc:
         logger.warning("Detector error: %s", exc)
+        telemetry.record_error(
+            tier=state.accelerator_tier.value,
+            latency_ms=(perf_counter() - started) * 1000.0,
+        )
         return DetectResponse(
             model_version=state.model_version,
             accelerator_tier=state.accelerator_tier.value,
@@ -79,12 +101,22 @@ async def detect(payload: DetectRequest) -> DetectResponse:
         )
     except Exception:
         logger.exception("Unexpected detector failure")
+        telemetry.record_error(
+            tier=state.accelerator_tier.value,
+            latency_ms=(perf_counter() - started) * 1000.0,
+        )
         return DetectResponse(
             model_version=state.model_version,
             accelerator_tier=state.accelerator_tier.value,
             detections=[],
             message="detector execution failed",
         )
+
+    telemetry.record_success(
+        tier=state.accelerator_tier.value,
+        latency_ms=(perf_counter() - started) * 1000.0,
+        classes=[item.class_name for item in detections],
+    )
 
     return DetectResponse(
         model_version=state.model_version,
