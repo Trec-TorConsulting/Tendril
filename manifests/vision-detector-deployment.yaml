@@ -56,6 +56,9 @@ spec:
             cpu: 500m
             memory: 512Mi
         volumeMounts:
+        - name: apex-0
+          mountPath: /dev/apex_0
+          readOnly: true
         - name: tmp
           mountPath: /tmp
         readinessProbe:
@@ -73,5 +76,9 @@ spec:
           timeoutSeconds: 3
           periodSeconds: 30
       volumes:
+      - name: apex-0
+        hostPath:
+          path: /dev/apex_0
+          type: CharDevice
       - name: tmp
         emptyDir: {}

@@ -13,7 +13,7 @@
 
 ## 2. Kubernetes Deployment
 - [x] 2.1 `manifests/vision-detector-deployment.yaml` pinned to `node06` (nodeSelector/affinity)
-- [ ] 2.2 Expose the Coral device to the pod; least-privilege securityContext
+- [x] 2.2 Expose the Coral device to the pod; least-privilege securityContext
 - [x] 2.3 `manifests/vision-detector-service.yaml` (internal ClusterIP only)
 - [ ] 2.4 GPU-tier scheduling config referencing `node05` for fallback
 - [x] 2.5 NetworkPolicy: only the API may reach the vision-detector
