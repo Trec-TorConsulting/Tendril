@@ -45,8 +45,34 @@ def load_runtime_config() -> RuntimeConfig:
     )
 
 
+def _usb_coral_available() -> bool:
+    # Common Coral USB IDs: pre-firmware (1a6e:089a), runtime (18d1:9302/9301)
+    known_ids = {
+        "1a6e": {"089a"},
+        "18d1": {"9301", "9302"},
+    }
+    usb_root = Path("/sys/bus/usb/devices")
+    if not usb_root.exists():
+        return False
+
+    for dev in usb_root.iterdir():
+        vendor_file = dev / "idVendor"
+        product_file = dev / "idProduct"
+        if not vendor_file.exists() or not product_file.exists():
+            continue
+        vendor = vendor_file.read_text(encoding="utf-8").strip().lower()
+        product = product_file.read_text(encoding="utf-8").strip().lower()
+        if product in known_ids.get(vendor, set()):
+            return True
+    return False
+
+
 def _coral_available(enabled: bool) -> bool:
-    return enabled and Path("/dev/apex_0").exists()
+    if not enabled:
+        return False
+    if Path("/dev/apex_0").exists():
+        return True
+    return _usb_coral_available()
 
 
 def _gpu_available(enabled: bool) -> bool:
