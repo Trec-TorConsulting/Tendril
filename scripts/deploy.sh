@@ -28,6 +28,7 @@ kubectl apply -f "$MANIFEST_DIR/api-service.yaml"
 kubectl apply -f "$MANIFEST_DIR/mqtt-worker-deployment.yaml"
 kubectl apply -f "$MANIFEST_DIR/mqtt-worker-service.yaml"
 kubectl apply -f "$MANIFEST_DIR/scheduler-deployment.yaml"
+kubectl apply -f "$MANIFEST_DIR/scheduler-service.yaml"
 kubectl apply -f "$MANIFEST_DIR/web-deployment.yaml"
 kubectl apply -f "$MANIFEST_DIR/web-service.yaml"
 kubectl apply -f "$MANIFEST_DIR/vision-detector-deployment.yaml"
@@ -36,7 +37,16 @@ kubectl apply -f "$MANIFEST_DIR/vision-detector-gpu-deployment.yaml"
 kubectl apply -f "$MANIFEST_DIR/vision-detector-gpu-service.yaml"
 kubectl apply -f "$MANIFEST_DIR/ingress.yaml"
 kubectl apply -f "$MANIFEST_DIR/hpa-api.yaml"
+kubectl apply -f "$MANIFEST_DIR/hpa-web.yaml"
+kubectl apply -f "$MANIFEST_DIR/hpa-mqtt-worker.yaml"
 kubectl apply -f "$MANIFEST_DIR/network-policies.yaml"
+
+# ServiceMonitor resources require Prometheus Operator CRDs
+if kubectl api-resources --api-group=monitoring.coreos.com | grep -q '^servicemonitors'; then
+	kubectl apply -f "$MANIFEST_DIR/servicemonitors.yaml"
+else
+	echo "=== Skipping servicemonitors.yaml (monitoring.coreos.com CRDs not installed) ==="
+fi
 
 # Restart deployments to pick up latest images
 kubectl rollout restart deployment tendril-api -n "$NAMESPACE"
