@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: tendril-vision-detector-gpu
+  namespace: tendril
+spec:
+  selector:
+    app: tendril-vision-detector-gpu
+  ports:
+  - port: 8080
+    targetPort: 8080
+    protocol: TCP
+  type: ClusterIP

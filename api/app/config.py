@@ -93,6 +93,26 @@ class Settings:
         default_factory=lambda: os.environ.get("GO2RTC_URL", "http://go2rtc.go2rtc.svc.cluster.local:8000")
     )
 
+    # Vision detection
+    vision_detector_base_url: str = field(
+        default_factory=lambda: os.environ.get(
+            "VISION_DETECTOR_BASE_URL",
+            "http://tendril-vision-detector.tendril.svc.cluster.local:8080",
+        )
+    )
+    vision_detector_timeout_seconds: float = field(
+        default_factory=lambda: float(os.environ.get("VISION_DETECTOR_TIMEOUT_SECONDS", "15"))
+    )
+    vision_detector_gpu_fallback_url: str = field(
+        default_factory=lambda: os.environ.get(
+            "VISION_DETECTOR_GPU_FALLBACK_URL",
+            "http://tendril-vision-detector-gpu.tendril.svc.cluster.local:8080",
+        )
+    )
+    vision_continuous_scan_enabled: bool = field(
+        default_factory=lambda: os.environ.get("VISION_CONTINUOUS_SCAN_ENABLED", "false").lower() == "true"
+    )
+
     # Account deletion
     data_retention_days: int = field(default_factory=lambda: int(os.environ.get("DATA_RETENTION_DAYS", "30")))
 

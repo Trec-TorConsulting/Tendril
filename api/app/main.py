@@ -65,6 +65,7 @@ from app.support.forum_routes import router as forum_router
 from app.support.kb_routes import router as kb_router
 from app.support.routes import router as support_tickets_router
 from app.tenants.routes import router as tenants_router
+from app.vision.routes import router as vision_router
 from app.weather.routes import router as weather_router
 
 logger = logging.getLogger("tendril")
@@ -233,6 +234,7 @@ def create_app() -> FastAPI:
     app.include_router(integrations_router, prefix=f"{settings.api_prefix}/integrations", tags=["integrations"])
     app.include_router(equipment_router, prefix=f"{settings.api_prefix}/equipment", tags=["equipment"])
     app.include_router(analytics_router, prefix=f"{settings.api_prefix}/analytics", tags=["analytics"])
+    app.include_router(vision_router, prefix=f"{settings.api_prefix}/vision", tags=["vision"])
     app.include_router(expense_router, prefix=f"{settings.api_prefix}/grows", tags=["cost-roi"])
     app.include_router(support_tickets_router, prefix=f"{settings.api_prefix}/support/tickets", tags=["support"])
     app.include_router(support_admin_router, prefix=f"{settings.api_prefix}/support/admin", tags=["support-admin"])

@@ -6029,6 +6029,74 @@ export interface paths {
         patch: operations["update_camera_v1_tents__tent_id__cameras__camera_id__patch"];
         trace?: never;
     };
+    "/v1/vision/healthz": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Vision Healthz */
+        get: operations["vision_healthz_v1_vision_healthz_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/vision/scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Scan Image */
+        post: operations["scan_image_v1_vision_scan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/vision/scan/photo/{photo_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Scan Grow Photo */
+        post: operations["scan_grow_photo_v1_vision_scan_photo__photo_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/vision/scan/tent/{tent_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Scan Tent Snapshot */
+        post: operations["scan_tent_snapshot_v1_vision_scan_tent__tent_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/weather/{tent_id}/current": {
         parameters: {
             query?: never;
@@ -11504,6 +11572,42 @@ export interface components {
         VerifyEmailRequest: {
             /** Token */
             token: string;
+        };
+        /** VisionDetectionBoxResponse */
+        VisionDetectionBoxResponse: {
+            /** Bbox */
+            bbox: number[];
+            /** Class Name */
+            class_name: string;
+            /** Confidence */
+            confidence: number;
+        };
+        /**
+         * VisionProfile
+         * @enum {string}
+         */
+        VisionProfile: "tent_overview" | "photo_scan" | "trichome_macro" | "continuous_scan";
+        /** VisionScanRequest */
+        VisionScanRequest: {
+            /** Image Base64 */
+            image_base64: string;
+            /** @default tent_overview */
+            profile: components["schemas"]["VisionProfile"];
+            /** Source */
+            source: string;
+            /** Source Ref */
+            source_ref: string;
+        };
+        /** VisionScanResponse */
+        VisionScanResponse: {
+            /** Accelerator Tier */
+            accelerator_tier: string;
+            /** Detections */
+            detections: components["schemas"]["VisionDetectionBoxResponse"][];
+            /** Message */
+            message?: string | null;
+            /** Model Version */
+            model_version: string | null;
         };
         /** WaterChangeRequest */
         WaterChangeRequest: {
@@ -24458,6 +24562,127 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CameraResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    vision_healthz_v1_vision_healthz_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    scan_image_v1_vision_scan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VisionScanRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisionScanResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    scan_grow_photo_v1_vision_scan_photo__photo_id__post: {
+        parameters: {
+            query?: {
+                profile?: components["schemas"]["VisionProfile"];
+            };
+            header?: never;
+            path: {
+                photo_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisionScanResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    scan_tent_snapshot_v1_vision_scan_tent__tent_id__post: {
+        parameters: {
+            query?: {
+                profile?: components["schemas"]["VisionProfile"];
+            };
+            header?: never;
+            path: {
+                tent_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VisionScanResponse"];
                 };
             };
             /** @description Validation Error */
