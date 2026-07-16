@@ -40,6 +40,18 @@ class TelemetryTests(unittest.TestCase):
         self.assertEqual(tier_counts["cpu"], 1)
         self.assertEqual(tier_counts["unavailable"], 1)
 
+    def test_prometheus_metrics_contains_expected_series(self) -> None:
+        store = TelemetryStore()
+        store.record_success(tier="coral", latency_ms=12.0, classes=["cannabis"])
+        store.record_error(tier="gpu", latency_ms=18.0)
+
+        metrics = store.prometheus_metrics()
+
+        self.assertIn("vision_detector_requests_total 2", metrics)
+        self.assertIn('vision_detector_requests_by_tier_total{tier="coral"} 1', metrics)
+        self.assertIn('vision_detector_requests_by_tier_total{tier="gpu"} 1', metrics)
+        self.assertIn('vision_detector_class_detections_total{class="cannabis"} 1', metrics)
+
 
 if __name__ == "__main__":
     unittest.main()

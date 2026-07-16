@@ -5,6 +5,7 @@ from time import perf_counter
 from typing import Any
 
 from fastapi import FastAPI
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
 from app.inference import DetectorError, run_detection
@@ -59,6 +60,14 @@ async def healthz() -> dict[str, Any]:
 @app.get("/metrics")
 async def metrics() -> dict[str, Any]:
     return telemetry.snapshot()
+
+
+@app.get("/metrics/prometheus", response_class=PlainTextResponse)
+async def metrics_prometheus() -> PlainTextResponse:
+    return PlainTextResponse(
+        content=telemetry.prometheus_metrics(),
+        media_type="text/plain; version=0.0.4; charset=utf-8",
+    )
 
 
 @app.post("/detect", response_model=DetectResponse)
