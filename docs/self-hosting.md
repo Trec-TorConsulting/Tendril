@@ -200,6 +200,24 @@ Deployment order (handled by the script):
 
 The API and Web have Horizontal Pod Autoscalers configured (`hpa-api.yaml`, `hpa-web.yaml`).
 
+### Vision Detector Metrics
+
+The vision detector services expose two metrics endpoints:
+
+- JSON snapshot: `/metrics`
+- Prometheus format: `/metrics/prometheus`
+
+For Kubernetes clusters running Prometheus Operator, `manifests/servicemonitors.yaml`
+includes `ServiceMonitor` resources for:
+
+- `tendril-vision-detector`
+- `tendril-vision-detector-gpu`
+
+These scrape `/metrics/prometheus` every 30 seconds.
+
+If `ServiceMonitor` resources fail to apply, install Prometheus Operator CRDs first
+(`monitoring.coreos.com/v1`).
+
 ### External PostgreSQL
 
 To use an external PostgreSQL instance instead of the bundled one:
