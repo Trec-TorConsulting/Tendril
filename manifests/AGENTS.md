@@ -114,5 +114,5 @@ kubectl diff -f manifests/api-deployment.yaml
 - **Traefik middleware names are namespaced.** Reference as `tendril-security-headers@kubernetescrd` from an Ingress, not the bare name.
 - **PDB + single replica = stuck drains.** If you scale a Deployment to 1, also drop its PDB or set `minAvailable: 0`.
 - **`servicemonitors.yaml`** requires the Prometheus Operator CRDs. It will fail to apply on a vanilla cluster — skip it if you don't run kube-prometheus.
-- **The deploy script does not apply network-policies.yaml, pdb-*, or hpa-mqtt-worker/web.** Apply those manually after the first deploy: `kubectl apply -f manifests/` (or individually).
+- **The deploy script applies HPAs, PDBs, and network policies.** Traefik and ServiceMonitor custom resources are applied only when their CRDs exist.
 - `manifests/secrets.yaml` regenerated from `.example` will overwrite real values. Always edit in place or use SealedSecrets.

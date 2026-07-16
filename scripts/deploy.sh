@@ -35,10 +35,13 @@ kubectl apply -f "$MANIFEST_DIR/vision-detector-deployment.yaml"
 kubectl apply -f "$MANIFEST_DIR/vision-detector-service.yaml"
 kubectl apply -f "$MANIFEST_DIR/vision-detector-gpu-deployment.yaml"
 kubectl apply -f "$MANIFEST_DIR/vision-detector-gpu-service.yaml"
-kubectl apply -f "$MANIFEST_DIR/ingress.yaml"
 kubectl apply -f "$MANIFEST_DIR/hpa-api.yaml"
 kubectl apply -f "$MANIFEST_DIR/hpa-web.yaml"
 kubectl apply -f "$MANIFEST_DIR/hpa-mqtt-worker.yaml"
+kubectl apply -f "$MANIFEST_DIR/pdb-api.yaml"
+kubectl apply -f "$MANIFEST_DIR/pdb-web.yaml"
+kubectl apply -f "$MANIFEST_DIR/pdb-mqtt-worker.yaml"
+kubectl apply -f "$MANIFEST_DIR/pdb-scheduler.yaml"
 kubectl apply -f "$MANIFEST_DIR/network-policies.yaml"
 
 # ServiceMonitor resources require Prometheus Operator CRDs
@@ -47,6 +50,24 @@ if kubectl api-resources --api-group=monitoring.coreos.com | grep -q '^servicemo
 else
 	echo "=== Skipping servicemonitors.yaml (monitoring.coreos.com CRDs not installed) ==="
 fi
+
+# Traefik middleware resources require Traefik CRDs
+if kubectl api-resources --api-group=traefik.io | grep -q '^middlewares'; then
+	kubectl apply -f "$MANIFEST_DIR/security-headers-middleware.yaml"
+	kubectl apply -f "$MANIFEST_DIR/www-redirect-middleware.yaml"
+else
+	echo "=== Skipping Traefik middleware manifests (traefik.io Middleware CRD not installed) ==="
+fi
+
+if kubectl api-resources --api-group=traefik.io | grep -q '^serverstransports'; then
+	kubectl apply -f "$MANIFEST_DIR/api-servers-transport.yaml"
+else
+	echo "=== Skipping api-servers-transport.yaml (traefik.io ServersTransport CRD not installed) ==="
+fi
+
+kubectl apply -f "$MANIFEST_DIR/ingress.yaml"
+kubectl apply -f "$MANIFEST_DIR/api-ingress.yaml"
+kubectl apply -f "$MANIFEST_DIR/www-redirect-ingress.yaml"
 
 # Restart deployments to pick up latest images
 kubectl rollout restart deployment tendril-api -n "$NAMESPACE"
