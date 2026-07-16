@@ -215,8 +215,10 @@ metadata:
   namespace: tendril
 spec:
   podSelector:
-    matchLabels:
-      app: tendril-vision-detector
+    matchExpressions:
+    - key: app
+      operator: In
+      values: [tendril-vision-detector, tendril-vision-detector-gpu]
   policyTypes:
   - Ingress
   ingress:
@@ -255,8 +257,10 @@ spec:
   # Vision detector (internal)
   - to:
     - podSelector:
-        matchLabels:
-          app: tendril-vision-detector
+        matchExpressions:
+        - key: app
+          operator: In
+          values: [tendril-vision-detector, tendril-vision-detector-gpu]
     ports:
     - protocol: TCP
       port: 8080

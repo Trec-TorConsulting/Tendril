@@ -9,15 +9,15 @@
 - [ ] 1.6 Return detections with class, confidence, normalized bbox, model version, tier
 - [x] 1.7 Add graceful "no active model" and "unavailable" responses
 - [x] 1.8 Write `vision-detector/Dockerfile` (arm64, non-root, read-only rootfs friendly)
-- [ ] 1.9 Unit tests for fallback selection, response schema, and no-model handling
+- [x] 1.9 Unit tests for fallback selection, response schema, and no-model handling
 
 ## 2. Kubernetes Deployment
 - [x] 2.1 `manifests/vision-detector-deployment.yaml` pinned to `node06` (nodeSelector/affinity)
 - [x] 2.2 Expose the Coral device to the pod; least-privilege securityContext
 - [x] 2.3 `manifests/vision-detector-service.yaml` (internal ClusterIP only)
-- [ ] 2.4 GPU-tier scheduling config referencing `node05` for fallback
+- [x] 2.4 GPU-tier scheduling config referencing `node05` for fallback
 - [x] 2.5 NetworkPolicy: only the API may reach the vision-detector
-- [ ] 2.6 Liveness/readiness probes wired to `/healthz`
+- [x] 2.6 Liveness/readiness probes wired to `/healthz`
 
 ## 3. API — Vision Domain
 - [ ] 3.1 Add `vision_detections` and `vision_model_registry` models + Alembic migration

@@ -103,6 +103,12 @@ class Settings:
     vision_detector_timeout_seconds: float = field(
         default_factory=lambda: float(os.environ.get("VISION_DETECTOR_TIMEOUT_SECONDS", "15"))
     )
+    vision_detector_gpu_fallback_url: str = field(
+        default_factory=lambda: os.environ.get(
+            "VISION_DETECTOR_GPU_FALLBACK_URL",
+            "http://tendril-vision-detector-gpu.tendril.svc.cluster.local:8080",
+        )
+    )
     vision_continuous_scan_enabled: bool = field(
         default_factory=lambda: os.environ.get("VISION_CONTINUOUS_SCAN_ENABLED", "false").lower() == "true"
     )
