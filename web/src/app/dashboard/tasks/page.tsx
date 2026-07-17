@@ -10,6 +10,7 @@ import {
   updateTask,
   completeTask,
   deleteTask,
+  bulkTasks,
   getCalendarTasks,
   listGrows,
   listTenantMembers,
@@ -62,6 +63,8 @@ import {
   Bot,
   Zap,
   UserCircle,
+  CheckSquare,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useConfirm } from "@/components/confirm-dialog";
@@ -167,6 +170,10 @@ export default function TasksPage() {
   const [recurring, setRecurring] = useState("");
   const [assignTo, setAssignTo] = useState("");
   const [error, setError] = useState("");
+
+  // Bulk selection
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Calendar state
   const now = new Date();
@@ -285,6 +292,73 @@ export default function TasksPage() {
     }
   };
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const exitSelection = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const handleBulk = async (action: "complete" | "delete") => {
+    const token = getAccessToken();
+    if (!token || selectedIds.size === 0) return;
+    const ids = Array.from(selectedIds);
+    if (action === "delete") {
+      const ok = await confirm({
+        title: "Delete Tasks",
+        description: `Permanently delete ${ids.length} selected task${ids.length === 1 ? "" : "s"}?`,
+        confirmText: "Delete",
+        variant: "destructive",
+      });
+      if (!ok) return;
+    }
+    try {
+      const { affected } = await bulkTasks(action, ids, token);
+      toast.success(`${affected} task${affected === 1 ? "" : "s"} ${action === "delete" ? "deleted" : "completed"}`);
+      exitSelection();
+      refresh();
+      if (view === "calendar") refreshCalendar();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Bulk action failed");
+    }
+  };
+
+  const overdueTasks = tasks.filter(
+    (t) => t.status !== "completed" && t.status !== "cancelled" && t.due_date && new Date(t.due_date) < new Date(),
+  );
+
+  const handleCompleteOverdue = async () => {
+    const token = getAccessToken();
+    if (!token || overdueTasks.length === 0) return;
+    const ok = await confirm({
+      title: "Complete Overdue Tasks",
+      description: `Mark all ${overdueTasks.length} overdue task${overdueTasks.length === 1 ? "" : "s"} as complete? These are tasks whose due date has already passed.`,
+      confirmText: "Mark Complete",
+    });
+    if (!ok) return;
+    try {
+      const { affected } = await bulkTasks("complete", overdueTasks.map((t) => t.id), token);
+      toast.success(`Completed ${affected} overdue task${affected === 1 ? "" : "s"}`);
+      exitSelection();
+      refresh();
+      if (view === "calendar") refreshCalendar();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to complete overdue tasks");
+    }
+  };
+
+  const selectOverdue = () => {
+    setSelectionMode(true);
+    setSelectedIds(new Set(overdueTasks.map((t) => t.id)));
+  };
+
   const isOwner = user?.role === "owner";
   const memberMap = Object.fromEntries(members.map((m) => [m.id, m.display_name || m.email]));
 
@@ -401,6 +475,76 @@ export default function TasksPage() {
           )}
         </div>
 
+        {/* Bulk actions toolbar (list view) */}
+        {view === "list" && (activeTasks.length > 0 || overdueTasks.length > 0) && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 p-2">
+            {!selectionMode ? (
+              <>
+                <Button variant="outline" size="sm" onClick={() => setSelectionMode(true)}>
+                  <CheckSquare className="mr-1 h-4 w-4" />
+                  Select
+                </Button>
+                {overdueTasks.length > 0 && (
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="border-green-500/40 text-green-600 hover:bg-green-500/10 dark:text-green-400"
+                      onClick={handleCompleteOverdue}
+                    >
+                      <CheckCircle2 className="mr-1 h-4 w-4" />
+                      Complete Overdue ({overdueTasks.length})
+                    </Button>
+                    <span className="text-xs text-muted-foreground">
+                      {overdueTasks.length} task{overdueTasks.length === 1 ? "" : "s"} past due
+                    </span>
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <span className="text-sm font-medium">{selectedIds.size} selected</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedIds(new Set(activeTasks.map((t) => t.id)))}
+                >
+                  Select all ({activeTasks.length})
+                </Button>
+                {overdueTasks.length > 0 && (
+                  <Button variant="ghost" size="sm" onClick={selectOverdue}>
+                    Select overdue ({overdueTasks.length})
+                  </Button>
+                )}
+                <div className="ml-auto flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={selectedIds.size === 0}
+                    onClick={() => handleBulk("complete")}
+                  >
+                    <CheckCircle2 className="mr-1 h-4 w-4" />
+                    Complete
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    disabled={selectedIds.size === 0}
+                    onClick={() => handleBulk("delete")}
+                  >
+                    <Trash2 className="mr-1 h-4 w-4" />
+                    Delete
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={exitSelection}>
+                    <X className="mr-1 h-4 w-4" />
+                    Done
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
         {/* ─── List View ──────────────────────────────── */}
         {view === "list" && (
           <div className="space-y-3">
@@ -419,6 +563,30 @@ export default function TasksPage() {
               const unassigned = activeTasks.filter((t) => !t.assigned_to);
               const othersAssigned = activeTasks.filter((t) => t.assigned_to && t.assigned_to !== user?.id);
 
+              const renderRow = (t: TaskItem) => {
+                const card = (
+                  <TaskCard
+                    task={t}
+                    growName={t.grow_cycle_id ? growMap[t.grow_cycle_id] : undefined}
+                    assigneeName={t.assigned_to ? memberMap[t.assigned_to] : undefined}
+                    members={members}
+                    onComplete={handleComplete}
+                    onDelete={handleDelete}
+                    onAssign={handleAssign}
+                    showAssign={isOwner}
+                    selectable={selectionMode}
+                    selected={selectedIds.has(t.id)}
+                    onToggleSelect={toggleSelect}
+                  />
+                );
+                if (selectionMode) return <div key={t.id}>{card}</div>;
+                return (
+                  <SwipeableCard key={t.id} onSwipeRight={() => handleComplete(t.id)} onSwipeLeft={() => handleDelete(t.id)}>
+                    {card}
+                  </SwipeableCard>
+                );
+              };
+
               return (
                 <>
                   {myTasks.length > 0 && (
@@ -427,20 +595,7 @@ export default function TasksPage() {
                         <UserCircle className="size-4" />
                         Assigned to Me ({myTasks.length})
                       </h2>
-                      {myTasks.map((t) => (
-                        <SwipeableCard key={t.id} onSwipeRight={() => handleComplete(t.id)} onSwipeLeft={() => handleDelete(t.id)}>
-                          <TaskCard
-                            task={t}
-                            growName={t.grow_cycle_id ? growMap[t.grow_cycle_id] : undefined}
-                            assigneeName={memberMap[t.assigned_to!]}
-                            members={members}
-                            onComplete={handleComplete}
-                            onDelete={handleDelete}
-                            onAssign={handleAssign}
-                            showAssign={isOwner}
-                          />
-                        </SwipeableCard>
-                      ))}
+                      {myTasks.map(renderRow)}
                     </>
                   )}
 
@@ -451,19 +606,7 @@ export default function TasksPage() {
                           Unassigned ({unassigned.length})
                         </h2>
                       )}
-                      {unassigned.map((t) => (
-                        <SwipeableCard key={t.id} onSwipeRight={() => handleComplete(t.id)} onSwipeLeft={() => handleDelete(t.id)}>
-                          <TaskCard
-                            task={t}
-                            growName={t.grow_cycle_id ? growMap[t.grow_cycle_id] : undefined}
-                            members={members}
-                            onComplete={handleComplete}
-                            onDelete={handleDelete}
-                            onAssign={handleAssign}
-                            showAssign={isOwner}
-                          />
-                        </SwipeableCard>
-                      ))}
+                      {unassigned.map(renderRow)}
                     </>
                   )}
 
@@ -472,20 +615,7 @@ export default function TasksPage() {
                       <h2 className="pt-3 text-sm font-semibold text-muted-foreground">
                         Assigned to Team ({othersAssigned.length})
                       </h2>
-                      {othersAssigned.map((t) => (
-                        <SwipeableCard key={t.id} onSwipeRight={() => handleComplete(t.id)} onSwipeLeft={() => handleDelete(t.id)}>
-                          <TaskCard
-                            task={t}
-                            growName={t.grow_cycle_id ? growMap[t.grow_cycle_id] : undefined}
-                            assigneeName={memberMap[t.assigned_to!]}
-                            members={members}
-                            onComplete={handleComplete}
-                            onDelete={handleDelete}
-                            onAssign={handleAssign}
-                            showAssign={isOwner}
-                          />
-                        </SwipeableCard>
-                      ))}
+                      {othersAssigned.map(renderRow)}
                     </>
                   )}
                 </>
@@ -757,6 +887,9 @@ function TaskCard({
   onDelete,
   onAssign,
   showAssign,
+  selectable,
+  selected,
+  onToggleSelect,
 }: {
   task: TaskItem;
   growName?: string;
@@ -766,21 +899,34 @@ function TaskCard({
   onDelete: (id: string) => void;
   onAssign?: (taskId: string, memberId: string | null) => void;
   showAssign?: boolean;
+  selectable?: boolean;
+  selected?: boolean;
+  onToggleSelect?: (id: string) => void;
 }) {
   const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== "completed";
 
   return (
-    <Card className={cn(isOverdue && "border-red-500/50")}>
+    <Card className={cn(isOverdue && "border-red-500/50", selected && "border-primary bg-primary/5")}>
       <CardContent className="flex items-center justify-between p-4">
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              className="flex size-5 shrink-0 items-center justify-center rounded-full border-2 border-muted-foreground/40 transition hover:border-green-500 hover:bg-green-500/10"
-              onClick={() => onComplete(task.id)}
-              title="Complete"
-            >
-              <CheckCircle2 className="size-3 text-transparent hover:text-green-500" />
-            </button>
+            {selectable ? (
+              <input
+                type="checkbox"
+                className="size-4 shrink-0 accent-primary"
+                checked={!!selected}
+                onChange={() => onToggleSelect?.(task.id)}
+                aria-label={`Select ${task.title}`}
+              />
+            ) : (
+              <button
+                className="flex size-5 shrink-0 items-center justify-center rounded-full border-2 border-muted-foreground/40 transition hover:border-green-500 hover:bg-green-500/10"
+                onClick={() => onComplete(task.id)}
+                title="Complete"
+              >
+                <CheckCircle2 className="size-3 text-transparent hover:text-green-500" />
+              </button>
+            )}
             <h3 className="font-medium">{task.title}</h3>
             <Badge variant={PRIORITY_VARIANT[task.priority] || "outline"} className="text-xs">
               {task.priority}
