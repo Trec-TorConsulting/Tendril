@@ -8,7 +8,11 @@ import {
   deleteTask,
   createTask,
   updateTask,
+  skipTask,
+  getTaskRoutines,
+  completeRoutine,
   type TaskItem,
+  type RoutineGroup,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -40,6 +44,10 @@ import {
 import { cn, formatCalendarDate } from "@/lib/utils";
 import {
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  SkipForward,
   Trash2,
   MoreHorizontal,
   Repeat,
@@ -127,17 +135,33 @@ function getRoutineLabel(routine: string | null) {
   return routine ? ROUTINE_LABELS[routine] || routine : null;
 }
 
+function getIntervalLabel(days: number | null): string | null {
+  if (!days) return null;
+  const map: Record<number, string> = { 1: "Daily", 2: "Every 2 days", 3: "Every 3 days", 7: "Weekly", 14: "Biweekly", 30: "Monthly" };
+  return map[days] ?? `Every ${days} days`;
+}
+
 export function TasksTab({ growId }: { growId: string }) {
-  const [filter, setFilter] = useState<string>("pending");
+  const [view, setView] = useState<"today" | "routines" | "all">("today");
+  const todayEOD = new Date();
+  todayEOD.setHours(23, 59, 59, 999);
+
   const {
     data: rawTasks,
     mutate,
-  } = useApiSWR(["grow", "tasks", growId, filter || "all"], async (token) => {
-    const filters: Record<string, string> = { grow_cycle_id: growId };
-    if (filter) filters.status = filter;
+  } = useApiSWR(["grow", "tasks", growId, view], async (token) => {
+    const filters: Record<string, string> = { grow_cycle_id: growId, status: "pending" };
+    if (view === "today") filters.due_to = todayEOD.toISOString();
     return listTasks(token, filters);
   });
   const tasks: TaskItem[] = rawTasks ?? [];
+
+  const {
+    data: routinesData,
+    mutate: mutateRoutines,
+  } = useApiSWR(view === "routines" ? ["grow", "routines", growId] : null, async (token) => {
+    return getTaskRoutines(token, growId);
+  });
 
   // Create / Edit dialog
   const [taskDialog, setTaskDialog] = useState(false);
@@ -145,7 +169,7 @@ export function TasksTab({ growId }: { growId: string }) {
   const [taskForm, setTaskForm] = useState({ title: "", description: "", priority: "medium", category: "", due_date: "", recurring: "" });
   const [taskSaving, setTaskSaving] = useState(false);
 
-  const refresh = mutate;
+  const refresh = () => { mutate(); mutateRoutines(); };
 
   const handleComplete = async (id: string) => {
     const token = getAccessToken();
@@ -163,6 +187,26 @@ export function TasksTab({ growId }: { growId: string }) {
       await deleteTask(id, token);
       refresh();
     } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to delete task"); }
+  };
+
+  const handleSkip = async (id: string) => {
+    const token = getAccessToken();
+    if (!token) return;
+    try {
+      await skipTask(id, token);
+      toast.success("Skipped — next occurrence scheduled");
+      refresh();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to skip task"); }
+  };
+
+  const handleCompleteRoutine = async (group: RoutineGroup) => {
+    const token = getAccessToken();
+    if (!token) return;
+    try {
+      const { completed } = await completeRoutine(group.tasks.map((t) => t.id), token);
+      toast.success(`Completed ${completed} ${group.label} tasks`);
+      refresh();
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to complete routine"); }
   };
 
   const openCreateDialog = () => {
@@ -218,7 +262,7 @@ export function TasksTab({ growId }: { growId: string }) {
   };
 
   const activeTasks = tasks
-    .filter((t) => t.status !== "completed" && t.status !== "cancelled")
+    .filter((t) => t.status !== "completed" && t.status !== "cancelled" && t.status !== "skipped")
     .sort((a, b) => {
       if (!a.due_date && !b.due_date) return 0;
       if (!a.due_date) return 1;
@@ -237,29 +281,17 @@ export function TasksTab({ growId }: { growId: string }) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
-        {[
-          { value: "pending", label: "Pending" },
-          { value: "in_progress", label: "In Progress" },
-          { value: "completed", label: "Completed" },
-        ].map((s) => (
+        {(["today", "routines", "all"] as const).map((v) => (
           <Button
-            key={s.value}
-            variant={filter === s.value ? "default" : "outline"}
+            key={v}
+            variant={view === v ? "default" : "outline"}
             size="sm"
-            onClick={() => setFilter(s.value)}
+            onClick={() => setView(v)}
           >
-            {s.label}
+            {v === "today" ? "Today" : v === "routines" ? "Routines" : "All"}
           </Button>
         ))}
-        <Button
-          variant={filter === "" ? "default" : "outline"}
-          size="sm"
-          className="ml-auto"
-          onClick={() => setFilter("")}
-        >
-          All
-        </Button>
-        <div className="flex gap-2">
+        <div className="ml-auto flex gap-2">
           <Button variant="default" size="sm" onClick={openCreateDialog}>
             <Plus className="mr-1 h-4 w-4" />
             Add Task
@@ -271,55 +303,87 @@ export function TasksTab({ growId }: { growId: string }) {
         </div>
       </div>
 
-      {activeTasks.length === 0 && completedTasks.length === 0 && (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-8">
-            <ListChecks className="size-8 text-muted-foreground/50" />
-            <p className="mt-2 text-sm text-muted-foreground">
-              No tasks for this grow yet. They&apos;ll appear as the scheduler generates them.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {activeTasks.map((t) => (
-        <SwipeableCard
-          key={t.id}
-          onSwipeRight={() => handleComplete(t.id)}
-          onSwipeLeft={() => handleDelete(t.id)}
-        >
-          <GrowTaskCard
-            task={t}
-            onComplete={handleComplete}
-            onDelete={handleDelete}
-            onEdit={openEditDialog}
-          />
-        </SwipeableCard>
-      ))}
-
-      {completedTasks.length > 0 && (
-        <>
-          <h3 className="pt-3 text-sm font-semibold text-muted-foreground">
-            Completed ({completedTasks.length})
-          </h3>
-          {completedTasks.slice(0, 10).map((t) => (
-            <Card key={t.id} className="opacity-50">
-              <CardContent className="flex items-center justify-between p-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="size-4 text-green-500" />
-                    <span className="font-medium text-muted-foreground line-through">{t.title}</span>
-                    {t.category && (
-                      <Badge variant="secondary" className="text-xs">{getCategoryLabel(t.category)}</Badge>
-                    )}
-                  </div>
-                  <span className="text-xs text-muted-foreground">
-                    {t.completed_at ? formatCalendarDate(t.completed_at) : ""}
-                  </span>
-                </div>
+      {/* ── Routine grouped view ── */}
+      {view === "routines" && (
+        <div className="space-y-3">
+          {!routinesData?.routines?.length ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-8">
+                <ListChecks className="size-8 text-muted-foreground/50" />
+                <p className="mt-2 text-sm text-muted-foreground">No tasks due today.</p>
               </CardContent>
             </Card>
+          ) : (
+            routinesData.routines.map((group) => (
+              <RoutineCard
+                key={group.routine}
+                group={group}
+                onCompleteAll={handleCompleteRoutine}
+                onComplete={handleComplete}
+                onDelete={handleDelete}
+                onSkip={handleSkip}
+                onEdit={openEditDialog}
+              />
+            ))
+          )}
+        </div>
+      )}
+
+      {/* ── List view (today / all) ── */}
+      {view !== "routines" && (
+        <>
+          {activeTasks.length === 0 && completedTasks.length === 0 && (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-8">
+                <ListChecks className="size-8 text-muted-foreground/50" />
+                <p className="mt-2 text-sm text-muted-foreground">
+                  No tasks for this grow yet. They&apos;ll appear as the scheduler generates them.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {activeTasks.map((t) => (
+            <SwipeableCard
+              key={t.id}
+              onSwipeRight={() => handleComplete(t.id)}
+              onSwipeLeft={() => handleDelete(t.id)}
+            >
+              <GrowTaskCard
+                task={t}
+                onComplete={handleComplete}
+                onDelete={handleDelete}
+                onSkip={handleSkip}
+                onEdit={openEditDialog}
+              />
+            </SwipeableCard>
           ))}
+
+          {completedTasks.length > 0 && (
+            <>
+              <h3 className="pt-3 text-sm font-semibold text-muted-foreground">
+                Completed ({completedTasks.length})
+              </h3>
+              {completedTasks.slice(0, 10).map((t) => (
+                <Card key={t.id} className="opacity-50">
+                  <CardContent className="flex items-center justify-between p-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="size-4 text-green-500" />
+                        <span className="font-medium text-muted-foreground line-through">{t.title}</span>
+                        {t.category && (
+                          <Badge variant="secondary" className="text-xs">{getCategoryLabel(t.category)}</Badge>
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {t.completed_at ? formatCalendarDate(t.completed_at) : ""}
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </>
+          )}
         </>
       )}
 
@@ -397,15 +461,75 @@ export function TasksTab({ growId }: { growId: string }) {
   );
 }
 
+function RoutineCard({
+  group,
+  onCompleteAll,
+  onComplete,
+  onDelete,
+  onSkip,
+  onEdit,
+}: {
+  group: RoutineGroup;
+  onCompleteAll: (g: RoutineGroup) => void;
+  onComplete: (id: string) => void;
+  onDelete: (id: string) => void;
+  onSkip: (id: string) => void;
+  onEdit: (task: TaskItem) => void;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  return (
+    <Card>
+      <CardContent className="p-0">
+        <button
+          className="flex w-full items-center justify-between px-4 py-3 text-left"
+          onClick={() => setExpanded((v) => !v)}
+        >
+          <div className="flex items-center gap-3">
+            {expanded ? <ChevronDown className="size-4 text-muted-foreground" /> : <ChevronRight className="size-4 text-muted-foreground" />}
+            <span className="font-semibold">{group.label}</span>
+            <Badge variant="secondary">{group.task_count} tasks</Badge>
+            {group.estimated_minutes > 0 && (
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                <Clock className="size-3" />
+                ~{group.estimated_minutes} min
+              </span>
+            )}
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            onClick={(e) => { e.stopPropagation(); onCompleteAll(group); }}
+          >
+            <CheckCircle2 className="mr-1 size-3 text-green-500" />
+            Complete all
+          </Button>
+        </button>
+        {expanded && (
+          <div className="divide-y border-t">
+            {group.tasks.map((t) => (
+              <div key={t.id} className="px-4 py-3">
+                <GrowTaskCard task={t} onComplete={onComplete} onDelete={onDelete} onSkip={onSkip} onEdit={onEdit} />
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function GrowTaskCard({
   task,
   onComplete,
   onDelete,
+  onSkip,
   onEdit,
 }: {
   task: TaskItem;
   onComplete: (id: string) => void;
   onDelete: (id: string) => void;
+  onSkip: (id: string) => void;
   onEdit: (task: TaskItem) => void;
 }) {
   const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== "completed";
@@ -456,12 +580,17 @@ function GrowTaskCard({
                 {formatCalendarDate(task.due_date)}
               </span>
             )}
-            {task.recurring && (
+            {task.recurring_interval_days != null ? (
+              <span className="flex items-center gap-1">
+                <Repeat className="h-3 w-3" />
+                {getIntervalLabel(task.recurring_interval_days)}
+              </span>
+            ) : task.recurring ? (
               <span className="flex items-center gap-1">
                 <Repeat className="h-3 w-3" />
                 {task.recurring}
               </span>
-            )}
+            ) : null}
           </div>
         </div>
         <DropdownMenu>
@@ -477,6 +606,12 @@ function GrowTaskCard({
               <CheckCircle2 className="mr-2 h-4 w-4" />
               Complete
             </DropdownMenuItem>
+            {(task.recurring || task.recurring_interval_days) && (
+              <DropdownMenuItem onClick={() => onSkip(task.id)}>
+                <SkipForward className="mr-2 h-4 w-4" />
+                Skip
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem
               className="text-destructive focus:text-destructive"
               onClick={() => onDelete(task.id)}

@@ -1,0 +1,59 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  # Run this Job ONCE after:
+  #   1. kubectl apply -f manifests/db-migration-job.yaml  (migration 0053)
+  #   2. kubectl rollout restart deployment/tendril-api     (new code deployed)
+  #
+  # Then: kubectl apply -f manifests/cleanup-regen-tasks-job.yaml
+  #
+  # Rollback: delete this Job, drop the recurring_interval_days column, and
+  # redeploy the previous API image.  Materialized task generation resumes on
+  # the next 6-hour scheduler cycle.
+  name: tendril-cleanup-regen-tasks
+  namespace: tendril
+  labels:
+    app: tendril-api
+    job-type: one-time-cleanup
+spec:
+  # Never restart after success; retry up to 3 times on failure
+  backoffLimit: 3
+  # Auto-delete 1 hour after completion so it doesn't clutter the namespace
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: tendril-api
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/hostname
+                operator: NotIn
+                values:
+                - node05
+      containers:
+      - name: cleanup-regen
+        image: 192.168.4.10:30500/tendril-api:latest  # Replace with your registry
+        imagePullPolicy: Always
+        command:
+          - python
+          - -m
+          - scripts.cleanup_and_regen_tasks
+          - --yes
+        env:
+        - name: PYTHONPATH
+          value: /app
+        envFrom:
+        - secretRef:
+            name: tendril-secrets
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+      restartPolicy: OnFailure

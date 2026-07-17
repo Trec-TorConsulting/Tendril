@@ -1690,9 +1690,22 @@ export interface TaskItem {
   due_date: string | null;
   completed_at: string | null;
   recurring: string | null;
+  recurring_interval_days: number | null;
   routine: string | null;
   estimated_minutes: number | null;
   created_at: string;
+}
+
+export interface RoutineGroup {
+  routine: string;
+  label: string;
+  estimated_minutes: number;
+  task_count: number;
+  tasks: TaskItem[];
+}
+
+export interface RoutinesResponse {
+  routines: RoutineGroup[];
 }
 
 export async function listTasks(token: string, filters?: { status?: string; assigned_to?: string; category?: string; grow_cycle_id?: string; due_from?: string; due_to?: string }) {
@@ -1728,6 +1741,21 @@ export function bulkTasks(action: "complete" | "cancel" | "delete", taskIds: str
   return apiFetch<{ affected: number }>("/tasks/bulk", {
     method: "POST",
     body: JSON.stringify({ action, task_ids: taskIds }),
+    token,
+  });
+}
+export function skipTask(id: string, token: string) {
+  return apiFetch<{ skipped: boolean; next_due: string | null }>(`/tasks/${id}/skip`, { method: "POST", token });
+}
+export function getTaskRoutines(token: string, growCycleId: string, date?: string) {
+  const params = new URLSearchParams({ grow_cycle_id: growCycleId });
+  if (date) params.set("date", date);
+  return apiFetch<RoutinesResponse>(`/tasks/routines?${params.toString()}`, { token });
+}
+export function completeRoutine(taskIds: string[], token: string) {
+  return apiFetch<{ completed: number; spawned: number }>("/tasks/routines/complete", {
+    method: "POST",
+    body: JSON.stringify({ task_ids: taskIds }),
     token,
   });
 }

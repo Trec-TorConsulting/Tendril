@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -70,9 +70,36 @@ class TaskResponse(BaseModel):
     due_date: str | None
     completed_at: str | None
     recurring: str | None
+    recurring_interval_days: int | None
     routine: str | None
     estimated_minutes: int | None
     created_at: str
+
+
+class RoutineGroup(BaseModel):
+    routine: str
+    label: str
+    estimated_minutes: int
+    task_count: int
+    tasks: list[TaskResponse]
+
+
+class RoutinesResponse(BaseModel):
+    routines: list[RoutineGroup]
+
+
+class CompleteRoutineRequest(BaseModel):
+    task_ids: list[str]
+
+
+_ROUTINE_LABELS: dict[str, str] = {
+    "morning": "Morning check",
+    "evening": "Evening check",
+    "weekly": "Weekly maintenance",
+    "biweekly": "Biweekly maintenance",
+    "monthly": "Monthly maintenance",
+    "on_demand": "On-demand tasks",
+}
 
 
 def _to_response(t: Task) -> TaskResponse:
@@ -92,9 +119,62 @@ def _to_response(t: Task) -> TaskResponse:
         due_date=t.due_date.isoformat() if t.due_date else None,
         completed_at=t.completed_at.isoformat() if t.completed_at else None,
         recurring=t.recurring,
+        recurring_interval_days=t.recurring_interval_days,
         routine=t.routine,
         estimated_minutes=t.estimated_minutes,
         created_at=t.created_at.isoformat(),
+    )
+
+
+def _next_due_delta(task: Task) -> timedelta | None:
+    """Return the recurrence timedelta from recurring_interval_days (preferred) or the recurring label."""
+    if task.recurring_interval_days and task.recurring_interval_days > 0:
+        return timedelta(days=task.recurring_interval_days)
+    if task.recurring:
+        _label_map: dict[str, timedelta] = {
+            "daily": timedelta(days=1),
+            "every_2_days": timedelta(days=2),
+            "every_3_days": timedelta(days=3),
+            "weekly": timedelta(weeks=1),
+            "biweekly": timedelta(weeks=2),
+            "monthly": timedelta(days=30),
+        }
+        if task.recurring in _label_map:
+            return _label_map[task.recurring]
+        # every_N_days pattern not in map
+        if task.recurring.startswith("every_") and task.recurring.endswith("_days"):
+            try:
+                n = int(task.recurring[6:-5])
+                return timedelta(days=n)
+            except ValueError:
+                pass
+    return None
+
+
+def _spawn_next_occurrence(task: Task, now: datetime) -> Task | None:
+    """Create the next recurring occurrence, rolling due date forward from max(now, current_due)."""
+    delta = _next_due_delta(task)
+    if not delta:
+        return None
+    base = task.due_date if task.due_date and task.due_date > now else now
+    return Task(
+        tenant_id=task.tenant_id,
+        title=task.title,
+        description=task.description,
+        priority=task.priority,
+        category=task.category,
+        source=task.source,
+        assigned_to=task.assigned_to,
+        created_by=task.created_by,
+        grow_cycle_id=task.grow_cycle_id,
+        tent_id=task.tent_id,
+        bucket_id=task.bucket_id,
+        due_date=base + delta,
+        recurring=task.recurring,
+        recurring_interval_days=task.recurring_interval_days,
+        recurring_parent_id=task.id,
+        routine=task.routine,
+        estimated_minutes=task.estimated_minutes,
     )
 
 
@@ -228,6 +308,109 @@ async def calendar_tasks(
     return [_to_response(t) for t in result.scalars().all()]
 
 
+# ---------- Routine-grouped view ----------
+
+
+@router.get("/routines", response_model=RoutinesResponse)
+async def get_routines(
+    user: Annotated[CurrentUser, Depends(get_current_user)],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+    grow_cycle_id: str = Query(..., description="Grow cycle UUID"),
+    date: str | None = Query(None, description="ISO date (YYYY-MM-DD), defaults to today UTC"),
+):
+    """Return open tasks for a grow grouped by routine for a target day (today + overdue)."""
+    if date:
+        try:
+            day = datetime.fromisoformat(date).replace(tzinfo=UTC)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Invalid date format") from exc
+    else:
+        day = datetime.now(UTC)
+
+    end_of_day = day.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+    result = await session.execute(
+        select(Task)
+        .where(
+            Task.tenant_id == user.tenant_id,
+            Task.grow_cycle_id == UUID(grow_cycle_id),
+            Task.status.in_(["pending", "in_progress"]),
+            Task.due_date <= end_of_day,
+        )
+        .order_by(Task.routine.asc().nullslast(), Task.priority.desc())
+    )
+    tasks = result.scalars().all()
+
+    # Group by routine
+    groups: dict[str, list[Task]] = {}
+    for t in tasks:
+        key = t.routine or "on_demand"
+        groups.setdefault(key, []).append(t)
+
+    routine_order = ["morning", "evening", "weekly", "biweekly", "monthly", "on_demand"]
+    routines: list[RoutineGroup] = []
+    for routine in routine_order:
+        if routine not in groups:
+            continue
+        grp = groups.pop(routine)
+        routines.append(
+            RoutineGroup(
+                routine=routine,
+                label=_ROUTINE_LABELS.get(routine, routine),
+                estimated_minutes=sum(t.estimated_minutes or 0 for t in grp),
+                task_count=len(grp),
+                tasks=[_to_response(t) for t in grp],
+            )
+        )
+    # Remaining unknown routines
+    for routine, grp in groups.items():
+        routines.append(
+            RoutineGroup(
+                routine=routine,
+                label=routine,
+                estimated_minutes=sum(t.estimated_minutes or 0 for t in grp),
+                task_count=len(grp),
+                tasks=[_to_response(t) for t in grp],
+            )
+        )
+    return RoutinesResponse(routines=routines)
+
+
+@router.post("/routines/complete")
+async def complete_routine(
+    body: CompleteRoutineRequest,
+    user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Complete all tasks in a routine group. Each recurring task spawns its next occurrence."""
+    if not body.task_ids:
+        return {"completed": 0, "spawned": 0}
+    if len(body.task_ids) > 100:
+        raise HTTPException(status_code=422, detail="Cannot complete more than 100 tasks at once")
+    try:
+        ids = [UUID(tid) for tid in body.task_ids]
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Invalid task id") from exc
+
+    now = datetime.now(UTC)
+    completed = 0
+    spawned = 0
+    for task_id in ids:
+        task = await session.get(Task, task_id)
+        if not task or task.tenant_id != user.tenant_id:
+            continue
+        task.status = "completed"
+        task.completed_at = now
+        completed += 1
+        next_task = _spawn_next_occurrence(task, now)
+        if next_task:
+            session.add(next_task)
+            spawned += 1
+
+    await session.commit()
+    return {"completed": completed, "spawned": spawned}
+
+
 @router.get("/{task_id}")
 async def get_task(
     task_id: str,
@@ -295,44 +478,42 @@ async def complete_task(
     user: Annotated[CurrentUser, Depends(get_current_user)],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
 ):
-    """Mark a task as completed. Creates next recurring instance if applicable."""
+    """Mark a task as completed. Creates next recurring instance with roll-forward due date."""
     task = await session.get(Task, UUID(task_id))
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
+    now = datetime.now(UTC)
     task.status = "completed"
-    task.completed_at = datetime.now(UTC)
+    task.completed_at = now
 
-    # Create next recurring task
-    if task.recurring and task.due_date:
-        from datetime import timedelta
-
-        delta_map = {
-            "daily": timedelta(days=1),
-            "weekly": timedelta(weeks=1),
-            "biweekly": timedelta(weeks=2),
-            "monthly": timedelta(days=30),
-        }
-        delta = delta_map.get(task.recurring)
-        if delta:
-            next_task = Task(
-                tenant_id=task.tenant_id,
-                title=task.title,
-                description=task.description,
-                priority=task.priority,
-                category=task.category,
-                source=task.source,
-                assigned_to=task.assigned_to,
-                created_by=task.created_by,
-                grow_cycle_id=task.grow_cycle_id,
-                tent_id=task.tent_id,
-                bucket_id=task.bucket_id,
-                due_date=task.due_date + delta,
-                recurring=task.recurring,
-                recurring_parent_id=task.id,
-            )
-            session.add(next_task)
+    next_task = _spawn_next_occurrence(task, now)
+    if next_task:
+        session.add(next_task)
 
     await session.commit()
     await session.refresh(task)
     return _to_response(task)
+
+
+@router.post("/{task_id}/skip")
+async def skip_task(
+    task_id: str,
+    user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Skip a recurring task occurrence. Advances to the next occurrence without recording a completion."""
+    task = await session.get(Task, UUID(task_id))
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    now = datetime.now(UTC)
+    # Spawn next before closing current so _task_exists tombstone does not block regen
+    next_task = _spawn_next_occurrence(task, now)
+    if next_task:
+        session.add(next_task)
+        await session.flush()  # assign id before we close the parent
+
+    task.status = "skipped"
+    await session.commit()
+    return {"skipped": True, "next_due": next_task.due_date.isoformat() if next_task and next_task.due_date else None}

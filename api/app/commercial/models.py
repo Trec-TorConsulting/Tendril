@@ -81,6 +81,7 @@ class Task(Base):
     recurring_parent_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("tasks.id"))
     routine: Mapped[str | None] = mapped_column(String(20))  # morning, evening, weekly, biweekly, monthly, on_demand
     estimated_minutes: Mapped[int | None] = mapped_column(Integer)
+    recurring_interval_days: Mapped[int | None] = mapped_column(Integer)  # authoritative interval for recurrence spawn
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
 
