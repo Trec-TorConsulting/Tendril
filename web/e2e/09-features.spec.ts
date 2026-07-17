@@ -214,7 +214,7 @@ test.describe("Features - Audit Trail", () => {
   test("audit shows event entries", async ({ page }) => {
     // Should show a list/table of events
     const auditContent = page.locator("table, [role='table'], [data-testid='audit-list'], ul, .list").first();
-    const hasContent = await auditContent.isVisible().catch(() => false);
+    await auditContent.isVisible().catch(() => false);
     // May be empty if no events, but page should not error
     await expect(page.locator("body")).not.toBeEmpty();
   });
@@ -232,7 +232,6 @@ test.describe("Features - Billing", () => {
   });
 
   test("billing page has cancel option", async ({ page }) => {
-    const cancelBtn = page.getByRole("button", { name: /cancel/i }).first();
     // May or may not be visible depending on plan status
     await expect(page.locator("body")).not.toBeEmpty();
   });

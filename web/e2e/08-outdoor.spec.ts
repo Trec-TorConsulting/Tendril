@@ -38,7 +38,7 @@ test.describe("Outdoor - Container Growing Media Types", () => {
             await page.waitForTimeout(500);
 
             // Look for media type in the UI
-            const pageContent = await page.content();
+            await page.content();
             // At minimum verify the tab loaded
             await expect(page.locator("body")).not.toBeEmpty();
             return; // Found it

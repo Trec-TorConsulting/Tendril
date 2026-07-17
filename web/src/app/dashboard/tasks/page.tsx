@@ -310,6 +310,16 @@ export default function TasksPage() {
     setSelectedIds(new Set());
   };
 
+  const performBulkAction = async (action: "complete" | "delete", taskIds: string[], token: string) => {
+    let affected = 0;
+    for (let index = 0; index < taskIds.length; index += 500) {
+      const chunk = taskIds.slice(index, index + 500);
+      const result = await bulkTasks(action, chunk, token);
+      affected += result.affected;
+    }
+    return affected;
+  };
+
   const handleBulk = async (action: "complete" | "delete") => {
     const token = getAccessToken();
     if (!token || selectedIds.size === 0) return;
@@ -324,7 +334,7 @@ export default function TasksPage() {
       if (!ok) return;
     }
     try {
-      const { affected } = await bulkTasks(action, ids, token);
+      const affected = await performBulkAction(action, ids, token);
       toast.success(`${affected} task${affected === 1 ? "" : "s"} ${action === "delete" ? "deleted" : "completed"}`);
       exitSelection();
       refresh();
@@ -355,7 +365,7 @@ export default function TasksPage() {
     });
     if (!ok) return;
     try {
-      const { affected } = await bulkTasks("complete", overdueTaskIds, token);
+      const affected = await performBulkAction("complete", overdueTaskIds, token);
       toast.success(`Completed ${affected} overdue task${affected === 1 ? "" : "s"}`);
       exitSelection();
       refresh();

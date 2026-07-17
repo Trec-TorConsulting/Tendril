@@ -6,7 +6,6 @@
 import { test, expect } from "@playwright/test";
 
 const BASE_URL = process.env.E2E_BASE_URL || "http://localhost:3000";
-const API_URL = process.env.E2E_API_URL || "http://localhost:8000";
 
 test.describe("Tendril E2E", () => {
   const email = `e2e-${Date.now()}@test.com`;
