@@ -20,6 +20,7 @@ from app.pagination import PaginatedResponse, PaginationParams, paginate
 from app.storage import get_photo as s3_get
 from app.vision.client import VisionDetectorClient
 from app.vision.contracts import VisionProfile
+from app.vision.drafts import propose_vision_drafts
 
 router = APIRouter()
 
@@ -170,7 +171,7 @@ async def scan_image(
 @router.post("/scan/tent/{tent_id}", response_model=VisionScanResponse)
 async def scan_tent_snapshot(
     tent_id: UUID,
-    _user: Annotated[CurrentUser, Depends(require_permission(GROW_READ))],
+    user: Annotated[CurrentUser, Depends(require_permission(GROW_READ))],
     session: Annotated[AsyncSession, Depends(get_tenant_session)],
     client: Annotated[VisionDetectorClient, Depends(get_vision_detector_client)],
     profile: VisionProfile = VisionProfile.TENT_OVERVIEW,
@@ -211,6 +212,17 @@ async def scan_tent_snapshot(
         image_storage_key=None,
         model_response=model_response,
     )
+    await propose_vision_drafts(
+        session,
+        tenant_id=tent.tenant_id,
+        grow_cycle_id=grow_cycle_id,
+        source="tent",
+        source_ref=str(tent_id),
+        image_storage_key=None,
+        detections=model_response.detections,
+        model_version=model_response.model_version,
+        actor_user_id=user.user_id,
+    )
     return _to_scan_response(model_response)
 
 
@@ -247,6 +259,17 @@ async def scan_grow_photo(
         source_ref=str(photo_id),
         image_storage_key=photo.storage_key,
         model_response=model_response,
+    )
+    await propose_vision_drafts(
+        session,
+        tenant_id=photo.tenant_id,
+        grow_cycle_id=photo.grow_cycle_id,
+        source="photo",
+        source_ref=str(photo_id),
+        image_storage_key=photo.storage_key,
+        detections=model_response.detections,
+        model_version=model_response.model_version,
+        actor_user_id=user.user_id,
     )
     return _to_scan_response(model_response)
 

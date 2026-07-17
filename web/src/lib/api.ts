@@ -564,6 +564,44 @@ export function getCameraSnapshot(token: string, tentId: string, cameraId?: stri
   return apiFetch<{ image_base64: string; timestamp: string }>(`/tents/${tentId}/camera-snapshot-b64${q}`, { token, retries: 0 });
 }
 
+// Vision detection
+export type VisionScanResponse = components["schemas"]["VisionScanResponse"];
+export type VisionDetectionBox = components["schemas"]["VisionDetectionBoxResponse"];
+export type VisionDetectionRecord = components["schemas"]["VisionDetectionResponse"];
+export type VisionProfile = components["schemas"]["VisionProfile"];
+export type PaginatedVisionDetectionResponse = components["schemas"]["PaginatedResponse_VisionDetectionResponse_"];
+
+export function scanTentSnapshot(token: string, tentId: string, profile?: VisionProfile) {
+  const q = profile ? `?profile=${profile}` : "";
+  return apiFetch<VisionScanResponse>(`/vision/scan/tent/${tentId}${q}`, {
+    method: "POST",
+    token,
+    timeout: 30_000,
+  });
+}
+
+export function scanGrowPhoto(token: string, photoId: string, profile?: VisionProfile) {
+  const q = profile ? `?profile=${profile}` : "";
+  return apiFetch<VisionScanResponse>(`/vision/scan/photo/${photoId}${q}`, {
+    method: "POST",
+    token,
+    timeout: 30_000,
+  });
+}
+
+export function listVisionDetections(
+  token: string,
+  params?: { grow_cycle_id?: string; source?: string; page?: number; page_size?: number },
+) {
+  const q = new URLSearchParams();
+  if (params?.grow_cycle_id) q.set("grow_cycle_id", params.grow_cycle_id);
+  if (params?.source) q.set("source", params.source);
+  if (params?.page) q.set("page", String(params.page));
+  if (params?.page_size) q.set("page_size", String(params.page_size));
+  const qs = q.toString();
+  return apiFetch<PaginatedVisionDetectionResponse>(`/vision/detections${qs ? `?${qs}` : ""}`, { token });
+}
+
 // Grows
 export interface GrowResponse {
   id: string;

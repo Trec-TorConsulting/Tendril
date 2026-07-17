@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import io
 import json
+import logging
 import math
 import os
 from dataclasses import dataclass
@@ -13,7 +14,17 @@ import onnxruntime as ort
 from PIL import Image
 
 from app.artifacts import ArtifactError, resolve_model_path
-from app.runtime import AcceleratorTier, choose_accelerator, load_runtime_config
+from app.coral import CoralUnavailableError, run_coral_inference
+from app.registry import ManifestError, ModelManifest, load_active_manifest
+from app.runtime import (
+    AcceleratorTier,
+    choose_accelerator,
+    choose_fallback_accelerator,
+    load_runtime_config,
+)
+from app.telemetry import telemetry
+
+logger = logging.getLogger("tendril.vision.detector.inference")
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,6 +36,8 @@ class DetectorConfig:
     iou_threshold: float
     max_detections: int
     class_map: dict[int, str]
+    model_version: str = ""
+    edgetpu_model_path: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,8 +47,19 @@ class DetectionResult:
     bbox: list[float]
 
 
+@dataclass(frozen=True, slots=True)
+class DetectionOutput:
+    tier: AcceleratorTier
+    detections: list[DetectionResult]
+
+
 class DetectorError(RuntimeError):
     pass
+
+
+# Cache of the last successfully-loaded config so an incompatible manifest can be
+# rejected while keeping the previously active model in service.
+_LAST_GOOD_CONFIG: DetectorConfig | None = None
 
 
 def _env_int(name: str, default: int) -> int:
@@ -79,22 +103,70 @@ def _load_class_map() -> dict[int, str]:
     return mapped
 
 
-def load_detector_config() -> DetectorConfig:
+def _resolve_storage_key(*, storage_key: str, local_path: str) -> str:
+    try:
+        return resolve_model_path(storage_key=storage_key, local_path=local_path)
+    except ArtifactError as exc:
+        raise DetectorError(str(exc)) from exc
+
+
+def _config_from_manifest(manifest: ModelManifest) -> DetectorConfig:
+    model_local = os.environ.get("VISION_MODEL_LOCAL_PATH", "/tmp/vision/model.onnx").strip()
+    edgetpu_local = os.environ.get("VISION_MODEL_EDGETPU_LOCAL_PATH", "/tmp/vision/model_edgetpu.tflite").strip()
+
+    model_path = ""
+    if manifest.onnx_key:
+        model_path = _resolve_storage_key(storage_key=manifest.onnx_key, local_path=model_local)
+
+    edgetpu_path = ""
+    if manifest.edgetpu_key:
+        try:
+            edgetpu_path = _resolve_storage_key(storage_key=manifest.edgetpu_key, local_path=edgetpu_local)
+        except DetectorError:
+            logger.warning("Edge TPU artifact unavailable for version %s; using fallback tiers", manifest.version)
+            edgetpu_path = ""
+
+    if not model_path and not edgetpu_path:
+        raise DetectorError("active manifest resolved no usable model artifact")
+
+    return DetectorConfig(
+        model_path=model_path,
+        edgetpu_model_path=edgetpu_path,
+        model_version=manifest.version,
+        input_width=manifest.input_width,
+        input_height=manifest.input_height,
+        confidence_threshold=_env_float("VISION_CONFIDENCE_THRESHOLD", 0.25),
+        iou_threshold=_env_float("VISION_IOU_THRESHOLD", 0.45),
+        max_detections=_env_int("VISION_MAX_DETECTIONS", 50),
+        class_map=manifest.class_map,
+    )
+
+
+def _config_from_env() -> DetectorConfig:
     model_path = os.environ.get("VISION_MODEL_PATH", "").strip()
     model_storage_key = os.environ.get("VISION_MODEL_STORAGE_KEY", "").strip()
     model_local_path = os.environ.get("VISION_MODEL_LOCAL_PATH", "/tmp/vision/model.onnx").strip()
 
     if not model_path and model_storage_key:
-        try:
-            model_path = resolve_model_path(storage_key=model_storage_key, local_path=model_local_path)
-        except ArtifactError as exc:
-            raise DetectorError(str(exc)) from exc
+        model_path = _resolve_storage_key(storage_key=model_storage_key, local_path=model_local_path)
 
     if not model_path:
         raise DetectorError("VISION_MODEL_PATH or VISION_MODEL_STORAGE_KEY is required for inference")
 
+    edgetpu_model_path = os.environ.get("VISION_MODEL_EDGETPU_PATH", "").strip()
+    edgetpu_storage_key = os.environ.get("VISION_MODEL_EDGETPU_STORAGE_KEY", "").strip()
+    edgetpu_local_path = os.environ.get("VISION_MODEL_EDGETPU_LOCAL_PATH", "/tmp/vision/model_edgetpu.tflite").strip()
+    if not edgetpu_model_path and edgetpu_storage_key:
+        try:
+            edgetpu_model_path = _resolve_storage_key(storage_key=edgetpu_storage_key, local_path=edgetpu_local_path)
+        except DetectorError:
+            logger.warning("Edge TPU artifact download failed; using fallback tiers")
+            edgetpu_model_path = ""
+
     return DetectorConfig(
         model_path=model_path,
+        edgetpu_model_path=edgetpu_model_path,
+        model_version=os.environ.get("VISION_MODEL_VERSION", "").strip(),
         input_width=_env_int("VISION_INPUT_WIDTH", 640),
         input_height=_env_int("VISION_INPUT_HEIGHT", 640),
         confidence_threshold=_env_float("VISION_CONFIDENCE_THRESHOLD", 0.25),
@@ -102,6 +174,28 @@ def load_detector_config() -> DetectorConfig:
         max_detections=_env_int("VISION_MAX_DETECTIONS", 50),
         class_map=_load_class_map(),
     )
+
+
+def load_detector_config() -> DetectorConfig:
+    """Resolve the active detector configuration.
+
+    Prefers an active-model manifest from the registry (S3/local) and falls back
+    to explicit env configuration. An incompatible manifest is rejected while the
+    previously loaded model stays in service.
+    """
+    global _LAST_GOOD_CONFIG
+    try:
+        manifest = load_active_manifest()
+    except ManifestError as exc:
+        telemetry.record_manifest_rejection()
+        if _LAST_GOOD_CONFIG is not None:
+            logger.warning("Rejecting incompatible model manifest; keeping active model: %s", exc)
+            return _LAST_GOOD_CONFIG
+        raise DetectorError(f"model manifest invalid and no active model loaded: {exc}") from exc
+
+    config = _config_from_manifest(manifest) if manifest is not None else _config_from_env()
+    _LAST_GOOD_CONFIG = config
+    return config
 
 
 @lru_cache(maxsize=1)
@@ -124,10 +218,11 @@ def _select_providers(accelerator: AcceleratorTier) -> list[str]:
     return providers
 
 
-def get_session() -> ort.InferenceSession:
+def get_session(accelerator: AcceleratorTier | None = None) -> ort.InferenceSession:
     cfg = load_detector_config()
-    runtime_cfg = load_runtime_config()
-    accelerator = choose_accelerator(runtime_cfg)
+    if accelerator is None:
+        runtime_cfg = load_runtime_config()
+        accelerator = choose_accelerator(runtime_cfg)
     providers = _select_providers(accelerator)
 
     return _get_session_cached(cfg.model_path, tuple(providers))
@@ -145,13 +240,12 @@ def _decode_image(image_b64: str) -> Image.Image:
         raise DetectorError("image payload is not a valid image") from exc
 
 
-def _prepare_input(image: Image.Image, cfg: DetectorConfig) -> tuple[np.ndarray, int, int]:
-    original_width, original_height = image.size
+def _prepare_input(image: Image.Image, cfg: DetectorConfig) -> np.ndarray:
     resized = image.resize((cfg.input_width, cfg.input_height), Image.Resampling.BILINEAR)
     arr = np.asarray(resized, dtype=np.float32) / 255.0
     arr = np.transpose(arr, (2, 0, 1))
     arr = np.expand_dims(arr, axis=0)
-    return arr, original_width, original_height
+    return arr
 
 
 def _xywh_to_xyxy(cx: float, cy: float, w: float, h: float) -> tuple[float, float, float, float]:
@@ -206,15 +300,16 @@ def _nms(
 def _parse_yolo_output(
     output: np.ndarray,
     cfg: DetectorConfig,
-    original_width: int,
-    original_height: int,
 ) -> list[DetectionResult]:
     data = np.squeeze(output)
     if data.ndim != 2:
-        raise DetectorError("unsupported ONNX output shape")
+        raise DetectorError("unsupported model output shape")
 
     if data.shape[0] < data.shape[1]:
         data = np.transpose(data)
+
+    inv_w = 1.0 / float(cfg.input_width)
+    inv_h = 1.0 / float(cfg.input_height)
 
     candidates: list[tuple[float, int, tuple[float, float, float, float]]] = []
     for row in data:
@@ -230,14 +325,14 @@ def _parse_yolo_output(
             continue
 
         x1, y1, x2, y2 = _xywh_to_xyxy(float(cx), float(cy), float(w), float(h))
-        x_scale = original_width / cfg.input_width
-        y_scale = original_height / cfg.input_height
 
+        # Normalize to [0, 1] using the model input resolution so bounding boxes
+        # are resolution-independent for overlay rendering on any image size.
         box = (
-            max(0.0, min(original_width, x1 * x_scale)),
-            max(0.0, min(original_height, y1 * y_scale)),
-            max(0.0, min(original_width, x2 * x_scale)),
-            max(0.0, min(original_height, y2 * y_scale)),
+            min(1.0, max(0.0, x1 * inv_w)),
+            min(1.0, max(0.0, y1 * inv_h)),
+            min(1.0, max(0.0, x2 * inv_w)),
+            min(1.0, max(0.0, y2 * inv_h)),
         )
         candidates.append((score, class_idx, box))
 
@@ -250,22 +345,43 @@ def _parse_yolo_output(
             DetectionResult(
                 class_name=label,
                 confidence=score,
-                bbox=[x1, y1, x2, y2],
+                bbox=[x1, y1, x2 - x1, y2 - y1],
             )
         )
     return results
 
 
-def run_detection(image_b64: str) -> list[DetectionResult]:
-    cfg = load_detector_config()
-    session = get_session()
-
-    image = _decode_image(image_b64)
-    model_input, original_width, original_height = _prepare_input(image, cfg)
-
+def _run_onnx_detection(image: Image.Image, cfg: DetectorConfig, tier: AcceleratorTier) -> list[DetectionResult]:
+    session = get_session(tier)
+    model_input = _prepare_input(image, cfg)
     input_name = session.get_inputs()[0].name
     outputs = session.run(None, {input_name: model_input})
     if not outputs:
         return []
+    return _parse_yolo_output(outputs[0], cfg)
 
-    return _parse_yolo_output(outputs[0], cfg, original_width, original_height)
+
+def run_detection(image_b64: str) -> DetectionOutput:
+    cfg = load_detector_config()
+    runtime_cfg = load_runtime_config()
+    tier = choose_accelerator(runtime_cfg)
+
+    image = _decode_image(image_b64)
+
+    if tier == AcceleratorTier.CORAL:
+        try:
+            raw = run_coral_inference(
+                image,
+                model_path=cfg.edgetpu_model_path,
+                input_width=cfg.input_width,
+                input_height=cfg.input_height,
+            )
+            return DetectionOutput(tier=AcceleratorTier.CORAL, detections=_parse_yolo_output(raw, cfg))
+        except CoralUnavailableError as exc:
+            logger.warning("Coral Edge TPU unavailable; falling back to ONNX tier: %s", exc)
+            tier = choose_fallback_accelerator(runtime_cfg)
+
+    if tier not in (AcceleratorTier.GPU, AcceleratorTier.CPU):
+        tier = AcceleratorTier.CPU
+
+    return DetectionOutput(tier=tier, detections=_run_onnx_detection(image, cfg, tier))

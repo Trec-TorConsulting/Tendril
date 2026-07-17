@@ -94,6 +94,15 @@ def choose_accelerator(config: RuntimeConfig) -> AcceleratorTier:
     return AcceleratorTier.UNAVAILABLE
 
 
+def choose_fallback_accelerator(config: RuntimeConfig) -> AcceleratorTier:
+    """Best available tier when the Coral Edge TPU cannot serve a request."""
+    if _gpu_available(config.gpu_enabled):
+        return AcceleratorTier.GPU
+    if config.cpu_enabled:
+        return AcceleratorTier.CPU
+    return AcceleratorTier.UNAVAILABLE
+
+
 def build_runtime_state(config: RuntimeConfig) -> RuntimeState:
     has_model_source = bool(config.model_path or config.model_storage_key)
     if not config.model_version or not has_model_source:

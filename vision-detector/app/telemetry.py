@@ -11,6 +11,7 @@ class DetectorTelemetry:
     failed_requests: int = 0
     unavailable_requests: int = 0
     fallback_requests: int = 0
+    manifest_rejections: int = 0
     total_latency_ms: float = 0.0
     max_latency_ms: float = 0.0
     tier_counts: dict[str, int] = field(default_factory=dict)
@@ -30,6 +31,10 @@ class TelemetryStore:
         self._state.tier_counts[tier] = self._state.tier_counts.get(tier, 0) + 1
         if tier in {"gpu", "cpu"}:
             self._state.fallback_requests += 1
+
+    def record_manifest_rejection(self) -> None:
+        with self._lock:
+            self._state.manifest_rejections += 1
 
     def record_unavailable(self, *, latency_ms: float) -> None:
         with self._lock:
@@ -59,6 +64,7 @@ class TelemetryStore:
                 "failed_requests": self._state.failed_requests,
                 "unavailable_requests": self._state.unavailable_requests,
                 "fallback_requests": self._state.fallback_requests,
+                "manifest_rejections": self._state.manifest_rejections,
                 "fallback_rate": round(fallback_rate, 4),
                 "avg_latency_ms": round(avg_latency, 3),
                 "max_latency_ms": round(self._state.max_latency_ms, 3),
@@ -84,6 +90,9 @@ class TelemetryStore:
             "# HELP vision_detector_fallback_requests_total Requests served by fallback tiers.",
             "# TYPE vision_detector_fallback_requests_total counter",
             f"vision_detector_fallback_requests_total {snapshot['fallback_requests']}",
+            "# HELP vision_detector_manifest_rejections_total Rejected incompatible model manifests.",
+            "# TYPE vision_detector_manifest_rejections_total counter",
+            f"vision_detector_manifest_rejections_total {snapshot['manifest_rejections']}",
             "# HELP vision_detector_fallback_rate Ratio of fallback requests.",
             "# TYPE vision_detector_fallback_rate gauge",
             f"vision_detector_fallback_rate {snapshot['fallback_rate']}",
