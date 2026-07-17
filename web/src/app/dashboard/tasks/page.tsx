@@ -124,6 +124,10 @@ const CATEGORY_LABELS: Record<string, string> = {
   verify_automation: "Verify Auto",
 };
 
+function isOverdueTask(task: TaskItem) {
+  return task.status !== "completed" && task.status !== "cancelled" && !!task.due_date && new Date(task.due_date) < new Date();
+}
+
 const ROUTINE_LABELS: Record<string, string> = {
   morning: "Morning",
   evening: "Evening",
@@ -330,21 +334,28 @@ export default function TasksPage() {
     }
   };
 
+  const loadAllOverdueTaskIds = async (token: string) => {
+    const allDatedTasks = await getCalendarTasks(token, new Date(0).toISOString(), new Date().toISOString());
+    return allDatedTasks.filter(isOverdueTask).map((task) => task.id);
+  };
+
   const overdueTasks = tasks.filter(
     (t) => t.status !== "completed" && t.status !== "cancelled" && t.due_date && new Date(t.due_date) < new Date(),
   );
 
   const handleCompleteOverdue = async () => {
     const token = getAccessToken();
-    if (!token || overdueTasks.length === 0) return;
+    if (!token) return;
+    const overdueTaskIds = await loadAllOverdueTaskIds(token);
+    if (overdueTaskIds.length === 0) return;
     const ok = await confirm({
       title: "Complete Overdue Tasks",
-      description: `Mark all ${overdueTasks.length} overdue task${overdueTasks.length === 1 ? "" : "s"} as complete? These are tasks whose due date has already passed.`,
+      description: `Mark all ${overdueTaskIds.length} overdue task${overdueTaskIds.length === 1 ? "" : "s"} as complete? These are tasks whose due date has already passed.`,
       confirmText: "Mark Complete",
     });
     if (!ok) return;
     try {
-      const { affected } = await bulkTasks("complete", overdueTasks.map((t) => t.id), token);
+      const { affected } = await bulkTasks("complete", overdueTaskIds, token);
       toast.success(`Completed ${affected} overdue task${affected === 1 ? "" : "s"}`);
       exitSelection();
       refresh();
@@ -354,9 +365,16 @@ export default function TasksPage() {
     }
   };
 
-  const selectOverdue = () => {
+  const selectOverdue = async () => {
+    const token = getAccessToken();
+    if (!token) return;
     setSelectionMode(true);
-    setSelectedIds(new Set(overdueTasks.map((t) => t.id)));
+    try {
+      const overdueTaskIds = await loadAllOverdueTaskIds(token);
+      setSelectedIds(new Set(overdueTaskIds));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to load overdue tasks");
+    }
   };
 
   const isOwner = user?.role === "owner";
@@ -513,7 +531,7 @@ export default function TasksPage() {
                 </Button>
                 {overdueTasks.length > 0 && (
                   <Button variant="ghost" size="sm" onClick={selectOverdue}>
-                    Select overdue ({overdueTasks.length})
+                    Select all overdue
                   </Button>
                 )}
                 <div className="ml-auto flex items-center gap-2">
