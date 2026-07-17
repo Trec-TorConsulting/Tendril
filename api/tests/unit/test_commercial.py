@@ -174,6 +174,62 @@ class TestTasks:
         resp = await client.delete(f"/v1/tasks/{task_id}", headers=commercial_tenant["headers"])
         assert resp.status_code == 204
 
+    async def test_bulk_complete(self, client, commercial_tenant):
+        ids = []
+        for i in range(3):
+            r = await client.post("/v1/tasks", json={"title": f"Bulk {i}"}, headers=commercial_tenant["headers"])
+            ids.append(r.json()["id"])
+        resp = await client.post(
+            "/v1/tasks/bulk",
+            json={"action": "complete", "task_ids": ids},
+            headers=commercial_tenant["headers"],
+        )
+        assert resp.status_code == 200
+        assert resp.json()["affected"] == 3
+        listed = await client.get("/v1/tasks?status=completed", headers=commercial_tenant["headers"])
+        completed_ids = {t["id"] for t in listed.json()["items"]}
+        assert set(ids).issubset(completed_ids)
+
+    async def test_bulk_delete(self, client, commercial_tenant):
+        ids = []
+        for i in range(2):
+            r = await client.post("/v1/tasks", json={"title": f"Del {i}"}, headers=commercial_tenant["headers"])
+            ids.append(r.json()["id"])
+        resp = await client.post(
+            "/v1/tasks/bulk",
+            json={"action": "delete", "task_ids": ids},
+            headers=commercial_tenant["headers"],
+        )
+        assert resp.status_code == 200
+        assert resp.json()["affected"] == 2
+        for tid in ids:
+            got = await client.get(f"/v1/tasks/{tid}", headers=commercial_tenant["headers"])
+            assert got.status_code == 404
+
+    async def test_bulk_empty_is_noop(self, client, commercial_tenant):
+        resp = await client.post(
+            "/v1/tasks/bulk",
+            json={"action": "delete", "task_ids": []},
+            headers=commercial_tenant["headers"],
+        )
+        assert resp.status_code == 200
+        assert resp.json()["affected"] == 0
+
+    async def test_bulk_does_not_affect_other_tenant(self, client, commercial_tenant, tenant_factory):
+        other = await tenant_factory.create(plan="commercial")
+        r = await client.post("/v1/tasks", json={"title": "Theirs"}, headers=other["headers"])
+        other_id = r.json()["id"]
+        resp = await client.post(
+            "/v1/tasks/bulk",
+            json={"action": "delete", "task_ids": [other_id]},
+            headers=commercial_tenant["headers"],
+        )
+        assert resp.status_code == 200
+        assert resp.json()["affected"] == 0
+        # The other tenant's task is untouched.
+        got = await client.get(f"/v1/tasks/{other_id}", headers=other["headers"])
+        assert got.status_code == 200
+
     async def test_filter_by_status(self, client, commercial_tenant):
         await client.post("/v1/tasks", json={"title": "A"}, headers=commercial_tenant["headers"])
         resp = await client.get("/v1/tasks?status=pending", headers=commercial_tenant["headers"])

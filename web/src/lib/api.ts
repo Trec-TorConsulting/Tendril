@@ -1686,6 +1686,13 @@ export function completeTask(id: string, token: string) {
 export function deleteTask(id: string, token: string) {
   return apiFetch<void>(`/tasks/${id}`, { method: "DELETE", token });
 }
+export function bulkTasks(action: "complete" | "cancel" | "delete", taskIds: string[], token: string) {
+  return apiFetch<{ affected: number }>("/tasks/bulk", {
+    method: "POST",
+    body: JSON.stringify({ action, task_ids: taskIds }),
+    token,
+  });
+}
 
 // Audit Trail (Commercial)
 export function listAuditLogs(token: string, filters?: { action?: string; resource_type?: string; user_id?: string; page?: number; page_size?: number }) {

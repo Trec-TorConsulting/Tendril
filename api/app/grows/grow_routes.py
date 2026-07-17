@@ -16,6 +16,8 @@ from app.audit import record_audit
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
 from app.billing.metering import record_usage
 from app.billing.tier_gate import require_usage_limit
+from app.commercial.models import CustomGrowType
+from app.config_management import GrowTypeProfile
 from app.grows.models import Bucket, GrowCycle
 from app.pagination import PaginatedResponse, PaginationParams, paginate
 
@@ -34,6 +36,7 @@ class GrowCreate(BaseModel):
 
 class GrowUpdate(BaseModel):
     name: str | None = None
+    grow_type: str | None = None
     stage: str | None = None
     status: str | None = None
     notes: str | None = None
@@ -57,6 +60,24 @@ class GrowResponse(BaseModel):
     settings: dict | None
     auto_health_check: bool
     model_config = {"from_attributes": True}
+
+
+async def _grow_type_exists(session: AsyncSession, *, tenant_id: UUID, grow_type: str) -> bool:
+    """Return True when grow_type is a known system or tenant custom grow type."""
+    system_profile = (
+        await session.execute(select(GrowTypeProfile.id).where(GrowTypeProfile.slug == grow_type).limit(1))
+    ).scalar_one_or_none()
+    if system_profile is not None:
+        return True
+
+    custom_profile = (
+        await session.execute(
+            select(CustomGrowType.id)
+            .where(CustomGrowType.tenant_id == tenant_id, CustomGrowType.slug == grow_type)
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    return custom_profile is not None
 
 
 @router.post("", response_model=GrowResponse, status_code=201, dependencies=[Depends(require_usage_limit("grows"))])
@@ -182,7 +203,15 @@ async def update_grow(
     grow = await session.get(GrowCycle, grow_id)
     if grow is None:
         raise HTTPException(status_code=404, detail="Grow cycle not found")
+
     updates = body.model_dump(exclude_unset=True)
+    grow_type_changed = False
+    new_grow_type = updates.get("grow_type")
+    if isinstance(new_grow_type, str) and new_grow_type != grow.grow_type:
+        if not await _grow_type_exists(session, tenant_id=user.tenant_id, grow_type=new_grow_type):
+            raise HTTPException(status_code=400, detail=f"Unknown grow type: {new_grow_type}")
+        grow_type_changed = True
+
     if "status" in updates and updates["status"] in ("completed", "archived"):
         grow.ended_at = datetime.now(UTC)
     # Auto-record milestone when stage changes
@@ -206,6 +235,20 @@ async def update_grow(
         )
     await session.commit()
 
+    if grow_type_changed:
+        try:
+            from app.scheduler.task_generator import reset_auto_tasks_for_grow_type_change
+
+            await reset_auto_tasks_for_grow_type_change(session, grow)
+        except Exception as exc:
+            import logging
+
+            # The grow_type change is already committed. The reset helper manages
+            # its own commits/rollbacks, so only reach here on an unexpected
+            # failure — roll back any dangling state before returning the grow.
+            await session.rollback()
+            logging.getLogger(__name__).warning("Grow-type task reset failed: %s", exc)
+
     # Create stage transition tasks when stage changes
     if "stage" in updates:
         try:
@@ -217,6 +260,8 @@ async def update_grow(
 
             logging.getLogger(__name__).warning("Stage task creation failed: %s", exc)
 
+    # Refresh last so the response object is fully populated after any commits
+    # performed by the task-reset / stage-transition helpers above.
     await session.refresh(grow)
     return grow
 

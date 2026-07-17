@@ -14,7 +14,7 @@ from typing import Any
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.commercial.models import Task
@@ -1799,6 +1799,55 @@ async def generate_tasks_for_grow(
                         created += 1
 
     return created
+
+
+async def reset_auto_tasks_for_grow_type_change(
+    session: AsyncSession,
+    grow: GrowCycle,
+    *,
+    horizon_days: int = 7,
+) -> tuple[int, int]:
+    """Purge stale pending auto tasks after a grow_type change, then regenerate.
+
+    Deleting the stale pending auto tasks is the primary correction — it removes
+    old grow-type-specific tasks (e.g. aquaponics "fish" tasks) that no longer
+    apply — and is committed first so it persists even if regeneration fails.
+    Regenerating tasks for the new grow type is best-effort.
+
+    Only ``status == "pending"`` auto tasks are removed, so completed/in-progress
+    history is preserved. Deletion (rather than cancellation) avoids
+    ``_task_exists`` treating the old rows as same-day tombstones that would block
+    regeneration of categories shared between the old and new grow type (e.g. the
+    universal ``health_check`` task).
+
+    Returns ``(deleted_count, created_count)``.
+    """
+    deleted_result = await session.execute(
+        delete(Task).where(
+            Task.grow_cycle_id == grow.id,
+            Task.source == "auto",
+            Task.status == "pending",
+        )
+    )
+    deleted_count = deleted_result.rowcount or 0
+    await session.commit()
+
+    created_count = 0
+    try:
+        created_count = await generate_tasks_for_grow(session, grow, horizon_days=horizon_days)
+        await session.commit()
+    except Exception:
+        # Regeneration is best-effort; never resurrect the deleted tasks.
+        await session.rollback()
+        logger.exception("Auto-task regeneration after grow_type change failed for grow %s", grow.id)
+
+    logger.info(
+        "Refreshed auto tasks after grow_type change for grow %s (deleted=%d, created=%d)",
+        grow.id,
+        deleted_count,
+        created_count,
+    )
+    return deleted_count, created_count
 
 
 async def generate_all_tasks(session: AsyncSession) -> int:

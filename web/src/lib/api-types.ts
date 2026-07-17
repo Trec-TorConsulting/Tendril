@@ -5637,6 +5637,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/tasks/bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Bulk Task Action
+         * @description Apply an action to many tasks at once (e.g. clear a batch of overdue tasks).
+         *
+         *     Tenant-scoped: only tasks owned by the caller's tenant are affected.
+         *     Recurring follow-ups are NOT spawned for bulk completion — use the
+         *     single-task complete endpoint when the next occurrence should be created.
+         */
+        post: operations["bulk_task_action_v1_tasks_bulk_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/tasks/calendar": {
         parameters: {
             query?: never;
@@ -6785,6 +6809,21 @@ export interface components {
             ticket_ids: string[];
             /** Value */
             value?: string | null;
+        };
+        /** BulkTaskAction */
+        BulkTaskAction: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "complete" | "cancel" | "delete";
+            /** Task Ids */
+            task_ids: string[];
+        };
+        /** BulkTaskResult */
+        BulkTaskResult: {
+            /** Affected */
+            affected: number;
         };
         /** CameraCreate */
         CameraCreate: {
@@ -8528,6 +8567,8 @@ export interface components {
         GrowUpdate: {
             /** Auto Health Check */
             auto_health_check?: boolean | null;
+            /** Grow Type */
+            grow_type?: string | null;
             /** Milestones */
             milestones?: {
                 [key: string]: unknown;
@@ -23753,6 +23794,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    bulk_task_action_v1_tasks_bulk_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BulkTaskAction"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BulkTaskResult"];
                 };
             };
             /** @description Validation Error */

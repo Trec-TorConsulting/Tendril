@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.middleware import CurrentUser, get_current_user, get_tenant_session, require_role
@@ -43,6 +43,15 @@ class TaskUpdate(BaseModel):
     category: str | None = None
     assigned_to: str | None = None
     due_date: str | None = None
+
+
+class BulkTaskAction(BaseModel):
+    action: Literal["complete", "cancel", "delete"]
+    task_ids: list[str]
+
+
+class BulkTaskResult(BaseModel):
+    affected: int
 
 
 class TaskResponse(BaseModel):
@@ -157,6 +166,43 @@ async def list_tasks(
         page=pagination.page,
         page_size=pagination.page_size,
     )
+
+
+@router.post("/bulk", response_model=BulkTaskResult)
+async def bulk_task_action(
+    body: BulkTaskAction,
+    user: Annotated[CurrentUser, Depends(require_role("owner", "member"))],
+    session: Annotated[AsyncSession, Depends(get_tenant_session)],
+):
+    """Apply an action to many tasks at once (e.g. clear a batch of overdue tasks).
+
+    Tenant-scoped: only tasks owned by the caller's tenant are affected.
+    Recurring follow-ups are NOT spawned for bulk completion — use the
+    single-task complete endpoint when the next occurrence should be created.
+    """
+    if not body.task_ids:
+        return BulkTaskResult(affected=0)
+    if len(body.task_ids) > 500:
+        raise HTTPException(status_code=422, detail="Cannot process more than 500 tasks at once")
+    try:
+        ids = [UUID(tid) for tid in body.task_ids]
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Invalid task id in list") from exc
+
+    scope = (Task.tenant_id == user.tenant_id, Task.id.in_(ids))
+
+    if body.action == "delete":
+        result = await session.execute(delete(Task).where(*scope))
+    elif body.action == "complete":
+        result = await session.execute(
+            update(Task).where(*scope).values(status="completed", completed_at=datetime.now(UTC))
+        )
+    else:  # cancel
+        result = await session.execute(update(Task).where(*scope).values(status="cancelled"))
+
+    affected = result.rowcount or 0
+    await session.commit()
+    return BulkTaskResult(affected=affected)
 
 
 @router.get("/calendar")

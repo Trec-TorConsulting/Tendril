@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 import pytest_asyncio
@@ -103,6 +103,97 @@ class TestGrowCRUD:
         )
         resp = await client.delete(f"/v1/grows/{g.json()['id']}", headers=tenant["headers"])
         assert resp.status_code == 204
+
+    async def test_update_grow_type(self, client, tenant):
+        tent = await client.post("/v1/tents", json={"name": "T"}, headers=tenant["headers"])
+        grow = await client.post(
+            "/v1/grows",
+            json={"tent_id": tent.json()["id"], "name": "G", "grow_type": "aquaponics"},
+            headers=tenant["headers"],
+        )
+        grow_id = grow.json()["id"]
+
+        resp = await client.patch(
+            f"/v1/grows/{grow_id}",
+            json={"grow_type": "dwc"},
+            headers=tenant["headers"],
+        )
+        assert resp.status_code == 200
+        assert resp.json()["grow_type"] == "dwc"
+
+    async def test_update_grow_type_rejects_unknown_type(self, client, tenant):
+        tent = await client.post("/v1/tents", json={"name": "T"}, headers=tenant["headers"])
+        grow = await client.post(
+            "/v1/grows",
+            json={"tent_id": tent.json()["id"], "name": "G", "grow_type": "dwc"},
+            headers=tenant["headers"],
+        )
+        grow_id = grow.json()["id"]
+
+        resp = await client.patch(
+            f"/v1/grows/{grow_id}",
+            json={"grow_type": "not_a_real_type"},
+            headers=tenant["headers"],
+        )
+        assert resp.status_code == 400
+        assert "Unknown grow type" in resp.json()["detail"]
+
+    async def test_grow_type_change_purges_stale_auto_tasks(self, client, tenant, db_session):
+        """Correcting grow_type deletes stale pending auto tasks (e.g. aquaponics
+        'fish' tasks) while preserving completed task history."""
+        from app.commercial.models import Task
+
+        tent = await client.post("/v1/tents", json={"name": "T"}, headers=tenant["headers"])
+        grow = await client.post(
+            "/v1/grows",
+            json={"tent_id": tent.json()["id"], "name": "G", "grow_type": "aquaponics"},
+            headers=tenant["headers"],
+        )
+        grow_id = grow.json()["id"]
+
+        # Simulate scheduler-generated aquaponics tasks for this grow.
+        db_session.add_all(
+            [
+                Task(
+                    tenant_id=tenant["tenant"].id,
+                    title="Feed fish",
+                    status="pending",
+                    source="auto",
+                    category="fish_feed",
+                    created_by=tenant["user"].id,
+                    grow_cycle_id=UUID(grow_id),
+                ),
+                Task(
+                    tenant_id=tenant["tenant"].id,
+                    title="Observe fish health",
+                    status="completed",
+                    source="auto",
+                    category="fish_health_check",
+                    created_by=tenant["user"].id,
+                    grow_cycle_id=UUID(grow_id),
+                ),
+            ]
+        )
+        await db_session.commit()
+
+        resp = await client.patch(
+            f"/v1/grows/{grow_id}",
+            json={"grow_type": "dwc"},
+            headers=tenant["headers"],
+        )
+        assert resp.status_code == 200
+
+        async def total(category: str, status: str) -> int:
+            r = await client.get(
+                f"/v1/tasks?grow_cycle_id={grow_id}&category={category}&status={status}",
+                headers=tenant["headers"],
+            )
+            assert r.status_code == 200
+            return r.json()["total"]
+
+        # Stale pending fish task removed; completed history preserved.
+        assert await total("fish_feed", "pending") == 0
+        assert await total("fish_health_check", "completed") == 1
 
 
 # ---------- Buckets ----------
