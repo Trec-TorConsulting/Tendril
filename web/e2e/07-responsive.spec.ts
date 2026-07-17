@@ -7,7 +7,7 @@
  * - Touch targets are adequate on mobile
  * - No horizontal scroll on any viewport
  */
-import { test, expect, login, TEST_USERS, SCREEN_SIZES } from "./helpers";
+import { test, expect, login, TEST_USERS } from "./helpers";
 
 test.describe("Responsive - Desktop Layout (≥1280px)", () => {
   test.beforeEach(async ({ page }) => {

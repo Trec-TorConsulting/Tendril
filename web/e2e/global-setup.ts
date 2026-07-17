@@ -79,7 +79,7 @@ async function globalSetup() {
           console.log(`  ✗ Failed to register ${user.email}: ${resp.status} ${body}`);
         }
       }
-    } catch (e) {
+    } catch {
       console.log(`  ✗ Error registering ${user.email}: ${e}`);
     }
   }
@@ -186,7 +186,7 @@ async function globalSetup() {
           console.log(`  ✗ Tent creation failed: ${tent.name} - ${resp.status} ${body.slice(0, 80)}`);
         }
       }
-    } catch (e) {
+    } catch {
       console.log(`  ✗ Error creating tent ${tent.name}: ${e}`);
     }
   }
@@ -212,7 +212,7 @@ async function globalSetup() {
           const body = await resp.text();
           console.log(`  ○ Grow: ${growType} - ${resp.status} ${body.slice(0, 80)}`);
         }
-      } catch (e) {
+      } catch {
         console.log(`  ✗ Error creating grow ${growType}: ${e}`);
       }
     }
@@ -234,7 +234,7 @@ async function globalSetup() {
     if (resp.ok) {
       console.log("  ✓ Created strain: QA Test Strain");
     }
-  } catch (e) {
+  } catch {
     // non-critical
   }
 

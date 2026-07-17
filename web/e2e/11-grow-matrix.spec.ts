@@ -3,7 +3,7 @@
  * Every grow type with every applicable environment and configuration.
  * This ensures no combination crashes or shows broken UI.
  */
-import { test, expect, login, TEST_USERS, GROW_TYPES, MEDIA_TYPES, ENVIRONMENT_TYPES, filterCriticalErrors } from "./helpers";
+import { test, expect, login, TEST_USERS, GROW_TYPES, MEDIA_TYPES, filterCriticalErrors } from "./helpers";
 
 // Define which environment types are valid for each grow type
 const VALID_ENVIRONMENTS: Record<string, string[]> = {

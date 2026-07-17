@@ -223,7 +223,7 @@ test.describe("PWA - Push Notifications", () => {
     await page.goto("/dashboard/notifications");
     await page.waitForLoadState("networkidle");
 
-    const hasNextData = await page.evaluate(() => {
+    await page.evaluate(() => {
       return !!(window as unknown as Record<string, unknown>).__NEXT_DATA__;
     });
     // Next.js app should have __NEXT_DATA__ (pages router) or render (app router)
