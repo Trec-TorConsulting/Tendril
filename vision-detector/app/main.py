@@ -95,7 +95,7 @@ async def detect(payload: DetectRequest) -> DetectResponse:
     )
 
     try:
-        detections = run_detection(payload.image_base64)
+        output = run_detection(payload.image_base64)
     except DetectorError as exc:
         logger.warning("Detector error: %s", exc)
         telemetry.record_error(
@@ -121,18 +121,19 @@ async def detect(payload: DetectRequest) -> DetectResponse:
             message="detector execution failed",
         )
 
+    served_tier = output.tier.value
     telemetry.record_success(
-        tier=state.accelerator_tier.value,
+        tier=served_tier,
         latency_ms=(perf_counter() - started) * 1000.0,
-        classes=[item.class_name for item in detections],
+        classes=[item.class_name for item in output.detections],
     )
 
     return DetectResponse(
         model_version=state.model_version,
-        accelerator_tier=state.accelerator_tier.value,
+        accelerator_tier=served_tier,
         detections=[
             DetectionBox(class_name=item.class_name, confidence=item.confidence, bbox=item.bbox)
-            for item in detections
+            for item in output.detections
         ],
         message=None,
     )

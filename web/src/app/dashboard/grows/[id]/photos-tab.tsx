@@ -34,9 +34,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ImageIcon, Plus, Trash2, Pencil, Loader2, Upload, Camera, Film, Stethoscope } from "lucide-react";
+import { ImageIcon, Plus, Trash2, Pencil, Loader2, Upload, Camera, Film, Stethoscope, ScanSearch } from "lucide-react";
 import { toast } from "sonner";
 import { PhotoAIDialog } from "@/components/photo-ai-dialog";
+import { VisionScanPanel } from "@/components/vision/vision-scan-panel";
 import { useApiSWR } from "@/lib/swr";
 
 /** Image component with retry logic for signed URLs. */
@@ -96,6 +97,7 @@ export function PhotosTab({ growId, buckets }: PhotosTabProps) {
   const [viewPhoto, setViewPhoto] = useState<GrowPhotoResponse | null>(null);
   const [editCaption, setEditCaption] = useState("");
   const [editSaving, setEditSaving] = useState(false);
+  const [photoScanMode, setPhotoScanMode] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [timelapseDialog, setTimelapseDialog] = useState(false);
   const [aiDialog, setAiDialog] = useState(false);
@@ -344,7 +346,7 @@ export function PhotosTab({ growId, buckets }: PhotosTabProps) {
       </Dialog>
 
       {/* View/Edit Photo Dialog */}
-      <Dialog open={!!viewPhoto} onOpenChange={(open) => !open && setViewPhoto(null)}>
+      <Dialog open={!!viewPhoto} onOpenChange={(open) => { if (!open) { setViewPhoto(null); setPhotoScanMode(false); } }}>
         <DialogContent className="max-w-2xl">
           {viewPhoto && (
             <>
@@ -362,13 +364,27 @@ export function PhotosTab({ growId, buckets }: PhotosTabProps) {
                 </DialogTitle>
               </DialogHeader>
               <div className="rounded-lg overflow-hidden border">
-                <RetryImage url={getImageSrc(viewPhoto)} alt={viewPhoto.caption || "Photo"} className="w-full max-h-[60vh] object-contain bg-muted" />
+                {photoScanMode ? (
+                  <div className="p-3">
+                    <VisionScanPanel source="photo" sourceId={viewPhoto.id} imageSrc={getImageSrc(viewPhoto)} />
+                  </div>
+                ) : (
+                  <RetryImage url={getImageSrc(viewPhoto)} alt={viewPhoto.caption || "Photo"} className="w-full max-h-[60vh] object-contain bg-muted" />
+                )}
               </div>
               <div className="flex items-end gap-2">
                 <div className="flex-1 space-y-1">
                   <Label className="text-xs">Caption</Label>
                   <Input value={editCaption} onChange={(e) => setEditCaption(e.target.value)} placeholder="Add a caption..." />
                 </div>
+                <Button
+                  size="sm"
+                  variant={photoScanMode ? "secondary" : "outline"}
+                  onClick={() => setPhotoScanMode((s) => !s)}
+                  aria-label="Scan for issues"
+                >
+                  <ScanSearch className="size-4" />
+                </Button>
                 <Button size="sm" onClick={handleUpdateCaption} disabled={editSaving}>
                   {editSaving ? <Loader2 className="size-4 animate-spin" /> : <Pencil className="size-4" />}
                 </Button>

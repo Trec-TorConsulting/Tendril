@@ -116,8 +116,8 @@
 	- Notification tests pass; no regression in existing alert pipelines.
 
 ## 5. Implementation Order and Guardrails
-- [ ] 5.1 Merge PR1 before starting PR2 (schema and lifecycle base are required).
-- [ ] 5.2 Keep each PR independently deployable with no hidden coupling.
-- [ ] 5.3 No PR may change more than one primary surface area without explicit note (API, Web, Integrations).
-- [ ] 5.4 After each PR: run strict OpenSpec validation and map completed checklist items.
+- [x] 5.1 Merge PR1 before starting PR2 (schema and lifecycle base are required).
+- [x] 5.2 Keep each PR independently deployable with no hidden coupling.
+- [x] 5.3 No PR may change more than one primary surface area without explicit note (API, Web, Integrations).
+- [x] 5.4 After each PR: run strict OpenSpec validation and map completed checklist items.
 - [x] 5.5 Preserve backward compatibility for existing chat consumers until PR3 lands.

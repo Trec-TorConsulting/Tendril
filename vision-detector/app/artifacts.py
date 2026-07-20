@@ -28,8 +28,13 @@ def _use_ssl(endpoint: str) -> bool:
     return endpoint.startswith("https://")
 
 
-@lru_cache(maxsize=4)
-def resolve_model_path(*, storage_key: str, local_path: str) -> str:
+def download_object(*, storage_key: str, local_path: str, force: bool = False) -> str:
+    """Download an object from S3/MinIO to ``local_path`` and return the path.
+
+    Reuses an already-downloaded file unless ``force`` is set. Raises
+    :class:`ArtifactError` when required S3 configuration is missing or the
+    download fails.
+    """
     endpoint = _required_env("S3_ENDPOINT")
     access_key = _required_env("S3_ACCESS_KEY")
     secret_key = _required_env("S3_SECRET_KEY")
@@ -37,7 +42,7 @@ def resolve_model_path(*, storage_key: str, local_path: str) -> str:
 
     target = Path(local_path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    if target.exists() and target.stat().st_size > 0:
+    if not force and target.exists() and target.stat().st_size > 0:
         return str(target)
 
     client = boto3.client(
@@ -56,3 +61,8 @@ def resolve_model_path(*, storage_key: str, local_path: str) -> str:
         raise ArtifactError(f"failed to download model artifact s3://{bucket}/{storage_key}") from exc
 
     return str(target)
+
+
+@lru_cache(maxsize=8)
+def resolve_model_path(*, storage_key: str, local_path: str) -> str:
+    return download_object(storage_key=storage_key, local_path=local_path)

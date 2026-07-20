@@ -564,6 +564,44 @@ export function getCameraSnapshot(token: string, tentId: string, cameraId?: stri
   return apiFetch<{ image_base64: string; timestamp: string }>(`/tents/${tentId}/camera-snapshot-b64${q}`, { token, retries: 0 });
 }
 
+// Vision detection
+export type VisionScanResponse = components["schemas"]["VisionScanResponse"];
+export type VisionDetectionBox = components["schemas"]["VisionDetectionBoxResponse"];
+export type VisionDetectionRecord = components["schemas"]["VisionDetectionResponse"];
+export type VisionProfile = components["schemas"]["VisionProfile"];
+export type PaginatedVisionDetectionResponse = components["schemas"]["PaginatedResponse_VisionDetectionResponse_"];
+
+export function scanTentSnapshot(token: string, tentId: string, profile?: VisionProfile) {
+  const q = profile ? `?profile=${profile}` : "";
+  return apiFetch<VisionScanResponse>(`/vision/scan/tent/${tentId}${q}`, {
+    method: "POST",
+    token,
+    timeout: 30_000,
+  });
+}
+
+export function scanGrowPhoto(token: string, photoId: string, profile?: VisionProfile) {
+  const q = profile ? `?profile=${profile}` : "";
+  return apiFetch<VisionScanResponse>(`/vision/scan/photo/${photoId}${q}`, {
+    method: "POST",
+    token,
+    timeout: 30_000,
+  });
+}
+
+export function listVisionDetections(
+  token: string,
+  params?: { grow_cycle_id?: string; source?: string; page?: number; page_size?: number },
+) {
+  const q = new URLSearchParams();
+  if (params?.grow_cycle_id) q.set("grow_cycle_id", params.grow_cycle_id);
+  if (params?.source) q.set("source", params.source);
+  if (params?.page) q.set("page", String(params.page));
+  if (params?.page_size) q.set("page_size", String(params.page_size));
+  const qs = q.toString();
+  return apiFetch<PaginatedVisionDetectionResponse>(`/vision/detections${qs ? `?${qs}` : ""}`, { token });
+}
+
 // Grows
 export interface GrowResponse {
   id: string;
@@ -1652,9 +1690,22 @@ export interface TaskItem {
   due_date: string | null;
   completed_at: string | null;
   recurring: string | null;
+  recurring_interval_days: number | null;
   routine: string | null;
   estimated_minutes: number | null;
   created_at: string;
+}
+
+export interface RoutineGroup {
+  routine: string;
+  label: string;
+  estimated_minutes: number;
+  task_count: number;
+  tasks: TaskItem[];
+}
+
+export interface RoutinesResponse {
+  routines: RoutineGroup[];
 }
 
 export async function listTasks(token: string, filters?: { status?: string; assigned_to?: string; category?: string; grow_cycle_id?: string; due_from?: string; due_to?: string }) {
@@ -1690,6 +1741,21 @@ export function bulkTasks(action: "complete" | "cancel" | "delete", taskIds: str
   return apiFetch<{ affected: number }>("/tasks/bulk", {
     method: "POST",
     body: JSON.stringify({ action, task_ids: taskIds }),
+    token,
+  });
+}
+export function skipTask(id: string, token: string) {
+  return apiFetch<{ skipped: boolean; next_due: string | null }>(`/tasks/${id}/skip`, { method: "POST", token });
+}
+export function getTaskRoutines(token: string, growCycleId: string, date?: string) {
+  const params = new URLSearchParams({ grow_cycle_id: growCycleId });
+  if (date) params.set("date", date);
+  return apiFetch<RoutinesResponse>(`/tasks/routines?${params.toString()}`, { token });
+}
+export function completeRoutine(taskIds: string[], token: string) {
+  return apiFetch<{ completed: number; spawned: number }>("/tasks/routines/complete", {
+    method: "POST",
+    body: JSON.stringify({ task_ids: taskIds }),
     token,
   });
 }

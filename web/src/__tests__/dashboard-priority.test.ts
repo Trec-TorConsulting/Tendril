@@ -19,6 +19,7 @@ function task(overrides: Partial<TaskItem>): TaskItem {
     due_date: null,
     completed_at: null,
     recurring: null,
+    recurring_interval_days: null,
     routine: null,
     estimated_minutes: null,
     created_at: new Date().toISOString(),

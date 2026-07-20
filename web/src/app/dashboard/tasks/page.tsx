@@ -14,6 +14,7 @@ import {
   getCalendarTasks,
   listGrows,
   listTenantMembers,
+  skipTask,
   type TaskItem,
   type GrowResponse,
   type TenantMember,
@@ -266,6 +267,19 @@ export default function TasksPage() {
       if (view === "calendar") refreshCalendar();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to complete task");
+    }
+  };
+
+  const handleSkip = async (id: string) => {
+    const token = getAccessToken();
+    if (!token) return;
+    try {
+      await skipTask(id, token);
+      toast.success("Skipped — next occurrence scheduled");
+      refresh();
+      if (view === "calendar") refreshCalendar();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to skip task");
     }
   };
 
@@ -600,6 +614,7 @@ export default function TasksPage() {
                     members={members}
                     onComplete={handleComplete}
                     onDelete={handleDelete}
+                    onSkip={handleSkip}
                     onAssign={handleAssign}
                     showAssign={isOwner}
                     selectable={selectionMode}
@@ -913,6 +928,7 @@ function TaskCard({
   members,
   onComplete,
   onDelete,
+  onSkip,
   onAssign,
   showAssign,
   selectable,
@@ -925,6 +941,7 @@ function TaskCard({
   members?: TenantMember[];
   onComplete: (id: string) => void;
   onDelete: (id: string) => void;
+  onSkip: (id: string) => void;
   onAssign?: (taskId: string, memberId: string | null) => void;
   showAssign?: boolean;
   selectable?: boolean;
@@ -1013,6 +1030,12 @@ function TaskCard({
               <CheckCircle2 className="mr-2 h-4 w-4" />
               Complete
             </DropdownMenuItem>
+            {(task.recurring || task.recurring_interval_days) && (
+              <DropdownMenuItem onClick={() => onSkip(task.id)}>
+                <X className="mr-2 h-4 w-4" />
+                Skip
+              </DropdownMenuItem>
+            )}
             {showAssign && onAssign && members && members.length > 0 && (
               <>
                 {members.map((m) => (

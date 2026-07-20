@@ -59,6 +59,7 @@ nav:
   - Guides:
       - Cannabis Quality Philosophy: cannabis-quality-philosophy.md
       - AI Operations: ai-operations.md
+      - Edge Vision Detection: edge-vision-detection.md
       - ESP32 Hardware: esp32-hardware.md
       - Atlas Scientific Sensors: atlas-scientific/README.md
       - Atlas Calibration: atlas-scientific/calibration.md

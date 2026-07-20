@@ -8,7 +8,8 @@ import { listTents, listTentCameras, getCameraSnapshot, type TentResponse, type 
 import { useApiSWR } from "@/lib/swr";
 import { getAccessToken } from "@/lib/auth";
 import { cn } from "@/lib/utils";
-import { RefreshCw, Maximize2, Camera, Loader2 } from "lucide-react";
+import { VisionScanPanel } from "@/components/vision/vision-scan-panel";
+import { RefreshCw, Maximize2, Camera, Loader2, ScanSearch } from "lucide-react";
 
 interface CameraGridProps {
   tentId?: string;
@@ -26,6 +27,7 @@ interface CameraWithSnapshot {
 export function CameraGrid({ tentId, hideEmpty }: CameraGridProps) {
   const [cameras, setCameras] = useState<CameraWithSnapshot[]>([]);
   const [selectedCamera, setSelectedCamera] = useState<CameraWithSnapshot | null>(null);
+  const [scanMode, setScanMode] = useState(false);
   const {
     data: cameraData,
     isLoading: loading,
@@ -132,6 +134,9 @@ export function CameraGrid({ tentId, hideEmpty }: CameraGridProps) {
 
   // Full-screen view
   if (selectedCamera) {
+    const snapshotUri = selectedCamera.imageBase64
+      ? `data:image/jpeg;base64,${selectedCamera.imageBase64}`
+      : null;
     return (
       <div className="fixed inset-0 z-50 bg-black flex flex-col">
         <div className="flex items-center justify-between p-4">
@@ -139,22 +144,48 @@ export function CameraGrid({ tentId, hideEmpty }: CameraGridProps) {
             <p className="text-white font-medium">{selectedCamera.camera.label}</p>
             <p className="text-white/60 text-sm">{selectedCamera.tent.name}</p>
           </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-white hover:bg-white/10"
-            onClick={() => setSelectedCamera(null)}
-          >
-            Close
-          </Button>
+          <div className="flex items-center gap-2">
+            {snapshotUri && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-white hover:bg-white/10"
+                onClick={() => setScanMode((s) => !s)}
+              >
+                <ScanSearch className="size-4" />
+                {scanMode ? "Hide scan" : "Scan"}
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-white hover:bg-white/10"
+              onClick={() => {
+                setSelectedCamera(null);
+                setScanMode(false);
+              }}
+            >
+              Close
+            </Button>
+          </div>
         </div>
-        <div className="flex-1 flex items-center justify-center p-4">
-          {selectedCamera.imageBase64 ? (
-            <img
-              src={`data:image/jpeg;base64,${selectedCamera.imageBase64}`}
-              alt={selectedCamera.camera.label}
-              className="max-w-full max-h-full object-contain rounded-lg"
-            />
+        <div className="flex-1 overflow-auto flex items-start justify-center p-4">
+          {snapshotUri ? (
+            scanMode ? (
+              <div className="w-full max-w-3xl rounded-lg bg-background p-4 text-foreground">
+                <VisionScanPanel
+                  source="tent"
+                  sourceId={selectedCamera.camera.tent_id}
+                  imageSrc={snapshotUri}
+                />
+              </div>
+            ) : (
+              <img
+                src={snapshotUri}
+                alt={selectedCamera.camera.label}
+                className="max-w-full max-h-full object-contain rounded-lg"
+              />
+            )
           ) : (
             <div className="text-white/60">No image available</div>
           )}
@@ -204,6 +235,18 @@ export function CameraGrid({ tentId, hideEmpty }: CameraGridProps) {
                 >
                   <RefreshCw className="size-3" />
                 </button>
+                {cam.imageBase64 && (
+                  <button
+                    onClick={() => {
+                      setSelectedCamera(cam);
+                      setScanMode(true);
+                    }}
+                    aria-label="Scan for issues"
+                    className="rounded-full bg-black/50 p-1.5 text-white hover:bg-black/70 transition-colors"
+                  >
+                    <ScanSearch className="size-3" />
+                  </button>
+                )}
                 <button
                   onClick={() => setSelectedCamera(cam)}
                   className="rounded-full bg-black/50 p-1.5 text-white hover:bg-black/70 transition-colors"

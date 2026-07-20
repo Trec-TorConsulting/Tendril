@@ -5681,6 +5681,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/tasks/routines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Routines
+         * @description Return open tasks for a grow grouped by routine for a target day (today + overdue).
+         */
+        get: operations["get_routines_v1_tasks_routines_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tasks/routines/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete Routine
+         * @description Complete all tasks in a routine group. Each recurring task spawns its next occurrence.
+         */
+        post: operations["complete_routine_v1_tasks_routines_complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/tasks/{task_id}": {
         parameters: {
             query?: never;
@@ -5720,9 +5760,29 @@ export interface paths {
         put?: never;
         /**
          * Complete Task
-         * @description Mark a task as completed. Creates next recurring instance if applicable.
+         * @description Mark a task as completed. Creates next recurring instance with roll-forward due date.
          */
         post: operations["complete_task_v1_tasks__task_id__complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tasks/{task_id}/skip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Skip Task
+         * @description Skip a recurring task occurrence. Advances to the next occurrence without recording a completion.
+         */
+        post: operations["skip_task_v1_tasks__task_id__skip_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7186,6 +7246,11 @@ export interface components {
             plant: string;
             /** Reason */
             reason: string;
+        };
+        /** CompleteRoutineRequest */
+        CompleteRoutineRequest: {
+            /** Task Ids */
+            task_ids: string[];
         };
         /** ConflictResponse */
         ConflictResponse: {
@@ -10276,6 +10341,24 @@ export interface components {
             /** Total Subscribers */
             total_subscribers: number;
         };
+        /** RoutineGroup */
+        RoutineGroup: {
+            /** Estimated Minutes */
+            estimated_minutes: number;
+            /** Label */
+            label: string;
+            /** Routine */
+            routine: string;
+            /** Task Count */
+            task_count: number;
+            /** Tasks */
+            tasks: components["schemas"]["TaskResponse"][];
+        };
+        /** RoutinesResponse */
+        RoutinesResponse: {
+            /** Routines */
+            routines: components["schemas"]["RoutineGroup"][];
+        };
         /** RuleCreate */
         RuleCreate: {
             /** Action */
@@ -11023,6 +11106,8 @@ export interface components {
             priority: string;
             /** Recurring */
             recurring: string | null;
+            /** Recurring Interval Days */
+            recurring_interval_days: number | null;
             /** Routine */
             routine: string | null;
             /** Source */
@@ -23874,6 +23959,73 @@ export interface operations {
             };
         };
     };
+    get_routines_v1_tasks_routines_get: {
+        parameters: {
+            query: {
+                /** @description Grow cycle UUID */
+                grow_cycle_id: string;
+                /** @description ISO date (YYYY-MM-DD), defaults to today UTC */
+                date?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoutinesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    complete_routine_v1_tasks_routines_complete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompleteRoutineRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_task_v1_tasks__task_id__get: {
         parameters: {
             query?: never;
@@ -23970,6 +24122,37 @@ export interface operations {
         };
     };
     complete_task_v1_tasks__task_id__complete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    skip_task_v1_tasks__task_id__skip_post: {
         parameters: {
             query?: never;
             header?: never;

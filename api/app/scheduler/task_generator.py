@@ -1352,6 +1352,14 @@ STAGE_TRANSITION_TASKS: dict[str, list[tuple[str, str, str, str, int, set[str] |
 # ── Helpers ─────────────────────────────────────────────────────────
 
 
+def _interval_to_label(interval_days: int) -> str | None:
+    """Convert an interval in days to a human-readable recurring label."""
+    _map: dict[int, str] = {1: "daily", 7: "weekly", 14: "biweekly", 30: "monthly"}
+    if interval_days <= 0:
+        return None
+    return _map.get(interval_days) or f"every_{interval_days}_days"
+
+
 async def _get_tenant_owner(session: AsyncSession, tenant_id: UUID) -> UUID | None:
     """Find the owner (admin) user for a tenant."""
     result = await session.execute(
@@ -1420,6 +1428,32 @@ async def _task_exists(
             Task.source == "auto",
             Task.due_date >= day_start,
             Task.due_date < day_start + timedelta(days=1),
+        )
+        .limit(1)
+    )
+    return result.scalar_one_or_none() is not None
+
+
+async def _open_seed_exists(
+    session: AsyncSession,
+    tenant_id: UUID,
+    category: str,
+    grow_cycle_id: UUID,
+) -> bool:
+    """Check if an open (pending/in_progress) auto task already exists for this category+grow.
+
+    Unlike _task_exists, cancelled rows are NOT treated as tombstones — only
+    live (pending/in_progress) rows block creation.  This prevents cancelled
+    tasks from permanently suppressing seed regeneration.
+    """
+    result = await session.execute(
+        select(Task.id)
+        .where(
+            Task.tenant_id == tenant_id,
+            Task.category == category,
+            Task.grow_cycle_id == grow_cycle_id,
+            Task.source == "auto",
+            Task.status.in_(["pending", "in_progress"]),
         )
         .limit(1)
     )
@@ -1606,11 +1640,15 @@ async def _load_automation_suppressions(session: AsyncSession) -> dict[str, dict
 async def generate_tasks_for_grow(
     session: AsyncSession,
     grow: GrowCycle,
-    horizon_days: int = 7,
+    horizon_days: int = 7,  # retained for compat; no longer used in the seed model
 ) -> int:
-    """Generate auto-tasks for a grow cycle up to horizon_days ahead.
+    """Generate recurring-seed auto-tasks for a grow cycle.
 
-    Returns number of tasks created.
+    Creates at most one open (pending/in_progress) task per template per grow —
+    the next due occurrence — instead of materialising every occurrence across a
+    horizon.  Completing a task spawns the next occurrence via complete_task.
+
+    Returns the number of tasks created.
     """
     owner_id = await _get_tenant_owner(session, grow.tenant_id)
     if not owner_id:
@@ -1629,7 +1667,7 @@ async def generate_tasks_for_grow(
     suppression_data = await _load_automation_suppressions(session)
     suppressions = {k: v["suppressed"] for k, v in suppression_data.items()}
 
-    # Track which automation verify tasks we've already generated
+    # Track which automation verify seeds we've already generated this run
     automation_verify_generated: set[str] = set()
 
     for tmpl in templates:
@@ -1641,7 +1679,7 @@ async def generate_tasks_for_grow(
             continue
         # Check automation suppression
         if _is_suppressed(tmpl.category, automations, suppressions):
-            # Generate verification task instead (once per automation type)
+            # Generate one verification seed per automation type (not per template)
             for automation, data in suppression_data.items():
                 suppressed = data["suppressed"]
                 if (
@@ -1651,59 +1689,41 @@ async def generate_tasks_for_grow(
                 ):
                     verify_json = data.get("verify_task")
                     if verify_json:
+                        cat = f"verify_{automation}"
+                        if await _open_seed_exists(session, grow.tenant_id, cat, grow.id):
+                            automation_verify_generated.add(automation)
+                            continue
+                        local_time = _get_routine_time(verify_json.get("routine", "weekly"), tz)
+                        due = _local_to_utc(local_time, now, tz)
                         interval = verify_json.get("interval_days", 7)
-                        for day_offset in range(0, horizon_days, interval):
-                            due_date = now + timedelta(days=day_offset)
-                            local_time = _get_routine_time(verify_json.get("routine", "morning"), tz)
-                            due = _local_to_utc(local_time, due_date, tz)
-                            cat = f"verify_{automation}"
-                            if await _task_exists(session, grow.tenant_id, cat, grow.id, due):
-                                continue
-                            task = Task(
-                                tenant_id=grow.tenant_id,
-                                title=verify_json["title"],
-                                description=verify_json.get("brief", ""),
-                                status="pending",
-                                priority=verify_json.get("priority", "medium"),
-                                category=cat,
-                                source="auto",
-                                created_by=owner_id,
-                                grow_cycle_id=grow.id,
-                                tent_id=grow.tent_id,
-                                due_date=due,
-                                routine=verify_json.get("routine", "weekly"),
-                                estimated_minutes=verify_json.get("estimated_minutes", 10),
-                            )
-                            session.add(task)
-                            created += 1
+                        task = Task(
+                            tenant_id=grow.tenant_id,
+                            title=verify_json["title"],
+                            description=verify_json.get("brief", ""),
+                            status="pending",
+                            priority=verify_json.get("priority", "medium"),
+                            category=cat,
+                            source="auto",
+                            created_by=owner_id,
+                            grow_cycle_id=grow.id,
+                            tent_id=grow.tent_id,
+                            due_date=due,
+                            routine=verify_json.get("routine", "weekly"),
+                            estimated_minutes=verify_json.get("estimated_minutes", 10),
+                            recurring=_interval_to_label(interval),
+                            recurring_interval_days=interval if interval > 0 else None,
+                        )
+                        session.add(task)
+                        created += 1
                     automation_verify_generated.add(automation)
             continue
 
-        # Generate tasks for each interval within horizon
-        for day_offset in range(0, horizon_days, tmpl.interval_days):
-            due_date = now + timedelta(days=day_offset)
-            local_time = _get_routine_time(tmpl.routine, tz)
-            due = _local_to_utc(local_time, due_date, tz)
-
-            if await _task_exists(session, grow.tenant_id, tmpl.category, grow.id, due):
+        # One-shot templates (interval_days == 0) use a single occurrence with no recurrence
+        if tmpl.interval_days == 0:
+            if await _open_seed_exists(session, grow.tenant_id, tmpl.category, grow.id):
                 continue
-
-            # Rain-skip: suppress outdoor watering tasks when rain is forecast
-            if (
-                tmpl.category == "watering"
-                and grow.grow_type in OUTDOOR_TYPES
-                and await _should_skip_watering(session, grow.tent_id, due)
-            ):
-                continue
-
-            # Build description
-            if tmpl.category == "flush_and_fill":
-                description = await _build_flush_fill_description(session, grow)
-            elif tmpl.detail:
-                description = f"{tmpl.brief}\n\n---\n{tmpl.detail}"
-            else:
-                description = tmpl.brief
-
+            due = _local_to_utc(_get_routine_time(tmpl.routine, tz), now, tz)
+            description = await _build_flush_fill_description(session, grow) if tmpl.category == "flush_and_fill" else (f"{tmpl.brief}\n\n---\n{tmpl.detail}" if tmpl.detail else tmpl.brief)
             task = Task(
                 tenant_id=grow.tenant_id,
                 title=tmpl.title,
@@ -1721,6 +1741,48 @@ async def generate_tasks_for_grow(
             )
             session.add(task)
             created += 1
+            continue
+
+        # Recurring seed: skip if an open occurrence already exists
+        if await _open_seed_exists(session, grow.tenant_id, tmpl.category, grow.id):
+            continue
+
+        # Rain-skip: suppress outdoor watering seed when rain is forecast today
+        if (
+            tmpl.category == "watering"
+            and grow.grow_type in OUTDOOR_TYPES
+            and await _should_skip_watering(session, grow.tent_id, now)
+        ):
+            continue
+
+        # Build description
+        if tmpl.category == "flush_and_fill":
+            description = await _build_flush_fill_description(session, grow)
+        elif tmpl.detail:
+            description = f"{tmpl.brief}\n\n---\n{tmpl.detail}"
+        else:
+            description = tmpl.brief
+
+        due = _local_to_utc(_get_routine_time(tmpl.routine, tz), now, tz)
+        task = Task(
+            tenant_id=grow.tenant_id,
+            title=tmpl.title,
+            description=description,
+            status="pending",
+            priority=tmpl.priority,
+            category=tmpl.category,
+            source="auto",
+            created_by=owner_id,
+            grow_cycle_id=grow.id,
+            tent_id=grow.tent_id,
+            due_date=due,
+            routine=tmpl.routine,
+            estimated_minutes=tmpl.estimated_minutes,
+            recurring=_interval_to_label(tmpl.interval_days),
+            recurring_interval_days=tmpl.interval_days,
+        )
+        session.add(task)
+        created += 1
 
     # ── Strain-based harvest tasks ──────────────────────────────
     if grow.stage in ("flowering", "late_flower", "ripening"):

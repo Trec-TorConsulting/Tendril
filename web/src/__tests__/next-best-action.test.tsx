@@ -32,6 +32,7 @@ describe("NextBestAction", () => {
             due_date: null,
             completed_at: null,
             recurring: null,
+            recurring_interval_days: null,
             routine: null,
             estimated_minutes: null,
           },
