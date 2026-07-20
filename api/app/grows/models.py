@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from sqlalchemy import (
     Boolean,
@@ -431,9 +431,30 @@ class ReferenceStrain(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     breeder: Mapped[str | None] = mapped_column(String(255))
     genetics: Mapped[str | None] = mapped_column(String(255))
-    thc_pct: Mapped[float | None] = mapped_column(Float)
-    cbd_pct: Mapped[float | None] = mapped_column(Float)
+    # Type / lineage split (indica_pct + sativa_pct sum to 100)
+    strain_type: Mapped[str | None] = mapped_column(String(50))  # e.g. "Sativa-dominant hybrid"
+    indica_pct: Mapped[int | None] = mapped_column(Integer)
+    sativa_pct: Mapped[int | None] = mapped_column(Integer)
+    # Cannabinoids — typical (midpoint) value plus the commonly observed range.
+    # Ranges are the truthful representation: content varies by phenotype/grow/lab.
+    thc_pct: Mapped[float | None] = mapped_column(Float)  # typical / midpoint
+    thc_min: Mapped[float | None] = mapped_column(Float)
+    thc_max: Mapped[float | None] = mapped_column(Float)
+    cbd_pct: Mapped[float | None] = mapped_column(Float)  # typical / midpoint
+    cbd_min: Mapped[float | None] = mapped_column(Float)
+    cbd_max: Mapped[float | None] = mapped_column(Float)
+    # Sensory / phenotype
+    terpenes: Mapped[list | None] = mapped_column(JSON)  # dominant-first list[str]
+    effects: Mapped[list | None] = mapped_column(JSON)  # list[str]
+    flavors: Mapped[list | None] = mapped_column(JSON)  # list[str]
+    flowering_min_weeks: Mapped[float | None] = mapped_column(Float)
+    flowering_max_weeks: Mapped[float | None] = mapped_column(Float)
+    yield_indoor: Mapped[str | None] = mapped_column(String(100))
+    yield_outdoor: Mapped[str | None] = mapped_column(String(100))
     description: Mapped[str | None] = mapped_column(Text)
+    # Provenance — where the values were aggregated from and when last checked
+    sources: Mapped[list | None] = mapped_column(JSON)  # list[str]
+    last_verified: Mapped[date | None] = mapped_column(Date)
     external_id: Mapped[str | None] = mapped_column(String(255), unique=True)
     synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 

@@ -5,7 +5,18 @@ from __future__ import annotations
 import logging
 from datetime import UTC
 
+from app.reference.strain_sync import STRAIN_DATA_CAVEAT
+
 logger = logging.getLogger(__name__)
+
+# Directive appended to AI prompts whenever a bucket carries a resolved strain
+# profile — makes the strain library the authoritative source for strain facts.
+STRAIN_LIBRARY_DIRECTIVE = (
+    "STRAIN LIBRARY = SOURCE OF TRUTH: Any strain profile shown above comes from the grower's "
+    "strain library. Treat it as the authoritative reference for that strain's genetics, lineage, "
+    "cannabinoid/terpene content, and flowering time — prefer this library data over your own "
+    "general knowledge when giving strain-specific advice. " + STRAIN_DATA_CAVEAT
+)
 
 
 async def get_grow_type_profile_from_db(grow_type: str, session) -> dict | None:
@@ -45,6 +56,66 @@ def _fmt_sensors(sensors: dict) -> str:
     return "\n".join(lines)
 
 
+def _fmt_range(lo: float | None, hi: float | None, unit: str = "") -> str | None:
+    """Format a min/max pair as 'lo-hi{unit}', collapsing equal/singleton bounds."""
+    if lo is None and hi is None:
+        return None
+    if lo is not None and hi is not None and lo != hi:
+        return f"{lo}-{hi}{unit}"
+    val = lo if lo is not None else hi
+    return f"{val}{unit}"
+
+
+def _fmt_strain_profile(sp: dict) -> str:
+    """Render a resolved strain-library profile as indented, AI-readable lines."""
+    lines: list[str] = []
+    if sp.get("strain_type"):
+        lines.append(f"    Type: {sp['strain_type']}")
+    if sp.get("breeder"):
+        lines.append(f"    Breeder: {sp['breeder']}")
+    if sp.get("genetics"):
+        lines.append(f"    Genetics: {sp['genetics']}")
+    thc_typ, thc_rng = sp.get("thc_pct"), _fmt_range(sp.get("thc_min"), sp.get("thc_max"), "%")
+    if thc_typ is not None and thc_rng:
+        lines.append(f"    THC: ~{thc_typ}% (typical range {thc_rng})")
+    elif thc_typ is not None:
+        lines.append(f"    THC: ~{thc_typ}%")
+    elif thc_rng:
+        lines.append(f"    THC: {thc_rng}")
+    cbd_typ, cbd_rng = sp.get("cbd_pct"), _fmt_range(sp.get("cbd_min"), sp.get("cbd_max"), "%")
+    if cbd_typ is not None and cbd_rng:
+        lines.append(f"    CBD: ~{cbd_typ}% (typical range {cbd_rng})")
+    elif cbd_typ is not None:
+        lines.append(f"    CBD: ~{cbd_typ}%")
+    elif cbd_rng:
+        lines.append(f"    CBD: {cbd_rng}")
+    if sp.get("terpenes"):
+        lines.append(f"    Terpenes: {', '.join(sp['terpenes'])}")
+    elif sp.get("terpene_profile"):
+        terps = ", ".join(f"{k}: {v}" for k, v in sp["terpene_profile"].items())
+        lines.append(f"    Terpenes: {terps}")
+    if sp.get("effects"):
+        lines.append(f"    Effects: {', '.join(sp['effects'])}")
+    if sp.get("flavors"):
+        lines.append(f"    Flavors: {', '.join(sp['flavors'])}")
+    if sp.get("flowering_days"):
+        lines.append(f"    Flowering: {sp['flowering_days']} days")
+    else:
+        wk = _fmt_range(sp.get("flowering_min_weeks"), sp.get("flowering_max_weeks"), " weeks")
+        if wk:
+            lines.append(f"    Flowering: {wk}")
+    grow_yield = [
+        f"{label} {sp[key]}" for key, label in (("yield_indoor", "indoor"), ("yield_outdoor", "outdoor")) if sp.get(key)
+    ]
+    if grow_yield:
+        lines.append(f"    Yield: {', '.join(grow_yield)}")
+    if sp.get("notes"):
+        lines.append(f"    Strain notes: {sp['notes']}")
+    if sp.get("sources"):
+        lines.append(f"    Sources: {', '.join(sp['sources'])}")
+    return "\n".join(lines)
+
+
 def _fmt_bucket_list(buckets: list[dict]) -> str:
     parts = []
     for b in buckets:
@@ -56,22 +127,12 @@ def _fmt_bucket_list(buckets: list[dict]) -> str:
         if b.get("volume_gallons"):
             desc += f", {b['volume_gallons']} gal"
         desc += f", stage: {b.get('growth_stage', '?')}, status: {b.get('status', '?')}"
-        # Include strain profile if available
+        # Include strain profile if available (from the strain library — source of truth)
         sp = b.get("strain_profile")
         if sp:
-            if sp.get("genetics"):
-                desc += f"\n    Genetics: {sp['genetics']}"
-            if sp.get("flowering_days"):
-                desc += f"\n    Flowering days: {sp['flowering_days']}"
-            if sp.get("thc_pct"):
-                desc += f"\n    THC: {sp['thc_pct']}%"
-            if sp.get("cbd_pct"):
-                desc += f"\n    CBD: {sp['cbd_pct']}%"
-            if sp.get("terpene_profile"):
-                terps = ", ".join(f"{k}: {v}" for k, v in sp["terpene_profile"].items())
-                desc += f"\n    Terpenes: {terps}"
-            if sp.get("notes"):
-                desc += f"\n    Strain notes: {sp['notes']}"
+            profile = _fmt_strain_profile(sp)
+            if profile:
+                desc += "\n" + profile
         parts.append(desc)
     return "\n".join(parts)
 
@@ -468,6 +529,8 @@ async def build_chat_context(
     buckets = grow_data.get("buckets") or []
     if buckets:
         parts.append(f"\n=== Plants/Buckets ({len(buckets)}) ===\n" + _fmt_bucket_list(buckets))
+        if any(b.get("strain_profile") for b in buckets):
+            parts.append(STRAIN_LIBRARY_DIRECTIVE)
 
     # Data freshness warning (chat)
     sensor_age = grow_data.get("sensor_data_age_hours")
@@ -847,6 +910,8 @@ async def build_health_check_prompt(
     buckets = grow_data.get("buckets") or []
     if buckets:
         sections.append(f"=== Plants/Buckets ({len(buckets)}) ===\n" + _fmt_bucket_list(buckets))
+        if any(b.get("strain_profile") for b in buckets):
+            sections.append(STRAIN_LIBRARY_DIRECTIVE)
 
     # Data freshness warning
     sensor_age = grow_data.get("sensor_data_age_hours")

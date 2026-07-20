@@ -7,6 +7,7 @@ live in ``app.reference.service``.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Annotated
 from uuid import UUID
 
@@ -25,9 +26,25 @@ class ReferenceStrainResponse(BaseModel):
     name: str
     breeder: str | None
     genetics: str | None
+    strain_type: str | None = None
+    indica_pct: int | None = None
+    sativa_pct: int | None = None
     thc_pct: float | None
+    thc_min: float | None = None
+    thc_max: float | None = None
     cbd_pct: float | None
+    cbd_min: float | None = None
+    cbd_max: float | None = None
+    terpenes: list[str] | None = None
+    effects: list[str] | None = None
+    flavors: list[str] | None = None
+    flowering_min_weeks: float | None = None
+    flowering_max_weeks: float | None = None
+    yield_indoor: str | None = None
+    yield_outdoor: str | None = None
     description: str | None
+    sources: list[str] | None = None
+    last_verified: date | None = None
     model_config = {"from_attributes": True}
 
 
