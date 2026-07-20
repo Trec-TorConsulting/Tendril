@@ -111,8 +111,9 @@ class TestCleanupScript:
 
         # Run the cleanup script core logic directly (skip argparse/asyncio.run)
         # Patch generate_tasks_for_grow to no-op (generator needs real tables)
-        import app.scheduler.task_generator as tg
         from scripts.cleanup_and_regen_tasks import _run
+
+        import app.scheduler.task_generator as tg
         original = tg.generate_tasks_for_grow
 
         async def _noop_regen(session, grow, **kw):
