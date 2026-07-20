@@ -84,4 +84,72 @@ describe("DashboardAiInsights", () => {
     expect(screen.getByText("Harvest Outlook")).toBeInTheDocument();
     expect(screen.getByText("Anomaly Scan")).toBeInTheDocument();
   });
+
+  it("renders structured nutrient adjustments instead of raw JSON", async () => {
+    const { useApiSWR } = await import("@/lib/swr");
+    vi.mocked(useApiSWR).mockReturnValue({
+      data: {
+        coachTip: "Hold steady.",
+        coachGeneratedAt: new Date().toISOString(),
+        coachCached: true,
+        insights: {
+          nutrient_advice: {
+            result: {
+              adjustments: [
+                { nutrient: "POTASSIUM", action: "increase", amount: "+5% PK" },
+                { nutrient: "CALCIUM", action: "maintain", amount: "standard" },
+              ],
+              reasoning: "Seedling stage needs light feeding.",
+            },
+            generatedAt: new Date().toISOString(),
+            cached: true,
+          },
+        },
+      },
+      isLoading: false,
+      mutate: vi.fn(),
+    } as never);
+
+    const { DashboardAiInsights } = await import("@/components/dashboard-ai-insights");
+    const { container } = render(
+      <DashboardAiInsights growId="grow-1" growStage="seedling" hasSensorData={false} />,
+    );
+
+    expect(screen.getByText("Potassium")).toBeInTheDocument();
+    expect(screen.getByText("Calcium")).toBeInTheDocument();
+    expect(screen.getByText("Seedling stage needs light feeding.")).toBeInTheDocument();
+    expect(container.textContent).not.toContain("```");
+    expect(container.textContent).not.toContain('"adjustments"');
+  });
+
+  it("cleans prose and drops raw JSON when the insight is an unparsed string", async () => {
+    const { useApiSWR } = await import("@/lib/swr");
+    const degraded =
+      'Based on the provided information, here are some general recommendations: ```json { "adjustments": [ { "nutrient": "POTASSIUM", "action": "increase"';
+    vi.mocked(useApiSWR).mockReturnValue({
+      data: {
+        coachTip: "Hold steady.",
+        coachGeneratedAt: new Date().toISOString(),
+        coachCached: true,
+        insights: {
+          nutrient_advice: {
+            result: degraded,
+            generatedAt: new Date().toISOString(),
+            cached: true,
+          },
+        },
+      },
+      isLoading: false,
+      mutate: vi.fn(),
+    } as never);
+
+    const { DashboardAiInsights } = await import("@/components/dashboard-ai-insights");
+    const { container } = render(
+      <DashboardAiInsights growId="grow-1" growStage="seedling" hasSensorData={false} />,
+    );
+
+    expect(screen.getByText(/here are some general recommendations/i)).toBeInTheDocument();
+    expect(container.textContent).not.toContain("```");
+    expect(container.textContent).not.toContain('"nutrient"');
+  });
 });

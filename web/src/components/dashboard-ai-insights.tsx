@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
+import ReactMarkdown from "react-markdown";
 import { getAiInsight, getCoachTip, type InsightType } from "@/lib/api";
 import { useApiSWR } from "@/lib/swr";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -123,20 +124,17 @@ export function DashboardAiInsights({
         </div>
 
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {insightCards.map((card) => {
-            const summary = summarizeInsight(card.payload?.result);
-            return (
-              <div key={card.key} className="rounded-lg border bg-card p-3">
-                <div className="mb-1.5 flex items-center justify-between gap-2">
-                  <p className="text-sm font-medium">{card.title}</p>
-                  <Badge variant="outline" className="text-[10px]">
-                    {card.payload?.generatedAt ? `${timeAgo(card.payload.generatedAt)} ${card.payload.cached ? "cached" : "fresh"}` : "pending"}
-                  </Badge>
-                </div>
-                <p className="line-clamp-4 text-xs text-muted-foreground">{summary}</p>
+          {insightCards.map((card) => (
+            <div key={card.key} className="rounded-lg border bg-card p-3">
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <p className="text-sm font-medium">{card.title}</p>
+                <Badge variant="outline" className="text-[10px]">
+                  {card.payload?.generatedAt ? `${timeAgo(card.payload.generatedAt)} ${card.payload.cached ? "cached" : "fresh"}` : "pending"}
+                </Badge>
               </div>
-            );
-          })}
+              <InsightBody value={card.payload?.result} />
+            </div>
+          ))}
         </div>
       </CardContent>
     </Card>
@@ -157,23 +155,174 @@ async function loadInsight(
   };
 }
 
-function summarizeInsight(value: unknown): string {
-  if (typeof value === "string") {
-    return value;
+function InsightBody({ value }: { value: unknown }): ReactNode {
+  if (value == null || (typeof value === "string" && !value.trim())) {
+    return <p className="text-xs text-muted-foreground">No insight available yet.</p>;
   }
 
-  if (value && typeof value === "object") {
-    const v = value as Record<string, unknown>;
-    if (typeof v.summary === "string") {
-      return v.summary;
-    }
-    if (typeof v.recommendation === "string") {
-      return v.recommendation;
-    }
-    return JSON.stringify(v);
+  const obj = coerceToObject(value);
+  if (obj) {
+    const structured = formatStructured(obj);
+    if (structured) return structured;
   }
 
-  return "No insight available yet.";
+  const prose = typeof value === "string" ? extractProse(value) : "";
+  if (prose) {
+    return (
+      <div className="prose prose-sm dark:prose-invert max-h-28 max-w-none overflow-hidden text-xs leading-relaxed text-muted-foreground [&_*]:text-xs [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+        <ReactMarkdown>{prose}</ReactMarkdown>
+      </div>
+    );
+  }
+
+  return <p className="line-clamp-4 text-xs text-muted-foreground">{fallbackText(value)}</p>;
+}
+
+function formatStructured(obj: Record<string, unknown>): ReactNode | null {
+  const adjustments = asArray(obj.adjustments);
+  if (adjustments) {
+    if (adjustments.length === 0) {
+      return <p className="text-xs text-muted-foreground">No feeding adjustments needed right now.</p>;
+    }
+    return (
+      <div className="space-y-1.5">
+        <ul className="space-y-1">
+          {adjustments.slice(0, 4).map((raw, i) => {
+            const adj = asRecord(raw);
+            return (
+              <li key={i} className="flex flex-wrap items-baseline gap-x-1 text-xs">
+                <span className="font-medium text-foreground">{humanize(adj?.nutrient)}</span>
+                {adj?.action != null ? <span className="text-muted-foreground">— {humanize(adj.action)}</span> : null}
+                {adj?.amount != null ? <span className="text-muted-foreground">({String(adj.amount)})</span> : null}
+              </li>
+            );
+          })}
+        </ul>
+        {typeof obj.reasoning === "string" && obj.reasoning.trim() ? (
+          <p className="line-clamp-2 text-[11px] text-muted-foreground/80">{obj.reasoning}</p>
+        ) : null}
+      </div>
+    );
+  }
+
+  const anomalies = asArray(obj.anomalies);
+  if (anomalies) {
+    if (anomalies.length === 0) {
+      return <p className="text-xs text-muted-foreground">No anomalies detected.</p>;
+    }
+    return (
+      <ul className="space-y-1">
+        {anomalies.slice(0, 4).map((raw, i) => {
+          const a = asRecord(raw);
+          return (
+            <li key={i} className="text-xs">
+              <span className="font-medium text-foreground">{humanize(a?.sensor)}</span>
+              {a?.value != null ? <span className="text-muted-foreground"> · {String(a.value)}</span> : null}
+              {a?.severity != null ? <span className={severityClass(String(a.severity))}> · {String(a.severity)}</span> : null}
+              {typeof a?.recommendation === "string" && a.recommendation ? (
+                <span className="text-muted-foreground"> — {a.recommendation}</span>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+    );
+  }
+
+  if (obj.estimated_date != null || obj.days_remaining != null || obj.trichome_target != null) {
+    return (
+      <div className="space-y-0.5 text-xs">
+        {obj.days_remaining != null ? (
+          <p>
+            <span className="font-medium text-foreground">{String(obj.days_remaining)} days</span>{" "}
+            <span className="text-muted-foreground">remaining</span>
+          </p>
+        ) : null}
+        {obj.estimated_date != null ? <p className="text-muted-foreground">Est. harvest {String(obj.estimated_date)}</p> : null}
+        {obj.trichome_target != null ? <p className="text-muted-foreground">Target: {humanize(obj.trichome_target)}</p> : null}
+        {typeof obj.notes === "string" && obj.notes.trim() ? (
+          <p className="line-clamp-2 text-muted-foreground/80">{obj.notes}</p>
+        ) : null}
+      </div>
+    );
+  }
+
+  for (const key of ["summary", "recommendation", "reasoning", "notes"] as const) {
+    const v = obj[key];
+    if (typeof v === "string" && v.trim()) {
+      return <p className="line-clamp-4 text-xs text-muted-foreground">{v}</p>;
+    }
+  }
+
+  return null;
+}
+
+/** Return a plain object from a value that is already an object, or a JSON string the LLM may have wrapped in prose/markdown. */
+function coerceToObject(value: unknown): Record<string, unknown> | null {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value !== "string") return null;
+
+  const trimmed = value.trim();
+  const candidates = [trimmed];
+  const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence) candidates.push(fence[1]);
+  const brace = trimmed.match(/\{[\s\S]*\}/);
+  if (brace) candidates.push(brace[0]);
+
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      // Not valid JSON — try the next candidate.
+    }
+  }
+  return null;
+}
+
+/** Strip markdown code fences and any trailing raw JSON blob so only readable prose remains. */
+function extractProse(text: string): string {
+  const withoutFences = text.replace(/```[\s\S]*?```/g, " ").replace(/```[\s\S]*$/g, " ");
+  const jsonStart = withoutFences.search(/\{\s*"/);
+  const prose = jsonStart === -1 ? withoutFences : withoutFences.slice(0, jsonStart);
+  return prose.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function fallbackText(value: unknown): string {
+  const obj = coerceToObject(value);
+  if (obj) {
+    const parts = Object.entries(obj)
+      .filter(([, v]) => v != null && typeof v !== "object")
+      .map(([k, v]) => `${humanize(k)}: ${String(v)}`);
+    if (parts.length) return parts.join(" · ");
+  }
+  return typeof value === "string" ? value.trim() : "No insight available yet.";
+}
+
+function asArray(value: unknown): unknown[] | null {
+  return Array.isArray(value) ? value : null;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+}
+
+function humanize(value: unknown): string {
+  if (value == null) return "";
+  const s = String(value).replace(/_/g, " ").trim();
+  if (!s) return "";
+  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+}
+
+function severityClass(severity: string): string {
+  const s = severity.toLowerCase();
+  if (s === "high" || s === "critical") return "font-medium text-destructive";
+  if (s === "medium" || s === "moderate") return "font-medium text-yellow-700 dark:text-yellow-400";
+  return "text-muted-foreground";
 }
 
 function timeAgo(timestamp: string): string {
