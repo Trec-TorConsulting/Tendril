@@ -301,7 +301,7 @@ export function AiActionQueue({
           </Button>
         </div>
 
-        <ScrollArea className="mt-3 max-h-72">
+        <ScrollArea className="mt-3 max-h-[28rem]">
           <div className="space-y-3 pr-3">
             {isLoading ? (
               <Card size="sm" className="border border-dashed border-border/80 bg-background/70">

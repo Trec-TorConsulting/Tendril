@@ -29,6 +29,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useApiSWR } from "@/lib/swr";
 import {
   Send,
+  RefreshCw,
   Bot,
   User,
   CheckCircle2,
@@ -249,6 +250,7 @@ function ChatDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [conversationHistoryError, setConversationHistoryError] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const activeConversationIdRef = useRef<string | null>(null);
+  const conversationMapRef = useRef(conversationMap);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -279,6 +281,15 @@ function ChatDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
   }, [activeConversationId]);
+
+  // Mirror the conversation map into a ref so history loading can read the latest
+  // remembered id WITHOUT making the map a reactive dependency. Otherwise persisting
+  // a server-assigned conversation_id re-runs the history effect, which toggles the
+  // loading/ready flags the socket effect depends on — tearing down and reconnecting
+  // the chat socket in a loop (Connected ↔ Connecting flapping).
+  useEffect(() => {
+    conversationMapRef.current = conversationMap;
+  }, [conversationMap]);
 
   const actionKey = useMemo(
     () => (open ? (["ai-actions", selectedGrow?.id ?? "all"] as const) : null),
@@ -330,7 +341,7 @@ function ChatDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
     const authToken = token;
 
     let cancelled = false;
-    const rememberedConversationId = conversationMap[activeScope] ?? null;
+    const rememberedConversationId = conversationMapRef.current[activeScope] ?? null;
 
     async function loadConversationHistory() {
       setConversationHistoryReady(false);
@@ -399,7 +410,7 @@ function ChatDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
     return () => {
       cancelled = true;
     };
-  }, [activeScope, conversationMap, open, persistConversationId, selectedGrow?.id]);
+  }, [activeScope, open, persistConversationId, selectedGrow?.id]);
 
   // WebSocket — connects when drawer opens, auto-reconnects on drop (not on auth failure)
   useEffect(() => {
@@ -555,8 +566,30 @@ function ChatDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeScope, connectionNonce, conversationHistoryLoading, conversationHistoryReady, open, persistConversationId, selectedGrow?.id]);
 
+  const reconnect = useCallback(() => {
+    // Clear any auth-failure/backoff latch so the socket can retry immediately.
+    authFailed.current = false;
+    intentionalClose.current = false;
+    retryCount.current = 0;
+    if (reconnectTimer.current) {
+      clearTimeout(reconnectTimer.current);
+      reconnectTimer.current = null;
+    }
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    setConnected(false);
+    setConnectionNonce((current) => current + 1);
+  }, []);
+
   const sendMessage = () => {
-    if (!input.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    if (!input.trim()) return;
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      // Socket dropped or auth expired — recover instead of silently discarding input.
+      reconnect();
+      return;
+    }
     setMessages((prev) => [...prev, { role: "user", content: input }]);
     wsRef.current.send(JSON.stringify({ message: input }));
     setInput("");
@@ -650,9 +683,22 @@ function ChatDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
             )}
           </div>
           <div className="flex items-center gap-1">
-            <Badge variant={connected ? "default" : "outline"} className="text-[10px] px-1.5 py-0">
-              {connected ? "Connected" : "Connecting…"}
-            </Badge>
+            {connected ? (
+              <Badge variant="default" className="text-[10px] px-1.5 py-0">
+                Connected
+              </Badge>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-6 gap-1 px-1.5 text-[10px] font-normal"
+                onClick={reconnect}
+                title="Reconnect to the AI service"
+              >
+                <RefreshCw className="size-3" />
+                Reconnect
+              </Button>
+            )}
             {messages.length > 0 && (
               <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={clearMessages} title="Clear chat">
                 <Trash2 className="size-3.5 text-muted-foreground" />
@@ -781,14 +827,13 @@ function ChatDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
           <div className="flex gap-2">
             <Input
               ref={inputRef}
-              placeholder="Ask about your grow…"
+              placeholder={connected ? "Ask about your grow…" : "Offline — press Enter to reconnect"}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-              disabled={!connected}
               className="h-9"
             />
-            <Button size="sm" className="h-9 px-3" onClick={sendMessage} disabled={!connected || !input.trim()}>
+            <Button size="sm" className="h-9 px-3" onClick={sendMessage} disabled={!input.trim()}>
               <Send className="size-4" />
             </Button>
           </div>

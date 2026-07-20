@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Send, Bot, User, CheckCircle2, MessageSquare } from "lucide-react";
+import { Send, RefreshCw, Bot, User, CheckCircle2, MessageSquare } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { cn } from "@/lib/utils";
 
@@ -115,12 +115,31 @@ export function OverviewChat({ growId }: OverviewChatProps) {
   }, [growId]);
 
   useEffect(() => {
-    const cleanup = connect();
-    return () => cleanup?.();
+    connect();
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+    };
+  }, [connect]);
+
+  const reconnect = useCallback(() => {
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    setConnected(false);
+    connect();
   }, [connect]);
 
   const sendMessage = () => {
-    if (!input.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    if (!input.trim()) return;
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      // Socket dropped — reconnect instead of silently discarding the message.
+      reconnect();
+      return;
+    }
     setMessages((prev) => [...prev, { role: "user", content: input }]);
     wsRef.current.send(JSON.stringify({ message: input }));
     setInput("");
@@ -133,9 +152,22 @@ export function OverviewChat({ growId }: OverviewChatProps) {
           <CardTitle className="flex items-center gap-2 text-sm font-medium">
             <MessageSquare className="size-4" /> AI Chat
           </CardTitle>
-          <Badge variant={connected ? "default" : "outline"} className="text-[10px] px-1.5 py-0">
-            {connected ? "Connected" : "Connecting…"}
-          </Badge>
+          {connected ? (
+            <Badge variant="default" className="text-[10px] px-1.5 py-0">
+              Connected
+            </Badge>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 gap-1 px-1.5 text-[10px] font-normal"
+              onClick={reconnect}
+              title="Reconnect to the AI service"
+            >
+              <RefreshCw className="size-3" />
+              Reconnect
+            </Button>
+          )}
         </div>
       </CardHeader>
       <CardContent className="flex flex-1 flex-col p-0 min-h-0">
@@ -208,14 +240,13 @@ export function OverviewChat({ growId }: OverviewChatProps) {
         <div className="border-t px-3 py-2">
           <div className="flex gap-2">
             <Input
-              placeholder="Ask about your grow…"
+              placeholder={connected ? "Ask about your grow…" : "Offline — press Enter to reconnect"}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-              disabled={!connected}
               className="h-8 text-xs"
             />
-            <Button size="sm" className="h-8 px-2.5" onClick={sendMessage} disabled={!connected || !input.trim()}>
+            <Button size="sm" className="h-8 px-2.5" onClick={sendMessage} disabled={!input.trim()}>
               <Send className="size-3.5" />
             </Button>
           </div>
