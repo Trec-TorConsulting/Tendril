@@ -10260,10 +10260,22 @@ export interface components {
         ReferenceStrainResponse: {
             /** Breeder */
             breeder: string | null;
+            /** Cbd Max */
+            cbd_max?: number | null;
+            /** Cbd Min */
+            cbd_min?: number | null;
             /** Cbd Pct */
             cbd_pct: number | null;
             /** Description */
             description: string | null;
+            /** Effects */
+            effects?: string[] | null;
+            /** Flavors */
+            flavors?: string[] | null;
+            /** Flowering Max Weeks */
+            flowering_max_weeks?: number | null;
+            /** Flowering Min Weeks */
+            flowering_min_weeks?: number | null;
             /** Genetics */
             genetics: string | null;
             /**
@@ -10271,10 +10283,30 @@ export interface components {
              * Format: uuid
              */
             id: string;
+            /** Indica Pct */
+            indica_pct?: number | null;
+            /** Last Verified */
+            last_verified?: string | null;
             /** Name */
             name: string;
+            /** Sativa Pct */
+            sativa_pct?: number | null;
+            /** Sources */
+            sources?: string[] | null;
+            /** Strain Type */
+            strain_type?: string | null;
+            /** Terpenes */
+            terpenes?: string[] | null;
+            /** Thc Max */
+            thc_max?: number | null;
+            /** Thc Min */
+            thc_min?: number | null;
             /** Thc Pct */
             thc_pct: number | null;
+            /** Yield Indoor */
+            yield_indoor?: string | null;
+            /** Yield Outdoor */
+            yield_outdoor?: string | null;
         };
         /** RefreshRequest */
         RefreshRequest: {

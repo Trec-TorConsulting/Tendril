@@ -1,17 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { searchReferenceStrains, searchNutrients } from "@/lib/api";
+import { searchReferenceStrains, searchNutrients, type ReferenceStrainResult } from "@/lib/api";
 import { useApiSWR } from "@/lib/swr";
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
 
-interface StrainSuggestion {
-  id: string;
-  name: string;
-  breeder: string | null;
-  genetics: string | null;
-}
+type StrainSuggestion = ReferenceStrainResult;
 
 interface NutrientSuggestion {
   id: string;
@@ -78,7 +73,7 @@ export function ReferenceStrainSearch({ onSelect, placeholder = "Search global s
               <div>
                 <p className="font-medium">{s.name}</p>
                 <p className="text-xs text-muted-foreground">
-                  {[s.breeder, s.genetics].filter(Boolean).join(" · ") || "Unknown breeder"}
+                  {[s.strain_type, s.breeder, s.genetics].filter(Boolean).join(" · ") || "Unknown breeder"}
                 </p>
               </div>
             </button>

@@ -1230,8 +1230,10 @@ export async function listNotificationLogs(
 // Use createGrow + createBucket + createFeedingSchedule to clone
 
 // Reference data
+export type ReferenceStrainResult = components["schemas"]["ReferenceStrainResponse"];
+
 export function searchReferenceStrains(token: string, query: string) {
-  return apiFetch<{ id: string; name: string; breeder: string | null; genetics: string | null }[]>(
+  return apiFetch<ReferenceStrainResult[]>(
     `/reference/strains?q=${encodeURIComponent(query)}`,
     { token },
   );

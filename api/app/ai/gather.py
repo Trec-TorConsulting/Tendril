@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.grows.models import (
@@ -16,6 +16,7 @@ from app.grows.models import (
     GrowCycle,
     HealthEval,
     JournalEntry,
+    ReferenceStrain,
     Strain,
     Tent,
     TentCamera,
@@ -33,6 +34,95 @@ _TENT_SENSOR_SKIP_FIELDS = {"id", "tenant_id", "tent_id", "device_id", "recorded
 _TENT_SENSOR_FIELDS = tuple(
     sorted(c.name for c in TentSensorReading.__table__.columns if c.name not in _TENT_SENSOR_SKIP_FIELDS)
 )
+
+
+def _strain_to_profile(strain: Strain) -> dict:
+    """Serialize a tenant strain-library entry into the AI-facing profile shape."""
+    return {
+        "name": strain.name,
+        "breeder": strain.breeder,
+        "genetics": strain.genetics,
+        "strain_type": None,
+        "thc_pct": strain.thc_pct,
+        "thc_min": None,
+        "thc_max": None,
+        "cbd_pct": strain.cbd_pct,
+        "cbd_min": None,
+        "cbd_max": None,
+        "terpenes": None,
+        "terpene_profile": strain.terpene_profile,
+        "effects": None,
+        "flavors": None,
+        "flowering_days": strain.flowering_days,
+        "flowering_min_weeks": None,
+        "flowering_max_weeks": None,
+        "yield_indoor": None,
+        "yield_outdoor": None,
+        "notes": strain.notes,
+        "sources": None,
+    }
+
+
+def _reference_to_profile(ref: ReferenceStrain) -> dict:
+    """Serialize a global reference-strain entry into the AI-facing profile shape."""
+    return {
+        "name": ref.name,
+        "breeder": ref.breeder,
+        "genetics": ref.genetics,
+        "strain_type": ref.strain_type,
+        "thc_pct": ref.thc_pct,
+        "thc_min": ref.thc_min,
+        "thc_max": ref.thc_max,
+        "cbd_pct": ref.cbd_pct,
+        "cbd_min": ref.cbd_min,
+        "cbd_max": ref.cbd_max,
+        "terpenes": ref.terpenes,
+        "terpene_profile": None,
+        "effects": ref.effects,
+        "flavors": ref.flavors,
+        "flowering_days": None,
+        "flowering_min_weeks": ref.flowering_min_weeks,
+        "flowering_max_weeks": ref.flowering_max_weeks,
+        "yield_indoor": ref.yield_indoor,
+        "yield_outdoor": ref.yield_outdoor,
+        "notes": ref.description,
+        "sources": ref.sources,
+    }
+
+
+async def _resolve_strain_profile(session: AsyncSession, bucket: Bucket) -> dict | None:
+    """Resolve a bucket's strain profile from the strain library (source of truth).
+
+    Resolution order:
+    1. Explicit link — ``bucket.strain_id`` → strain-library entry.
+    2. Free-text ``bucket.strain_name`` matched case-insensitively against the
+       strain library (tenant + global, RLS-scoped).
+    3. Free-text ``bucket.strain_name`` matched against the global reference DB.
+
+    Returns ``None`` when the strain is unknown so callers can omit the profile.
+    """
+    if bucket.strain_id:
+        strain = bucket.strain or await session.get(Strain, bucket.strain_id)
+        if strain:
+            return _strain_to_profile(strain)
+
+    name = (bucket.strain_name or "").strip()
+    if not name:
+        return None
+
+    strain = (
+        await session.execute(select(Strain).where(func.lower(Strain.name) == name.lower()).limit(1))
+    ).scalar_one_or_none()
+    if strain:
+        return _strain_to_profile(strain)
+
+    ref = (
+        await session.execute(select(ReferenceStrain).where(func.lower(ReferenceStrain.name) == name.lower()).limit(1))
+    ).scalar_one_or_none()
+    if ref:
+        return _reference_to_profile(ref)
+
+    return None
 
 
 async def gather_grow_data(
@@ -75,19 +165,11 @@ async def gather_grow_data(
             "status": b.status,
             "volume_gallons": b.volume_gallons,
         }
-        # Include full strain profile when linked
-        if b.strain_id:
-            strain = b.strain or await session.get(Strain, b.strain_id)
-            if strain:
-                bd["strain_profile"] = {
-                    "name": strain.name,
-                    "genetics": strain.genetics,
-                    "flowering_days": strain.flowering_days,
-                    "thc_pct": strain.thc_pct,
-                    "cbd_pct": strain.cbd_pct,
-                    "terpene_profile": strain.terpene_profile,
-                    "notes": strain.notes,
-                }
+        # Strain profile — the strain library is the source of truth. Resolve via the
+        # explicit link first, then by name against the library / global reference DB.
+        strain_profile = await _resolve_strain_profile(session, b)
+        if strain_profile:
+            bd["strain_profile"] = strain_profile
         bucket_list.append(bd)
     data["buckets"] = bucket_list
 
@@ -106,9 +188,7 @@ async def gather_grow_data(
         ).scalar_one_or_none()
         if reading:
             bucket_sensors[b.position] = {
-                k: getattr(reading, k)
-                for k in _BUCKET_SENSOR_FIELDS
-                if getattr(reading, k) is not None
+                k: getattr(reading, k) for k in _BUCKET_SENSOR_FIELDS if getattr(reading, k) is not None
             }
             bucket_sensors[b.position]["recorded_at"] = reading.recorded_at.isoformat()
             age_hours = (now - reading.recorded_at).total_seconds() / 3600

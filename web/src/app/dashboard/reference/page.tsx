@@ -7,12 +7,18 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dna, FlaskConical, Search } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import type { ReferenceStrainResult } from "@/lib/api";
 
-interface StrainResult {
-  id: string;
-  name: string;
-  breeder: string | null;
-  genetics: string | null;
+type StrainResult = ReferenceStrainResult;
+
+const STRAIN_DATA_CAVEAT =
+  "Cannabinoid, terpene, flowering-time and yield figures are typical ranges aggregated from public strain " +
+  "databases and breeder listings. Actual results vary by phenotype, cultivation, and testing lab.";
+
+function fmtRange(min: number | null | undefined, max: number | null | undefined, unit: string): string | null {
+  if (min == null && max == null) return null;
+  if (min != null && max != null && min !== max) return `${min}-${max}${unit}`;
+  return `${min ?? max}${unit}`;
 }
 
 interface NutrientResult {
@@ -70,27 +76,63 @@ export default function ReferencePage() {
           </Card>
 
           {strainResults.length > 0 && (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {strainResults.map((s) => (
-                <Card key={s.id}>
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="font-medium">{s.name}</p>
-                        {s.breeder && (
-                          <p className="text-xs text-muted-foreground">{s.breeder}</p>
-                        )}
-                      </div>
-                      <Dna className="size-4 text-muted-foreground" />
-                    </div>
-                    {s.genetics && (
-                      <Badge variant="secondary" className="mt-2 text-xs">
-                        {s.genetics}
-                      </Badge>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
+            <div className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {strainResults.map((s) => {
+                  const thc = fmtRange(s.thc_min, s.thc_max, "%") ?? (s.thc_pct != null ? `~${s.thc_pct}%` : null);
+                  const cbd = fmtRange(s.cbd_min, s.cbd_max, "%") ?? (s.cbd_pct != null ? `~${s.cbd_pct}%` : null);
+                  const flower = fmtRange(s.flowering_min_weeks, s.flowering_max_weeks, " wk");
+                  return (
+                    <Card key={s.id}>
+                      <CardContent className="space-y-2 p-4">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <p className="font-medium">{s.name}</p>
+                            {s.breeder && <p className="text-xs text-muted-foreground">{s.breeder}</p>}
+                          </div>
+                          <Dna className="size-4 text-muted-foreground" />
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {s.strain_type && <Badge className="text-xs">{s.strain_type}</Badge>}
+                          {s.genetics && (
+                            <Badge variant="secondary" className="text-xs">
+                              {s.genetics}
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-x-3 text-xs text-muted-foreground">
+                          {thc && <span>THC: {thc}</span>}
+                          {cbd && <span>CBD: {cbd}</span>}
+                          {flower && <span>Flower: {flower}</span>}
+                          {s.yield_indoor && <span>Indoor: {s.yield_indoor}</span>}
+                        </div>
+                        {s.terpenes?.length ? (
+                          <p className="text-xs">
+                            <span className="text-muted-foreground">Terpenes:</span> {s.terpenes.join(", ")}
+                          </p>
+                        ) : null}
+                        {s.effects?.length ? (
+                          <p className="text-xs">
+                            <span className="text-muted-foreground">Effects:</span> {s.effects.join(", ")}
+                          </p>
+                        ) : null}
+                        {s.flavors?.length ? (
+                          <p className="text-xs">
+                            <span className="text-muted-foreground">Flavors:</span> {s.flavors.join(", ")}
+                          </p>
+                        ) : null}
+                        {s.sources?.length ? (
+                          <p className="text-[11px] text-muted-foreground">
+                            Sources: {s.sources.join(", ")}
+                            {s.last_verified ? ` · verified ${s.last_verified}` : ""}
+                          </p>
+                        ) : null}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-muted-foreground">{STRAIN_DATA_CAVEAT}</p>
             </div>
           )}
 
