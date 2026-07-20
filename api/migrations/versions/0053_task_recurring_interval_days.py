@@ -1,7 +1,7 @@
 """Add recurring_interval_days to tasks table.
 
 Revision ID: 0053
-Revises: 0052_vision_detection_tables
+Revises: 0052
 Create Date: 2026-07-17
 """
 
@@ -9,7 +9,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "0053"
-down_revision = "0052_vision_detection_tables"
+down_revision = "0052"
 branch_labels = None
 depends_on = None
 
