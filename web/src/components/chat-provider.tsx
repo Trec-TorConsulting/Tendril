@@ -203,14 +203,16 @@ interface ChatContextValue {
   open: boolean;
   toggle: () => void;
   openChat: () => void;
+  openChatWith: (text: string) => void;
   closeChat: () => void;
 }
 
-// ── Context ────────────────────────────────────────────────
+// ── Context ───────────────────────────────
 const ChatContext = createContext<ChatContextValue>({
   open: false,
   toggle: () => {},
   openChat: () => {},
+  openChatWith: () => {},
   closeChat: () => {},
 });
 
@@ -221,21 +223,37 @@ export function useChat() {
 // ── Provider + Drawer ──────────────────────────────────────
 export function ChatProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState<string | null>(null);
 
   const toggle = useCallback(() => setOpen((v) => !v), []);
   const openChat = useCallback(() => setOpen(true), []);
   const closeChat = useCallback(() => setOpen(false), []);
+  const openChatWith = useCallback((text: string) => {
+    setDraft(text);
+    setOpen(true);
+  }, []);
+  const clearDraft = useCallback(() => setDraft(null), []);
 
   return (
-    <ChatContext.Provider value={{ open, toggle, openChat, closeChat }}>
+    <ChatContext.Provider value={{ open, toggle, openChat, openChatWith, closeChat }}>
       {children}
-      <ChatDrawer open={open} onClose={closeChat} />
+      <ChatDrawer open={open} onClose={closeChat} draft={draft} onDraftConsumed={clearDraft} />
     </ChatContext.Provider>
   );
 }
 
-// ── Drawer ─────────────────────────────────────────────────
-function ChatDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
+// ── Drawer ──────────────────────────────
+function ChatDrawer({
+  open,
+  onClose,
+  draft,
+  onDraftConsumed,
+}: {
+  open: boolean;
+  onClose: () => void;
+  draft?: string | null;
+  onDraftConsumed?: () => void;
+}) {
   const { selectedGrow } = useGrow();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -320,6 +338,20 @@ function ChatDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
       setTimeout(() => inputRef.current?.focus(), 150);
     }
   }, [open]);
+
+  // Seed the composer when the drawer opens with a prefilled question (e.g. the
+  // "Ask" button on a dashboard insight). Deferred to a timer so it never runs
+  // setState synchronously in the effect body, and only touches input state —
+  // never the socket lifecycle.
+  useEffect(() => {
+    if (!open || !draft) return;
+    const id = setTimeout(() => {
+      setInput(draft);
+      inputRef.current?.focus();
+      onDraftConsumed?.();
+    }, 160);
+    return () => clearTimeout(id);
+  }, [open, draft, onDraftConsumed]);
 
   useEffect(() => {
     if (!open) {

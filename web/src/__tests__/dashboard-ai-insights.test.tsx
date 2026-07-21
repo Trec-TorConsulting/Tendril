@@ -9,6 +9,11 @@ vi.mock("@/lib/swr", () => ({
 vi.mock("@/lib/api", () => ({
   getCoachTip: vi.fn(),
   getAiInsight: vi.fn(),
+  createTask: vi.fn(),
+}));
+
+vi.mock("@/components/chat-provider", () => ({
+  useChat: () => ({ open: false, toggle: vi.fn(), openChat: vi.fn(), openChatWith: vi.fn(), closeChat: vi.fn() }),
 }));
 
 vi.mock("next/link", () => ({
