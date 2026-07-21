@@ -190,10 +190,14 @@ function formatStructured(obj: Record<string, unknown>): ReactNode | null {
           {adjustments.slice(0, 4).map((raw, i) => {
             const adj = asRecord(raw);
             return (
-              <li key={i} className="flex flex-wrap items-baseline gap-x-1 text-xs">
+              <li key={i} className="flex flex-wrap items-baseline gap-x-1 gap-y-0.5 text-xs">
                 <span className="font-medium text-foreground">{humanize(adj?.nutrient)}</span>
-                {adj?.action != null ? <span className="text-muted-foreground">— {humanize(adj.action)}</span> : null}
-                {adj?.amount != null ? <span className="text-muted-foreground">({String(adj.amount)})</span> : null}
+                {(adj?.action != null || adj?.amount != null) ? (
+                  <span className="inline-flex flex-wrap items-baseline gap-x-1 text-muted-foreground">
+                    {adj?.action != null ? <span>— {humanize(adj.action)}</span> : null}
+                    {adj?.amount != null ? <span className="whitespace-nowrap">({String(adj.amount)})</span> : null}
+                  </span>
+                ) : null}
               </li>
             );
           })}
