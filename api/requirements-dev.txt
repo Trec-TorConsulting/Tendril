@@ -2,6 +2,7 @@
 pytest>=9.1.1,<10
 pytest-asyncio>=1.4.0,<2
 pytest-cov>=7.1.0,<8
+pytest-xdist>=3.6,<4
 httpx>=0.28.1,<1
 ruff>=0.15.20,<1
 mypy>=2.1.0,<3

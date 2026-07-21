@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from uuid import uuid4
 
@@ -12,8 +13,43 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 # Set test env vars before importing app
 os.environ["JWT_SECRET"] = "test-secret-do-not-use-in-production"  # noqa: S105
-os.environ["DATABASE_URL"] = "postgresql+asyncpg://tendril:tendril@localhost:5432/tendril_test"
+# Under pytest-xdist each worker (gw0, gw1, …) gets its own database so the
+# per-test TRUNCATE isolation in ``_clean_tables`` cannot collide across
+# workers. Serial (non-xdist) runs keep the single ``tendril_test`` database.
+_BASE_DATABASE_URL = "postgresql+asyncpg://tendril:tendril@localhost:5432/tendril_test"
+_XDIST_WORKER = os.environ.get("PYTEST_XDIST_WORKER")
+os.environ["DATABASE_URL"] = f"{_BASE_DATABASE_URL}_{_XDIST_WORKER}" if _XDIST_WORKER else _BASE_DATABASE_URL
 os.environ["INTEGRATION_ENCRYPTION_KEY"] = "m8eWk-kF4nPTdc7Y0wccVuqqEYTUvrAWdVcF5zKBuo0="
+
+
+async def _ensure_worker_database() -> None:
+    """Create the current xdist worker's database if it does not exist.
+
+    Connects to the ``postgres`` maintenance DB with AUTOCOMMIT (``CREATE
+    DATABASE`` cannot run inside a transaction). Concurrent creates from
+    ``template1`` can transiently fail while another worker holds it, so we
+    retry briefly.
+    """
+    admin_base, _, worker_db = os.environ["DATABASE_URL"].rpartition("/")
+    admin_engine = create_async_engine(f"{admin_base}/postgres", isolation_level="AUTOCOMMIT")
+    try:
+        async with admin_engine.connect() as conn:
+            exists = await conn.scalar(
+                text("SELECT 1 FROM pg_database WHERE datname = :name"),
+                {"name": worker_db},
+            )
+            if exists:
+                return
+            for attempt in range(10):
+                try:
+                    await conn.execute(text(f'CREATE DATABASE "{worker_db}"'))
+                    return
+                except Exception:
+                    if attempt == 9:
+                        raise
+                    await asyncio.sleep(0.5)
+    finally:
+        await admin_engine.dispose()
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
@@ -90,6 +126,10 @@ async def _setup_db():
         TenantMembership,
         User,
     )
+
+    # Under xdist, create this worker's dedicated database before connecting.
+    if _XDIST_WORKER:
+        await _ensure_worker_database()
 
     engine = create_async_engine(os.environ["DATABASE_URL"], echo=False)
 

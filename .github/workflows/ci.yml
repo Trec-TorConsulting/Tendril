@@ -336,7 +336,7 @@ jobs:
           python-version: "3.14"
           cache: pip
       - run: pip install -r requirements.txt -r requirements-dev.txt
-      - run: pytest --tb=short -q --durations=20
+      - run: pytest --tb=short -q --durations=20 -n 4
         env:
           DATABASE_URL: postgresql+asyncpg://tendril:tendril@localhost:5432/tendril_test
           JWT_SECRET: ci-test-secret-not-real
