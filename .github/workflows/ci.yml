@@ -107,16 +107,41 @@ jobs:
           echo "::error::web/src/lib/api-types.ts is out of date with the FastAPI OpenAPI schema."
           echo "::error::Run 'npm run gen:types' inside web/ and commit the updated file."
 
+  # ── Detect image-affecting changes (for PR build validation) ──
+  # Always runs so docker-build's `needs` is satisfied on every event; the
+  # output is only consulted for pull_request builds.
+  changes:
+    name: Detect Docker changes
+    runs-on: arc-runner-arm64
+    outputs:
+      docker: ${{ steps.filter.outputs.docker }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            docker:
+              - 'api/Dockerfile'
+              - 'api/requirements.txt'
+              - 'web/Dockerfile'
+              - 'web/package.json'
+              - 'web/package-lock.json'
+
   # ── Docker Build & Push ───────────────────────────────────────
-  # Build + push images only on main. On PRs this used to build both targets
-  # on both arches (4 jobs) with no push and no cache — pure runner cost that
-  # never affected PR wall-clock (api-test dominates). These legs are no
-  # longer required status checks; Dockerfile/build breakage now surfaces on
-  # the main run instead of the PR.
+  # Push images on main. On PRs the build runs only when image inputs change
+  # (Dockerfiles, requirements, package manifests) — validation without push —
+  # or on demand via workflow_dispatch. Keeps the common PR off the four build
+  # runners while still catching Dockerfile/dependency breakage before merge.
+  # These legs are not required status checks.
   docker-build:
     name: Docker Build
     runs-on: ${{ matrix.runner }}
-    if: github.ref == 'refs/heads/main'
+    needs: [changes]
+    if: >-
+      github.ref == 'refs/heads/main' ||
+      github.event_name == 'workflow_dispatch' ||
+      needs.changes.outputs.docker == 'true'
     strategy:
       matrix:
         target: [api, web]
@@ -142,7 +167,9 @@ jobs:
           platforms: ${{ matrix.platform }}
           push: ${{ github.ref == 'refs/heads/main' }}
           tags: registry.registry.svc.cluster.local:5000/tendril-${{ matrix.target }}:${{ matrix.arch }}
-          cache-from: ${{ github.ref == 'refs/heads/main' && format('type=registry,ref=registry.registry.svc.cluster.local:5000/tendril-{0}:buildcache-{1}', matrix.target, matrix.arch) || '' }}
+          # Read the shared layer cache on every build (incl. PR validation);
+          # only main writes it back so PR builds cannot poison the cache.
+          cache-from: type=registry,ref=registry.registry.svc.cluster.local:5000/tendril-${{ matrix.target }}:buildcache-${{ matrix.arch }}
           cache-to: ${{ github.ref == 'refs/heads/main' && format('type=registry,ref=registry.registry.svc.cluster.local:5000/tendril-{0}:buildcache-{1},mode=max', matrix.target, matrix.arch) || '' }}
 
   # ── Create multi-arch manifest ───────────────────────────────
