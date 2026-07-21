@@ -302,6 +302,7 @@ export default function DashboardPage() {
                       growId={selectedGrow.id}
                       growStage={selectedGrow.stage}
                       hasSensorData={hasSensorData}
+                      sensorTrends={sensorTrends}
                     />
                   </motion.section>
                 );

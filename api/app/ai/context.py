@@ -1123,7 +1123,9 @@ async def build_insight_prompt(
             "environmental conditions affecting ripening speed (cooler temps slow ripening but enhance terps), "
             "and the grower's quality goals (we ALWAYS optimize for best possible flower, not fastest harvest). "
             "A rushed harvest ruins months of work — err on the side of waiting longer. "
-            "Respond with JSON: {{estimated_date, days_remaining, confidence, trichome_target, notes}}"
+            "Respond ONLY with valid minified JSON (double-quoted keys and string values, no markdown, no comments). "
+            'Schema: {{"estimated_date": "YYYY-MM-DD", "days_remaining": 0, "confidence": "low|medium|high", '
+            '"trichome_target": "milky|milky-amber|amber", "notes": ""}}'
         ),
         "nutrient_advice": (
             f"You are a master cannabis nutrient specialist for {type_name} cultivation. "
@@ -1136,7 +1138,8 @@ async def build_insight_prompt(
             f"Analyze the nutrient data for this cannabis grow and provide feeding recommendations "
             f"optimized for QUALITY flower production (terpenes, trichomes, cannabinoid content — NOT max yield). "
             "Consider pH/EC trends, growth stage, strain sensitivity, and grow-type-specific requirements. "
-            "Respond with JSON: {{adjustments: [{{nutrient, action, amount}}], reasoning}}"
+            "Respond ONLY with valid minified JSON (double-quoted keys and string values, no markdown, no comments). "
+            'Schema: {{"adjustments": [{{"nutrient": "", "action": "increase|decrease|maintain", "amount": ""}}], "reasoning": ""}}'
         ),
         "anomaly_scan": (
             f"You are a cannabis cultivation monitoring specialist for {type_name} grows. "
@@ -1149,7 +1152,8 @@ async def build_insight_prompt(
             "Flag readings outside optimal cannabis ranges for this grow type and stage. "
             "Prioritize issues that threaten terpene profiles, trichome development, could trigger hermaphroditism, "
             "or create conditions for mold/botrytis. Quality-threatening anomalies are ALWAYS high severity. "
-            "Respond with JSON: {{anomalies: [{{sensor, value, expected_range, severity, recommendation}}]}}"
+            "Respond ONLY with valid minified JSON (double-quoted keys and string values, no markdown, no comments). "
+            'Schema: {{"anomalies": [{{"sensor": "", "value": "", "expected_range": "", "severity": "low|medium|high", "recommendation": ""}}]}}'
         ),
     }
 
