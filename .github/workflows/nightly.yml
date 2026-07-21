@@ -1,0 +1,30 @@
+name: Nightly
+
+# Non-blocking quality checks that don't need to gate every PR or run on
+# every push to main. They run once a day (and on demand) so they keep
+# providing signal without slowing the PR/deploy path.
+on:
+  schedule:
+    - cron: '0 5 * * *'  # Daily 5am UTC
+  workflow_dispatch:
+
+jobs:
+  # Whole-codebase mypy check. Non-blocking on purpose — see the comment at
+  # the top of api/pyproject.toml's [tool.mypy] section. The blocking strict
+  # subset still runs per-PR in ci.yml (job "mypy (strict subset)").
+  mypy:
+    name: mypy (baseline, non-blocking)
+    runs-on: arc-runner-arm64
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: |
+            api/requirements.txt
+            api/requirements-dev.txt
+      - run: pip install -r api/requirements.txt -r api/requirements-dev.txt
+      # ``|| true`` keeps the job green; the output still surfaces every
+      # error for developers to chip away at.
+      - run: mypy --config-file api/pyproject.toml || true

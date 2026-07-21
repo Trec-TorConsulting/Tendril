@@ -24,23 +24,9 @@ jobs:
       - run: pip install ruff
       - run: ruff check --config api/pyproject.toml api/
 
-  # Whole-codebase mypy check. Non-blocking on purpose — see the comment
-  # at the top of api/pyproject.toml's [tool.mypy] section. The strict
-  # subset is enforced by the separate ``mypy-strict`` job below.
-  mypy:
-    name: mypy (baseline, non-blocking)
-    runs-on: arc-runner-arm64
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.14"
-      - run: pip install -r api/requirements.txt -r api/requirements-dev.txt
-      # ``|| true`` keeps this job green so branch protection does not
-      # block PRs on the baseline errors. The CI output still surfaces
-      # every error for developers to chip away at; the strict subset
-      # below is the actual enforcement gate.
-      - run: mypy --config-file api/pyproject.toml || true
+  # NOTE: the non-blocking whole-codebase mypy baseline moved to
+  # .github/workflows/nightly.yml (daily) so it no longer installs the full
+  # dependency set on every PR/push. The blocking strict subset stays here.
 
   # Strict-mode mypy on the modules listed under
   # ``[[tool.mypy.overrides]]`` in api/pyproject.toml. This IS blocking —
@@ -54,6 +40,10 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
+          cache: pip
+          cache-dependency-path: |
+            api/requirements.txt
+            api/requirements-dev.txt
       - run: pip install -r api/requirements.txt -r api/requirements-dev.txt
       # The strict modules are referenced explicitly so this job fails fast
       # if any of them stop type-checking. Keep this list in sync with the
@@ -97,6 +87,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
+          cache: pip
+          cache-dependency-path: api/requirements.txt
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
@@ -116,9 +108,15 @@ jobs:
           echo "::error::Run 'npm run gen:types' inside web/ and commit the updated file."
 
   # ── Docker Build & Push ───────────────────────────────────────
+  # Build + push images only on main. On PRs this used to build both targets
+  # on both arches (4 jobs) with no push and no cache — pure runner cost that
+  # never affected PR wall-clock (api-test dominates). These legs are no
+  # longer required status checks; Dockerfile/build breakage now surfaces on
+  # the main run instead of the PR.
   docker-build:
     name: Docker Build
     runs-on: ${{ matrix.runner }}
+    if: github.ref == 'refs/heads/main'
     strategy:
       matrix:
         target: [api, web]
@@ -174,13 +172,9 @@ jobs:
     runs-on: arc-runner-arm64
     needs: [lint, lint-web, verify-api-types, manifest]
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-    # Gated on the "production" GitHub Environment. Add required reviewers
-    # under Settings → Environments → production so this job pauses for
-    # manual approval before any rollout. Until those protection rules are
-    # configured this is a no-op and deploys proceed as before.
-    environment:
-      name: production
-      url: https://tendrilgrow.com
+    # No manual approval gate — pushes to main auto-deploy. The post-deploy
+    # smoke test below is the safety net: it fails the job (paging on-call)
+    # if the rolled-out pods aren't actually serving traffic.
     steps:
       - uses: actions/checkout@v7
       - run: |
@@ -222,10 +216,27 @@ jobs:
             return 1
           }
 
-          check_rollout tendril-api
-          check_rollout tendril-web
-          check_rollout tendril-mqtt-worker
-          check_rollout tendril-scheduler
+          # Wait on all four rollouts in parallel — the deployments are
+          # independent, so the previous sequential waits just multiplied
+          # the worst case (up to 4 × 420s). Each check tees to its own log
+          # so the grouped output below stays readable.
+          pids=()
+          deploys=(tendril-api tendril-web tendril-mqtt-worker tendril-scheduler)
+          for d in "${deploys[@]}"; do
+            check_rollout "$d" >"/tmp/rollout-${d}.log" 2>&1 &
+            pids+=("$!")
+          done
+
+          rc=0
+          for i in "${!pids[@]}"; do
+            if ! wait "${pids[$i]}"; then
+              rc=1
+            fi
+            echo "===== ${deploys[$i]} ====="
+            cat "/tmp/rollout-${deploys[$i]}.log"
+          done
+
+          exit "$rc"
 
       # ── Post-deploy smoke test ──────────────────────────────
       # Verifies the rolled-out pods are actually serving HTTP traffic via
