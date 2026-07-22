@@ -77,6 +77,8 @@ function DropdownMenuItem({
   className,
   inset,
   variant = "default",
+  render,
+  nativeButton,
   ...props
 }: MenuPrimitive.Item.Props & {
   inset?: boolean
@@ -87,6 +89,11 @@ function DropdownMenuItem({
       data-slot="dropdown-menu-item"
       data-inset={inset}
       data-variant={variant}
+      render={render}
+      // A custom `render` is frequently a non-button element (e.g. a Next.js
+      // <Link> → <a>). Default nativeButton to false so Base UI doesn't expect
+      // native button semantics and warn. Callers may override.
+      nativeButton={nativeButton ?? render === undefined}
       className={cn(
         "group/dropdown-menu-item relative flex cursor-default items-center gap-1.5 rounded-md px-1.5 py-1 text-sm outline-hidden select-none focus:bg-accent focus:text-accent-foreground not-data-[variant=destructive]:focus:**:text-accent-foreground data-inset:pl-7 data-[variant=destructive]:text-destructive data-[variant=destructive]:focus:bg-destructive/10 data-[variant=destructive]:focus:text-destructive dark:data-[variant=destructive]:focus:bg-destructive/20 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 data-[variant=destructive]:*:[svg]:text-destructive",
         className
