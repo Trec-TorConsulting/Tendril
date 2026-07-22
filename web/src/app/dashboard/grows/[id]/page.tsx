@@ -110,7 +110,6 @@ import { usePreferences } from "@/hooks/use-preferences";
 import { formatTemp, tempUnitLabel } from "@/lib/units";
 import { getHumidityThreshold } from "@/lib/humidity-thresholds";
 import { getOrpRange, resolveOrpSystemType } from "@/lib/orp-system-type";
-import { OrpSystemTypeBadge } from "@/components/orp-system-type-badge";
 
 const STAGES = ["seedling", "vegetative", "flowering", "ripening", "drying", "curing"];
 const STAGE_DURATIONS: Record<string, number> = { seedling: 14, vegetative: 30, flowering: 56, ripening: 14, drying: 10, curing: 21 };
@@ -591,7 +590,6 @@ export default function GrowDetailPage() {
         ]}
         actions={
           <div className="flex items-center gap-2">
-            <OrpSystemTypeBadge value={grow.settings?.system_type} className="hidden md:inline-flex" />
             <Button variant="outline" size="sm" onClick={handleExport} disabled={buckets.length === 0}>
               <Download className="mr-1 size-4" /> Export
             </Button>

@@ -22,6 +22,7 @@ export interface PreviewMetric {
   value: string;
   status: MetricStatus;
   hint?: string;
+  updatedAgo?: string | null;
   trend?: number[];
   ranges?: { min: number; max: number };
   icon: LucideIcon;

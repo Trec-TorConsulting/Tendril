@@ -185,6 +185,7 @@ export function StatChip({ metric, plainLanguage }: { metric: PreviewMetric; pla
       <div className="min-w-0">
         <p className="truncate text-[11px] text-muted-foreground">{metric.label}</p>
         <p className="text-lg font-bold leading-tight">{metric.value}</p>
+        {metric.updatedAgo && <p className="text-[10px] text-muted-foreground">{metric.updatedAgo}</p>}
       </div>
       <div className="ml-auto flex flex-col items-end gap-1">
         <span className={cn("size-2 rounded-full", s.dot)} aria-hidden />
@@ -217,6 +218,7 @@ export function MetricTile({ metric, showSparkline }: { metric: PreviewMetric; s
         <div>
           <p className="text-xs text-muted-foreground">{metric.label}</p>
           <p className="text-2xl font-bold leading-tight">{metric.value}</p>
+          {metric.updatedAgo && <p className="text-[10px] text-muted-foreground">{metric.updatedAgo}</p>}
         </div>
         {showSparkline && metric.trend && metric.trend.length > 1 && (
           <div className="mt-auto pt-1">

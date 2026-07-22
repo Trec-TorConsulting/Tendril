@@ -24,7 +24,6 @@ import { usePreferences } from "@/hooks/use-preferences";
 import { formatTemp, tempUnitLabel } from "@/lib/units";
 import { resolveOrpSystemType } from "@/lib/orp-system-type";
 import { PageHeader } from "@/components/page-header";
-import { OrpSystemTypeBadge } from "@/components/orp-system-type-badge";
 import { HeatMapCalendar } from "@/components/heat-map-calendar";
 import { SensorGauge, GAUGE_PRESETS, getOrpZones } from "@/components/sensor-gauge";
 import { GrowStageIndicator } from "@/components/grow-stage-indicator";
@@ -352,7 +351,6 @@ export default function AnalyticsPage() {
       <PageHeader
         title="Analytics"
         breadcrumbs={[{ label: "Dashboard", href: "/dashboard" }, { label: "Analytics" }]}
-        actions={activeGrow ? <OrpSystemTypeBadge value={activeGrow.settings?.system_type} /> : undefined}
       />
       <div className="flex flex-1 flex-col gap-6 p-4 lg:p-6">
         {/* Grow + Bucket Selectors */}

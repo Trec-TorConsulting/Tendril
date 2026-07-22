@@ -30,7 +30,6 @@ import { useApiSWR } from "@/lib/swr";
 import { PullToRefresh } from "@/components/pull-to-refresh";
 import { selectPreferredWaterReadings } from "@/lib/water-readings";
 import { resolveOrpSystemType } from "@/lib/orp-system-type";
-import { OrpSystemTypeBadge } from "@/components/orp-system-type-badge";
 import {
   buildDashboardMetrics,
   CommandCenterView,
@@ -127,13 +126,7 @@ export default function DashboardPage() {
       const latestTentReading = tentReadings[0];
       const latestBucketReading = waterReadings[0] ?? growSensorReadings[0];
       const tentTs = latestTentReading?.recorded_at ?? null;
-      const bucketTs = latestBucketReading?.recorded_at ?? null;
-      let lastReadingAt: string | null;
-      if (tentTs && bucketTs) {
-        lastReadingAt = tentTs > bucketTs ? tentTs : bucketTs;
-      } else {
-        lastReadingAt = tentTs ?? bucketTs ?? null;
-      }
+      const waterTs = latestBucketReading?.recorded_at ?? null;
 
       const timeSlots = new Map<string, ClimateDataPoint>();
       for (const r of tentReadings.slice(0, 30).reverse()) {
@@ -164,7 +157,8 @@ export default function DashboardPage() {
         devices,
         tasks,
         sensorTrends,
-        lastReadingAt,
+        lastTentReadingAt: tentTs,
+        lastWaterReadingAt: waterTs,
         climateData,
         healthScore,
         harvestCountdown,
@@ -206,8 +200,10 @@ export default function DashboardPage() {
       stage: selectedGrow.stage,
       systemType: resolveOrpSystemType(selectedGrow.settings?.system_type),
       tempUnit: prefs.temp_unit,
+      lastTentReadingAt: dashboardData?.lastTentReadingAt,
+      lastWaterReadingAt: dashboardData?.lastWaterReadingAt,
     }) : []),
-    [selectedGrow, sensorTrends, isHydro, prefs.temp_unit],
+    [selectedGrow, sensorTrends, isHydro, prefs.temp_unit, dashboardData?.lastTentReadingAt, dashboardData?.lastWaterReadingAt],
   );
 
   const heroGrow = useMemo<PreviewGrow | null>(() => {
@@ -273,7 +269,6 @@ export default function DashboardPage() {
     <>
       <PageHeader
         title={selectedGrow ? `Dashboard — ${selectedGrow.name}` : "Dashboard"}
-        actions={selectedGrow && isHydro ? <OrpSystemTypeBadge value={selectedGrow.settings?.system_type} /> : undefined}
       />
       <PullToRefresh onRefresh={refresh}>
         <div className="flex flex-1 flex-col gap-6 p-4 lg:p-6">

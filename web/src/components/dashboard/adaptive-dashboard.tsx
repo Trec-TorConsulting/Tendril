@@ -50,6 +50,18 @@ type SensorTrends = Record<
 
 const lastOf = (a: number[]): number | null => (a.length ? a[a.length - 1] : null);
 
+function formatLastUpdated(timestamp?: string | null): string | null {
+  if (!timestamp) return null;
+  const elapsedMinutes = Math.floor((Date.now() - new Date(timestamp).getTime()) / 60_000);
+  if (!Number.isFinite(elapsedMinutes) || elapsedMinutes < 0) return null;
+  if (elapsedMinutes < 1) return "Last Updated: just now";
+  if (elapsedMinutes < 60) return `Last Updated: ${elapsedMinutes} min${elapsedMinutes === 1 ? "" : "s"}`;
+  const elapsedHours = Math.floor(elapsedMinutes / 60);
+  if (elapsedHours < 24) return `Last Updated: ${elapsedHours} hr${elapsedHours === 1 ? "" : "s"}`;
+  const elapsedDays = Math.floor(elapsedHours / 24);
+  return `Last Updated: ${elapsedDays} day${elapsedDays === 1 ? "" : "s"}`;
+}
+
 /** Build the persona-agnostic metric list from live sensor trends. */
 export function buildDashboardMetrics({
   trends,
@@ -57,12 +69,16 @@ export function buildDashboardMetrics({
   stage,
   systemType,
   tempUnit,
+  lastTentReadingAt,
+  lastWaterReadingAt,
 }: {
   trends: SensorTrends;
   isHydro: boolean;
   stage?: string;
   systemType: OrpSystemType;
   tempUnit: "fahrenheit" | "celsius";
+  lastTentReadingAt?: string | null;
+  lastWaterReadingAt?: string | null;
 }): PreviewMetric[] {
   const temp = lastOf(trends.temp);
   const hum = lastOf(trends.humidity);
@@ -81,12 +97,14 @@ export function buildDashboardMetrics({
       value: temp != null ? formatTemp(temp, "f", tempUnit, 0) : "—",
       status: temp == null ? "unknown" : temp >= 68 && temp <= 82 ? "optimal" : "warning",
       hint: temp != null && temp < 68 ? "Too cold — target 68–82°F" : temp != null && temp > 82 ? "Too hot — target 68–82°F" : undefined,
+      updatedAgo: formatLastUpdated(lastTentReadingAt),
     },
     {
       key: "humidity", label: "Humidity", icon: Droplets, tier: 1, trend: trends.humidity, ranges: { min: 40, max: 60 },
       value: hum != null ? `${hum.toFixed(0)}%` : "—",
       status: humT.status === "optimal" ? "optimal" : humT.status === "warning" ? "warning" : "unknown",
       hint: humT.hint,
+      updatedAgo: formatLastUpdated(lastTentReadingAt),
     },
     {
       key: "ph", label: "pH", icon: FlaskConical, tier: 1, trend: trends.ph,
@@ -94,6 +112,7 @@ export function buildDashboardMetrics({
       value: ph != null ? ph.toFixed(1) : "—",
       status: ph == null ? "unknown" : isHydro ? (ph >= 5.5 && ph <= 6.2 ? "optimal" : "warning") : (ph >= 6.0 && ph <= 7.0 ? "optimal" : "warning"),
       hint: ph != null && ph < (isHydro ? 5.5 : 6.0) ? "Too acidic" : ph != null && ph > (isHydro ? 6.2 : 7.0) ? "Too alkaline" : undefined,
+      updatedAgo: formatLastUpdated(lastWaterReadingAt),
     },
   ];
 
@@ -104,24 +123,28 @@ export function buildDashboardMetrics({
         value: ppm != null ? `${Math.round(ppm)}` : "—",
         status: ppm == null ? "unknown" : ppm >= 400 && ppm <= 1500 ? "optimal" : "warning",
         hint: ppm != null && ppm < 400 ? "Nutrients low — target 400–1500" : ppm != null && ppm > 1500 ? "Nutrients high — target 400–1500" : undefined,
+        updatedAgo: formatLastUpdated(lastWaterReadingAt),
       },
       {
         key: "water_temp", label: "Water Temp", icon: Waves, tier: 2, trend: trends.water_temp, ranges: { min: 62, max: 70 },
         value: wtemp != null ? formatTemp(wtemp, "f", tempUnit, 0) : "—",
         status: wtemp == null ? "unknown" : wtemp >= 62 && wtemp <= 70 ? "optimal" : "warning",
         hint: wtemp != null && wtemp > 72 ? "Root-rot risk above 72°F — target 64–70°F" : undefined,
+        updatedAgo: formatLastUpdated(lastWaterReadingAt),
       },
       {
         key: "water_level", label: "Water Level", icon: Waves, tier: 2, trend: trends.water_level, ranges: { min: 20, max: 100 },
         value: wlevel != null ? `${Math.round(wlevel)}%` : "—",
         status: wlevel == null ? "unknown" : wlevel >= 20 ? "optimal" : "warning",
         hint: wlevel != null && wlevel < 20 ? "Reservoir low — refill soon" : undefined,
+        updatedAgo: formatLastUpdated(lastWaterReadingAt),
       },
       {
         key: "ec", label: "EC", icon: Zap, tier: 3, trend: trends.ec, ranges: { min: 0.8, max: 2.5 },
         value: ec != null ? ec.toFixed(2) : "—",
         status: ec == null ? "unknown" : ec >= 0.8 && ec <= 2.5 ? "optimal" : "warning",
         hint: ec != null && ec > 2.5 ? "Nutrient-burn risk — target 0.8–2.5" : undefined,
+        updatedAgo: formatLastUpdated(lastWaterReadingAt),
       },
     );
     if (orp != null) {
@@ -134,6 +157,7 @@ export function buildDashboardMetrics({
           : orp > orpRange.max
             ? `ORP high for ${systemType === "live_beneficial" ? "live" : "sterile"} system. Target ${orpRange.min}-${orpRange.max} mV`
             : undefined,
+        updatedAgo: formatLastUpdated(lastWaterReadingAt),
       });
     }
   }
