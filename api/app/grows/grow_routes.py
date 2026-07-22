@@ -46,6 +46,9 @@ class GrowUpdate(BaseModel):
     auto_health_check: bool | None = None
 
 
+VALID_ORP_SYSTEM_TYPES = {"live_beneficial", "sterilized"}
+
+
 class GrowResponse(BaseModel):
     id: UUID
     tent_id: UUID
@@ -224,6 +227,19 @@ async def update_grow(
         merged = dict(grow.milestones or {})
         merged.update(updates["milestones"])
         updates["milestones"] = merged
+    # Merge grow settings so partial payloads (for example system_type) do not
+    # overwrite unrelated settings keys.
+    if "settings" in updates and updates["settings"] is not None:
+        merged_settings = dict(grow.settings or {})
+        merged_settings.update(updates["settings"])
+        updates["settings"] = merged_settings
+
+        system_type = updates["settings"].get("system_type")
+        if system_type is not None and system_type not in VALID_ORP_SYSTEM_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid system_type '{system_type}'. Valid values: live_beneficial, sterilized",
+            )
     for field, value in updates.items():
         setattr(grow, field, value)
     # Cascade stage change to all active buckets in this grow

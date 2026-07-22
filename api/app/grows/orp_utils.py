@@ -8,9 +8,9 @@ Supports dynamic ORP ranges based on hydroponic system approach:
 # Default ORP ranges by system type and grow stage
 ORP_DEFAULTS = {
     "live_beneficial": {
-        "min": 150,
-        "max": 250,
-        "target": 200,
+        "min": 200,
+        "max": 300,
+        "target": 260,
         "description": "Live system (Hydroguard). Lower ORP favors beneficial microbes.",
     },
     "sterilized": {

@@ -51,10 +51,10 @@ RDWC_STAGES: list[dict] = [
             "ppm_500": {"min": 0, "max": 0, "target": 0},
             "water_temp_f": {"min": 65, "max": 72, "target": 68},
             "dissolved_oxygen_ppm": {"min": 6.0, "target": 8.0},
-            "orp_mv": {"min": 300, "max": 500, "target": 400},  # Default/legacy (sterilized)
+            "orp_mv": {"min": 300, "max": 450, "target": 375},  # Default/legacy (sterilized)
             "orp_mv_variants": {
-                "live_beneficial": {"min": 150, "max": 250, "target": 200},  # Hydroguard, beneficial bacteria
-                "sterilized": {"min": 300, "max": 500, "target": 400},  # H2O2 or other sterilizing agents
+                "live_beneficial": {"min": 200, "max": 300, "target": 260},  # Hydroguard, beneficial bacteria
+                "sterilized": {"min": 300, "max": 450, "target": 375},  # H2O2 or other sterilizing agents
             },
             "change_interval_days": None,
             "hydroguard_ml_per_gal": 0,
@@ -181,10 +181,10 @@ RDWC_STAGES: list[dict] = [
             "ppm_500": {"min": 100, "max": 250, "target": 200},
             "water_temp_f": {"min": 65, "max": 72, "target": 68},
             "dissolved_oxygen_ppm": {"min": 6.0, "target": 8.0},
-            "orp_mv": {"min": 300, "max": 500, "target": 400},  # Default/legacy (sterilized)
+            "orp_mv": {"min": 300, "max": 450, "target": 375},  # Default/legacy (sterilized)
             "orp_mv_variants": {
-                "live_beneficial": {"min": 150, "max": 250, "target": 200},  # Hydroguard, beneficial bacteria
-                "sterilized": {"min": 300, "max": 500, "target": 400},  # H2O2 or other sterilizing agents
+                "live_beneficial": {"min": 200, "max": 300, "target": 260},  # Hydroguard, beneficial bacteria
+                "sterilized": {"min": 300, "max": 450, "target": 375},  # H2O2 or other sterilizing agents
             },
             "change_interval_days": 10,
             "hydroguard_ml_per_gal": 2,
@@ -349,10 +349,10 @@ RDWC_STAGES: list[dict] = [
             "ppm_500": {"min": 300, "max": 500, "target": 400},
             "water_temp_f": {"min": 65, "max": 72, "target": 68},
             "dissolved_oxygen_ppm": {"min": 6.0, "target": 8.0},
-            "orp_mv": {"min": 300, "max": 500, "target": 400},  # Default/legacy (sterilized)
+            "orp_mv": {"min": 300, "max": 450, "target": 375},  # Default/legacy (sterilized)
             "orp_mv_variants": {
-                "live_beneficial": {"min": 150, "max": 250, "target": 200},  # Hydroguard, beneficial bacteria
-                "sterilized": {"min": 300, "max": 500, "target": 400},  # H2O2 or other sterilizing agents
+                "live_beneficial": {"min": 200, "max": 300, "target": 260},  # Hydroguard, beneficial bacteria
+                "sterilized": {"min": 300, "max": 450, "target": 375},  # H2O2 or other sterilizing agents
             },
             "change_interval_days": 7,
             "hydroguard_ml_per_gal": 2,
@@ -538,10 +538,10 @@ RDWC_STAGES: list[dict] = [
             "ppm_500": {"min": 400, "max": 600, "target": 500},
             "water_temp_f": {"min": 65, "max": 72, "target": 68},
             "dissolved_oxygen_ppm": {"min": 6.0, "target": 8.0},
-            "orp_mv": {"min": 300, "max": 500, "target": 400},  # Default/legacy (sterilized)
+            "orp_mv": {"min": 300, "max": 450, "target": 375},  # Default/legacy (sterilized)
             "orp_mv_variants": {
-                "live_beneficial": {"min": 150, "max": 250, "target": 200},  # Hydroguard, beneficial bacteria
-                "sterilized": {"min": 300, "max": 500, "target": 400},  # H2O2 or other sterilizing agents
+                "live_beneficial": {"min": 200, "max": 300, "target": 260},  # Hydroguard, beneficial bacteria
+                "sterilized": {"min": 300, "max": 450, "target": 375},  # H2O2 or other sterilizing agents
             },
             "change_interval_days": 7,
             "hydroguard_ml_per_gal": 2,
@@ -734,10 +734,10 @@ RDWC_STAGES: list[dict] = [
             "ppm_500": {"min": 400, "max": 700, "target": 550},
             "water_temp_f": {"min": 65, "max": 72, "target": 68},
             "dissolved_oxygen_ppm": {"min": 6.0, "target": 8.0},
-            "orp_mv": {"min": 300, "max": 500, "target": 400},  # Default/legacy (sterilized)
+            "orp_mv": {"min": 300, "max": 450, "target": 375},  # Default/legacy (sterilized)
             "orp_mv_variants": {
-                "live_beneficial": {"min": 150, "max": 250, "target": 200},  # Hydroguard, beneficial bacteria
-                "sterilized": {"min": 300, "max": 500, "target": 400},  # H2O2 or other sterilizing agents
+                "live_beneficial": {"min": 200, "max": 300, "target": 260},  # Hydroguard, beneficial bacteria
+                "sterilized": {"min": 300, "max": 450, "target": 375},  # H2O2 or other sterilizing agents
             },
             "change_interval_days": 7,
             "hydroguard_ml_per_gal": 2,
@@ -891,10 +891,10 @@ RDWC_STAGES: list[dict] = [
             "ppm_500": {"min": 500, "max": 800, "target": 650},
             "water_temp_f": {"min": 65, "max": 72, "target": 68},
             "dissolved_oxygen_ppm": {"min": 6.0, "target": 8.0},
-            "orp_mv": {"min": 300, "max": 500, "target": 400},  # Default/legacy (sterilized)
+            "orp_mv": {"min": 300, "max": 450, "target": 375},  # Default/legacy (sterilized)
             "orp_mv_variants": {
-                "live_beneficial": {"min": 150, "max": 250, "target": 200},  # Hydroguard, beneficial bacteria
-                "sterilized": {"min": 300, "max": 500, "target": 400},  # H2O2 or other sterilizing agents
+                "live_beneficial": {"min": 200, "max": 300, "target": 260},  # Hydroguard, beneficial bacteria
+                "sterilized": {"min": 300, "max": 450, "target": 375},  # H2O2 or other sterilizing agents
             },
             "change_interval_days": 5,
             "hydroguard_ml_per_gal": 2,
@@ -1075,10 +1075,10 @@ RDWC_STAGES: list[dict] = [
             "ppm_500": {"min": 600, "max": 900, "target": 750},
             "water_temp_f": {"min": 65, "max": 72, "target": 68},
             "dissolved_oxygen_ppm": {"min": 6.0, "target": 8.0},
-            "orp_mv": {"min": 300, "max": 500, "target": 400},  # Default/legacy (sterilized)
+            "orp_mv": {"min": 300, "max": 450, "target": 375},  # Default/legacy (sterilized)
             "orp_mv_variants": {
-                "live_beneficial": {"min": 150, "max": 250, "target": 200},  # Hydroguard, beneficial bacteria
-                "sterilized": {"min": 300, "max": 500, "target": 400},  # H2O2 or other sterilizing agents
+                "live_beneficial": {"min": 200, "max": 300, "target": 260},  # Hydroguard, beneficial bacteria
+                "sterilized": {"min": 300, "max": 450, "target": 375},  # H2O2 or other sterilizing agents
             },
             "change_interval_days": 5,
             "hydroguard_ml_per_gal": 2,
@@ -1247,10 +1247,10 @@ RDWC_STAGES: list[dict] = [
             "ppm_500": {"min": 400, "max": 600, "target": 500},
             "water_temp_f": {"min": 65, "max": 72, "target": 68},
             "dissolved_oxygen_ppm": {"min": 6.0, "target": 8.0},
-            "orp_mv": {"min": 300, "max": 500, "target": 400},  # Default/legacy (sterilized)
+            "orp_mv": {"min": 300, "max": 450, "target": 375},  # Default/legacy (sterilized)
             "orp_mv_variants": {
-                "live_beneficial": {"min": 150, "max": 250, "target": 200},  # Hydroguard, beneficial bacteria
-                "sterilized": {"min": 300, "max": 500, "target": 400},  # H2O2 or other sterilizing agents
+                "live_beneficial": {"min": 200, "max": 300, "target": 260},  # Hydroguard, beneficial bacteria
+                "sterilized": {"min": 300, "max": 450, "target": 375},  # H2O2 or other sterilizing agents
             },
             "change_interval_days": 5,
             "hydroguard_ml_per_gal": 2,
@@ -1392,10 +1392,10 @@ RDWC_STAGES: list[dict] = [
             "ppm_500": {"min": 0, "max": 100, "target": 0},
             "water_temp_f": {"min": 65, "max": 72, "target": 68},
             "dissolved_oxygen_ppm": {"min": 6.0, "target": 8.0},
-            "orp_mv": {"min": 300, "max": 500, "target": 400},  # Default/legacy (sterilized)
+            "orp_mv": {"min": 300, "max": 450, "target": 375},  # Default/legacy (sterilized)
             "orp_mv_variants": {
-                "live_beneficial": {"min": 150, "max": 250, "target": 200},  # Hydroguard, beneficial bacteria
-                "sterilized": {"min": 300, "max": 500, "target": 400},  # H2O2 or other sterilizing agents
+                "live_beneficial": {"min": 200, "max": 300, "target": 260},  # Hydroguard, beneficial bacteria
+                "sterilized": {"min": 300, "max": 450, "target": 375},  # H2O2 or other sterilizing agents
             },
             "change_interval_days": 3,
             "hydroguard_ml_per_gal": 2,

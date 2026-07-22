@@ -8,10 +8,10 @@ This guide explains how to configure ORP (Oxidation-Reduction Potential) ranges 
 ## Problem
 
 Previously, Tendril displayed a fixed ORP optimal range of **300-450 mV** for all RDWC systems. However:
-- **Live systems** with beneficial bacteria (Hydroguard) thrive at **150-250 mV**
+- **Live systems** with beneficial bacteria (Hydroguard) commonly run best around **200-300 mV**
 - **Sterilized systems** with H2O2 require **300-450 mV**
 
-This caused false "error" alerts when running Live systems at their correct 150-250 mV range.
+This caused false "error" alerts when running Live systems at their correct 200-300 mV range.
 
 ## Solution
 
@@ -26,8 +26,8 @@ Before creating a grow, determine which approach you're using:
 | Aspect | Live/Beneficial | Sterilized |
 |--------|-----------------|-----------|
 | **Approach** | Beneficial bacteria | H2O2 or oxidizing agents |
-| **ORP Range** | 150-250 mV | 300-450 mV |
-| **Target ORP** | 200 mV | 375 mV |
+| **ORP Range** | 200-300 mV | 300-450 mV |
+| **Target ORP** | 260 mV | 375 mV |
 | **Example Product** | Hydroguard (Bacillus amyloliquefaciens) | 3% H2O2 solution |
 | **Dosage** | ~2 ml/gal | ~3 ml/gal (3% solution) |
 | **Best For** | Organic-style, microbial ecosystem | Clinic-clean, sterile environment |
@@ -55,7 +55,7 @@ When creating or updating a grow cycle, store the system type in the `settings` 
 
 After setting the system type:
 - ✅ **Analytics Dashboard**: ORP gauge displays with correct zones
-  - Live: Green zone = 150-250 mV
+  - Live: Green zone = 200-300 mV
   - Sterilized: Green zone = 300-450 mV
 - ✅ **Dashboards auto-adjust**: No false error warnings
 
@@ -162,9 +162,10 @@ You've switched to Hydroguard and flushed your RDWC yesterday.
 }
 ```
 
-**Expected ORP**: 150-250 mV (green zone)  
-**If showing 200 mV**: ✅ Perfect! Beneficial bacteria thriving.  
-**If showing 350 mV**: ⚠️ Check for H2O2 residue or aeration issues; beneficial microbes may be stressed.
+**Expected ORP**: 200-300 mV (green zone)
+**If showing 260 mV**: ✅ Perfect! Beneficial bacteria thriving.
+**If showing 274 mV**: ✅ Very good in a live Hydroguard system.
+**If showing 350 mV**: ⚠️ Check for H2O2 residue or oxidizer carryover; beneficial microbes may be stressed.
 
 ### Example 2: Sterilized System Setup
 You're running a strict H2O2 sterilization protocol.
@@ -179,8 +180,8 @@ You're running a strict H2O2 sterilization protocol.
 }
 ```
 
-**Expected ORP**: 300-450 mV (green zone)  
-**If showing 375 mV**: ✅ Optimal sterilization level.  
+**Expected ORP**: 300-450 mV (green zone)
+**If showing 375 mV**: ✅ Optimal sterilization level.
 **If showing 180 mV**: ⚠️ ORP too low; H2O2 not maintaining oxidation; bacteria may be growing.
 
 ## Advanced: Health Checks & AI Diagnostics

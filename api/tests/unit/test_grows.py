@@ -195,6 +195,47 @@ class TestGrowCRUD:
         assert await total("fish_feed", "pending") == 0
         assert await total("fish_health_check", "completed") == 1
 
+    async def test_update_grow_settings_merges_system_type_without_overwrite(self, client, tenant):
+        tent = await client.post("/v1/tents", json={"name": "T"}, headers=tenant["headers"])
+        grow = await client.post(
+            "/v1/grows",
+            json={
+                "tent_id": tent.json()["id"],
+                "name": "G",
+                "grow_type": "rdwc",
+                "settings": {"nutrient_line": "Athena", "system_type": "live_beneficial"},
+            },
+            headers=tenant["headers"],
+        )
+        grow_id = grow.json()["id"]
+
+        resp = await client.patch(
+            f"/v1/grows/{grow_id}",
+            json={"settings": {"system_type": "sterilized"}},
+            headers=tenant["headers"],
+        )
+        assert resp.status_code == 200
+        settings = resp.json()["settings"]
+        assert settings["system_type"] == "sterilized"
+        assert settings["nutrient_line"] == "Athena"
+
+    async def test_update_grow_settings_rejects_invalid_system_type(self, client, tenant):
+        tent = await client.post("/v1/tents", json={"name": "T"}, headers=tenant["headers"])
+        grow = await client.post(
+            "/v1/grows",
+            json={"tent_id": tent.json()["id"], "name": "G", "grow_type": "rdwc"},
+            headers=tenant["headers"],
+        )
+        grow_id = grow.json()["id"]
+
+        resp = await client.patch(
+            f"/v1/grows/{grow_id}",
+            json={"settings": {"system_type": "invalid_mode"}},
+            headers=tenant["headers"],
+        )
+        assert resp.status_code == 400
+        assert "Invalid system_type" in resp.json()["detail"]
+
 
 # ---------- Buckets ----------
 

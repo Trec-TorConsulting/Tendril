@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { cn, formatCalendarDate } from "@/lib/utils";
 import { formatTemp } from "@/lib/units";
 import { getHumidityThreshold } from "@/lib/humidity-thresholds";
+import { getOrpRange, type OrpSystemType } from "@/lib/orp-system-type";
 import type { TaskItem } from "@/lib/api";
 import { CameraGrid } from "@/components/camera-grid";
 import { DashboardAiInsights } from "@/components/dashboard-ai-insights";
@@ -54,11 +55,13 @@ export function buildDashboardMetrics({
   trends,
   isHydro,
   stage,
+  systemType,
   tempUnit,
 }: {
   trends: SensorTrends;
   isHydro: boolean;
   stage?: string;
+  systemType: OrpSystemType;
   tempUnit: "fahrenheit" | "celsius";
 }): PreviewMetric[] {
   const temp = lastOf(trends.temp);
@@ -70,6 +73,7 @@ export function buildDashboardMetrics({
   const ec = lastOf(trends.ec);
   const orp = lastOf(trends.orp);
   const humT = getHumidityThreshold(hum, stage);
+  const orpRange = getOrpRange(systemType);
 
   const metrics: PreviewMetric[] = [
     {
@@ -122,10 +126,14 @@ export function buildDashboardMetrics({
     );
     if (orp != null) {
       metrics.push({
-        key: "orp", label: "ORP", icon: Activity, tier: 3, trend: trends.orp, ranges: { min: 300, max: 450 },
+        key: "orp", label: "ORP", icon: Activity, tier: 3, trend: trends.orp, ranges: { min: orpRange.min, max: orpRange.max },
         value: `${Math.round(orp)} mV`,
-        status: orp >= 300 && orp <= 450 ? "optimal" : "warning",
-        hint: orp < 300 ? "Anaerobic risk — target 300–450 mV" : orp > 450 ? "Too oxidizing — target 300–450 mV" : undefined,
+        status: orp >= orpRange.min && orp <= orpRange.max ? "optimal" : "warning",
+        hint: orp < orpRange.min
+          ? `ORP low for ${systemType === "live_beneficial" ? "live" : "sterile"} system. Target ${orpRange.min}-${orpRange.max} mV`
+          : orp > orpRange.max
+            ? `ORP high for ${systemType === "live_beneficial" ? "live" : "sterile"} system. Target ${orpRange.min}-${orpRange.max} mV`
+            : undefined,
       });
     }
   }
