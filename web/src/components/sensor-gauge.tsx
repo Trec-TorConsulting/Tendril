@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
+import { getOrpRange } from "@/lib/orp-system-type";
 
 interface SensorGaugeProps {
   label: string;
@@ -212,23 +213,25 @@ export const GAUGE_PRESETS = {
  * Call this when rendering an ORP gauge to get the correct zones for the system type.
  */
 export function getOrpZones(systemType: "live_beneficial" | "sterilized" = "sterilized") {
+  const range = getOrpRange(systemType);
+
   if (systemType === "live_beneficial") {
-    // Live system with Hydroguard/beneficial bacteria: lower ORP range 150-250
+    // Live system with Hydroguard/beneficial bacteria.
     return [
-      { start: 0, end: 100, color: "#ef4444" },      // red — too anaerobic / too low
-      { start: 100, end: 150, color: "#f59e0b" },    // amber — slightly low
-      { start: 150, end: 250, color: "#22c55e" },    // green — optimal (beneficial system)
-      { start: 250, end: 350, color: "#f59e0b" },    // amber — slightly high
-      { start: 350, end: 600, color: "#ef4444" },    // red — too oxidizing for beneficial
+      { start: 0, end: range.min - 50, color: "#ef4444" },      // red — too low
+      { start: range.min - 50, end: range.min, color: "#f59e0b" },
+      { start: range.min, end: range.max, color: "#22c55e" },    // green — optimal
+      { start: range.max, end: range.max + 50, color: "#f59e0b" },
+      { start: range.max + 50, end: 600, color: "#ef4444" },     // red — too oxidizing
     ] as const;
   } else {
     // Sterilized system with H2O2: higher ORP range 300-450
     return [
-      { start: 0, end: 200, color: "#ef4444" },      // red — anaerobic / root rot risk
-      { start: 200, end: 300, color: "#f59e0b" },    // amber — low oxidation
-      { start: 300, end: 450, color: "#22c55e" },    // green — optimal (sterilized)
-      { start: 450, end: 500, color: "#f59e0b" },    // amber — high (H2O2 excess)
-      { start: 500, end: 600, color: "#ef4444" },    // red — too oxidizing
+      { start: 0, end: range.min - 100, color: "#ef4444" },      // red — anaerobic / root rot risk
+      { start: range.min - 100, end: range.min, color: "#f59e0b" },
+      { start: range.min, end: range.max, color: "#22c55e" },    // green — optimal (sterilized)
+      { start: range.max, end: range.max + 50, color: "#f59e0b" },
+      { start: range.max + 50, end: 600, color: "#ef4444" },     // red — too oxidizing
     ] as const;
   }
 }

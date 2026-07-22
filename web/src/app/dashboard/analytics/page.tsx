@@ -22,7 +22,9 @@ import {
 import { useGrow } from "@/hooks/use-grow";
 import { usePreferences } from "@/hooks/use-preferences";
 import { formatTemp, tempUnitLabel } from "@/lib/units";
+import { resolveOrpSystemType } from "@/lib/orp-system-type";
 import { PageHeader } from "@/components/page-header";
+import { OrpSystemTypeBadge } from "@/components/orp-system-type-badge";
 import { HeatMapCalendar } from "@/components/heat-map-calendar";
 import { SensorGauge, GAUGE_PRESETS, getOrpZones } from "@/components/sensor-gauge";
 import { GrowStageIndicator } from "@/components/grow-stage-indicator";
@@ -118,6 +120,7 @@ export default function AnalyticsPage() {
   const { prefs } = usePreferences();
   const [analyticsGrowId, setAnalyticsGrowId] = useState<string>("all");
   const activeGrow = analyticsGrowId === "all" ? null : grows.find((g) => g.id === analyticsGrowId) ?? null;
+  const orpSystemType = resolveOrpSystemType(activeGrow?.settings?.system_type);
   const [buckets, setBuckets] = useState<BucketResponse[]>([]);
   const [selectedBucketId, setSelectedBucketId] = useState<string>("");
   const [sensorData, setSensorData] = useState<SensorReadingResponse[]>([]);
@@ -349,6 +352,7 @@ export default function AnalyticsPage() {
       <PageHeader
         title="Analytics"
         breadcrumbs={[{ label: "Dashboard", href: "/dashboard" }, { label: "Analytics" }]}
+        actions={activeGrow ? <OrpSystemTypeBadge value={activeGrow.settings?.system_type} /> : undefined}
       />
       <div className="flex flex-1 flex-col gap-6 p-4 lg:p-6">
         {/* Grow + Bucket Selectors */}
@@ -764,10 +768,10 @@ export default function AnalyticsPage() {
                   <SensorGauge value={envSnapshots[0].water_temp_f} {...GAUGE_PRESETS.waterTemp} />
                 )}
                 {envSnapshots.length > 0 && envSnapshots[0].orp != null && (
-                  <SensorGauge 
-                    value={envSnapshots[0].orp} 
+                  <SensorGauge
+                    value={envSnapshots[0].orp}
                     {...GAUGE_PRESETS.orp}
-                    zones={getOrpZones((activeGrow?.settings?.system_type) as "live_beneficial" | "sterilized" | undefined || "sterilized")}
+                    zones={getOrpZones(orpSystemType)}
                   />
                 )}
               </div>

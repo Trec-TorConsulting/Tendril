@@ -29,6 +29,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useApiSWR } from "@/lib/swr";
 import { PullToRefresh } from "@/components/pull-to-refresh";
 import { selectPreferredWaterReadings } from "@/lib/water-readings";
+import { resolveOrpSystemType } from "@/lib/orp-system-type";
+import { OrpSystemTypeBadge } from "@/components/orp-system-type-badge";
 import {
   buildDashboardMetrics,
   CommandCenterView,
@@ -198,7 +200,13 @@ export default function DashboardPage() {
   const hasSensorData = sensorTrends.ph.length > 0 || sensorTrends.ec.length > 0 || sensorTrends.ppm.length > 0;
 
   const metrics = useMemo(
-    () => (selectedGrow ? buildDashboardMetrics({ trends: sensorTrends, isHydro, stage: selectedGrow.stage, tempUnit: prefs.temp_unit }) : []),
+    () => (selectedGrow ? buildDashboardMetrics({
+      trends: sensorTrends,
+      isHydro,
+      stage: selectedGrow.stage,
+      systemType: resolveOrpSystemType(selectedGrow.settings?.system_type),
+      tempUnit: prefs.temp_unit,
+    }) : []),
     [selectedGrow, sensorTrends, isHydro, prefs.temp_unit],
   );
 
@@ -263,7 +271,10 @@ export default function DashboardPage() {
 
   return (
     <>
-      <PageHeader title={selectedGrow ? `Dashboard — ${selectedGrow.name}` : "Dashboard"} />
+      <PageHeader
+        title={selectedGrow ? `Dashboard — ${selectedGrow.name}` : "Dashboard"}
+        actions={selectedGrow && isHydro ? <OrpSystemTypeBadge value={selectedGrow.settings?.system_type} /> : undefined}
+      />
       <PullToRefresh onRefresh={refresh}>
         <div className="flex flex-1 flex-col gap-6 p-4 lg:p-6">
           {viewProps &&

@@ -109,6 +109,8 @@ import { isOutdoor, isActiveHydro, isSoil, t } from "@/lib/terminology";
 import { usePreferences } from "@/hooks/use-preferences";
 import { formatTemp, tempUnitLabel } from "@/lib/units";
 import { getHumidityThreshold } from "@/lib/humidity-thresholds";
+import { getOrpRange, resolveOrpSystemType } from "@/lib/orp-system-type";
+import { OrpSystemTypeBadge } from "@/components/orp-system-type-badge";
 
 const STAGES = ["seedling", "vegetative", "flowering", "ripening", "drying", "curing"];
 const STAGE_DURATIONS: Record<string, number> = { seedling: 14, vegetative: 30, flowering: 56, ripening: 14, drying: 10, curing: 21 };
@@ -367,6 +369,11 @@ export default function GrowDetailPage() {
   // Tab persistence — remember last active tab across grow switches
   const TAB_STORAGE_KEY = "tendril:grow-detail-tab";
   const settingsSchemaLength = useMemo(() => grow ? getSettingsSchema(grow.grow_type, tempUnitLabel(prefs.temp_unit)).length : 0, [grow, prefs.temp_unit]);
+  const orpSystemType = useMemo(
+    () => resolveOrpSystemType(grow?.settings?.system_type),
+    [grow?.settings?.system_type],
+  );
+  const orpRange = useMemo(() => getOrpRange(orpSystemType), [orpSystemType]);
   const validTabs = useMemo(() => {
     const tabs = ["overview", "buckets", "activity", "tasks", "nutrition", "health-photos"];
     if (grow && isOutdoor(grow.grow_type)) tabs.push("field");
@@ -584,6 +591,7 @@ export default function GrowDetailPage() {
         ]}
         actions={
           <div className="flex items-center gap-2">
+            <OrpSystemTypeBadge value={grow.settings?.system_type} className="hidden md:inline-flex" />
             <Button variant="outline" size="sm" onClick={handleExport} disabled={buckets.length === 0}>
               <Download className="mr-1 size-4" /> Export
             </Button>
@@ -766,8 +774,12 @@ export default function GrowDetailPage() {
                     ...(sensorTrends.orp.length > 0 ? [{
                       label: "ORP",
                       value: `${Math.round(sensorTrends.orp[sensorTrends.orp.length - 1])} mV`,
-                      status: (sensorTrends.orp[sensorTrends.orp.length - 1] >= 300 && sensorTrends.orp[sensorTrends.orp.length - 1] <= 450 ? "optimal" : "warning") as "optimal" | "warning",
-                      hint: sensorTrends.orp[sensorTrends.orp.length - 1] < 300 ? "ORP low — anaerobic risk. Target 300–450 mV" : sensorTrends.orp[sensorTrends.orp.length - 1] > 450 ? "ORP high — too oxidizing. Target 300–450 mV" : undefined,
+                      status: (sensorTrends.orp[sensorTrends.orp.length - 1] >= orpRange.min && sensorTrends.orp[sensorTrends.orp.length - 1] <= orpRange.max ? "optimal" : "warning") as "optimal" | "warning",
+                      hint: sensorTrends.orp[sensorTrends.orp.length - 1] < orpRange.min
+                        ? `ORP low for ${orpSystemType === "live_beneficial" ? "live" : "sterile"} system. Target ${orpRange.min}-${orpRange.max} mV`
+                        : sensorTrends.orp[sensorTrends.orp.length - 1] > orpRange.max
+                          ? `ORP high for ${orpSystemType === "live_beneficial" ? "live" : "sterile"} system. Target ${orpRange.min}-${orpRange.max} mV`
+                          : undefined,
                     }] : []),
                   ]}
                 />
@@ -1325,7 +1337,11 @@ export default function GrowDetailPage() {
                             <Select value={settingsForm[s.key] || ""} onValueChange={(v) => setSettingsForm((p) => ({ ...p, [s.key]: v ?? "" }))}>
                               <SelectTrigger><SelectValue placeholder={`Select ${s.label.toLowerCase()}`} /></SelectTrigger>
                               <SelectContent>
-                                {s.options.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                                {s.options.map((o) => (
+                                  <SelectItem key={o} value={o}>
+                                    {formatSettingOptionLabel(s.key, o)}
+                                  </SelectItem>
+                                ))}
                               </SelectContent>
                             </Select>
                           ) : (
@@ -1382,6 +1398,22 @@ const GROUP_LABELS: Record<string, string> = {
   outdoor: "Outdoor & Protection",
 };
 
+const SETTINGS_OPTION_LABELS: Record<string, Record<string, string>> = {
+  system_type: {
+    live_beneficial: "Live Beneficial (HydroGuard, microbes)",
+    sterilized: "Sterilized (H2O2 / oxidizer)",
+  },
+};
+
+function formatSettingOptionLabel(key: string, value: string): string {
+  const explicit = SETTINGS_OPTION_LABELS[key]?.[value];
+  if (explicit) return explicit;
+
+  return value
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (m) => m.toUpperCase());
+}
+
 function getSettingsSchema(growType: string, tempUnit = "°F"): SettingsField[] {
   // Common indoor light fields (hardware lives on Tent equipment; these are per-grow-cycle)
   const LIGHT_FIELDS: SettingsField[] = [
@@ -1422,6 +1454,7 @@ function getSettingsSchema(growType: string, tempUnit = "°F"): SettingsField[] 
       ];
     case "rdwc":
       return [
+        { key: "system_type", label: "ORP System Type", group: "setup", options: ["live_beneficial", "sterilized"], hint: "Set once for this grow. Live = HydroGuard/beneficial microbes; Sterilized = H2O2/oxidizer" },
         { key: "reservoir_liters", label: "Central Reservoir Size", type: "number", step: "0.5", unit: "L", placeholder: "e.g. 60" },
         { key: "connected_sites", label: "Number of Connected Sites", type: "number", placeholder: "e.g. 4" },
         { key: "return_line_size", label: "Return Line Size", placeholder: "e.g. 2 inch, 3 inch" },
