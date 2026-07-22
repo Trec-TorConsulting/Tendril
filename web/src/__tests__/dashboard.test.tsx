@@ -31,9 +31,10 @@ vi.mock("@/components/ui/sidebar", async () =>
 
 vi.mock("@/hooks/use-user", () => ({
   useUser: () => ({
-    user: { id: "u1", email: "test@test.com", role: "owner", name: "Test" },
+    user: { id: "u1", email: "test@test.com", role: "owner", name: "Test", layout_mode: "standard", preferences: { show_onboarding: false } },
     loading: false,
     logout: vi.fn(),
+    refresh: vi.fn(),
   }),
 }));
 

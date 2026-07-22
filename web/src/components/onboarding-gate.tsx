@@ -10,13 +10,19 @@ export function OnboardingGate({ children }: { children: React.ReactNode }) {
   const { user } = useUser();
   const [dismissed, setDismissed] = useState(false);
 
-  // Show wizard on first login: no grows and layout_mode is still default "standard"
-  // (Once they've completed the wizard, layout_mode will be explicitly set)
+  // Only show the wizard to genuinely new users. The server-side
+  // `show_onboarding` preference is the durable source of truth — it persists
+  // across browsers and devices, so completing the wizard once (which sets it
+  // to false) prevents it from ever re-triggering. We additionally require that
+  // the user has no grows yet, and keep a per-browser "seen" flag as a fast
+  // guard so it never flashes twice within a session (and lets e2e bypass it).
+  const showOnboardingPref = user?.preferences?.show_onboarding;
   const shouldShowWizard =
     !loading &&
+    user != null &&
     !dismissed &&
     grows.length === 0 &&
-    user?.layout_mode === "standard" &&
+    showOnboardingPref !== false &&
     !hasSeenOnboarding();
 
   if (shouldShowWizard) {
