@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { getAccessToken } from "@/lib/auth";
 import { useUser } from "@/hooks/use-user";
 import { GrowProvider } from "@/hooks/use-grow";
@@ -17,6 +17,11 @@ import { AppSWRProvider } from "@/lib/swr";
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { user, loading, logout } = useUser();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!getAccessToken()) {
@@ -24,7 +29,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   }, [router]);
 
-  if (loading) {
+  // Auth depends on browser cookies that don't exist during SSR, so the server
+  // and the first client paint must render the same thing to avoid a hydration
+  // mismatch. Show a stable loading state until we've mounted on the client.
+  if (!mounted || loading) {
     return (
       <div className="flex min-h-dvh items-center justify-center">
         <div className="flex flex-col items-center gap-3">

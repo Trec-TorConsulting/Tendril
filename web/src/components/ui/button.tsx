@@ -47,6 +47,8 @@ function Button({
   size = "default",
   asChild = false,
   children,
+  render,
+  nativeButton,
   ...props
 }: ButtonPrimitive.Props & VariantProps<typeof buttonVariants> & { asChild?: boolean }) {
   if (asChild && isValidElement(children)) {
@@ -59,6 +61,11 @@ function Button({
     <ButtonPrimitive
       data-slot="button"
       className={cn(buttonVariants({ variant, size, className }))}
+      render={render}
+      // A custom `render` is frequently a non-button element (e.g. a Next.js
+      // <Link> → <a>). Default nativeButton to false in that case so Base UI
+      // doesn't expect native button semantics and warn. Callers may override.
+      nativeButton={nativeButton ?? render === undefined}
       {...props}
     >
       {children}

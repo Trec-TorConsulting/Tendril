@@ -44,19 +44,24 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
   const handleComplete = useCallback(async () => {
     if (!growCount || !experience) return;
     const mode = determineMode(growCount, experience);
-    const token = getAccessToken();
-    if (!token) return;
 
     setSaving(true);
     try {
-      await updateProfile(token, { layout_mode: mode });
-      await refresh();
-      onComplete();
+      const token = getAccessToken();
+      if (token) {
+        // Persist the chosen persona AND mark onboarding complete server-side so
+        // it never re-triggers on another browser or device. Preferences merge
+        // on the API, so this preserves any other preference keys.
+        await updateProfile(token, { layout_mode: mode, preferences: { show_onboarding: false } });
+        await refresh();
+      }
     } catch {
-      // still complete — they can change later
-      onComplete();
+      // Non-fatal: the local "seen" flag set by onComplete still prevents the
+      // wizard from reappearing on this device.
     } finally {
       setSaving(false);
+      // Always finish — never leave the user stuck on the wizard.
+      onComplete();
     }
   }, [growCount, experience, refresh, onComplete]);
 

@@ -313,6 +313,7 @@ function NavGroup({
     <Collapsible defaultOpen={hasActive || label === "Overview"}>
       <SidebarGroup>
         <CollapsibleTrigger
+          nativeButton={false}
           render={
             <SidebarGroupLabel className="cursor-pointer select-none hover:text-sidebar-foreground transition-colors" />
           }
