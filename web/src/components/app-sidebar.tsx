@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Activity,
@@ -308,9 +309,16 @@ function NavGroup({
       (item.href !== "/dashboard" && pathname.startsWith(item.href + "/")) ||
       item.children?.some((c) => pathname === c.href || pathname.startsWith(c.href + "/"))
   );
+  const [open, setOpen] = useState(hasActive || label === "Overview");
+
+  useEffect(() => {
+    if (hasActive || label === "Overview") {
+      setOpen(true);
+    }
+  }, [hasActive, label]);
 
   return (
-    <Collapsible defaultOpen={hasActive || label === "Overview"}>
+    <Collapsible open={open} onOpenChange={setOpen}>
       <SidebarGroup>
         <CollapsibleTrigger
           nativeButton={false}
@@ -344,10 +352,17 @@ function NavItem({
 }: NavItemDef & { pathname: string }) {
   const isActive = pathname === href || (href !== "/dashboard" && pathname.startsWith(href + "/"));
   const childActive = children?.some((c) => pathname === c.href || pathname.startsWith(c.href + "/"));
+  const [open, setOpen] = useState(isActive || childActive);
+
+  useEffect(() => {
+    if (isActive || childActive) {
+      setOpen(true);
+    }
+  }, [isActive, childActive]);
 
   if (children && children.length > 0) {
     return (
-      <Collapsible defaultOpen={isActive || childActive}>
+      <Collapsible open={open} onOpenChange={setOpen}>
         <SidebarMenuItem>
           <SidebarMenuButton render={<Link href={href} />} isActive={isActive && !childActive} tooltip={label}>
             <Icon className="size-4" />
