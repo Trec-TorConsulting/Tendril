@@ -48132,20 +48132,20 @@
           "hydroguard_ml_per_gal": 0,
           "notes": "No reservoir running yet. Use this time to leak-test plumbing, calibrate flow rates, and verify even distribution to all sites.",
           "orp_mv": {
-            "max": 500,
+            "max": 450,
             "min": 300,
-            "target": 400
+            "target": 375
           },
           "orp_mv_variants": {
             "live_beneficial": {
-              "max": 250,
-              "min": 150,
-              "target": 200
+              "max": 300,
+              "min": 200,
+              "target": 260
             },
             "sterilized": {
-              "max": 500,
+              "max": 450,
               "min": 300,
-              "target": 400
+              "target": 375
             }
           },
           "ph": {
@@ -48356,20 +48356,20 @@
           "hydroguard_ml_per_gal": 2,
           "notes": "Run pump 24/7. Water level in site buckets should touch bottom of net pots. Adjust float valves if installed. Monitor central reservoir level \u2014 it drops as site buckets fill.",
           "orp_mv": {
-            "max": 500,
+            "max": 450,
             "min": 300,
-            "target": 400
+            "target": 375
           },
           "orp_mv_variants": {
             "live_beneficial": {
-              "max": 250,
-              "min": 150,
-              "target": 200
+              "max": 300,
+              "min": 200,
+              "target": 260
             },
             "sterilized": {
-              "max": 500,
+              "max": 450,
               "min": 300,
-              "target": 400
+              "target": 375
             }
           },
           "ph": {
@@ -48591,20 +48591,20 @@
           "hydroguard_ml_per_gal": 2,
           "notes": "Weekly full system changes. Drain from central reservoir, flush sites, refill. Large volume means more nutrient cost but much more stability. Monitor consumption rate \u2014 RDWC systems drink fast with multiple plants.",
           "orp_mv": {
-            "max": 500,
+            "max": 450,
             "min": 300,
-            "target": 400
+            "target": 375
           },
           "orp_mv_variants": {
             "live_beneficial": {
-              "max": 250,
-              "min": 150,
-              "target": 200
+              "max": 300,
+              "min": 200,
+              "target": 260
             },
             "sterilized": {
-              "max": 500,
+              "max": 450,
               "min": 300,
-              "target": 400
+              "target": 375
             }
           },
           "ph": {
@@ -48842,20 +48842,20 @@
           "hydroguard_ml_per_gal": 2,
           "notes": "Water consumption accelerates dramatically. Top off central reservoir daily or multiple times daily. Consider an auto-top-off (float valve + reservoir) for large systems. Weekly full changes still critical.",
           "orp_mv": {
-            "max": 500,
+            "max": 450,
             "min": 300,
-            "target": 400
+            "target": 375
           },
           "orp_mv_variants": {
             "live_beneficial": {
-              "max": 250,
-              "min": 150,
-              "target": 200
+              "max": 300,
+              "min": 200,
+              "target": 260
             },
             "sterilized": {
-              "max": 500,
+              "max": 450,
               "min": 300,
-              "target": 400
+              "target": 375
             }
           },
           "ph": {
@@ -49078,20 +49078,20 @@
           "hydroguard_ml_per_gal": 2,
           "notes": "Begin shifting pH target slightly higher (6.0) for phosphorus/potassium availability. Plants drink even more during the stretch. Top off frequently.",
           "orp_mv": {
-            "max": 500,
+            "max": 450,
             "min": 300,
-            "target": 400
+            "target": 375
           },
           "orp_mv_variants": {
             "live_beneficial": {
-              "max": 250,
-              "min": 150,
-              "target": 200
+              "max": 300,
+              "min": 200,
+              "target": 260
             },
             "sterilized": {
-              "max": 500,
+              "max": 450,
               "min": 300,
-              "target": 400
+              "target": 375
             }
           },
           "ph": {
@@ -49323,20 +49323,20 @@
           "hydroguard_ml_per_gal": 2,
           "notes": "Increase res change frequency to every 5 days. Plants are feeding heavily. More frequent changes = cleaner root zone = better bud production. Monitor for salt buildup in plumbing connections.",
           "orp_mv": {
-            "max": 500,
+            "max": 450,
             "min": 300,
-            "target": 400
+            "target": 375
           },
           "orp_mv_variants": {
             "live_beneficial": {
-              "max": 250,
-              "min": 150,
-              "target": 200
+              "max": 300,
+              "min": 200,
+              "target": 260
             },
             "sterilized": {
-              "max": 500,
+              "max": 450,
               "min": 300,
-              "target": 400
+              "target": 375
             }
           },
           "ph": {
@@ -49556,20 +49556,20 @@
           "hydroguard_ml_per_gal": 2,
           "notes": "Peak consumption. Multiple large flowering plants can drain 10-15+ gallons/day. Auto-top-off is strongly recommended. Change every 5 days \u2014 bloom nutrients leave more deposits.",
           "orp_mv": {
-            "max": 500,
+            "max": 450,
             "min": 300,
-            "target": 400
+            "target": 375
           },
           "orp_mv_variants": {
             "live_beneficial": {
-              "max": 250,
-              "min": 150,
-              "target": 200
+              "max": 300,
+              "min": 200,
+              "target": 260
             },
             "sterilized": {
-              "max": 500,
+              "max": 450,
               "min": 300,
-              "target": 400
+              "target": 375
             }
           },
           "ph": {
@@ -49779,20 +49779,20 @@
           "hydroguard_ml_per_gal": 2,
           "notes": "Reduce nutrient strength. Plants are finishing \u2014 they need less. Water consumption decreases slightly. Continue 5-day res changes to keep solution clean for the final stretch.",
           "orp_mv": {
-            "max": 500,
+            "max": 450,
             "min": 300,
-            "target": 400
+            "target": 375
           },
           "orp_mv_variants": {
             "live_beneficial": {
-              "max": 250,
-              "min": 150,
-              "target": 200
+              "max": 300,
+              "min": 200,
+              "target": 260
             },
             "sterilized": {
-              "max": 500,
+              "max": 450,
               "min": 300,
-              "target": 400
+              "target": 375
             }
           },
           "ph": {
@@ -49971,20 +49971,20 @@
           "hydroguard_ml_per_gal": 2,
           "notes": "Plain pH'd water only. Change every 3 days to flush accumulated salts. RDWC's recirculation rinses all sites continuously. Continue Hydroguard \u2014 root health matters until harvest day.",
           "orp_mv": {
-            "max": 500,
+            "max": 450,
             "min": 300,
-            "target": 400
+            "target": 375
           },
           "orp_mv_variants": {
             "live_beneficial": {
-              "max": 250,
-              "min": 150,
-              "target": 200
+              "max": 300,
+              "min": 200,
+              "target": 260
             },
             "sterilized": {
-              "max": 500,
+              "max": 450,
               "min": 300,
-              "target": 400
+              "target": 375
             }
           },
           "ph": {
