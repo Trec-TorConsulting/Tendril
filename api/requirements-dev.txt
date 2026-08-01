@@ -2,8 +2,8 @@
 pytest>=9.1.1,<10
 pytest-asyncio>=1.4.0,<2
 pytest-cov>=7.1.0,<8
-pytest-xdist>=3.6,<4
+pytest-xdist>=3.8.0,<4
 httpx>=0.28.1,<1
-ruff>=0.15.20,<1
-mypy>=2.1.0,<3
+ruff>=0.16.0,<1
+mypy>=2.3.0,<3
 sqlalchemy[mypy]>=2.0.51,<3
