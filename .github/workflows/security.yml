@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.14"
       - run: pip install bandit[sarif]
@@ -31,7 +31,7 @@ jobs:
             --severity-level medium \
             --confidence-level medium \
             -x api/app/migrations
-      - uses: github/codeql-action/upload-sarif@v4
+      - uses: github/codeql-action/upload-sarif@v4.37.3
         if: always()
         with:
           sarif_file: bandit-results.sarif
@@ -65,7 +65,7 @@ jobs:
           ignore-unfixed: 'true'
           vuln-type: library
           exit-code: '0'
-      - uses: github/codeql-action/upload-sarif@v4
+      - uses: github/codeql-action/upload-sarif@v4.37.3
         if: always()
         with:
           sarif_file: trivy-api.sarif
@@ -98,7 +98,7 @@ jobs:
           ignore-unfixed: 'true'
           vuln-type: library
           exit-code: '0'
-      - uses: github/codeql-action/upload-sarif@v4
+      - uses: github/codeql-action/upload-sarif@v4.37.3
         if: always()
         with:
           sarif_file: trivy-web.sarif
