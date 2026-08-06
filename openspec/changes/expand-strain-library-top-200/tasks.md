@@ -87,4 +87,4 @@ before starting the next. Batch themes are guides; the authoritative members com
 ## 8. Docs
 - [ ] 8.1 Note the expanded library + `data_confidence` semantics in `docs/` (e.g. the AI
       operations / reference docs) if strain data is documented there.
-- [ ] 8.2 On completion, set every task above to `- [x]` and archive per `openspec/AGENTS.md`.
+- [ ] 8.2 On completion, set every task above to `- [x]` and archive per `AGENTS.md` (`/opsx-archive`).

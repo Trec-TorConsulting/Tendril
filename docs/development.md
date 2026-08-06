@@ -346,13 +346,13 @@ When adding tenant-scoped tables, you need to:
 
 For larger changes (new features, architecture changes, breaking changes), use the OpenSpec workflow:
 
-1. **Create a proposal**: `openspec/changes/my-change-name/proposal.md`
+1. **Create a proposal**: `/opsx-propose` in Cursor (or scaffold `openspec/changes/my-change-name/`)
 2. **Add a task list**: `openspec/changes/my-change-name/tasks.md`
 3. **Get review** via PR or discussion
-4. **Implement** once approved
-5. **Archive** after deployment: move to `openspec/changes/archive/`
+4. **Implement** once approved (`/opsx-apply`)
+5. **Archive** after deployment (`/opsx-archive`)
 
-See [openspec/AGENTS.md](https://github.com/Trec-TorConsulting/Tendril/blob/main/openspec/AGENTS.md) for the full specification.
+See [AGENTS.md](https://github.com/Trec-TorConsulting/Tendril/blob/main/AGENTS.md) for the Cursor + OpenSpec workflow.
 
 ## Useful Commands
 

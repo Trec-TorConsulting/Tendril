@@ -1,6 +1,7 @@
 ---
-description: Tendril API (FastAPI + SQLAlchemy async) conventions — auto-attached to Python files under api/.
-applyTo: "api/**/*.py"
+description: Tendril API (FastAPI + SQLAlchemy async) conventions
+globs: api/**/*.py
+alwaysApply: false
 ---
 
 # Tendril API — Per-file rules

@@ -41,14 +41,14 @@ pio run
 
 ## OpenSpec Workflow
 
-This project uses [OpenSpec](openspec/AGENTS.md) for spec-driven development. For larger changes:
+This project uses [OpenSpec](AGENTS.md) with **Cursor** for spec-driven development. For larger changes:
 
-1. **Create a proposal** in `openspec/changes/` describing your change
+1. **Create a proposal** (`/opsx-propose` in Cursor, or scaffold under `openspec/changes/`)
 2. **Get feedback** via a PR or discussion before implementing
-3. **Implement** once the proposal is approved
-4. **Archive** the change after it ships
+3. **Implement** once the proposal is approved (`/opsx-apply`)
+4. **Archive** the change after it ships (`/opsx-archive`)
 
-See [openspec/AGENTS.md](openspec/AGENTS.md) for the full workflow.
+See [AGENTS.md](AGENTS.md) for the full workflow.
 
 ## Guidelines
 
