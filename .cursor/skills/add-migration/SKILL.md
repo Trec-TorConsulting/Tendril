@@ -1,8 +1,9 @@
 ---
-description: Create, review, and apply a new Alembic migration for the Tendril API.
+name: add-migration
+description: Create, review, and apply a new Alembic migration for the Tendril API. Use when the user asks to add a migration, create an Alembic revision, or change database schema models.
 ---
 
-$ARGUMENTS
+# Add Alembic migration
 
 **Prerequisites**
 - Postgres is running locally (`docker-compose up -d postgres`).
@@ -39,7 +40,7 @@ $ARGUMENTS
    ```bash
    ruff check --config pyproject.toml app/ migrations/
    ```
-6. If model changes alter API responses, also regenerate types — see [regen-api-types.prompt.md](regen-api-types.prompt.md).
+6. If model changes alter API responses, also regenerate types — see the `regen-api-types` skill.
 7. Commit the new revision file plus the model change in one PR.
 
 **Production deploy notes**

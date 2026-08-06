@@ -1,6 +1,7 @@
 ---
-description: Tendril web (Next.js + React + Base UI) conventions — auto-attached to TSX/TS files under web/src.
-applyTo: "web/src/**/*.{ts,tsx}"
+description: Tendril web (Next.js + React + Base UI) conventions
+globs: web/src/**/*.{ts,tsx}
+alwaysApply: false
 ---
 
 # Tendril Web — Per-file rules
