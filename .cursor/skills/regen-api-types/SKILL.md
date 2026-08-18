@@ -1,8 +1,9 @@
 ---
-description: Regenerate web/src/lib/api-types.ts from the FastAPI OpenAPI schema and stage it for commit.
+name: regen-api-types
+description: Regenerate web/src/lib/api-types.ts from the FastAPI OpenAPI schema and stage it for commit. Use when API routes change, Verify API Types CI fails, or the user asks to regen/regenerate API types.
 ---
 
-$ARGUMENTS
+# Regenerate API types
 
 **When to run**
 - Any change to an API route: `response_model`, status code, query/path/body param, `operation_id`, or **docstring**.

@@ -2,7 +2,7 @@
 
 FastAPI + SQLAlchemy 2.0 (async) + Alembic + PostgreSQL with Row-Level Security.
 
-> Cross-references: [openspec/AGENTS.md](../openspec/AGENTS.md) for spec workflow, [`web/AGENTS.md`](../web/AGENTS.md) for the consumer, [`manifests/AGENTS.md`](../manifests/AGENTS.md) for deploy.
+> Cross-references: [`AGENTS.md`](../AGENTS.md) for OpenSpec/Cursor workflow, [`web/AGENTS.md`](../web/AGENTS.md) for the consumer, [`manifests/AGENTS.md`](../manifests/AGENTS.md) for deploy.
 
 ## Layout
 

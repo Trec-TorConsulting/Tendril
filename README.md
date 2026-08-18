@@ -311,7 +311,7 @@ cd web && npm run lint
 
 ### OpenSpec Workflow
 
-This project uses [OpenSpec](openspec/AGENTS.md) for spec-driven development. Larger changes go through a proposal → review → implement → archive lifecycle. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+This project uses [OpenSpec](AGENTS.md) with **Cursor** (`/opsx-propose`, `/opsx-apply`, `/opsx-archive`) for spec-driven development. Larger changes go through a proposal → review → implement → archive lifecycle. See [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md) for details.
 
 ### Current Specs
 
