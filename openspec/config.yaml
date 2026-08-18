@@ -1,0 +1,37 @@
+schema: spec-driven
+
+# Shown to AI when creating OpenSpec artifacts.
+context: |
+  Tendril is an open-source, multi-tenant SaaS for cannabis grow monitoring and automation
+  (IoT sensors, FastAPI, Next.js PWA, ESP32 firmware, k3s).
+
+  Tech stack:
+  - API: Python 3.14+, FastAPI, SQLAlchemy 2.0 async, Alembic, PostgreSQL + RLS
+  - Web: TypeScript, Next.js 16, React 19, Tailwind CSS 4, shadcn/ui, SWR
+  - Firmware: C++ / PlatformIO (ESP32), MQTT
+  - Infra: Docker, k3s, Traefik, EMQX, Redis, Stripe (optional)
+
+  Conventions:
+  - Monorepo: api/, web/, esp32/, manifests/
+  - Account → Tenant hierarchy; permission-based route guards (require_permission)
+  - Conventional commits; all changes via feature branch + PR (never push to main)
+  - AI assistants: create branch, commit, push, open PR; deploys only via GitHub flow
+  - Package agent guides: api/AGENTS.md, web/AGENTS.md, esp32/AGENTS.md, manifests/AGENTS.md
+  - Cursor rules in .cursor/rules/; workflow skills in .cursor/skills/
+
+  Domain: cannabis-first. Priority order for AI/advice: plant health & resin → terpenes →
+  cannabinoid maturity → bag appeal → yield last. Use cannabis-optimal ranges (see
+  openspec/project.md for full ideal ranges).
+
+  Quality: zero regression, tests for new code, typed public surfaces, OWASP Top 10,
+  reversible migrations, CI green (ruff/eslint/tsc/pytest) before merge.
+
+  Full historical context: openspec/project.md
+
+# Per-artifact rules (optional)
+# rules:
+#   proposal:
+#     - Keep proposals under 500 words
+#     - Always include a "Non-goals" section
+#   tasks:
+#     - Break tasks into chunks of max 2 hours
