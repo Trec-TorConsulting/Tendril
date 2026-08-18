@@ -8,7 +8,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 Next.js **16** + React **19** + TypeScript + Tailwind **v4** + Base UI + shadcn. Multi-tenant PWA dashboard for the Tendril API.
 
-> Cross-references: [`api/AGENTS.md`](../api/AGENTS.md) for the backend, [`AGENTS.md`](../AGENTS.md) and [`openspec/AGENTS.md`](../openspec/AGENTS.md) for spec workflow.
+> Cross-references: [`api/AGENTS.md`](../api/AGENTS.md) for the backend, [`AGENTS.md`](../AGENTS.md) for OpenSpec/Cursor workflow.
 
 ## Stack
 
@@ -150,7 +150,7 @@ npm run qa:report           # Open last HTML report
 - `manifest.json` is in `public/`. `themeColor` (#16a34a) and `appleWebApp` are set in root layout.
 
 ### Base UI Select gotchas
-The [`web-react.instructions.md`](../.github/instructions/web-react.instructions.md) covers this in detail. Summary:
+The Cursor rule [`.cursor/rules/web-react.mdc`](../.cursor/rules/web-react.mdc) covers this in detail. Summary:
 - `Select.Item` mounts inside a Portal — it doesn't exist on first render.
 - `<SelectValue>` cannot resolve a UUID-valued selection on first paint. Render the label manually: `<SelectTrigger><span>{selectedItem?.name ?? "Placeholder"}</span></SelectTrigger>`.
 - `<SelectValue>` ignores JSX children — only `placeholder` works.
@@ -168,6 +168,6 @@ The [`web-react.instructions.md`](../.github/instructions/web-react.instructions
 - **No localStorage for auth.** If you find yourself reaching for `localStorage.getItem("token")`, you're working against the auth model. Use the cookie + `apiFetch`.
 - **Don't bypass `apiFetch`** with raw `fetch()` for API calls — you'll lose CSRF, retries, 401 refresh, and timeout handling.
 - **`useApiSWR` is the only sanctioned way** to do cached reads. Hand-rolling `useEffect` + `fetch` defeats the cache-eviction-on-signout contract.
-- **Generated `api-types.ts` is large.** Diffs should be small and explainable. A huge diff means you regenerated against the wrong branch or stale Python env — see [`.github/prompts/regen-api-types.prompt.md`](../.github/prompts/regen-api-types.prompt.md).
+- **Generated `api-types.ts` is large.** Diffs should be small and explainable. A huge diff means you regenerated against the wrong branch or stale Python env — see the Cursor skill [`.cursor/skills/regen-api-types/SKILL.md`](../.cursor/skills/regen-api-types/SKILL.md).
 - **Mobile-first.** The dashboard ships a `mobile-bottom-nav` + viewport `userScalable: false`. Test mobile breakpoints before desktop polish.
 - **Route groups don't show in URLs.** Moving a page from `dashboard/` to `(auth)/` changes the layout, not the URL — confirm both behaviors.
